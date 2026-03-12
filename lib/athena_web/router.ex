@@ -6,10 +6,13 @@ defmodule AthenaWeb.Router do
     plug :fetch_session
     plug :fetch_live_flash
     plug :put_root_layout, html: {AthenaWeb.Layouts, :root}
-    plug :put_layout, html: {AthenaWeb.Layouts, :app}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug :put_locale
+  end
+
+  pipeline :app_layout do
+    plug :put_layout, html: {AthenaWeb.Layouts, :app}
   end
 
   pipeline :api do
@@ -17,16 +20,34 @@ defmodule AthenaWeb.Router do
   end
 
   scope "/", AthenaWeb do
-    pipe_through :browser
+    pipe_through [:browser, :app_layout]
 
     get "/", PageController, :home
     get "/locale/:locale", LocaleController, :set
+    post "/auth/log_in", SessionController, :create
+    delete "/auth/log_out", SessionController, :delete
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", AthenaWeb do
-  #   pipe_through :api
-  # end
+  live_session :public,
+    layout: {AthenaWeb.Layouts, :app},
+    on_mount: [{AthenaWeb.Hooks.Auth, :default}] do
+    scope "/auth", AthenaWeb do
+      pipe_through :browser
+      live "/login", AuthLive.Login, :new
+    end
+  end
+
+  live_session :authenticated,
+    layout: {AthenaWeb.Layouts, :dashboard},
+    on_mount: [
+      {AthenaWeb.Hooks.Auth, :default},
+      {AthenaWeb.Hooks.Auth, :require_authenticated_user}
+    ] do
+    scope "/", AthenaWeb do
+      pipe_through :browser
+      # live "/dashboard", DashboardLive.Index, :index
+    end
+  end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:athena, :dev_routes) do

@@ -11,7 +11,7 @@
 msgid ""
 msgstr ""
 
-#: lib/athena_web/components/core_components.ex:368
+#: lib/athena_web/components/core_components.ex:378
 #, elixir-autogen, elixir-format
 msgid "Actions"
 msgstr ""
@@ -32,7 +32,7 @@ msgstr ""
 msgid "We can't find the internet"
 msgstr ""
 
-#: lib/athena_web/components/core_components.ex:74
+#: lib/athena_web/components/core_components.ex:84
 #, elixir-autogen, elixir-format
 msgid "close"
 msgstr ""
@@ -53,6 +53,7 @@ msgid "Get Started"
 msgstr ""
 
 #: lib/athena_web/components/layouts/app.html.heex:66
+#: lib/athena_web/live/auth_live/login.ex:175
 #, elixir-autogen, elixir-format
 msgid "Log in"
 msgstr ""
@@ -75,4 +76,49 @@ msgstr ""
 #: lib/athena_web/controllers/page_html/home.html.heex:18
 #, elixir-autogen, elixir-format
 msgid "Transform Learning with Athena"
+msgstr ""
+
+#: lib/athena_web/controllers/session_controller.ex:15
+#, elixir-autogen, elixir-format
+msgid "Authentication failed."
+msgstr ""
+
+#: lib/athena_web/live/auth_live/login.ex:145
+#, elixir-autogen, elixir-format
+msgid "Enter your login"
+msgstr ""
+
+#: lib/athena_web/live/auth_live/login.ex:94
+#, elixir-autogen, elixir-format
+msgid "Invalid login or password"
+msgstr ""
+
+#: lib/athena_web/controllers/session_controller.ex:23
+#, elixir-autogen, elixir-format
+msgid "Logged out successfully."
+msgstr ""
+
+#: lib/athena_web/live/auth_live/login.ex:138
+#, elixir-autogen, elixir-format
+msgid "Login"
+msgstr ""
+
+#: lib/athena_web/live/auth_live/login.ex:157
+#, elixir-autogen, elixir-format
+msgid "Password"
+msgstr ""
+
+#: lib/athena_web/live/auth_live/login.ex:117
+#, elixir-autogen, elixir-format
+msgid "Sign in to your account to continue"
+msgstr ""
+
+#: lib/athena_web/controllers/session_controller.ex:10
+#, elixir-autogen, elixir-format
+msgid "Successfully logged in!"
+msgstr ""
+
+#: lib/athena_web/live/auth_live/login.ex:115
+#, elixir-autogen, elixir-format
+msgid "Welcome Back"
 msgstr ""

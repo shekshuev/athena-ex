@@ -11,7 +11,7 @@ msgstr ""
 "Language: ru\n"
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100 != 11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10||n%100>=20) ? 1 : 2);\n"
 
-#: lib/athena_web/components/core_components.ex:368
+#: lib/athena_web/components/core_components.ex:378
 #, elixir-autogen, elixir-format
 msgid "Actions"
 msgstr "Действия"
@@ -32,7 +32,7 @@ msgstr "Что-то пошло не так!"
 msgid "We can't find the internet"
 msgstr "Нет подключения к интернету"
 
-#: lib/athena_web/components/core_components.ex:74
+#: lib/athena_web/components/core_components.ex:84
 #, elixir-autogen, elixir-format
 msgid "close"
 msgstr "закрыть"
@@ -53,6 +53,7 @@ msgid "Get Started"
 msgstr "Начать работу"
 
 #: lib/athena_web/components/layouts/app.html.heex:66
+#: lib/athena_web/live/auth_live/login.ex:175
 #, elixir-autogen, elixir-format
 msgid "Log in"
 msgstr "Войти"
@@ -76,3 +77,48 @@ msgstr "Вы вошли как"
 #, elixir-autogen, elixir-format
 msgid "Transform Learning with Athena"
 msgstr "Новый уровень обучения вместе с Athena"
+
+#: lib/athena_web/controllers/session_controller.ex:15
+#, elixir-autogen, elixir-format
+msgid "Authentication failed."
+msgstr "Ошибка авторизации."
+
+#: lib/athena_web/live/auth_live/login.ex:145
+#, elixir-autogen, elixir-format
+msgid "Enter your login"
+msgstr "Введите логин"
+
+#: lib/athena_web/live/auth_live/login.ex:94
+#, elixir-autogen, elixir-format
+msgid "Invalid login or password"
+msgstr "Неверный логин или пароль"
+
+#: lib/athena_web/controllers/session_controller.ex:23
+#, elixir-autogen, elixir-format
+msgid "Logged out successfully."
+msgstr "Вы успешно вышли."
+
+#: lib/athena_web/live/auth_live/login.ex:138
+#, elixir-autogen, elixir-format
+msgid "Login"
+msgstr "Логин"
+
+#: lib/athena_web/live/auth_live/login.ex:157
+#, elixir-autogen, elixir-format
+msgid "Password"
+msgstr "Пароль"
+
+#: lib/athena_web/live/auth_live/login.ex:117
+#, elixir-autogen, elixir-format
+msgid "Sign in to your account to continue"
+msgstr "Войдите в свой аккаунт, чтобы продолжить"
+
+#: lib/athena_web/controllers/session_controller.ex:10
+#, elixir-autogen, elixir-format
+msgid "Successfully logged in!"
+msgstr "Успешный вход!"
+
+#: lib/athena_web/live/auth_live/login.ex:115
+#, elixir-autogen, elixir-format
+msgid "Welcome Back"
+msgstr "С возвращением"

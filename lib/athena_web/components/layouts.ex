@@ -1,8 +1,6 @@
 defmodule AthenaWeb.Layouts do
   use AthenaWeb, :html
 
-  # Этот макрос берет файлы root.html.heex и app.html.heex 
-  # и превращает их в функции AthenaWeb.Layouts.root/1 и .app/1
   embed_templates "layouts/*"
 
   @doc """
@@ -13,7 +11,7 @@ defmodule AthenaWeb.Layouts do
 
   def flash_group(assigns) do
     ~H"""
-    <div id={@id} aria-live="polite">
+    <div id={@id} aria-live="polite" class="toast toast-bottom toast-end z-[100] p-4 sm:p-6 mb-4">
       <.flash kind={:info} flash={@flash} />
       <.flash kind={:error} flash={@flash} />
 

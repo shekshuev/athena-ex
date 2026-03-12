@@ -44,37 +44,47 @@ defmodule AthenaWeb.CoreComponents do
   attr :title, :string, default: nil
   attr :kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup"
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
-
   slot :inner_block, doc: "the optional inner block that renders the flash message"
 
   def flash(assigns) do
-    assigns = assign_new(assigns, :id, fn -> "flash-#{assigns.kind}" end)
-
     ~H"""
     <div
       :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
-      id={@id}
-      phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
+      id={@id || "flash-#{@kind}"}
+      phx-click={
+        JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id || "flash-#{@kind}"}")
+      }
       role="alert"
-      class="toast toast-top toast-end z-50"
+      class={[
+        "alert shadow-none border cursor-pointer w-full sm:w-96 transition-all duration-300 flex items-start",
+        @kind == :info && "alert-info text-info-content",
+        @kind == :error && "alert-error text-error-content"
+      ]}
       {@rest}
     >
-      <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
-        @kind == :info && "alert-info",
-        @kind == :error && "alert-error"
-      ]}>
-        <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
-        <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
-        <div>
-          <p :if={@title} class="font-semibold">{@title}</p>
-          <p>{msg}</p>
-        </div>
-        <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label={gettext("close")}>
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
-        </button>
+      <.icon
+        :if={@kind == :info}
+        name="hero-information-circle-solid"
+        class="h-6 w-6 shrink-0 mt-0.5 opacity-80"
+      />
+      <.icon
+        :if={@kind == :error}
+        name="hero-exclamation-circle-solid"
+        class="h-6 w-6 shrink-0 mt-0.5 opacity-80"
+      />
+
+      <div class="flex flex-col flex-1 gap-1">
+        <p :if={@title} class="font-bold text-sm">{@title}</p>
+        <p class="text-sm font-medium">{msg}</p>
       </div>
+
+      <button
+        type="button"
+        class="btn btn-ghost btn-xs btn-square shrink-0 opacity-50 hover:opacity-100"
+        aria-label={gettext("close")}
+      >
+        <.icon name="hero-x-mark-solid" class="h-4 w-4" />
+      </button>
     </div>
     """
   end
