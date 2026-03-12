@@ -6,8 +6,10 @@ defmodule AthenaWeb.Router do
     plug :fetch_session
     plug :fetch_live_flash
     plug :put_root_layout, html: {AthenaWeb.Layouts, :root}
+    plug :put_layout, html: {AthenaWeb.Layouts, :app}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug :put_locale
   end
 
   pipeline :api do
@@ -18,6 +20,7 @@ defmodule AthenaWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/locale/:locale", LocaleController, :set
   end
 
   # Other scopes may use custom stacks.
@@ -39,6 +42,17 @@ defmodule AthenaWeb.Router do
 
       live_dashboard "/dashboard", metrics: AthenaWeb.Telemetry
       forward "/mailbox", Plug.Swoosh.MailboxPreview
+    end
+  end
+
+  defp put_locale(conn, _opts) do
+    case get_session(conn, :locale) do
+      nil ->
+        conn
+
+      locale ->
+        Gettext.put_locale(AthenaWeb.Gettext, locale)
+        conn
     end
   end
 end

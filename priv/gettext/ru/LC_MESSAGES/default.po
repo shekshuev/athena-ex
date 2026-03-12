@@ -16,18 +16,18 @@ msgstr ""
 msgid "Actions"
 msgstr "Действия"
 
-#: lib/athena_web/components/layouts.ex:99
-#: lib/athena_web/components/layouts.ex:111
+#: lib/athena_web/components/layouts.ex:28
+#: lib/athena_web/components/layouts.ex:40
 #, elixir-autogen, elixir-format
 msgid "Attempting to reconnect"
 msgstr "Пытаемся переподключиться..."
 
-#: lib/athena_web/components/layouts.ex:106
+#: lib/athena_web/components/layouts.ex:35
 #, elixir-autogen, elixir-format
 msgid "Something went wrong!"
 msgstr "Что-то пошло не так!"
 
-#: lib/athena_web/components/layouts.ex:94
+#: lib/athena_web/components/layouts.ex:23
 #, elixir-autogen, elixir-format
 msgid "We can't find the internet"
 msgstr "Нет подключения к интернету"
@@ -36,3 +36,43 @@ msgstr "Нет подключения к интернету"
 #, elixir-autogen, elixir-format
 msgid "close"
 msgstr "закрыть"
+
+#: lib/athena_web/controllers/page_html/home.html.heex:21
+#, elixir-autogen, elixir-format
+msgid "A modern, modular LMS built for speed, flexibility, and ultimate learning experience."
+msgstr "Современная модульная LMS, созданная для скорости, гибкости и идеального процесса обучения."
+
+#: lib/athena_web/controllers/page_html/home.html.heex:31
+#, elixir-autogen, elixir-format
+msgid "Documentation"
+msgstr "Документация"
+
+#: lib/athena_web/controllers/page_html/home.html.heex:27
+#, elixir-autogen, elixir-format
+msgid "Get Started"
+msgstr "Начать работу"
+
+#: lib/athena_web/components/layouts/app.html.heex:66
+#, elixir-autogen, elixir-format
+msgid "Log in"
+msgstr "Войти"
+
+#: lib/athena_web/components/layouts/app.html.heex:61
+#, elixir-autogen, elixir-format
+msgid "Logout"
+msgstr "Выйти"
+
+#: lib/athena_web/components/layouts/app.html.heex:60
+#, elixir-autogen, elixir-format
+msgid "Settings"
+msgstr "Настройки"
+
+#: lib/athena_web/components/layouts/app.html.heex:57
+#, elixir-autogen, elixir-format
+msgid "Signed in as"
+msgstr "Вы вошли как"
+
+#: lib/athena_web/controllers/page_html/home.html.heex:18
+#, elixir-autogen, elixir-format
+msgid "Transform Learning with Athena"
+msgstr "Новый уровень обучения вместе с Athena"

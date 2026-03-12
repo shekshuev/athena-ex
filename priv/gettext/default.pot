@@ -16,18 +16,18 @@ msgstr ""
 msgid "Actions"
 msgstr ""
 
-#: lib/athena_web/components/layouts.ex:99
-#: lib/athena_web/components/layouts.ex:111
+#: lib/athena_web/components/layouts.ex:28
+#: lib/athena_web/components/layouts.ex:40
 #, elixir-autogen, elixir-format
 msgid "Attempting to reconnect"
 msgstr ""
 
-#: lib/athena_web/components/layouts.ex:106
+#: lib/athena_web/components/layouts.ex:35
 #, elixir-autogen, elixir-format
 msgid "Something went wrong!"
 msgstr ""
 
-#: lib/athena_web/components/layouts.ex:94
+#: lib/athena_web/components/layouts.ex:23
 #, elixir-autogen, elixir-format
 msgid "We can't find the internet"
 msgstr ""
@@ -35,4 +35,44 @@ msgstr ""
 #: lib/athena_web/components/core_components.ex:74
 #, elixir-autogen, elixir-format
 msgid "close"
+msgstr ""
+
+#: lib/athena_web/controllers/page_html/home.html.heex:21
+#, elixir-autogen, elixir-format
+msgid "A modern, modular LMS built for speed, flexibility, and ultimate learning experience."
+msgstr ""
+
+#: lib/athena_web/controllers/page_html/home.html.heex:31
+#, elixir-autogen, elixir-format
+msgid "Documentation"
+msgstr ""
+
+#: lib/athena_web/controllers/page_html/home.html.heex:27
+#, elixir-autogen, elixir-format
+msgid "Get Started"
+msgstr ""
+
+#: lib/athena_web/components/layouts/app.html.heex:66
+#, elixir-autogen, elixir-format
+msgid "Log in"
+msgstr ""
+
+#: lib/athena_web/components/layouts/app.html.heex:61
+#, elixir-autogen, elixir-format
+msgid "Logout"
+msgstr ""
+
+#: lib/athena_web/components/layouts/app.html.heex:60
+#, elixir-autogen, elixir-format
+msgid "Settings"
+msgstr ""
+
+#: lib/athena_web/components/layouts/app.html.heex:57
+#, elixir-autogen, elixir-format
+msgid "Signed in as"
+msgstr ""
+
+#: lib/athena_web/controllers/page_html/home.html.heex:18
+#, elixir-autogen, elixir-format
+msgid "Transform Learning with Athena"
 msgstr ""
