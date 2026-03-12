@@ -1,0 +1,127 @@
+<div class="flex min-h-screen bg-base-100">
+  <aside
+    id="main-sidebar"
+    class={
+      [
+        "group/sidebar fixed inset-y-0 left-0 z-50 flex flex-col border-r border-base-300 bg-base-100 transition-all duration-300 ease-in-out lg:static",
+        "w-64 [&.is-collapsed]:w-20",
+        # Скрываем на мобилках по дефолту, показываем через класс (ниже добавим логику)
+        "-translate-x-full lg:translate-x-0 [&.is-mobile-open]:translate-x-0"
+      ]
+    }
+  >
+    <button
+      phx-click={JS.toggle_class("is-collapsed", to: "#main-sidebar")}
+      class="absolute -right-3 top-10 z-[60] hidden lg:flex btn btn-circle btn-xs btn-primary shadow-lg border-2 border-base-100 items-center justify-center"
+    >
+      <.icon
+        name="hero-chevron-left"
+        class="size-3 transition-transform duration-300 group-[.is-collapsed]/sidebar:rotate-180"
+      />
+    </button>
+
+    <div class="h-16 flex items-center px-6 shrink-0 overflow-hidden">
+      <a
+        href="/"
+        class="font-display font-black text-2xl tracking-tighter hover:text-primary transition-colors whitespace-nowrap"
+      >
+        <span class="group-[.is-collapsed]/sidebar:hidden text-base-content">ATHENA</span>
+        <span class="hidden group-[.is-collapsed]/sidebar:inline text-primary">A</span>
+      </a>
+    </div>
+
+    <nav class="flex-1 overflow-y-auto overflow-x-hidden px-3 mt-4 space-y-1">
+      <ul class="menu p-0 w-full gap-1">
+        <li>
+          <.link navigate={~p"/dashboard"} class="flex items-center gap-4 py-3">
+            <.icon name="hero-squares-2x2" class="size-6 shrink-0" />
+            <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+              {gettext("Dashboard")}
+            </span>
+          </.link>
+        </li>
+        <li>
+          <.link navigate={~p"/dashboard"} class="flex items-center gap-4 py-3">
+            <.icon name="hero-book-open" class="size-6 shrink-0" />
+            <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+              {gettext("Learning")}
+            </span>
+          </.link>
+        </li>
+      </ul>
+
+      <div class="py-4 overflow-hidden">
+        <div class="h-px bg-base-300 w-full"></div>
+        <div class="mt-4 px-3 text-[10px] font-black text-error uppercase tracking-widest group-[.is-collapsed]/sidebar:hidden">
+          {gettext("Admin")}
+        </div>
+      </div>
+
+      <ul class="menu p-0 w-full gap-1">
+        <li>
+          <.link navigate={~p"/dashboard"} class="flex items-center gap-4 py-3 hover:bg-error/10">
+            <.icon name="hero-users" class="size-6 shrink-0" />
+            <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+              {gettext("Users")}
+            </span>
+          </.link>
+        </li>
+      </ul>
+    </nav>
+
+    <div class="p-4 border-t border-base-300 shrink-0">
+      <div class="dropdown dropdown-top w-full">
+        <div tabindex="0" role="button" class="btn btn-ghost w-full justify-start gap-3 px-2">
+          <div class="avatar placeholder shrink-0">
+            <div class="bg-neutral text-neutral-content size-8 rounded-md">
+              <span class="text-xs font-bold">
+                {@current_user.login |> String.at(0) |> String.upcase()}
+              </span>
+            </div>
+          </div>
+          <div class="flex flex-col items-start text-left truncate group-[.is-collapsed]/sidebar:hidden">
+            <span class="text-sm font-black truncate leading-tight">{@current_user.login}</span>
+            <span class="text-[10px] opacity-50 uppercase tracking-tighter">Student</span>
+          </div>
+        </div>
+        <ul
+          tabindex="0"
+          class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow-2xl border border-base-300 mb-2"
+        >
+          <li>
+            <.link href={~p"/auth/log_out"} method="delete" class="text-error font-bold">
+              <.icon name="hero-log-out" class="size-4" />
+              {gettext("Log out")}
+            </.link>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </aside>
+
+  <div class="flex flex-col flex-1 min-w-0 bg-base-100">
+    <header class="h-16 flex items-center justify-between px-4 border-b border-base-300 lg:hidden shrink-0">
+      <button
+        phx-click={JS.toggle_class("is-mobile-open", to: "#main-sidebar")}
+        class="btn btn-square btn-ghost"
+      >
+        <.icon name="hero-bars-3" class="size-6" />
+      </button>
+      <div class="font-display font-black text-xl uppercase tracking-tighter">Athena</div>
+      <div class="size-10"></div>
+    </header>
+
+    <main class="flex-1 overflow-y-auto p-4 sm:p-8">
+      <div class="max-w-7xl mx-auto">
+        <.flash_group flash={@flash} />
+        {@inner_content}
+      </div>
+    </main>
+  </div>
+
+  <div
+    phx-click={JS.remove_class("is-mobile-open", to: "#main-sidebar")}
+    class="fixed inset-0 z-40 bg-black/50 hidden group-[.is-mobile-open]/sidebar:block lg:hidden"
+  >
+  </div>
+</div>

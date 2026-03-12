@@ -64,6 +64,20 @@ The project is under active development and not production-ready yet.
 
    The application will be available at `http://localhost:4000`.
 
+## Manual User Creation (IEx)
+
+To create your first admin user manually, open the Elixir interactive shell (`iex -S mix`) and run the following commands:
+
+```elixir
+iex(1)> alias Athena.Identity.{Roles, Accounts, Role}
+
+# 1. Create a basic admin role
+iex(2)> {:ok, %Role{id: role_id}} = Roles.create_role(%{"name" => "admin", "permissions" => ["admin"], "policies" => %{}})
+
+# 2. Create the account linked to that role
+iex(3)> {:ok, _account} = Accounts.create_account(%{"login" => "admin", "password" => "Admin123!", "role_id" => role_id})
+```
+
 ## Testing & Code Quality
 
 We use ExUnit for testing, Credo for linting, and Dialyzer for static type checking.

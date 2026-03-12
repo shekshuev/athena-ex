@@ -9,11 +9,14 @@ defmodule AthenaWeb.Hooks.Auth do
   import Phoenix.Component
 
   @doc """
-  Mounts the current user into the LiveView assigns.
-  Does not restrict access if the user is not logged in.
+  Main entry point for authentication hooks.
+
+  Supports:
+  - `:default` - Mounts the current user from session.
+  - `:require_authenticated_user` - Redirects to login if user is missing.
   """
-  @spec on_mount(:default, map(), map(), Phoenix.LiveView.Socket.t()) ::
-          {:cont, Phoenix.LiveView.Socket.t()}
+  @spec on_mount(atom(), map(), map(), Phoenix.LiveView.Socket.t()) ::
+          {:cont, Phoenix.LiveView.Socket.t()} | {:halt, Phoenix.LiveView.Socket.t()}
   def on_mount(:default, _params, session, socket) do
     if locale = session["locale"] do
       Gettext.put_locale(AthenaWeb.Gettext, locale)
@@ -34,13 +37,6 @@ defmodule AthenaWeb.Hooks.Auth do
     end
   end
 
-  @doc """
-  Requires the user to be authenticated.
-  Must be used in combination with (and after) the `:default` hook.
-  Redirects unauthenticated users to the login page.
-  """
-  @spec on_mount(:require_authenticated_user, map(), map(), Phoenix.LiveView.Socket.t()) ::
-          {:cont, Phoenix.LiveView.Socket.t()} | {:halt, Phoenix.LiveView.Socket.t()}
   def on_mount(:require_authenticated_user, _params, _session, socket) do
     if socket.assigns[:current_user] do
       {:cont, socket}

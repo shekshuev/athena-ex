@@ -36,7 +36,7 @@ defmodule Athena.Identity.Account do
     field :password, :string, virtual: true
 
     belongs_to :role, Athena.Identity.Role
-    has_one :profile, Athena.Identity.Profile
+    has_one :profile, Athena.Identity.Profile, foreign_key: :owner_id
 
     field :deleted_at, :utc_datetime
     timestamps(type: :utc_datetime)

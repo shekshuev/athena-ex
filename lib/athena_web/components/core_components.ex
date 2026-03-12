@@ -28,6 +28,7 @@ defmodule AthenaWeb.CoreComponents do
   """
   use Phoenix.Component
   use Gettext, backend: AthenaWeb.Gettext
+  use AthenaWeb, :verified_routes
 
   alias Phoenix.LiveView.JS
 
@@ -39,7 +40,7 @@ defmodule AthenaWeb.CoreComponents do
       <.flash kind={:info} flash={@flash} />
       <.flash kind={:info} phx-mounted={show("#flash")}>Welcome Back!</.flash>
   """
-  attr :id, :string, doc: "the optional id of flash container"
+  attr :id, :string, default: nil, doc: "the optional id of flash container"
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
   attr :title, :string, default: nil
   attr :kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup"
@@ -506,5 +507,58 @@ defmodule AthenaWeb.CoreComponents do
   """
   def translate_errors(errors, field) when is_list(errors) do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
+  end
+
+  @doc """
+  Renders a placeholder for work-in-progress pages.
+  """
+  attr :title, :string, default: "Work in Progress"
+
+  attr :description, :string,
+    default: "This feature is currently under active development. Stay tuned for updates."
+
+  attr :icon, :string, default: "hero-hammer"
+
+  def placeholder(assigns) do
+    ~H"""
+    <div class="flex flex-col items-center justify-center flex-1 min-h-[60vh] p-8 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div class="relative mb-8 group">
+        <div class="absolute inset-0 bg-primary/20 blur-3xl rounded-full opacity-50 group-hover:opacity-100 transition-opacity duration-700" />
+
+        <div class="relative flex items-center justify-center w-24 h-24 rounded-2xl bg-base-100 ring-1 ring-base-300 shadow-xl border border-base-200">
+          <.icon
+            name={@icon}
+            class="w-12 h-12 text-primary group-hover:scale-110 transition-transform duration-300"
+          />
+        </div>
+      </div>
+
+      <h3 class="text-3xl font-display font-black uppercase tracking-tight text-base-content mb-3">
+        {@title}
+      </h3>
+      <p class="text-base-content/60 max-w-md mx-auto mb-10 leading-relaxed font-medium">
+        {@description}
+      </p>
+
+      <div class="flex flex-wrap justify-center gap-4">
+        <button
+          type="button"
+          onclick="history.back()"
+          class="btn btn-ghost font-bold uppercase"
+        >
+          <.icon name="hero-arrow-left" class="size-5" />
+          {gettext("Go Back")}
+        </button>
+
+        <.link
+          navigate={~p"/dashboard"}
+          class="btn btn-primary btn-soft font-bold uppercase px-8"
+        >
+          <.icon name="hero-squares-2x2" class="size-5" />
+          {gettext("Dashboard")}
+        </.link>
+      </div>
+    </div>
+    """
   end
 end

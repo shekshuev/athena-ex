@@ -45,7 +45,7 @@ defmodule AthenaWeb.Router do
     ] do
     scope "/", AthenaWeb do
       pipe_through :browser
-      # live "/dashboard", DashboardLive.Index, :index
+      live "/dashboard", DashboardLive.Index, :index
     end
   end
 
