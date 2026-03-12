@@ -70,7 +70,8 @@ defmodule Athena.MixProject do
       {:oban, "~> 2.20"},
       {:argon2_elixir, "~> 4.0"},
       {:flop, "~> 0.25.0"},
-      {:ex_machina, "~> 2.7.0", only: :test}
+      {:ex_machina, "~> 2.7.0", only: :test},
+      {:cachex, "~> 4.1"}
     ]
   end
 

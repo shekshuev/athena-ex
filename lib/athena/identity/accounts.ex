@@ -43,9 +43,19 @@ defmodule Athena.Identity.Accounts do
   """
   @spec get_account(String.t()) :: {:ok, Account.t()} | {:error, :not_found}
   def get_account(id) do
-    case Repo.get(Account, id) do
-      nil -> {:error, :not_found}
-      account -> {:ok, account}
+    case Cachex.get(:account_cache, id) do
+      {:ok, nil} ->
+        case Repo.get(Account, id) do
+          nil ->
+            {:error, :not_found}
+
+          account ->
+            Cachex.put(:account_cache, id, account, ttl: :timer.minutes(5))
+            {:ok, account}
+        end
+
+      {:ok, %Account{} = account} ->
+        {:ok, account}
     end
   end
 
@@ -82,6 +92,14 @@ defmodule Athena.Identity.Accounts do
     account
     |> Account.changeset(attrs)
     |> Repo.update()
+    |> case do
+      {:ok, updated_account} ->
+        Cachex.del(:account_cache, updated_account.id)
+        {:ok, updated_account}
+
+      error ->
+        error
+    end
   end
 
   @doc """
@@ -92,6 +110,14 @@ defmodule Athena.Identity.Accounts do
     account
     |> Ecto.Changeset.change(%{deleted_at: DateTime.utc_now(:second)})
     |> Repo.update()
+    |> case do
+      {:ok, deleted_account} ->
+        Cachex.del(:account_cache, deleted_account.id)
+        {:ok, deleted_account}
+
+      error ->
+        error
+    end
   end
 
   @doc """
