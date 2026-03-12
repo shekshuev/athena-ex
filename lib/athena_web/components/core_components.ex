@@ -215,8 +215,8 @@ defmodule AthenaWeb.CoreComponents do
       end)
 
     ~H"""
-    <div class="fieldset mb-2">
-      <label for={@id}>
+    <div class="form-control mb-2 w-full">
+      <label class="label cursor-pointer justify-start gap-3">
         <input
           type="hidden"
           name={@name}
@@ -224,17 +224,16 @@ defmodule AthenaWeb.CoreComponents do
           disabled={@rest[:disabled]}
           form={@rest[:form]}
         />
-        <span class="label">
-          <input
-            type="checkbox"
-            id={@id}
-            name={@name}
-            value="true"
-            checked={@checked}
-            class={@class || "checkbox checkbox-sm"}
-            {@rest}
-          />{@label}
-        </span>
+        <input
+          type="checkbox"
+          id={@id}
+          name={@name}
+          value="true"
+          checked={@checked}
+          class={[@class || "checkbox checkbox-primary", @errors != [] && "border-error"]}
+          {@rest}
+        />
+        <span class="label-text font-bold">{@label}</span>
       </label>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
@@ -243,20 +242,23 @@ defmodule AthenaWeb.CoreComponents do
 
   def input(%{type: "select"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
-      <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
-        <select
-          id={@id}
-          name={@name}
-          class={[@class || "w-full select", @errors != [] && (@error_class || "select-error")]}
-          multiple={@multiple}
-          {@rest}
-        >
-          <option :if={@prompt} value="">{@prompt}</option>
-          {Phoenix.HTML.Form.options_for_select(@options, @value)}
-        </select>
+    <div class="form-control mb-2 w-full">
+      <label :if={@label} for={@id} class="label">
+        <span class="label-text font-bold">{@label}</span>
       </label>
+      <select
+        id={@id}
+        name={@name}
+        class={[
+          @class || "select select-bordered w-full",
+          @errors != [] && (@error_class || "select-error border-error")
+        ]}
+        multiple={@multiple}
+        {@rest}
+      >
+        <option :if={@prompt} value="">{@prompt}</option>
+        {Phoenix.HTML.Form.options_for_select(@options, @value)}
+      </select>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -264,19 +266,19 @@ defmodule AthenaWeb.CoreComponents do
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
-      <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
-        <textarea
-          id={@id}
-          name={@name}
-          class={[
-            @class || "w-full textarea",
-            @errors != [] && (@error_class || "textarea-error")
-          ]}
-          {@rest}
-        >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
+    <div class="form-control mb-2 w-full">
+      <label :if={@label} for={@id} class="label">
+        <span class="label-text font-bold">{@label}</span>
       </label>
+      <textarea
+        id={@id}
+        name={@name}
+        class={[
+          @class || "textarea textarea-bordered w-full",
+          @errors != [] && (@error_class || "textarea-error border-error")
+        ]}
+        {@rest}
+      >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -285,21 +287,21 @@ defmodule AthenaWeb.CoreComponents do
   # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
-    <div class="fieldset mb-2">
-      <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
-        <input
-          type={@type}
-          name={@name}
-          id={@id}
-          value={Phoenix.HTML.Form.normalize_value(@type, @value)}
-          class={[
-            @class || "w-full input",
-            @errors != [] && (@error_class || "input-error")
-          ]}
-          {@rest}
-        />
+    <div class="form-control mb-2 w-full">
+      <label :if={@label} for={@id} class="label">
+        <span class="label-text font-bold">{@label}</span>
       </label>
+      <input
+        type={@type}
+        name={@name}
+        id={@id}
+        value={Phoenix.HTML.Form.normalize_value(@type, @value)}
+        class={[
+          @class || "input input-bordered w-full",
+          @errors != [] && (@error_class || "input-error border-error")
+        ]}
+        {@rest}
+      />
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -308,9 +310,9 @@ defmodule AthenaWeb.CoreComponents do
   # Helper used by inputs to generate form errors
   defp error(assigns) do
     ~H"""
-    <p class="mt-1.5 flex gap-2 items-center text-sm text-error">
-      <.icon name="hero-exclamation-circle" class="size-5" />
-      {render_slot(@inner_block)}
+    <p class="mt-1.5 text-error text-xs font-bold text-wrap break-words leading-tight flex gap-1 items-start">
+      <.icon name="hero-exclamation-circle" class="size-4 shrink-0 mt-0.5" />
+      <span>{render_slot(@inner_block)}</span>
     </p>
     """
   end

@@ -139,43 +139,19 @@ defmodule AthenaWeb.AuthLive.Login do
             phx-trigger-action={assigns[:trigger_action]}
             class="flex flex-col gap-4"
           >
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-bold">{gettext("Login")}</span>
-              </label>
-              <input
-                type="text"
-                name={@form[:login].name}
-                value={@form[:login].value}
-                class={["input w-full", @form[:login].errors != [] && "input-error border-error"]}
-                placeholder={gettext("Enter your login")}
-              />
-              <div
-                :for={err <- @form[:login].errors}
-                class="mt-1.5 text-error text-xs font-bold text-wrap break-words leading-tight"
-              >
-                {translate_error(err)}
-              </div>
-            </div>
+            <.input
+              field={@form[:login]}
+              type="text"
+              label={gettext("Login")}
+              placeholder={gettext("Enter your login")}
+            />
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-bold">{gettext("Password")}</span>
-              </label>
-              <input
-                type="password"
-                name={@form[:password].name}
-                value={@form[:password].value}
-                class={["input w-full", @form[:password].errors != [] && "input-error border-error"]}
-                placeholder="••••••••"
-              />
-              <div
-                :for={err <- @form[:password].errors}
-                class="mt-1.5 text-error text-xs font-bold text-wrap break-words leading-tight"
-              >
-                {translate_error(err)}
-              </div>
-            </div>
+            <.input
+              field={@form[:password]}
+              type="password"
+              label={gettext("Password")}
+              placeholder="••••••••"
+            />
 
             <button class="btn btn-primary w-full mt-2">
               {gettext("Log in")}

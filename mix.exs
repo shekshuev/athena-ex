@@ -11,7 +11,10 @@ defmodule Athena.MixProject do
       aliases: aliases(),
       deps: deps(),
       compilers: [:boundary, :phoenix_live_view] ++ Mix.compilers(),
-      listeners: [Phoenix.CodeReloader]
+      listeners: [Phoenix.CodeReloader],
+      dialyzer: [
+        flags: [:no_opaque]
+      ]
     ]
   end
 
@@ -71,7 +74,9 @@ defmodule Athena.MixProject do
       {:argon2_elixir, "~> 4.0"},
       {:flop, "~> 0.25.0"},
       {:ex_machina, "~> 2.7.0", only: :test},
-      {:cachex, "~> 4.1"}
+      {:cachex, "~> 4.1"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -94,7 +99,8 @@ defmodule Athena.MixProject do
         "esbuild athena --minify",
         "phx.digest"
       ],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"],
+      check: ["format", "credo", "dialyzer", "test"]
     ]
   end
 end

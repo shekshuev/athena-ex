@@ -1,0 +1,86 @@
+name: Elixir CI
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main", "develop"]
+
+env:
+  MIX_ENV: test
+  DATABASE_URL: postgres://postgres:postgres@localhost:5432/athena_test
+
+jobs:
+  test_and_lint:
+    name: Build, Test, and Lint
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: postgres:15
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: athena_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.19.5-otp-28"
+          otp-version: "28.3.1"
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: deps
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+
+      - name: Restore build cache
+        uses: actions/cache@v4
+        with:
+          path: _build/test
+          key: ${{ runner.os }}-build-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-build-
+
+      - name: Restore Dialyzer PLT cache
+        uses: actions/cache@v4
+        id: plt_cache
+        with:
+          path: |
+            priv/plts
+            ~/.mix
+            _build/test/dialyxir*.plt
+            _build/test/dialyxir*.plt.hash
+          key: ${{ runner.os }}-plt-${{ hashFiles('**/mix.lock') }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}
+          restore-keys: |
+            ${{ runner.os }}-plt-${{ hashFiles('**/mix.lock') }}-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Check Code Format
+        run: mix format --check-formatted
+
+      - name: Compile Code
+        run: mix compile --warnings-as-errors
+
+      - name: Run Credo (Linter)
+        run: mix credo
+
+      - name: Run Dialyzer (Type Checker)
+        run: mix dialyzer
+
+      - name: Run Tests
+        run: mix test

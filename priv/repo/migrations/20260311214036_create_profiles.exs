@@ -10,7 +10,8 @@ defmodule Athena.Repo.Migrations.CreateProfiles do
             on_delete: :delete_all,
             type: :binary_id,
             name: :profiles__owner_id__fk
-          ), null: false
+          ),
+          null: false
 
       add :first_name, :string, size: 100, null: false
       add :last_name, :string, size: 100, null: false
