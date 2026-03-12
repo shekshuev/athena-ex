@@ -110,8 +110,12 @@ msgstr "должно быть не меньше %{number}"
 msgid "must be equal to %{number}"
 msgstr "должно быть равно %{number}"
 
-msgid "does not exist"
-msgstr "не существует"
+#: lib/athena/identity/role.ex:79
+#, elixir-autogen, elixir-format
+msgid "contains invalid permissions or policies"
+msgstr "содержит недопустимые права или политики"
 
+#: lib/athena_web/hooks/acl.ex:28
+#, elixir-autogen, elixir-format
 msgid "Missing permission: %{permission}"
-msgstr "Недостаточно прав: %{permission}"
+msgstr "Отсутсвует разрешение: %{permission}"

@@ -111,8 +111,12 @@ msgstr ""
 msgid "must be equal to %{number}"
 msgstr ""
 
-msgid "does not exist"
+#: lib/athena/identity/role.ex:79
+#, elixir-autogen, elixir-format
+msgid "contains invalid permissions or policies"
 msgstr ""
 
+#: lib/athena_web/hooks/acl.ex:28
+#, elixir-autogen, elixir-format
 msgid "Missing permission: %{permission}"
 msgstr ""

@@ -9,6 +9,10 @@ defmodule Athena.Identity.Role do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias Athena.Identity.Definitions
+
+  use Gettext, backend: AthenaWeb.Gettext
+
   @type t :: %__MODULE__{}
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -44,6 +48,35 @@ defmodule Athena.Identity.Role do
     |> cast(attrs, [:name, :permissions, :policies])
     |> validate_required([:name])
     |> validate_length(:name, min: 2, max: 50)
+    |> validate_permissions()
+    |> validate_policies()
     |> unique_constraint(:name, name: :roles__name__uk)
+  end
+
+  @doc false
+  defp validate_permissions(changeset) do
+    validate_subset(changeset, :permissions, Definitions.permissions())
+  end
+
+  @doc false
+  defp validate_policies(changeset) do
+    policies = get_field(changeset, :policies, %{})
+
+    valid_perms = Definitions.permissions()
+    valid_policies = Definitions.policies()
+
+    is_valid =
+      Enum.all?(policies, fn {perm, pols} ->
+        perm in valid_perms and Enum.all?(pols, &(&1 in valid_policies))
+      end)
+
+    if is_valid,
+      do: changeset,
+      else:
+        add_error(
+          changeset,
+          :policies,
+          dgettext_noop("errors", "contains invalid permissions or policies")
+        )
   end
 end
