@@ -10,7 +10,7 @@ defmodule Athena.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      compilers: [:boundary, :phoenix_live_view] ++ Mix.compilers(),
+      compilers: compilers(Mix.env()),
       listeners: [Phoenix.CodeReloader],
       dialyzer: [
         flags: [:no_opaque],
@@ -18,6 +18,9 @@ defmodule Athena.MixProject do
       ]
     ]
   end
+
+  defp compilers(:test), do: [:phoenix_live_view] ++ Mix.compilers()
+  defp compilers(_), do: [:boundary, :phoenix_live_view] ++ Mix.compilers()
 
   # Configuration for the OTP application.
   #
@@ -101,7 +104,7 @@ defmodule Athena.MixProject do
         "phx.digest"
       ],
       precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"],
-      check: ["format", "credo", "dialyzer", "test"]
+      check: ["format", "credo", "dialyzer", "test", "compile --warnings-as-errors"]
     ]
   end
 end
