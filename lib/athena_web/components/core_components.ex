@@ -561,4 +561,116 @@ defmodule AthenaWeb.CoreComponents do
     </div>
     """
   end
+
+  @doc """
+  Renders a DaisyUI modal.
+  """
+  attr :id, :string, required: true
+  attr :show, :boolean, default: false
+  attr :title, :string, default: nil
+  attr :description, :string, default: nil
+  attr :on_cancel, JS, default: %JS{}
+  attr :on_confirm, JS, default: %JS{}
+  attr :confirm_label, :string, default: "Confirm"
+  attr :danger, :boolean, default: false
+  slot :inner_block
+
+  def modal(assigns) do
+    ~H"""
+    <dialog id={@id} class="modal" phx-mounted={@show && JS.dispatch("showModal", to: "##{@id}")}>
+      <div class="modal-box">
+        <h3 :if={@title} class="font-bold text-lg">{@title}</h3>
+        <p :if={@description} class="py-4 text-base-content/70">{@description}</p>
+        {render_slot(@inner_block)}
+        <div class="modal-action">
+          <button
+            type="button"
+            class="btn btn-ghost"
+            phx-click={@on_cancel |> JS.dispatch("close", to: "##{@id}")}
+          >
+            {gettext("Cancel")}
+          </button>
+          <button
+            type="button"
+            class={["btn", @danger && "btn-error", !@danger && "btn-primary"]}
+            phx-click={@on_confirm}
+          >
+            {@confirm_label}
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button phx-click={@on_cancel}>{gettext("close")}</button>
+      </form>
+    </dialog>
+    """
+  end
+
+  @doc """
+  Renders a slide-over (drawer) for forms.
+  """
+  attr :id, :string, required: true
+  attr :show, :boolean, default: false
+  attr :title, :string, required: true
+  attr :on_close, JS, required: true
+  slot :inner_block, required: true
+
+  def slide_over(assigns) do
+    ~H"""
+    <div
+      class={["drawer drawer-end absolute inset-0 z-[100]", !@show && "hidden"]}
+      style="pointer-events: none;"
+    >
+      <input
+        id={"#{@id}-toggle"}
+        type="checkbox"
+        class="drawer-toggle"
+        checked={@show}
+        aria-hidden="true"
+      />
+      <div class="drawer-side" style="pointer-events: auto;">
+        <label for={"#{@id}-toggle"} class="drawer-overlay" phx-click={@on_close}></label>
+        <div class="menu bg-base-100 text-base-content min-h-full w-full max-w-md p-0 flex flex-col shadow-2xl">
+          <div class="p-6 border-b border-base-300 flex items-center justify-between shrink-0">
+            <h2 class="text-xl font-display font-bold">{@title}</h2>
+            <button type="button" class="btn btn-ghost btn-circle btn-sm" phx-click={@on_close}>
+              <.icon name="hero-x-mark" class="size-5" />
+            </button>
+          </div>
+          <div class="flex-1 overflow-y-auto p-6">
+            {render_slot(@inner_block)}
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders pagination using Flop.Meta.
+  """
+  attr :meta, Flop.Meta, required: true
+  attr :path_fn, :any, required: true, doc: "Function that takes a page number and returns a URL"
+
+  def pagination(assigns) do
+    ~H"""
+    <div :if={@meta.total_pages > 1} class="join">
+      <.link
+        patch={@path_fn.(@meta.current_page - 1)}
+        class={["join-item btn btn-sm", @meta.current_page <= 1 && "btn-disabled"]}
+      >
+        «
+      </.link>
+      <button class="join-item btn btn-sm pointer-events-none">
+        {gettext("Page %{current} of %{total}", current: @meta.current_page, total: @meta.total_pages)}
+      </button>
+      <.link
+        patch={@path_fn.(@meta.current_page + 1)}
+        class={["join-item btn btn-sm", @meta.current_page >= @meta.total_pages && "btn-disabled"]}
+      >
+        »
+      </.link>
+    </div>
+    """
+  end
 end
