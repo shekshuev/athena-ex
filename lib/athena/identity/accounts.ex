@@ -15,23 +15,80 @@ defmodule Athena.Identity.Accounts do
   alias Athena.Identity.Account
 
   @doc """
-  Retrieves a paginated list of accounts.
-
-  Uses `Flop` to handle pagination, sorting, and filtering securely based on the 
-  schema definitions. It automatically excludes soft-deleted accounts.
+  Retrieves a paginated list of accounts with optional preloads.
 
   ## Parameters
-    * `params` - A map containing Flop parameters (e.g., `%{page: 1, page_size: 20}`).
-
-  ## Returns
-    * `{:ok, {accounts, flop_meta}}` - A tuple with the list of accounts and pagination metadata.
-    * `{:error, flop_meta}` - If the provided Flop parameters are invalid.
+    * `params` - A map containing Flop parameters.
+    * `opts` - Keyword list of options (e.g., `[preload: [:profile, :role]]`).
   """
-  @spec list_accounts(map()) :: {:ok, {[Account.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
-  def list_accounts(params \\ %{}) do
+  @spec list_accounts(map(), keyword()) ::
+          {:ok, {[Account.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
+  def list_accounts(params \\ %{}, opts \\ []) do
     base_query = where(Account, [a], is_nil(a.deleted_at))
 
-    Flop.validate_and_run(base_query, params, for: Account)
+    query =
+      if preloads = Keyword.get(opts, :preload) do
+        preload(base_query, ^preloads)
+      else
+        base_query
+      end
+
+    Flop.validate_and_run(query, params, for: Account)
+  end
+
+  @doc """
+  Registers a new user (Account + Profile) atomically in a single transaction.
+  """
+  @spec register_admin_user(map(), map()) ::
+          {:ok, Account.t()} | {:error, :account | :profile, Ecto.Changeset.t()}
+  def register_admin_user(account_attrs, profile_attrs) do
+    Ecto.Multi.new()
+    |> Ecto.Multi.insert(:account, Account.changeset(%Account{}, account_attrs))
+    |> Ecto.Multi.insert(:profile, fn %{account: account} ->
+      attrs = Map.put(profile_attrs, "owner_id", account.id)
+      Athena.Identity.Profile.changeset(%Athena.Identity.Profile{}, attrs)
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{account: account, profile: profile}} ->
+        {:ok, %{account | profile: profile}}
+
+      {:error, failed_operation, changeset, _changes} ->
+        {:error, failed_operation, changeset}
+    end
+  end
+
+  @doc """
+  Updates an existing user (Account + Profile) atomically.
+  """
+  @spec update_admin_user(Account.t(), map(), map()) ::
+          {:ok, Account.t()} | {:error, :account | :profile, Ecto.Changeset.t()}
+  def update_admin_user(%Account{} = account, account_attrs, profile_attrs) do
+    account = Repo.preload(account, :profile)
+
+    Ecto.Multi.new()
+    |> Ecto.Multi.update(:account, Account.changeset(account, account_attrs))
+    |> Ecto.Multi.run(:profile, fn repo, _changes ->
+      if account.profile do
+        account.profile
+        |> Athena.Identity.Profile.changeset(profile_attrs)
+        |> repo.update()
+      else
+        attrs = Map.put(profile_attrs, "owner_id", account.id)
+
+        %Athena.Identity.Profile{}
+        |> Athena.Identity.Profile.changeset(attrs)
+        |> repo.insert()
+      end
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{account: updated_account, profile: updated_profile}} ->
+        {:ok, %{updated_account | profile: updated_profile}}
+
+      {:error, failed_operation, changeset, _changes} ->
+        {:error, failed_operation, changeset}
+    end
   end
 
   @doc """
