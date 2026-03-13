@@ -1,0 +1,81 @@
+## "msgid"s in this file come from POT (.pot) files.
+###
+### Do not add, change, or remove "msgid"s manually here as
+### they're tied to the ones in the corresponding POT file
+### (with the same domain).
+###
+### Use "mix gettext.extract --merge" or "mix gettext.merge"
+### to merge POT files into PO files.
+msgid ""
+msgstr ""
+"Language: en\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "system"
+msgstr "System"
+
+msgid "accounts"
+msgstr "Accounts"
+
+msgid "profiles"
+msgstr "Profiles"
+
+msgid "courses"
+msgstr "Courses"
+
+msgid "lessons"
+msgstr "Lessons"
+
+msgid "blocks"
+msgstr "Blocks"
+
+msgid "progress"
+msgstr "Progress"
+
+msgid "enrollments"
+msgstr "Enrollments"
+
+msgid "schedule"
+msgstr "Schedule"
+
+msgid "instructors"
+msgstr "Instructors"
+
+msgid "cohorts"
+msgstr "Cohorts"
+
+msgid "files"
+msgstr "Files"
+
+msgid "create"
+msgstr "Create"
+
+msgid "read"
+msgstr "Read"
+
+msgid "update"
+msgstr "Update"
+
+msgid "delete"
+msgstr "Delete"
+
+msgid "publish"
+msgstr "Publish"
+
+msgid "execute"
+msgstr "Execute"
+
+msgid "admin"
+msgstr "Full Admin Access"
+
+msgid "own_only"
+msgstr "Own Only"
+
+msgid "not_published"
+msgstr "Not Published"
+
+msgid "only_published"
+msgstr "Only Published"
+
+msgid "published_or_owner"
+msgstr "Published or Owner"

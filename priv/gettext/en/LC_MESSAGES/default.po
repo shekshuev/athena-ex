@@ -11,7 +11,7 @@ msgstr ""
 "Language: en\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: lib/athena_web/components/core_components.ex:381
+#: lib/athena_web/components/core_components.ex:378
 #, elixir-autogen, elixir-format
 msgid "Actions"
 msgstr ""
@@ -33,6 +33,7 @@ msgid "We can't find the internet"
 msgstr ""
 
 #: lib/athena_web/components/core_components.ex:85
+#: lib/athena_web/components/core_components.ex:600
 #, elixir-autogen, elixir-format
 msgid "close"
 msgstr ""
@@ -162,7 +163,7 @@ msgstr ""
 msgid "Create and edit your course content."
 msgstr ""
 
-#: lib/athena_web/components/core_components.ex:558
+#: lib/athena_web/components/core_components.ex:555
 #: lib/athena_web/components/layouts/dashboard.html.heex:37
 #, elixir-autogen, elixir-format
 msgid "Dashboard"
@@ -193,7 +194,7 @@ msgstr ""
 msgid "Global storage monitoring and quotas."
 msgstr ""
 
-#: lib/athena_web/components/core_components.ex:550
+#: lib/athena_web/components/core_components.ex:547
 #, elixir-autogen, elixir-format
 msgid "Go Back"
 msgstr ""
@@ -242,22 +243,18 @@ msgstr ""
 msgid "My Learning"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/roles.ex:9
-#, elixir-autogen, elixir-format
-msgid "RBAC management and permission scopes."
-msgstr ""
-
 #: lib/athena_web/live/studio_live/library.ex:9
 #, elixir-autogen, elixir-format
 msgid "Reusable assets, questions, and materials."
 msgstr ""
 
 #: lib/athena_web/components/layouts/dashboard.html.heex:205
+#: lib/athena_web/live/admin_live/roles.ex:46
 #, elixir-autogen, elixir-format
 msgid "Roles"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/roles.ex:8
+#: lib/athena_web/live/admin_live/roles.ex:116
 #, elixir-autogen, elixir-format
 msgid "Roles & Policies"
 msgstr ""
@@ -329,4 +326,116 @@ msgstr ""
 #: lib/athena_web/live/file_live/index.ex:9
 #, elixir-autogen, elixir-format
 msgid "Your personal storage space."
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:163
+#, elixir-autogen, elixir-format
+msgid "%{count} permissions"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:154
+#, elixir-autogen, elixir-format
+msgid "Access Level"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:231
+#, elixir-autogen, elixir-format
+msgid "Are you sure you want to delete this role? This action cannot be undone."
+msgstr ""
+
+#: lib/athena_web/components/core_components.ex:588
+#: lib/athena_web/live/admin_live/role_form_component.ex:184
+#, elixir-autogen, elixir-format
+msgid "Cancel"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:99
+#, elixir-autogen, elixir-format
+msgid "Cannot delete role because it is assigned to users"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:50
+#: lib/athena_web/live/admin_live/roles.ex:124
+#, elixir-autogen, elixir-format
+msgid "Create Role"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:167
+#, elixir-autogen, elixir-format
+msgid "Created At"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:233
+#, elixir-autogen, elixir-format
+msgid "Delete"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:229
+#, elixir-autogen, elixir-format
+msgid "Delete Role"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:55
+#, elixir-autogen, elixir-format
+msgid "Edit Role"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:119
+#, elixir-autogen, elixir-format
+msgid "Manage system roles, permissions, and access policies."
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:151
+#, elixir-autogen, elixir-format
+msgid "Name"
+msgstr ""
+
+#: lib/athena_web/components/core_components.ex:663
+#, elixir-autogen, elixir-format
+msgid "Page %{current} of %{total}"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/role_form_component.ex:72
+#, elixir-autogen, elixir-format
+msgid "Role created successfully"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:91
+#, elixir-autogen, elixir-format
+msgid "Role deleted successfully"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/role_form_component.ex:57
+#, elixir-autogen, elixir-format
+msgid "Role updated successfully"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/role_form_component.ex:186
+#, elixir-autogen, elixir-format
+msgid "Save"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/role_form_component.ex:185
+#, elixir-autogen, elixir-format
+msgid "Saving..."
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:139
+#, elixir-autogen, elixir-format
+msgid "Search roles..."
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:157
+#, elixir-autogen, elixir-format
+msgid "Super Admin"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/role_form_component.ex:126
+#, elixir-autogen, elixir-format
+msgid "Permissions & Policies"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/role_form_component.ex:120
+#, elixir-autogen, elixir-format
+msgid "Role Name"
 msgstr ""

@@ -22,7 +22,7 @@ defmodule Athena.Identity.Role do
     Flop.Schema,
     filterable: [:name],
     sortable: [:name, :inserted_at],
-    default_limit: 20,
+    default_limit: 10,
     default_order: %{
       order_by: [:name],
       order_directions: [:asc]

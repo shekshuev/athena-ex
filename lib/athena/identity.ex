@@ -3,8 +3,6 @@ defmodule Athena.Identity do
   Public API for Identity module
   """
 
-  use Boundary, exports: [Account, Role], deps: [Athena]
-
   alias Athena.Identity.{Accounts, Roles, Account}
 
   defdelegate get_account(id), to: Accounts

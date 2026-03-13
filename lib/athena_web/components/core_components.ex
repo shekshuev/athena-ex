@@ -243,25 +243,22 @@ defmodule AthenaWeb.CoreComponents do
 
   def input(%{type: "select"} = assigns) do
     ~H"""
-    <div class="form-control mb-2 w-full">
-      <label :if={@label} for={@id} class="label">
-        <span class="label-text font-bold">{@label}</span>
-      </label>
+    <fieldset class={["fieldset w-full", @class]}>
+      <legend :if={@label} class="fieldset-legend">{@label}</legend>
       <select
         id={@id}
         name={@name}
-        class={[
-          @class || "select select-bordered w-full",
-          @errors != [] && (@error_class || "select-error border-error")
-        ]}
+        class={["select w-full", @errors != [] && "select-error", @multiple && "h-auto py-2"]}
         multiple={@multiple}
         {@rest}
       >
-        <option :if={@prompt} value="">{@prompt}</option>
+        <option :if={@prompt} value="" disabled selected={@value in [nil, ""]}>
+          {@prompt}
+        </option>
         {Phoenix.HTML.Form.options_for_select(@options, @value)}
       </select>
       <.error :for={msg <- @errors}>{msg}</.error>
-    </div>
+    </fieldset>
     """
   end
 
@@ -563,7 +560,7 @@ defmodule AthenaWeb.CoreComponents do
   end
 
   @doc """
-  Renders a DaisyUI modal.
+  Renders a DaisyUI modal dynamically using LiveView state.
   """
   attr :id, :string, required: true
   attr :show, :boolean, default: false
@@ -577,19 +574,27 @@ defmodule AthenaWeb.CoreComponents do
 
   def modal(assigns) do
     ~H"""
-    <dialog id={@id} class="modal" phx-mounted={@show && JS.dispatch("showModal", to: "##{@id}")}>
+    <div
+      id={@id}
+      class={["modal", @show && "modal-open"]}
+      phx-window-keydown={@show && @on_cancel}
+      phx-key="escape"
+    >
       <div class="modal-box">
         <h3 :if={@title} class="font-bold text-lg">{@title}</h3>
         <p :if={@description} class="py-4 text-base-content/70">{@description}</p>
+
         {render_slot(@inner_block)}
+
         <div class="modal-action">
           <button
             type="button"
             class="btn btn-ghost"
-            phx-click={@on_cancel |> JS.dispatch("close", to: "##{@id}")}
+            phx-click={@on_cancel}
           >
             {gettext("Cancel")}
           </button>
+
           <button
             type="button"
             class={["btn", @danger && "btn-error", !@danger && "btn-primary"]}
@@ -599,10 +604,11 @@ defmodule AthenaWeb.CoreComponents do
           </button>
         </div>
       </div>
-      <form method="dialog" class="modal-backdrop">
-        <button phx-click={@on_cancel}>{gettext("close")}</button>
-      </form>
-    </dialog>
+
+      <div class="modal-backdrop" phx-click={@on_cancel}>
+        <button type="button" class="cursor-default" aria-label={gettext("close")}></button>
+      </div>
+    </div>
     """
   end
 
@@ -657,7 +663,8 @@ defmodule AthenaWeb.CoreComponents do
     <div :if={@meta.total_pages > 1} class="join">
       <.link
         patch={@path_fn.(@meta.current_page - 1)}
-        class={["join-item btn btn-sm", @meta.current_page <= 1 && "btn-disabled"]}
+        class={["join-item btn btn-sm", @meta.current_page <= 1 && "pointer-events-none opacity-50"]}
+        tabindex={if @meta.current_page <= 1, do: -1, else: 0}
       >
         «
       </.link>
@@ -666,7 +673,11 @@ defmodule AthenaWeb.CoreComponents do
       </button>
       <.link
         patch={@path_fn.(@meta.current_page + 1)}
-        class={["join-item btn btn-sm", @meta.current_page >= @meta.total_pages && "btn-disabled"]}
+        class={[
+          "join-item btn btn-sm",
+          @meta.current_page >= @meta.total_pages && "pointer-events-none opacity-50"
+        ]}
+        tabindex={if @meta.current_page >= @meta.total_pages, do: -1, else: 0}
       >
         »
       </.link>
