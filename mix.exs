@@ -13,7 +13,8 @@ defmodule Athena.MixProject do
       compilers: [:boundary, :phoenix_live_view] ++ Mix.compilers(),
       listeners: [Phoenix.CodeReloader],
       dialyzer: [
-        flags: [:no_opaque]
+        flags: [:no_opaque],
+        plt_add_apps: [:ex_unit, :mix]
       ]
     ]
   end
@@ -30,7 +31,7 @@ defmodule Athena.MixProject do
 
   def cli do
     [
-      preferred_envs: [precommit: :test]
+      preferred_envs: [precommit: :test, check: :test]
     ]
   end
 

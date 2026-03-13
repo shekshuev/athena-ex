@@ -34,35 +34,30 @@ The project is under active development and not production-ready yet.
 
 ### Installation
 
-1. **Clone the repository:**
+#### Clone the repository
 
-   ```bash
-   git clone https://github.com/shekshuev/athena-ex.git
-   cd athena-ex
-   ```
+```bash
+git clone https://github.com/shekshuev/athena-ex.git
+cd athena-ex
+```
 
-2. **Install dependencies:**
+#### Project Setup
 
-   ```bash
-   mix deps.get
-   ```
+Ensure PostgreSQL is running. Configure your credentials in `config/dev.exs` if they differ from the defaults, then run the setup task:
 
-3. **Database Setup:**
-   Ensure PostgreSQL is running. Configure your credentials in `config/dev.exs` if they differ from the defaults, then run:
+```bash
+mix setup
+```
 
-   ```bash
-   mix ecto.setup
-   ```
+_This command automatically installs dependencies, creates the database, runs migrations, executes the seed script (`priv/repo/seeds.exs`), and builds frontend assets._
 
-   _This command creates the database, runs migrations, and executes the seed script (`priv/repo/seeds.exs`)._
+#### Start the Server
 
-4. **Start the Server:**
+```bash
+iex -S mix phx.server
+```
 
-   ```bash
-   iex -S mix phx.server
-   ```
-
-   The application will be available at `http://localhost:4000`.
+The application will be available at `http://localhost:4000`.
 
 ## Manual User Creation (IEx)
 

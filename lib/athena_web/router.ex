@@ -46,6 +46,26 @@ defmodule AthenaWeb.Router do
     scope "/", AthenaWeb do
       pipe_through :browser
       live "/dashboard", DashboardLive.Index, :index
+
+      live "/learn", LearnLive.Index, :index
+      live "/learn/schedule", LearnLive.Schedule, :index
+      live "/files", FileLive.Index, :index
+      live "/community", CommunityLive.Index, :index
+
+      live "/studio", StudioLive.Index, :index
+      live "/studio/courses", StudioLive.Courses, :index
+      live "/studio/grading", StudioLive.Grading, :index
+      live "/studio/library", StudioLive.Library, :index
+
+      live "/teaching/cohorts", TeachingLive.Cohorts, :index
+      live "/teaching/instructors", TeachingLive.Instructors, :index
+
+      scope "/admin", AdminLive do
+        live "/users", Users, :index
+        live "/roles", Roles, :index
+        live "/files", Files, :index
+        live "/settings", Settings, :index
+      end
     end
   end
 

@@ -121,13 +121,13 @@ msgstr ""
 msgid "Missing permission: %{permission}"
 msgstr ""
 
-#: lib/athena_web/live/auth_live/login.ex:21
+#: lib/athena_web/live/auth_live/login.ex:39
 #, elixir-autogen, elixir-format
 msgid "is required"
 msgstr ""
 
 #: lib/athena/identity/account.ex:56
-#: lib/athena_web/live/auth_live/login.ex:31
+#: lib/athena_web/live/auth_live/login.ex:47
 #, elixir-autogen, elixir-format
 msgid "can only contain letters, numbers, dots, dashes, and underscores"
 msgstr ""
@@ -138,12 +138,12 @@ msgid "does not exist"
 msgstr ""
 
 #: lib/athena/identity/account.ex:63
-#: lib/athena_web/live/auth_live/login.ex:40
+#: lib/athena_web/live/auth_live/login.ex:54
 #, elixir-autogen, elixir-format
 msgid "must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character"
 msgstr ""
 
-#: lib/athena_web/live/auth_live/login.ex:27
+#: lib/athena_web/live/auth_live/login.ex:43
 #, elixir-autogen, elixir-format
 msgid "should be between 3 and 50 characters"
 msgstr ""

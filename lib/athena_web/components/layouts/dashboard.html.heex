@@ -1,14 +1,11 @@
-<div class="flex min-h-screen bg-base-100">
+<div class="flex h-screen bg-base-100 overflow-hidden">
   <aside
     id="main-sidebar"
-    class={
-      [
-        "group/sidebar fixed inset-y-0 left-0 z-50 flex flex-col border-r border-base-300 bg-base-100 transition-all duration-300 ease-in-out lg:static",
-        "w-64 [&.is-collapsed]:w-20",
-        # Скрываем на мобилках по дефолту, показываем через класс (ниже добавим логику)
-        "-translate-x-full lg:translate-x-0 [&.is-mobile-open]:translate-x-0"
-      ]
-    }
+    class={[
+      "group/sidebar fixed inset-y-0 left-0 z-50 flex flex-col h-full border-r border-base-300 bg-base-100 transition-all duration-300 ease-in-out lg:static",
+      "w-64 [&.is-collapsed]:w-20",
+      "-translate-x-full lg:translate-x-0 [&.is-mobile-open]:translate-x-0"
+    ]}
   >
     <button
       phx-click={JS.toggle_class("is-collapsed", to: "#main-sidebar")}
@@ -33,19 +30,146 @@
     <nav class="flex-1 overflow-y-auto overflow-x-hidden px-3 mt-4 space-y-1">
       <ul class="menu p-0 w-full gap-1">
         <li>
-          <.link navigate={~p"/dashboard"} class="flex items-center gap-4 py-3">
-            <.icon name="hero-squares-2x2" class="size-6 shrink-0" />
-            <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
-              {gettext("Dashboard")}
+          <.link navigate={~p"/dashboard"} class="flex items-center">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-squares-2x2" class="size-6 shrink-0" />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                {gettext("Dashboard")}
+              </span>
+            </div>
+          </.link>
+        </li>
+      </ul>
+
+      <div class="py-4 overflow-hidden">
+        <div class="h-px bg-base-300 w-full"></div>
+        <div class="mt-4 px-3 text-[10px] font-black text-base-content/50 uppercase tracking-widest group-[.is-collapsed]/sidebar:hidden">
+          {gettext("Learn")}
+        </div>
+      </div>
+      <ul class="menu p-0 w-full gap-1">
+        <li>
+          <.link navigate={~p"/learn"} class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-book-open" class="size-6 shrink-0" />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                {gettext("My Learning")}
+              </span>
+            </div>
+            <span class="badge badge-sm badge-primary group-[.is-collapsed]/sidebar:hidden font-bold">
+              2
             </span>
           </.link>
         </li>
         <li>
-          <.link navigate={~p"/dashboard"} class="flex items-center gap-4 py-3">
-            <.icon name="hero-book-open" class="size-6 shrink-0" />
-            <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
-              {gettext("Learning")}
+          <.link navigate={~p"/learn/schedule"} class="flex items-center">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-calendar" class="size-6 shrink-0" />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                {gettext("Schedule")}
+              </span>
+            </div>
+          </.link>
+        </li>
+        <li>
+          <.link navigate={~p"/files"} class="flex items-center">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-folder-open" class="size-6 shrink-0" />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                {gettext("My Files")}
+              </span>
+            </div>
+          </.link>
+        </li>
+        <li>
+          <.link navigate={~p"/community"} class="flex items-center">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-chat-bubble-left-right" class="size-6 shrink-0" />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                {gettext("Community")}
+              </span>
+            </div>
+          </.link>
+        </li>
+      </ul>
+
+      <div class="py-4 overflow-hidden">
+        <div class="h-px bg-base-300 w-full"></div>
+        <div class="mt-4 px-3 text-[10px] font-black text-base-content/50 uppercase tracking-widest group-[.is-collapsed]/sidebar:hidden">
+          {gettext("Studio")}
+        </div>
+      </div>
+      <ul class="menu p-0 w-full gap-1">
+        <li>
+          <.link navigate={~p"/studio"} class="flex items-center">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-presentation-chart-bar" class="size-6 shrink-0" />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                {gettext("Studio Overview")}
+              </span>
+            </div>
+          </.link>
+        </li>
+        <li>
+          <.link navigate={~p"/studio/courses"} class="flex items-center">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-building-library" class="size-6 shrink-0" />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                {gettext("Course Manager")}
+              </span>
+            </div>
+          </.link>
+        </li>
+        <li>
+          <.link navigate={~p"/studio/grading"} class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-academic-cap" class="size-6 shrink-0" />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                {gettext("Assignments")}
+              </span>
+            </div>
+            <span class="badge badge-sm badge-primary group-[.is-collapsed]/sidebar:hidden font-bold">
+              12
             </span>
+          </.link>
+        </li>
+        <li>
+          <.link navigate={~p"/studio/library"} class="flex items-center">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-bookmark-square" class="size-6 shrink-0" />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                {gettext("Library")}
+              </span>
+            </div>
+          </.link>
+        </li>
+      </ul>
+
+      <div class="py-4 overflow-hidden">
+        <div class="h-px bg-base-300 w-full"></div>
+        <div class="mt-4 px-3 text-[10px] font-black text-base-content/50 uppercase tracking-widest group-[.is-collapsed]/sidebar:hidden">
+          {gettext("Teaching")}
+        </div>
+      </div>
+      <ul class="menu p-0 w-full gap-1">
+        <li>
+          <.link navigate={~p"/teaching/cohorts"} class="flex items-center">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-user-group" class="size-6 shrink-0" />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                {gettext("Cohorts")}
+              </span>
+            </div>
+          </.link>
+        </li>
+        <li>
+          <.link navigate={~p"/teaching/instructors"} class="flex items-center">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-users" class="size-6 shrink-0" />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                {gettext("Instructors")}
+              </span>
+            </div>
           </.link>
         </li>
       </ul>
@@ -56,50 +180,83 @@
           {gettext("Admin")}
         </div>
       </div>
-
-      <ul class="menu p-0 w-full gap-1">
+      <ul class="menu p-0 w-full gap-1 mb-4">
         <li>
-          <.link navigate={~p"/dashboard"} class="flex items-center gap-4 py-3 hover:bg-error/10">
-            <.icon name="hero-users" class="size-6 shrink-0" />
-            <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
-              {gettext("Users")}
-            </span>
+          <.link
+            navigate={~p"/admin/users"}
+            class="flex items-center hover:bg-error/10 hover:text-error"
+          >
+            <div class="flex items-center gap-2">
+              <.icon name="hero-users" class="size-6 shrink-0" />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                {gettext("Users")}
+              </span>
+            </div>
+          </.link>
+        </li>
+        <li>
+          <.link
+            navigate={~p"/admin/roles"}
+            class="flex items-center hover:bg-error/10 hover:text-error"
+          >
+            <div class="flex items-center gap-2">
+              <.icon name="hero-shield-check" class="size-6 shrink-0" />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                {gettext("Roles")}
+              </span>
+            </div>
+          </.link>
+        </li>
+        <li>
+          <.link
+            navigate={~p"/admin/files"}
+            class="flex items-center hover:bg-error/10 hover:text-error"
+          >
+            <div class="flex items-center gap-2">
+              <.icon name="hero-server" class="size-6 shrink-0" />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                {gettext("Files")}
+              </span>
+            </div>
+          </.link>
+        </li>
+        <li>
+          <.link
+            navigate={~p"/admin/settings"}
+            class="flex items-center hover:bg-error/10 hover:text-error"
+          >
+            <div class="flex items-center gap-2">
+              <.icon name="hero-cog-8-tooth" class="size-6 shrink-0" />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                {gettext("System Settings")}
+              </span>
+            </div>
           </.link>
         </li>
       </ul>
     </nav>
 
-    <div class="p-4 border-t border-base-300 shrink-0">
-      <div class="dropdown dropdown-top w-full">
-        <div tabindex="0" role="button" class="btn btn-ghost w-full justify-start gap-3 px-2">
-          <div class="avatar placeholder shrink-0">
-            <div class="bg-neutral text-neutral-content size-8 rounded-md">
-              <span class="text-xs font-bold">
-                {@current_user.login |> String.at(0) |> String.upcase()}
+    <div class="p-3 border-t border-base-300 shrink-0">
+      <ul class="menu p-0 w-full gap-1">
+        <li>
+          <.link
+            href={~p"/auth/log_out"}
+            method="delete"
+            class="flex items-center text-error hover:bg-error/10 hover:text-error"
+          >
+            <div class="flex items-center gap-2">
+              <.icon name="hero-arrow-left-end-on-rectangle" class="size-6 shrink-0" />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                {gettext("Log out")}
               </span>
             </div>
-          </div>
-          <div class="flex flex-col items-start text-left truncate group-[.is-collapsed]/sidebar:hidden">
-            <span class="text-sm font-black truncate leading-tight">{@current_user.login}</span>
-            <span class="text-[10px] opacity-50 uppercase tracking-tighter">Student</span>
-          </div>
-        </div>
-        <ul
-          tabindex="0"
-          class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow-2xl border border-base-300 mb-2"
-        >
-          <li>
-            <.link href={~p"/auth/log_out"} method="delete" class="text-error font-bold">
-              <.icon name="hero-log-out" class="size-4" />
-              {gettext("Log out")}
-            </.link>
-          </li>
-        </ul>
-      </div>
+          </.link>
+        </li>
+      </ul>
     </div>
   </aside>
 
-  <div class="flex flex-col flex-1 min-w-0 bg-base-100">
+  <div class="flex flex-col flex-1 min-w-0 bg-base-100 h-screen">
     <header class="h-16 flex items-center justify-between px-4 border-b border-base-300 lg:hidden shrink-0">
       <button
         phx-click={JS.toggle_class("is-mobile-open", to: "#main-sidebar")}
