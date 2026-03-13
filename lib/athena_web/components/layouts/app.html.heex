@@ -1,0 +1,84 @@
+<div class="min-h-screen flex flex-col relative">
+  <div class="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+    <div class="absolute inset-0 bg-[linear-gradient(to_right,oklch(var(--color-base-300)/0.2)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]">
+    </div>
+    <div class="absolute inset-0 bg-[linear-gradient(to_bottom,oklch(var(--color-base-300)/0.2)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]">
+    </div>
+  </div>
+
+  <header class="navbar bg-base-100/80 backdrop-blur-md sticky top-0 z-50 border-b border-base-300 px-4 sm:px-8">
+    <div class="navbar-start gap-3">
+      <a
+        href="/"
+        class="font-display text-2xl font-black tracking-tighter hover:text-primary transition-colors"
+      >
+        ATHENA
+      </a>
+      <span class="badge badge-primary font-display font-bold rounded-none">LMS</span>
+    </div>
+
+    <div class="navbar-end gap-2">
+      <% current_locale = Gettext.get_locale(AthenaWeb.Gettext) %>
+      <a
+        href={"/locale/#{if current_locale == "ru", do: "en", else: "ru"}"}
+        class="btn btn-ghost btn-sm font-bold"
+      >
+        {String.upcase(current_locale)}
+      </a>
+
+      <label class="btn btn-ghost btn-sm btn-circle swap swap-rotate">
+        <input
+          type="checkbox"
+          class="theme-controller"
+          value="dark"
+          onchange="window.dispatchEvent(new CustomEvent('phx:set-theme', {detail: {theme: this.checked ? 'dark' : 'light'}}))"
+        />
+        <.icon name="hero-sun" class="swap-off h-5 w-5" />
+
+        <.icon name="hero-moon" class="swap-on h-5 w-5" />
+      </label>
+
+      <div class="divider divider-horizontal mx-1 h-4 self-center hidden sm:flex"></div>
+
+      <%= if assigns[:current_user] do %>
+        <div class="dropdown dropdown-end">
+          <div tabindex="0" role="button" class="avatar">
+            <div class="w-8 rounded-full ring-2 ring-primary ring-offset-base-100 ring-offset-2">
+              <img src={
+                @current_user.avatar_url ||
+                  "https://api.dicebear.com/7.x/avataaars/svg?seed=#{@current_user.login}"
+              } />
+            </div>
+          </div>
+          <ul
+            tabindex="0"
+            class="dropdown-content menu bg-base-200 rounded-box z-[1] w-52 p-2 shadow-xl border border-base-300 mt-4"
+          >
+            <li class="menu-title opacity-50 text-xs uppercase">{gettext("Signed in as")}</li>
+            <li class="font-bold"><a>{@current_user.login}</a></li>
+            <div class="divider my-1"></div>
+            <li><a>{gettext("Settings")}</a></li>
+            <li><a class="text-error">{gettext("Logout")}</a></li>
+          </ul>
+        </div>
+      <% else %>
+        <a href="/auth/login" class="btn btn-ghost btn-sm font-bold uppercase">
+          {gettext("Log in")}
+        </a>
+      <% end %>
+    </div>
+  </header>
+
+  <main class="flex-1 flex flex-col relative z-10">
+    <.flash_group flash={@flash} />
+    {@inner_content}
+  </main>
+
+  <footer class="footer footer-center p-4 border-t border-base-300 bg-base-200/50 relative z-10">
+    <aside>
+      <p class="text-xs opacity-50 uppercase font-bold tracking-widest">
+        © {DateTime.utc_now().year} Athena LMS
+      </p>
+    </aside>
+  </footer>
+</div>

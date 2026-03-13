@@ -3,6 +3,8 @@ defmodule Athena.Application do
   # for more information on OTP Applications
   @moduledoc false
 
+  @compile {:boundary, ignore: [AthenaWeb.Endpoint, AthenaWeb.Telemetry]}
+
   use Application
 
   @impl true
@@ -15,6 +17,7 @@ defmodule Athena.Application do
       # Start a worker by calling: Athena.Worker.start_link(arg)
       # {Athena.Worker, arg},
       # Start to serve requests, typically the last entry
+      {Cachex, name: :account_cache},
       AthenaWeb.Endpoint
     ]
 
@@ -28,7 +31,8 @@ defmodule Athena.Application do
   # whenever the application is updated.
   @impl true
   def config_change(changed, _new, removed) do
-    AthenaWeb.Endpoint.config_change(changed, removed)
+    # hide from boundary
+    apply(AthenaWeb.Endpoint, :config_change, [changed, removed])
     :ok
   end
 end

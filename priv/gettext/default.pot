@@ -11,28 +11,322 @@
 msgid ""
 msgstr ""
 
-#: lib/athena_web/components/core_components.ex:368
+#: lib/athena_web/components/core_components.ex:381
 #, elixir-autogen, elixir-format
 msgid "Actions"
 msgstr ""
 
-#: lib/athena_web/components/layouts.ex:99
-#: lib/athena_web/components/layouts.ex:111
+#: lib/athena_web/components/layouts.ex:26
+#: lib/athena_web/components/layouts.ex:38
 #, elixir-autogen, elixir-format
 msgid "Attempting to reconnect"
 msgstr ""
 
-#: lib/athena_web/components/layouts.ex:106
+#: lib/athena_web/components/layouts.ex:33
 #, elixir-autogen, elixir-format
 msgid "Something went wrong!"
 msgstr ""
 
-#: lib/athena_web/components/layouts.ex:94
+#: lib/athena_web/components/layouts.ex:21
 #, elixir-autogen, elixir-format
 msgid "We can't find the internet"
 msgstr ""
 
-#: lib/athena_web/components/core_components.ex:74
+#: lib/athena_web/components/core_components.ex:85
 #, elixir-autogen, elixir-format
 msgid "close"
+msgstr ""
+
+#: lib/athena_web/controllers/page_html/home.html.heex:21
+#, elixir-autogen, elixir-format
+msgid "A modern, modular LMS built for speed, flexibility, and ultimate learning experience."
+msgstr ""
+
+#: lib/athena_web/controllers/page_html/home.html.heex:31
+#, elixir-autogen, elixir-format
+msgid "Documentation"
+msgstr ""
+
+#: lib/athena_web/controllers/page_html/home.html.heex:27
+#, elixir-autogen, elixir-format
+msgid "Get Started"
+msgstr ""
+
+#: lib/athena_web/components/layouts/app.html.heex:66
+#: lib/athena_web/live/auth_live/login.ex:157
+#, elixir-autogen, elixir-format
+msgid "Log in"
+msgstr ""
+
+#: lib/athena_web/components/layouts/app.html.heex:61
+#, elixir-autogen, elixir-format
+msgid "Logout"
+msgstr ""
+
+#: lib/athena_web/components/layouts/app.html.heex:60
+#, elixir-autogen, elixir-format
+msgid "Settings"
+msgstr ""
+
+#: lib/athena_web/components/layouts/app.html.heex:57
+#, elixir-autogen, elixir-format
+msgid "Signed in as"
+msgstr ""
+
+#: lib/athena_web/controllers/page_html/home.html.heex:18
+#, elixir-autogen, elixir-format
+msgid "Transform Learning with Athena"
+msgstr ""
+
+#: lib/athena_web/controllers/session_controller.ex:25
+#, elixir-autogen, elixir-format
+msgid "Authentication failed."
+msgstr ""
+
+#: lib/athena_web/live/auth_live/login.ex:146
+#, elixir-autogen, elixir-format
+msgid "Enter your login"
+msgstr ""
+
+#: lib/athena_web/live/auth_live/login.ex:103
+#, elixir-autogen, elixir-format
+msgid "Invalid login or password"
+msgstr ""
+
+#: lib/athena_web/controllers/session_controller.ex:37
+#, elixir-autogen, elixir-format
+msgid "Logged out successfully."
+msgstr ""
+
+#: lib/athena_web/live/auth_live/login.ex:145
+#, elixir-autogen, elixir-format
+msgid "Login"
+msgstr ""
+
+#: lib/athena_web/live/auth_live/login.ex:152
+#, elixir-autogen, elixir-format
+msgid "Password"
+msgstr ""
+
+#: lib/athena_web/live/auth_live/login.ex:122
+#, elixir-autogen, elixir-format
+msgid "Sign in to your account to continue"
+msgstr ""
+
+#: lib/athena_web/controllers/session_controller.ex:20
+#, elixir-autogen, elixir-format
+msgid "Successfully logged in!"
+msgstr ""
+
+#: lib/athena_web/live/auth_live/login.ex:120
+#, elixir-autogen, elixir-format
+msgid "Welcome Back"
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:180
+#, elixir-autogen, elixir-format
+msgid "Admin"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/index.ex:9
+#, elixir-autogen, elixir-format
+msgid "Analytics and quick actions for instructors."
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:128
+#: lib/athena_web/live/studio_live/grading.ex:8
+#, elixir-autogen, elixir-format
+msgid "Assignments"
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:160
+#: lib/athena_web/live/teaching_live/cohorts.ex:8
+#, elixir-autogen, elixir-format
+msgid "Cohorts"
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:89
+#: lib/athena_web/live/community_live/index.ex:8
+#, elixir-autogen, elixir-format
+msgid "Community"
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:118
+#: lib/athena_web/live/studio_live/courses.ex:8
+#, elixir-autogen, elixir-format
+msgid "Course Manager"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/courses.ex:9
+#, elixir-autogen, elixir-format
+msgid "Create and edit your course content."
+msgstr ""
+
+#: lib/athena_web/components/core_components.ex:558
+#: lib/athena_web/components/layouts/dashboard.html.heex:37
+#, elixir-autogen, elixir-format
+msgid "Dashboard"
+msgstr ""
+
+#: lib/athena_web/live/dashboard_live/index.ex:17
+#, elixir-autogen, elixir-format
+msgid "Dashboard Overview"
+msgstr ""
+
+#: lib/athena_web/live/community_live/index.ex:9
+#, elixir-autogen, elixir-format
+msgid "Discussions, forums, and peer communication."
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:218
+#, elixir-autogen, elixir-format
+msgid "Files"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/settings.ex:9
+#, elixir-autogen, elixir-format
+msgid "Global configurations and environment toggles."
+msgstr ""
+
+#: lib/athena_web/live/admin_live/files.ex:9
+#, elixir-autogen, elixir-format
+msgid "Global storage monitoring and quotas."
+msgstr ""
+
+#: lib/athena_web/components/core_components.ex:550
+#, elixir-autogen, elixir-format
+msgid "Go Back"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/grading.ex:9
+#, elixir-autogen, elixir-format
+msgid "Grade student submissions and manage homework."
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:170
+#: lib/athena_web/live/teaching_live/instructors.ex:8
+#, elixir-autogen, elixir-format
+msgid "Instructors"
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:47
+#, elixir-autogen, elixir-format
+msgid "Learn"
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:141
+#: lib/athena_web/live/studio_live/library.ex:8
+#, elixir-autogen, elixir-format
+msgid "Library"
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:250
+#, elixir-autogen, elixir-format
+msgid "Log out"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohorts.ex:9
+#, elixir-autogen, elixir-format
+msgid "Manage student groups and enrollment."
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:79
+#: lib/athena_web/live/file_live/index.ex:8
+#, elixir-autogen, elixir-format
+msgid "My Files"
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:56
+#: lib/athena_web/live/learn_live/index.ex:8
+#, elixir-autogen, elixir-format
+msgid "My Learning"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:9
+#, elixir-autogen, elixir-format
+msgid "RBAC management and permission scopes."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:9
+#, elixir-autogen, elixir-format
+msgid "Reusable assets, questions, and materials."
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:205
+#, elixir-autogen, elixir-format
+msgid "Roles"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:8
+#, elixir-autogen, elixir-format
+msgid "Roles & Policies"
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:69
+#: lib/athena_web/live/learn_live/schedule.ex:8
+#, elixir-autogen, elixir-format
+msgid "Schedule"
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:99
+#, elixir-autogen, elixir-format
+msgid "Studio"
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:108
+#: lib/athena_web/live/studio_live/index.ex:8
+#, elixir-autogen, elixir-format
+msgid "Studio Overview"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/files.ex:8
+#, elixir-autogen, elixir-format
+msgid "System Files"
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:231
+#: lib/athena_web/live/admin_live/settings.ex:8
+#, elixir-autogen, elixir-format
+msgid "System Settings"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/users.ex:9
+#, elixir-autogen, elixir-format
+msgid "System-wide user management."
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:151
+#, elixir-autogen, elixir-format
+msgid "Teaching"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/instructors.ex:9
+#, elixir-autogen, elixir-format
+msgid "Teaching staff and access control."
+msgstr ""
+
+#: lib/athena_web/live/learn_live/schedule.ex:9
+#, elixir-autogen, elixir-format
+msgid "Upcoming classes, deadlines, and events."
+msgstr ""
+
+#: lib/athena_web/components/layouts/dashboard.html.heex:192
+#: lib/athena_web/live/admin_live/users.ex:8
+#, elixir-autogen, elixir-format
+msgid "Users"
+msgstr ""
+
+#: lib/athena_web/live/dashboard_live/index.ex:19
+#, elixir-autogen, elixir-format
+msgid "Welcome to your personal learning space. We are working on adding insightful widgets and analytics here."
+msgstr ""
+
+#: lib/athena_web/live/learn_live/index.ex:9
+#, elixir-autogen, elixir-format
+msgid "Your active courses and progress will be here."
+msgstr ""
+
+#: lib/athena_web/live/file_live/index.ex:9
+#, elixir-autogen, elixir-format
+msgid "Your personal storage space."
 msgstr ""

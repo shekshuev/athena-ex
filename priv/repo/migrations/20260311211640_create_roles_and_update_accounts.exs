@@ -20,7 +20,8 @@ defmodule Athena.Repo.Migrations.CreateRolesAndUpdateAccounts do
             on_delete: :restrict,
             type: :binary_id,
             name: :accounts__role_id__fk
-          ), null: false
+          ),
+          null: false
     end
 
     create index(:accounts, [:role_id])

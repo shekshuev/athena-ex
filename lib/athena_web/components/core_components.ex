@@ -28,6 +28,7 @@ defmodule AthenaWeb.CoreComponents do
   """
   use Phoenix.Component
   use Gettext, backend: AthenaWeb.Gettext
+  use AthenaWeb, :verified_routes
 
   alias Phoenix.LiveView.JS
 
@@ -39,42 +40,52 @@ defmodule AthenaWeb.CoreComponents do
       <.flash kind={:info} flash={@flash} />
       <.flash kind={:info} phx-mounted={show("#flash")}>Welcome Back!</.flash>
   """
-  attr :id, :string, doc: "the optional id of flash container"
+  attr :id, :string, default: nil, doc: "the optional id of flash container"
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
   attr :title, :string, default: nil
   attr :kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup"
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
-
   slot :inner_block, doc: "the optional inner block that renders the flash message"
 
   def flash(assigns) do
-    assigns = assign_new(assigns, :id, fn -> "flash-#{assigns.kind}" end)
-
     ~H"""
     <div
       :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
-      id={@id}
-      phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
+      id={@id || "flash-#{@kind}"}
+      phx-click={
+        JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id || "flash-#{@kind}"}")
+      }
       role="alert"
-      class="toast toast-top toast-end z-50"
+      class={[
+        "alert shadow-none border cursor-pointer w-full sm:w-96 transition-all duration-300 flex items-start",
+        @kind == :info && "alert-info text-info-content",
+        @kind == :error && "alert-error text-error-content"
+      ]}
       {@rest}
     >
-      <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
-        @kind == :info && "alert-info",
-        @kind == :error && "alert-error"
-      ]}>
-        <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
-        <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
-        <div>
-          <p :if={@title} class="font-semibold">{@title}</p>
-          <p>{msg}</p>
-        </div>
-        <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label={gettext("close")}>
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
-        </button>
+      <.icon
+        :if={@kind == :info}
+        name="hero-information-circle-solid"
+        class="h-6 w-6 shrink-0 mt-0.5 opacity-80"
+      />
+      <.icon
+        :if={@kind == :error}
+        name="hero-exclamation-circle-solid"
+        class="h-6 w-6 shrink-0 mt-0.5 opacity-80"
+      />
+
+      <div class="flex flex-col flex-1 gap-1">
+        <p :if={@title} class="font-bold text-sm">{@title}</p>
+        <p class="text-sm font-medium">{msg}</p>
       </div>
+
+      <button
+        type="button"
+        class="btn btn-ghost btn-xs btn-square shrink-0 opacity-50 hover:opacity-100"
+        aria-label={gettext("close")}
+      >
+        <.icon name="hero-x-mark-solid" class="h-4 w-4" />
+      </button>
     </div>
     """
   end
@@ -205,8 +216,8 @@ defmodule AthenaWeb.CoreComponents do
       end)
 
     ~H"""
-    <div class="fieldset mb-2">
-      <label for={@id}>
+    <div class="form-control mb-2 w-full">
+      <label class="label cursor-pointer justify-start gap-3">
         <input
           type="hidden"
           name={@name}
@@ -214,17 +225,16 @@ defmodule AthenaWeb.CoreComponents do
           disabled={@rest[:disabled]}
           form={@rest[:form]}
         />
-        <span class="label">
-          <input
-            type="checkbox"
-            id={@id}
-            name={@name}
-            value="true"
-            checked={@checked}
-            class={@class || "checkbox checkbox-sm"}
-            {@rest}
-          />{@label}
-        </span>
+        <input
+          type="checkbox"
+          id={@id}
+          name={@name}
+          value="true"
+          checked={@checked}
+          class={[@class || "checkbox checkbox-primary", @errors != [] && "border-error"]}
+          {@rest}
+        />
+        <span class="label-text font-bold">{@label}</span>
       </label>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
@@ -233,20 +243,23 @@ defmodule AthenaWeb.CoreComponents do
 
   def input(%{type: "select"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
-      <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
-        <select
-          id={@id}
-          name={@name}
-          class={[@class || "w-full select", @errors != [] && (@error_class || "select-error")]}
-          multiple={@multiple}
-          {@rest}
-        >
-          <option :if={@prompt} value="">{@prompt}</option>
-          {Phoenix.HTML.Form.options_for_select(@options, @value)}
-        </select>
+    <div class="form-control mb-2 w-full">
+      <label :if={@label} for={@id} class="label">
+        <span class="label-text font-bold">{@label}</span>
       </label>
+      <select
+        id={@id}
+        name={@name}
+        class={[
+          @class || "select select-bordered w-full",
+          @errors != [] && (@error_class || "select-error border-error")
+        ]}
+        multiple={@multiple}
+        {@rest}
+      >
+        <option :if={@prompt} value="">{@prompt}</option>
+        {Phoenix.HTML.Form.options_for_select(@options, @value)}
+      </select>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -254,19 +267,19 @@ defmodule AthenaWeb.CoreComponents do
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
-      <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
-        <textarea
-          id={@id}
-          name={@name}
-          class={[
-            @class || "w-full textarea",
-            @errors != [] && (@error_class || "textarea-error")
-          ]}
-          {@rest}
-        >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
+    <div class="form-control mb-2 w-full">
+      <label :if={@label} for={@id} class="label">
+        <span class="label-text font-bold">{@label}</span>
       </label>
+      <textarea
+        id={@id}
+        name={@name}
+        class={[
+          @class || "textarea textarea-bordered w-full",
+          @errors != [] && (@error_class || "textarea-error border-error")
+        ]}
+        {@rest}
+      >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -275,21 +288,21 @@ defmodule AthenaWeb.CoreComponents do
   # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
-    <div class="fieldset mb-2">
-      <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
-        <input
-          type={@type}
-          name={@name}
-          id={@id}
-          value={Phoenix.HTML.Form.normalize_value(@type, @value)}
-          class={[
-            @class || "w-full input",
-            @errors != [] && (@error_class || "input-error")
-          ]}
-          {@rest}
-        />
+    <div class="form-control mb-2 w-full">
+      <label :if={@label} for={@id} class="label">
+        <span class="label-text font-bold">{@label}</span>
       </label>
+      <input
+        type={@type}
+        name={@name}
+        id={@id}
+        value={Phoenix.HTML.Form.normalize_value(@type, @value)}
+        class={[
+          @class || "input input-bordered w-full",
+          @errors != [] && (@error_class || "input-error border-error")
+        ]}
+        {@rest}
+      />
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
     """
@@ -298,9 +311,9 @@ defmodule AthenaWeb.CoreComponents do
   # Helper used by inputs to generate form errors
   defp error(assigns) do
     ~H"""
-    <p class="mt-1.5 flex gap-2 items-center text-sm text-error">
-      <.icon name="hero-exclamation-circle" class="size-5" />
-      {render_slot(@inner_block)}
+    <p class="mt-1.5 text-error text-xs font-bold text-wrap break-words leading-tight flex gap-1 items-start">
+      <.icon name="hero-exclamation-circle" class="size-4 shrink-0 mt-0.5" />
+      <span>{render_slot(@inner_block)}</span>
     </p>
     """
   end
@@ -494,5 +507,58 @@ defmodule AthenaWeb.CoreComponents do
   """
   def translate_errors(errors, field) when is_list(errors) do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
+  end
+
+  @doc """
+  Renders a placeholder for work-in-progress pages.
+  """
+  attr :title, :string, default: "Work in Progress"
+
+  attr :description, :string,
+    default: "This feature is currently under active development. Stay tuned for updates."
+
+  attr :icon, :string, default: "hero-hammer"
+
+  def placeholder(assigns) do
+    ~H"""
+    <div class="flex flex-col items-center justify-center flex-1 min-h-[60vh] p-8 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div class="relative mb-8 group">
+        <div class="absolute inset-0 bg-primary/20 blur-3xl rounded-full opacity-50 group-hover:opacity-100 transition-opacity duration-700" />
+
+        <div class="relative flex items-center justify-center w-24 h-24 rounded-2xl bg-base-100 ring-1 ring-base-300 shadow-xl border border-base-200">
+          <.icon
+            name={@icon}
+            class="w-12 h-12 text-primary group-hover:scale-110 transition-transform duration-300"
+          />
+        </div>
+      </div>
+
+      <h3 class="text-3xl font-display font-black uppercase tracking-tight text-base-content mb-3">
+        {@title}
+      </h3>
+      <p class="text-base-content/60 max-w-md mx-auto mb-10 leading-relaxed font-medium">
+        {@description}
+      </p>
+
+      <div class="flex flex-wrap justify-center gap-4">
+        <button
+          type="button"
+          onclick="history.back()"
+          class="btn btn-ghost font-bold uppercase"
+        >
+          <.icon name="hero-arrow-left" class="size-5" />
+          {gettext("Go Back")}
+        </button>
+
+        <.link
+          navigate={~p"/dashboard"}
+          class="btn btn-primary btn-soft font-bold uppercase px-8"
+        >
+          <.icon name="hero-squares-2x2" class="size-5" />
+          {gettext("Dashboard")}
+        </.link>
+      </div>
+    </div>
+    """
   end
 end

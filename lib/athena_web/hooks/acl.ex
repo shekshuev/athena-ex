@@ -15,18 +15,24 @@ defmodule AthenaWeb.Hooks.ACL do
       role = user.role
       permissions = role.permissions || []
 
-      if "admin" in permissions or required_perm in permissions do
-        applied_policies = Map.get(role.policies, required_perm, [])
-        {:cont, assign(socket, :applied_policies, applied_policies)}
-      else
-        error_msg = gettext("Missing permission: %{permission}", permission: required_perm)
+      cond do
+        "admin" in permissions ->
+          {:cont, assign(socket, :applied_policies, [])}
 
-        socket =
-          socket
-          |> put_flash(:error, error_msg)
-          |> redirect(to: "/")
+        required_perm in permissions ->
+          applied_policies = Map.get(user.role.policies, required_perm, [])
+          {:cont, assign(socket, :applied_policies, applied_policies)}
 
-        {:halt, socket}
+        true ->
+          error_msg =
+            dgettext("errors", "Missing permission: %{permission}", permission: required_perm)
+
+          socket =
+            socket
+            |> put_flash(:error, error_msg)
+            |> redirect(to: "/")
+
+          {:halt, socket}
       end
     else
       {:halt, redirect(socket, to: "/login")}

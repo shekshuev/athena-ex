@@ -110,8 +110,39 @@ msgstr "должно быть не меньше %{number}"
 msgid "must be equal to %{number}"
 msgstr "должно быть равно %{number}"
 
-msgid "does not exist"
-msgstr "не существует"
+#: lib/athena/identity/role.ex:79
+#, elixir-autogen, elixir-format
+msgid "contains invalid permissions or policies"
+msgstr "содержит недопустимые права или политики"
 
+#: lib/athena_web/hooks/acl.ex:28
+#, elixir-autogen, elixir-format
 msgid "Missing permission: %{permission}"
-msgstr "Недостаточно прав: %{permission}"
+msgstr "Отсутсвует разрешение: %{permission}"
+
+#: lib/athena_web/live/auth_live/login.ex:39
+#, elixir-autogen, elixir-format
+msgid "is required"
+msgstr "Обязательное поле"
+
+#: lib/athena/identity/account.ex:56
+#: lib/athena_web/live/auth_live/login.ex:47
+#, elixir-autogen, elixir-format
+msgid "can only contain letters, numbers, dots, dashes, and underscores"
+msgstr "Допустимы только буквы, цифры, точки, тире и нижнее подчеркивание"
+
+#: lib/athena/identity/account.ex:71
+#, elixir-autogen, elixir-format
+msgid "does not exist"
+msgstr "Не существует"
+
+#: lib/athena/identity/account.ex:63
+#: lib/athena_web/live/auth_live/login.ex:54
+#, elixir-autogen, elixir-format
+msgid "must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character"
+msgstr "Минимум 8 символов: заглавная, строчная, цифра и спецсимвол"
+
+#: lib/athena_web/live/auth_live/login.ex:43
+#, elixir-autogen, elixir-format
+msgid "should be between 3 and 50 characters"
+msgstr "Длина должна быть от 3 до 50 символов"

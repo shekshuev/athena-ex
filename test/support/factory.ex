@@ -1,4 +1,7 @@
 defmodule Athena.Factory do
+  @moduledoc """
+  ExMachina factory module
+  """
   use ExMachina.Ecto, repo: Athena.Repo
 
   alias Athena.Identity.{Account, Role, Profile}

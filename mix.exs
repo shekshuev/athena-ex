@@ -10,9 +10,17 @@ defmodule Athena.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      compilers: [:boundary, :phoenix_live_view] ++ Mix.compilers()
+      compilers: compilers(Mix.env()),
+      listeners: [Phoenix.CodeReloader],
+      dialyzer: [
+        flags: [:no_opaque],
+        plt_add_apps: [:ex_unit, :mix]
+      ]
     ]
   end
+
+  defp compilers(:test), do: [:phoenix_live_view] ++ Mix.compilers()
+  defp compilers(_), do: [:boundary, :phoenix_live_view] ++ Mix.compilers()
 
   # Configuration for the OTP application.
   #
@@ -26,7 +34,7 @@ defmodule Athena.MixProject do
 
   def cli do
     [
-      preferred_envs: [precommit: :test]
+      preferred_envs: [precommit: :test, check: :test]
     ]
   end
 
@@ -69,7 +77,10 @@ defmodule Athena.MixProject do
       {:oban, "~> 2.20"},
       {:argon2_elixir, "~> 4.0"},
       {:flop, "~> 0.25.0"},
-      {:ex_machina, "~> 2.7.0", only: :test}
+      {:ex_machina, "~> 2.7.0", only: :test},
+      {:cachex, "~> 4.1"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -92,7 +103,8 @@ defmodule Athena.MixProject do
         "esbuild athena --minify",
         "phx.digest"
       ],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"],
+      check: ["format", "credo", "dialyzer", "test", "compile --warnings-as-errors"]
     ]
   end
 end

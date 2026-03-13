@@ -61,13 +61,13 @@ defmodule Athena.Identity.RolesTest do
       role = insert(:role, name: "Manager")
 
       attrs = %{
-        permissions: ["users.read", "users.write"],
-        policies: %{"users.delete" => ["only_own"]}
+        permissions: ["accounts.read", "accounts.update"],
+        policies: %{"accounts.delete" => ["own_only"]}
       }
 
       assert {:ok, updated_role} = Roles.update_role(role, attrs)
-      assert updated_role.permissions == ["users.read", "users.write"]
-      assert updated_role.policies == %{"users.delete" => ["only_own"]}
+      assert updated_role.permissions == ["accounts.read", "accounts.update"]
+      assert updated_role.policies == %{"accounts.delete" => ["own_only"]}
     end
   end
 

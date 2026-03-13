@@ -111,8 +111,39 @@ msgstr ""
 msgid "must be equal to %{number}"
 msgstr ""
 
+#: lib/athena/identity/role.ex:79
+#, elixir-autogen, elixir-format
+msgid "contains invalid permissions or policies"
+msgstr ""
+
+#: lib/athena_web/hooks/acl.ex:28
+#, elixir-autogen, elixir-format
+msgid "Missing permission: %{permission}"
+msgstr ""
+
+#: lib/athena_web/live/auth_live/login.ex:39
+#, elixir-autogen, elixir-format
+msgid "is required"
+msgstr ""
+
+#: lib/athena/identity/account.ex:56
+#: lib/athena_web/live/auth_live/login.ex:47
+#, elixir-autogen, elixir-format
+msgid "can only contain letters, numbers, dots, dashes, and underscores"
+msgstr ""
+
+#: lib/athena/identity/account.ex:71
+#, elixir-autogen, elixir-format
 msgid "does not exist"
 msgstr ""
 
-msgid "Missing permission: %{permission}"
+#: lib/athena/identity/account.ex:63
+#: lib/athena_web/live/auth_live/login.ex:54
+#, elixir-autogen, elixir-format
+msgid "must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character"
+msgstr ""
+
+#: lib/athena_web/live/auth_live/login.ex:43
+#, elixir-autogen, elixir-format
+msgid "should be between 3 and 50 characters"
 msgstr ""
