@@ -7,5 +7,15 @@ defmodule Athena do
   if it comes from the database, an external API or others.
   """
 
-  use Boundary, deps: [], exports: [Repo, Identity]
+  use Boundary,
+    deps: [],
+    exports: [
+      Repo,
+      Identity,
+      Identity.Account,
+      Identity.Accounts,
+      Identity.Role,
+      Identity.Roles,
+      Identity.Definitions
+    ]
 end

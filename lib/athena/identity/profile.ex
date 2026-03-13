@@ -19,7 +19,7 @@ defmodule Athena.Identity.Profile do
     Flop.Schema,
     filterable: [:first_name, :last_name],
     sortable: [:first_name, :last_name, :inserted_at],
-    default_limit: 20,
+    default_limit: 10,
     default_order: %{
       order_by: [:last_name],
       order_directions: [:asc]

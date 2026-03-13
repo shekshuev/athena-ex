@@ -1,0 +1,81 @@
+## "msgid"s in this file come from POT (.pot) files.
+###
+### Do not add, change, or remove "msgid"s manually here as
+### they're tied to the ones in the corresponding POT file
+### (with the same domain).
+###
+### Use "mix gettext.extract --merge" or "mix gettext.merge"
+### to merge POT files into PO files.
+msgid ""
+msgstr ""
+"Language: ru\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100 != 11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10||n%100>=20) ? 1 : 2);\n"
+
+msgid "system"
+msgstr "Система"
+
+msgid "accounts"
+msgstr "Аккаунты"
+
+msgid "profiles"
+msgstr "Профили"
+
+msgid "courses"
+msgstr "Курсы"
+
+msgid "lessons"
+msgstr "Уроки"
+
+msgid "blocks"
+msgstr "Блоки"
+
+msgid "progress"
+msgstr "Прогресс"
+
+msgid "enrollments"
+msgstr "Зачисления (Студенты)"
+
+msgid "schedule"
+msgstr "Расписание"
+
+msgid "instructors"
+msgstr "Преподаватели"
+
+msgid "cohorts"
+msgstr "Учебные потоки"
+
+msgid "files"
+msgstr "Файлы"
+
+msgid "create"
+msgstr "Создание"
+
+msgid "read"
+msgstr "Просмотр"
+
+msgid "update"
+msgstr "Редактирование"
+
+msgid "delete"
+msgstr "Удаление"
+
+msgid "publish"
+msgstr "Публикация"
+
+msgid "execute"
+msgstr "Выполнение"
+
+msgid "admin"
+msgstr "Полный доступ (Админ)"
+
+msgid "own_only"
+msgstr "Только свои"
+
+msgid "not_published"
+msgstr "Неопубликованные"
+
+msgid "only_published"
+msgstr "Только опубликованные"
+
+msgid "published_or_owner"
+msgstr "Опубликованные или свои"

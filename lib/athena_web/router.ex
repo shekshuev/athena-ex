@@ -63,6 +63,8 @@ defmodule AthenaWeb.Router do
       scope "/admin", AdminLive do
         live "/users", Users, :index
         live "/roles", Roles, :index
+        live "/roles/new", Roles, :new
+        live "/roles/:id/edit", Roles, :edit
         live "/files", Files, :index
         live "/settings", Settings, :index
       end
