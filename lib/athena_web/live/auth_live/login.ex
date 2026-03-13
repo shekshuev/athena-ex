@@ -42,14 +42,14 @@ defmodule AthenaWeb.AuthLive.Login do
         max: 50,
         message: dgettext_noop("errors", "should be between 3 and 50 characters")
       )
-      |> validate_format(:login, Athena.Identity.Account.login_regex(),
+      |> validate_format(:login, Athena.Identity.login_regex(),
         message:
           dgettext_noop(
             "errors",
             "can only contain letters, numbers, dots, dashes, and underscores"
           )
       )
-      |> validate_format(:password, Athena.Identity.Account.password_regex(),
+      |> validate_format(:password, Athena.Identity.password_regex(),
         message:
           dgettext_noop(
             "errors",

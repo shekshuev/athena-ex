@@ -3,6 +3,8 @@ defmodule Athena.Application do
   # for more information on OTP Applications
   @moduledoc false
 
+  @compile {:boundary, ignore: [AthenaWeb.Endpoint, AthenaWeb.Telemetry]}
+
   use Application
 
   @impl true
@@ -29,7 +31,8 @@ defmodule Athena.Application do
   # whenever the application is updated.
   @impl true
   def config_change(changed, _new, removed) do
-    AthenaWeb.Endpoint.config_change(changed, removed)
+    # hide from boundary
+    apply(AthenaWeb.Endpoint, :config_change, [changed, removed])
     :ok
   end
 end
