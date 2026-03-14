@@ -84,6 +84,7 @@ defmodule Athena.Identity.Accounts do
     |> Repo.transaction()
     |> case do
       {:ok, %{account: updated_account, profile: updated_profile}} ->
+        Cachex.del(:account_cache, updated_account.id)
         {:ok, %{updated_account | profile: updated_profile}}
 
       {:error, failed_operation, changeset, _changes} ->

@@ -125,18 +125,18 @@ msgstr "Отсутсвует разрешение: %{permission}"
 msgid "is required"
 msgstr "Обязательное поле"
 
-#: lib/athena/identity/account.ex:56
+#: lib/athena/identity/account.ex:57
 #: lib/athena_web/live/auth_live/login.ex:47
 #, elixir-autogen, elixir-format
 msgid "can only contain letters, numbers, dots, dashes, and underscores"
 msgstr "Допустимы только буквы, цифры, точки, тире и нижнее подчеркивание"
 
-#: lib/athena/identity/account.ex:71
+#: lib/athena/identity/account.ex:72
 #, elixir-autogen, elixir-format
 msgid "does not exist"
 msgstr "Не существует"
 
-#: lib/athena/identity/account.ex:63
+#: lib/athena/identity/account.ex:64
 #: lib/athena_web/live/auth_live/login.ex:54
 #, elixir-autogen, elixir-format
 msgid "must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character"
@@ -146,3 +146,8 @@ msgstr "Минимум 8 символов: заглавная, строчная,
 #, elixir-autogen, elixir-format
 msgid "should be between 3 and 50 characters"
 msgstr "Длина должна быть от 3 до 50 символов"
+
+#: lib/athena_web/live/admin_live/user_form.ex:58
+#, elixir-autogen, elixir-format
+msgid "does not match password"
+msgstr "пароли не совпадают"
