@@ -16,6 +16,7 @@ defmodule Athena do
       Identity.Accounts,
       Identity.Role,
       Identity.Roles,
-      Identity.Definitions
+      Identity.Definitions,
+      Identity.Profile
     ]
 end

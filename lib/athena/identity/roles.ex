@@ -18,6 +18,15 @@ defmodule Athena.Identity.Roles do
   end
 
   @doc """
+  Retrieves all roles without pagination.
+  Useful for populating select dropdowns in the UI.
+  """
+  @spec list_all_roles() :: [Role.t()]
+  def list_all_roles do
+    Repo.all(Role)
+  end
+
+  @doc """
   Retrieves a single role by ID.
   """
   @spec get_role(String.t()) :: {:ok, Role.t()} | {:error, :not_found}

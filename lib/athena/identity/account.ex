@@ -49,7 +49,8 @@ defmodule Athena.Identity.Account do
   def changeset(account, attrs) do
     account
     |> cast(attrs, [:login, :password, :role_id, :status, :deleted_at])
-    |> validate_required([:login, :password, :role_id])
+    |> validate_required([:login, :role_id])
+    |> validate_password_required()
     |> validate_length(:login, min: 3, max: 50)
     |> validate_format(:login, login_regex(),
       message:
@@ -71,6 +72,15 @@ defmodule Athena.Identity.Account do
       message: dgettext_noop("errors", "does not exist")
     )
     |> hash_password()
+  end
+
+  @doc false
+  defp validate_password_required(changeset) do
+    if is_nil(changeset.data.id) do
+      validate_required(changeset, [:password])
+    else
+      changeset
+    end
   end
 
   @doc "Regular expression for validating login format"
