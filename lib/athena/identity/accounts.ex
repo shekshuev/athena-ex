@@ -85,6 +85,13 @@ defmodule Athena.Identity.Accounts do
     |> case do
       {:ok, %{account: updated_account, profile: updated_profile}} ->
         Cachex.del(:account_cache, updated_account.id)
+
+        Phoenix.PubSub.broadcast(
+          Athena.PubSub,
+          "account_updates:#{updated_account.id}",
+          :account_updated
+        )
+
         {:ok, %{updated_account | profile: updated_profile}}
 
       {:error, failed_operation, changeset, _changes} ->

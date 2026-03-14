@@ -70,6 +70,7 @@ defmodule Athena.Identity.Roles do
     |> case do
       {:ok, updated_role} ->
         clear_accounts_cache_for_role(updated_role.id)
+        Phoenix.PubSub.broadcast(Athena.PubSub, "role_updates:#{updated_role.id}", :role_updated)
         {:ok, updated_role}
 
       error ->

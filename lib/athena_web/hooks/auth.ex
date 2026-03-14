@@ -29,7 +29,14 @@ defmodule AthenaWeb.Hooks.Auth do
       account_id ->
         case Athena.Identity.get_account(account_id, preload: [:role]) do
           {:ok, account} ->
-            {:cont, assign(socket, :current_user, account)}
+            maybe_connect_auth_events(socket, account)
+
+            socket =
+              socket
+              |> assign(:current_user, account)
+              |> attach_hook(:current_user_reloader, :handle_info, &reload_user_on_event/2)
+
+            {:cont, socket}
 
           {:error, :not_found} ->
             {:cont, assign(socket, :current_user, nil)}
@@ -44,4 +51,41 @@ defmodule AthenaWeb.Hooks.Auth do
       {:halt, redirect(socket, to: "/auth/login")}
     end
   end
+
+  defp maybe_connect_auth_events(socket, account) do
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(Athena.PubSub, "role_updates:#{account.role_id}")
+      Phoenix.PubSub.subscribe(Athena.PubSub, "account_updates:#{account.id}")
+    end
+  end
+
+  defp reload_user_on_event(event, socket) when event in [:role_updated, :account_updated] do
+    case Athena.Identity.get_account(socket.assigns.current_user.id, preload: [:role]) do
+      {:ok, fresh_account} ->
+        socket = assign(socket, :current_user, fresh_account)
+
+        required_perm = socket.assigns[:required_permission]
+
+        if required_perm && not Athena.Identity.can?(fresh_account, required_perm) do
+          {:halt,
+           socket
+           |> put_flash(
+             :error,
+             Gettext.dgettext(
+               AthenaWeb.Gettext,
+               "errors",
+               "You don't have permission to access this page."
+             )
+           )
+           |> redirect(to: "/dashboard")}
+        else
+          {:halt, socket}
+        end
+
+      {:error, :not_found} ->
+        {:halt, redirect(socket, to: "/auth/log_out")}
+    end
+  end
+
+  defp reload_user_on_event(_message, socket), do: {:cont, socket}
 end

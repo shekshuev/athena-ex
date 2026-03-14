@@ -3,6 +3,7 @@ defmodule AthenaWeb.Hooks.Permission do
   A LiveView hook to enforce ACL permissions on route mount.
   """
   import Phoenix.LiveView
+  import Phoenix.Component
 
   use Gettext, backend: AthenaWeb.Gettext
 
@@ -12,7 +13,7 @@ defmodule AthenaWeb.Hooks.Permission do
     user = socket.assigns[:current_user]
 
     if Identity.can?(user, permission) do
-      {:cont, socket}
+      {:cont, assign(socket, :required_permission, permission)}
     else
       {:halt,
        socket
