@@ -27,7 +27,7 @@ defmodule AthenaWeb.Hooks.Auth do
         {:cont, assign(socket, :current_user, nil)}
 
       account_id ->
-        case Athena.Identity.get_account(account_id) do
+        case Athena.Identity.get_account(account_id, preload: [:role]) do
           {:ok, account} ->
             {:cont, assign(socket, :current_user, account)}
 

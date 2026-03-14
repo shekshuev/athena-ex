@@ -12,6 +12,8 @@ defmodule AthenaWeb.AdminLive.Users do
   alias Athena.Identity.Account
   alias AthenaWeb.AdminLive.UserFormComponent
 
+  on_mount {AthenaWeb.Hooks.Permission, "users.read"}
+
   @doc """
   Initializes the LiveView, setting up the accounts stream and default assigns.
   """
@@ -62,13 +64,25 @@ defmodule AthenaWeb.AdminLive.Users do
   end
 
   defp apply_action(socket, :new, _params) do
-    assign(socket, page_title: gettext("Create User"), account: %Account{})
+    if Identity.can?(socket.assigns.current_user, "users.create") do
+      assign(socket, page_title: gettext("Create User"), account: %Account{})
+    else
+      socket
+      |> put_flash(:error, gettext("You don't have permission to create users."))
+      |> push_patch(to: ~p"/admin/users")
+    end
   end
 
   defp apply_action(socket, :edit, %{"id" => id}) do
-    case Identity.get_account(id) do
-      {:ok, account} -> assign(socket, page_title: gettext("Edit User"), account: account)
-      _ -> push_patch(socket, to: ~p"/admin/users")
+    if Identity.can?(socket.assigns.current_user, "users.update") do
+      case Identity.get_account(id) do
+        {:ok, account} -> assign(socket, page_title: gettext("Edit User"), account: account)
+        _ -> push_patch(socket, to: ~p"/admin/users")
+      end
+    else
+      socket
+      |> put_flash(:error, gettext("You don't have permission to edit users."))
+      |> push_patch(to: ~p"/admin/users")
     end
   end
 
@@ -89,8 +103,15 @@ defmodule AthenaWeb.AdminLive.Users do
   end
 
   def handle_event("delete_click", %{"id" => id}, socket) do
-    {:ok, account} = Identity.get_account(id)
-    {:noreply, assign(socket, account_to_delete: account)}
+    if Identity.can?(socket.assigns.current_user, "users.delete") do
+      {:ok, account} = Identity.get_account(id)
+      {:noreply, assign(socket, account_to_delete: account)}
+    else
+      {:noreply,
+       socket
+       |> put_flash(:error, gettext("You don't have permission to delete users."))
+       |> push_patch(to: ~p"/admin/users")}
+    end
   end
 
   def handle_event("confirm_delete", _, %{assigns: %{account_to_delete: account}} = socket) do
@@ -131,7 +152,11 @@ defmodule AthenaWeb.AdminLive.Users do
           <h1 class="text-2xl font-display font-bold text-base-content">{gettext("Users")}</h1>
           <p class="text-base-content/60">{gettext("Manage system accounts and user profiles.")}</p>
         </div>
-        <.button patch={~p"/admin/users/new"} class="btn btn-primary">
+        <.button
+          :if={Identity.can?(@current_user, "users.create")}
+          patch={~p"/admin/users/new"}
+          class="btn btn-primary"
+        >
           <.icon name="hero-plus" class="size-5" />
           {gettext("Create User")}
         </.button>
@@ -177,16 +202,22 @@ defmodule AthenaWeb.AdminLive.Users do
         </:col>
         <:action :let={{_id, acc}}>
           <div class="flex justify-end gap-2">
-            <.button patch={~p"/admin/users/#{acc.id}/edit"} class="btn btn-ghost btn-xs btn-square">
+            <.button
+              :if={Identity.can?(@current_user, "users.update")}
+              patch={~p"/admin/users/#{acc.id}/edit"}
+              class="btn btn-ghost btn-xs btn-square"
+            >
               <.icon name="hero-pencil-square" class="size-4" />
             </.button>
-            <button
+            <.button
+              :if={Identity.can?(@current_user, "users.delete")}
+              type="button"
               phx-click="delete_click"
               phx-value-id={acc.id}
               class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
             >
               <.icon name="hero-trash" class="size-4" />
-            </button>
+            </.button>
           </div>
         </:action>
       </.table>

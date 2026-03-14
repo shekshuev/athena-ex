@@ -14,11 +14,8 @@ msgstr ""
 msgid "system"
 msgstr "System"
 
-msgid "accounts"
-msgstr "Accounts"
-
-msgid "profiles"
-msgstr "Profiles"
+msgid "users"
+msgstr "Users"
 
 msgid "courses"
 msgstr "Courses"

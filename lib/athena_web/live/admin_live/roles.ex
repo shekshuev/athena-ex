@@ -8,9 +8,11 @@ defmodule AthenaWeb.AdminLive.Roles do
   """
   use AthenaWeb, :live_view
 
-  alias Athena.Identity.Roles
-  alias Athena.Identity.Role
+  alias Athena.Identity
+  alias Athena.Identity.{Roles, Role}
   alias AthenaWeb.AdminLive.RoleFormComponent
+
+  on_mount {AthenaWeb.Hooks.Permission, "roles.read"}
 
   @doc """
   Initializes the LiveView, setting up the roles stream and default assigns.
@@ -62,13 +64,25 @@ defmodule AthenaWeb.AdminLive.Roles do
   end
 
   defp apply_action(socket, :new, _params) do
-    assign(socket, page_title: gettext("Create Role"), role: %Role{})
+    if Identity.can?(socket.assigns.current_user, "roles.create") do
+      assign(socket, page_title: gettext("Create Role"), role: %Role{})
+    else
+      socket
+      |> put_flash(:error, gettext("You don't have permission to create roles."))
+      |> push_patch(to: ~p"/admin/roles")
+    end
   end
 
   defp apply_action(socket, :edit, %{"id" => id}) do
-    case Roles.get_role(id) do
-      {:ok, role} -> assign(socket, page_title: gettext("Edit Role"), role: role)
-      _ -> push_patch(socket, to: ~p"/admin/roles")
+    if Identity.can?(socket.assigns.current_user, "roles.update") do
+      case Roles.get_role(id) do
+        {:ok, role} -> assign(socket, page_title: gettext("Edit Role"), role: role)
+        _ -> push_patch(socket, to: ~p"/admin/roles")
+      end
+    else
+      socket
+      |> put_flash(:error, gettext("You don't have permission to edit roles."))
+      |> push_patch(to: ~p"/admin/roles")
     end
   end
 
@@ -94,8 +108,15 @@ defmodule AthenaWeb.AdminLive.Roles do
   end
 
   def handle_event("delete_click", %{"id" => id}, socket) do
-    {:ok, role} = Roles.get_role(id)
-    {:noreply, assign(socket, role_to_delete: role)}
+    if Identity.can?(socket.assigns.current_user, "roles.delete") do
+      {:ok, role} = Roles.get_role(id)
+      {:noreply, assign(socket, role_to_delete: role)}
+    else
+      {:noreply,
+       socket
+       |> put_flash(:error, gettext("You don't have permission to delete roles."))
+       |> push_patch(to: ~p"/admin/roles")}
+    end
   end
 
   def handle_event("cancel_delete", _, socket) do
@@ -143,7 +164,11 @@ defmodule AthenaWeb.AdminLive.Roles do
             {gettext("Manage system roles, permissions, and access policies.")}
           </p>
         </div>
-        <.button patch={~p"/admin/roles/new"} class="btn btn-primary">
+        <.button
+          :if={Identity.can?(@current_user, "roles.create")}
+          patch={~p"/admin/roles/new"}
+          class="btn btn-primary"
+        >
           <.icon name="hero-plus" class="size-5" />
           {gettext("Create Role")}
         </.button>
@@ -193,10 +218,15 @@ defmodule AthenaWeb.AdminLive.Roles do
         </:col>
         <:action :let={{_id, role}}>
           <div class="flex justify-end gap-2">
-            <.button patch={~p"/admin/roles/#{role.id}/edit"} class="btn btn-ghost btn-xs btn-square">
+            <.button
+              :if={Identity.can?(@current_user, "roles.update")}
+              patch={~p"/admin/roles/#{role.id}/edit"}
+              class="btn btn-ghost btn-xs btn-square"
+            >
               <.icon name="hero-pencil-square" class="size-4" />
             </.button>
             <.button
+              :if={Identity.can?(@current_user, "roles.delete")}
               type="button"
               phx-click="delete_click"
               phx-value-id={role.id}

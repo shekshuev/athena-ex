@@ -5,13 +5,14 @@ defmodule AthenaWeb.AdminLive.RoleFormComponentTest do
   import Athena.Factory
   alias Athena.Identity.Roles
 
-  describe "Role Form Component" do
-    setup %{conn: conn} do
-      admin = insert(:account)
-      conn = init_test_session(conn, %{"account_id" => admin.id})
-      %{conn: conn}
-    end
+  setup %{conn: conn} do
+    role = insert(:role, permissions: ["admin"])
+    admin = insert(:account, role: role)
+    conn = init_test_session(conn, %{"account_id" => admin.id})
+    %{conn: conn}
+  end
 
+  describe "Role Form Component" do
     test "validates required fields on change", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/admin/roles/new")
 
@@ -57,7 +58,7 @@ defmodule AthenaWeb.AdminLive.RoleFormComponentTest do
     end
 
     test "updates an existing role", %{conn: conn} do
-      role = insert(:role, name: "Old Boring Name", permissions: ["accounts.read"])
+      role = insert(:role, name: "Old Boring Name", permissions: ["users.read"])
 
       {:ok, lv, _html} = live(conn, ~p"/admin/roles/#{role.id}/edit")
 
@@ -65,7 +66,7 @@ defmodule AthenaWeb.AdminLive.RoleFormComponentTest do
       |> form("#role-form", %{
         "role" => %{
           "name" => "New Awesome Name",
-          "permissions" => ["accounts.read", "accounts.update"]
+          "permissions" => ["users.read", "users.update"]
         }
       })
       |> render_submit()
@@ -74,7 +75,7 @@ defmodule AthenaWeb.AdminLive.RoleFormComponentTest do
 
       {:ok, updated_role} = Roles.get_role(role.id)
       assert updated_role.name == "New Awesome Name"
-      assert "accounts.update" in updated_role.permissions
+      assert "users.update" in updated_role.permissions
 
       assert render(lv) =~ "Role updated successfully"
     end

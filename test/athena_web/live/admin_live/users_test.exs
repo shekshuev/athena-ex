@@ -4,19 +4,19 @@ defmodule AthenaWeb.AdminLive.UsersTest do
 
   import Athena.Factory
 
-  describe "Users page (Index)" do
-    setup %{conn: conn} do
-      admin = insert(:account)
-      conn = init_test_session(conn, %{"account_id" => admin.id})
-      %{conn: conn, admin: admin}
-    end
+  setup %{conn: conn} do
+    role = insert(:role, permissions: ["admin"])
+    admin = insert(:account, role: role)
+    conn = init_test_session(conn, %{"account_id" => admin.id})
+    %{conn: conn, admin: admin}
+  end
 
+  describe "Users page (Index)" do
     test "renders the users list", %{conn: conn, admin: admin} do
       {:ok, _lv, html} = live(conn, ~p"/admin/users")
 
       assert html =~ "Users"
       assert html =~ "Create User"
-
       assert html =~ admin.login
     end
 
@@ -37,12 +37,6 @@ defmodule AthenaWeb.AdminLive.UsersTest do
   end
 
   describe "Users page (Create/Edit actions)" do
-    setup %{conn: conn} do
-      admin = insert(:account)
-      conn = init_test_session(conn, %{"account_id" => admin.id})
-      %{conn: conn}
-    end
-
     test "opens the create user slide-over via URL", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/admin/users/new")
 
@@ -61,12 +55,6 @@ defmodule AthenaWeb.AdminLive.UsersTest do
   end
 
   describe "Users page (Delete action)" do
-    setup %{conn: conn} do
-      admin = insert(:account)
-      conn = init_test_session(conn, %{"account_id" => admin.id})
-      %{conn: conn}
-    end
-
     test "shows confirmation modal on delete click", %{conn: conn} do
       account = insert(:account, login: "scammer_boy")
 
@@ -94,6 +82,46 @@ defmodule AthenaWeb.AdminLive.UsersTest do
 
       assert html =~ "Account deleted successfully"
       refute html =~ "doomed_user"
+    end
+  end
+
+  describe "Permissions & ACL" do
+    setup %{conn: conn} do
+      role = insert(:role, permissions: ["users.read"])
+      limited_user = insert(:account, role: role)
+      conn = init_test_session(conn, %{"account_id" => limited_user.id})
+
+      %{conn: conn, limited_user: limited_user}
+    end
+
+    test "user with only read permission cannot see action buttons", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/admin/users")
+
+      assert html =~ "Users"
+
+      refute html =~ "Create User"
+      refute html =~ "hero-pencil-square"
+      refute html =~ "hero-trash"
+    end
+
+    test "user without create permission is redirected from /new", %{conn: conn} do
+      {:error, {:live_redirect, %{to: "/admin/users"}}} = live(conn, ~p"/admin/users/new")
+    end
+
+    test "user without update permission is redirected from /edit", %{conn: conn} do
+      target = insert(:account)
+
+      {:error, {:live_redirect, %{to: "/admin/users"}}} =
+        live(conn, ~p"/admin/users/#{target.id}/edit")
+    end
+
+    test "user without delete permission cannot trigger delete_click", %{conn: conn} do
+      target = insert(:account)
+      {:ok, lv, _html} = live(conn, ~p"/admin/users")
+
+      html = render_click(lv, "delete_click", %{"id" => target.id})
+
+      assert html =~ "You don&#39;t have permission to delete users."
     end
   end
 end
