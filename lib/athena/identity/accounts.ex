@@ -85,6 +85,13 @@ defmodule Athena.Identity.Accounts do
     |> case do
       {:ok, %{account: updated_account, profile: updated_profile}} ->
         Cachex.del(:account_cache, updated_account.id)
+
+        Phoenix.PubSub.broadcast(
+          Athena.PubSub,
+          "account_updates:#{updated_account.id}",
+          :account_updated
+        )
+
         {:ok, %{updated_account | profile: updated_profile}}
 
       {:error, failed_operation, changeset, _changes} ->
@@ -100,7 +107,7 @@ defmodule Athena.Identity.Accounts do
     * `{:error, :not_found}` if the account does not exist.
   """
   @spec get_account(String.t()) :: {:ok, Account.t()} | {:error, :not_found}
-  def get_account(id) do
+  def get_account(id, opts \\ []) do
     case Cachex.get(:account_cache, id) do
       {:ok, nil} ->
         case Repo.get(Account, id) do
@@ -108,12 +115,22 @@ defmodule Athena.Identity.Accounts do
             {:error, :not_found}
 
           account ->
+            account = maybe_preload_account(account, opts)
             Cachex.put(:account_cache, id, account, ttl: :timer.minutes(5))
+
             {:ok, account}
         end
 
       {:ok, %Account{} = account} ->
         {:ok, account}
+    end
+  end
+
+  @doc false
+  defp maybe_preload_account(account, opts) do
+    case Keyword.get(opts, :preload) do
+      nil -> account
+      preloads -> Repo.preload(account, preloads)
     end
   end
 

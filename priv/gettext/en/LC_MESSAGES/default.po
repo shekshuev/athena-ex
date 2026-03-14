@@ -100,7 +100,7 @@ msgid "Logged out successfully."
 msgstr ""
 
 #: lib/athena_web/live/admin_live/user_form_component.ex:138
-#: lib/athena_web/live/admin_live/users.ex:163
+#: lib/athena_web/live/admin_live/users.ex:188
 #: lib/athena_web/live/auth_live/login.ex:145
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Login"
@@ -252,12 +252,12 @@ msgid "Reusable assets, questions, and materials."
 msgstr ""
 
 #: lib/athena_web/components/layouts/dashboard.html.heex:205
-#: lib/athena_web/live/admin_live/roles.ex:61
+#: lib/athena_web/live/admin_live/roles.ex:63
 #, elixir-autogen, elixir-format
 msgid "Roles"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/roles.ex:140
+#: lib/athena_web/live/admin_live/roles.ex:161
 #, elixir-autogen, elixir-format
 msgid "Roles & Policies"
 msgstr ""
@@ -306,8 +306,8 @@ msgid "Upcoming classes, deadlines, and events."
 msgstr ""
 
 #: lib/athena_web/components/layouts/dashboard.html.heex:192
-#: lib/athena_web/live/admin_live/users.ex:61
-#: lib/athena_web/live/admin_live/users.ex:131
+#: lib/athena_web/live/admin_live/users.ex:63
+#: lib/athena_web/live/admin_live/users.ex:152
 #, elixir-autogen, elixir-format
 msgid "Users"
 msgstr ""
@@ -327,17 +327,17 @@ msgstr ""
 msgid "Your personal storage space."
 msgstr ""
 
-#: lib/athena_web/live/admin_live/roles.ex:187
+#: lib/athena_web/live/admin_live/roles.ex:212
 #, elixir-autogen, elixir-format
 msgid "%{count} permissions"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/roles.ex:178
+#: lib/athena_web/live/admin_live/roles.ex:203
 #, elixir-autogen, elixir-format
 msgid "Access Level"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/roles.ex:255
+#: lib/athena_web/live/admin_live/roles.ex:285
 #, elixir-autogen, elixir-format
 msgid "Are you sure you want to delete this role? This action cannot be undone."
 msgstr ""
@@ -349,45 +349,45 @@ msgstr ""
 msgid "Cancel"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/roles.ex:118
+#: lib/athena_web/live/admin_live/roles.ex:139
 #, elixir-autogen, elixir-format
 msgid "Cannot delete role because it is assigned to users"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/roles.ex:65
-#: lib/athena_web/live/admin_live/roles.ex:148
+#: lib/athena_web/live/admin_live/roles.ex:68
+#: lib/athena_web/live/admin_live/roles.ex:173
 #, elixir-autogen, elixir-format
 msgid "Create Role"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/roles.ex:191
-#: lib/athena_web/live/admin_live/users.ex:175
+#: lib/athena_web/live/admin_live/roles.ex:216
+#: lib/athena_web/live/admin_live/users.ex:200
 #, elixir-autogen, elixir-format
 msgid "Created At"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/roles.ex:257
-#: lib/athena_web/live/admin_live/users.ex:226
+#: lib/athena_web/live/admin_live/roles.ex:287
+#: lib/athena_web/live/admin_live/users.ex:257
 #, elixir-autogen, elixir-format
 msgid "Delete"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/roles.ex:253
+#: lib/athena_web/live/admin_live/roles.ex:283
 #, elixir-autogen, elixir-format
 msgid "Delete Role"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/roles.ex:70
+#: lib/athena_web/live/admin_live/roles.ex:79
 #, elixir-autogen, elixir-format
 msgid "Edit Role"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/roles.ex:143
+#: lib/athena_web/live/admin_live/roles.ex:164
 #, elixir-autogen, elixir-format
 msgid "Manage system roles, permissions, and access policies."
 msgstr ""
 
-#: lib/athena_web/live/admin_live/roles.ex:175
+#: lib/athena_web/live/admin_live/roles.ex:200
 #, elixir-autogen, elixir-format
 msgid "Name"
 msgstr ""
@@ -402,7 +402,7 @@ msgstr ""
 msgid "Role created successfully"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/roles.ex:110
+#: lib/athena_web/live/admin_live/roles.ex:131
 #, elixir-autogen, elixir-format
 msgid "Role deleted successfully"
 msgstr ""
@@ -424,12 +424,12 @@ msgstr ""
 msgid "Saving..."
 msgstr ""
 
-#: lib/athena_web/live/admin_live/roles.ex:163
+#: lib/athena_web/live/admin_live/roles.ex:188
 #, elixir-autogen, elixir-format
 msgid "Search roles..."
 msgstr ""
 
-#: lib/athena_web/live/admin_live/roles.ex:181
+#: lib/athena_web/live/admin_live/roles.ex:206
 #, elixir-autogen, elixir-format
 msgid "Super Admin"
 msgstr ""
@@ -449,7 +449,7 @@ msgstr ""
 msgid "Account Access"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/users.ex:101
+#: lib/athena_web/live/admin_live/users.ex:122
 #, elixir-autogen, elixir-format
 msgid "Account deleted successfully"
 msgstr ""
@@ -459,7 +459,7 @@ msgstr ""
 msgid "Active"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/users.ex:222
+#: lib/athena_web/live/admin_live/users.ex:253
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Are you sure you want to delete this account? This will also block profile access."
 msgstr ""
@@ -474,23 +474,23 @@ msgstr ""
 msgid "Blocked"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/users.ex:65
-#: lib/athena_web/live/admin_live/users.ex:136
+#: lib/athena_web/live/admin_live/users.ex:68
+#: lib/athena_web/live/admin_live/users.ex:161
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Create User"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/users.ex:220
+#: lib/athena_web/live/admin_live/users.ex:251
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Delete User"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/users.ex:70
+#: lib/athena_web/live/admin_live/users.ex:79
 #, elixir-autogen, elixir-format
 msgid "Edit User"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/users.ex:106
+#: lib/athena_web/live/admin_live/users.ex:127
 #, elixir-autogen, elixir-format
 msgid "Failed to delete account"
 msgstr ""
@@ -500,7 +500,7 @@ msgstr ""
 msgid "First Name"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/users.ex:166
+#: lib/athena_web/live/admin_live/users.ex:191
 #, elixir-autogen, elixir-format
 msgid "Full Name"
 msgstr ""
@@ -515,7 +515,7 @@ msgstr ""
 msgid "Leave blank to keep current"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/users.ex:132
+#: lib/athena_web/live/admin_live/users.ex:153
 #, elixir-autogen, elixir-format
 msgid "Manage system accounts and user profiles."
 msgstr ""
@@ -536,12 +536,12 @@ msgid "Repeat Password"
 msgstr ""
 
 #: lib/athena_web/live/admin_live/user_form_component.ex:160
-#: lib/athena_web/live/admin_live/users.ex:172
+#: lib/athena_web/live/admin_live/users.ex:197
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Role"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/users.ex:151
+#: lib/athena_web/live/admin_live/users.ex:176
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Search users..."
 msgstr ""
@@ -552,7 +552,7 @@ msgid "Select a role..."
 msgstr ""
 
 #: lib/athena_web/live/admin_live/user_form_component.ex:168
-#: lib/athena_web/live/admin_live/users.ex:169
+#: lib/athena_web/live/admin_live/users.ex:194
 #, elixir-autogen, elixir-format
 msgid "Status"
 msgstr ""
@@ -570,4 +570,34 @@ msgstr ""
 #: lib/athena_web/live/admin_live/user_form_component.ex:108
 #, elixir-autogen, elixir-format, fuzzy
 msgid "User updated successfully"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:71
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to create roles."
+msgstr ""
+
+#: lib/athena_web/live/admin_live/users.ex:71
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to create users."
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:117
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to delete roles."
+msgstr ""
+
+#: lib/athena_web/live/admin_live/users.ex:112
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to delete users."
+msgstr ""
+
+#: lib/athena_web/live/admin_live/roles.ex:84
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to edit roles."
+msgstr ""
+
+#: lib/athena_web/live/admin_live/users.ex:84
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to edit users."
 msgstr ""

@@ -149,3 +149,8 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "does not match password"
 msgstr ""
+
+#: lib/athena_web/hooks/permission.ex:21
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to access this page."
+msgstr ""

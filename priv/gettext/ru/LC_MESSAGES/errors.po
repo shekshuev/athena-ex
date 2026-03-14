@@ -151,3 +151,8 @@ msgstr "Длина должна быть от 3 до 50 символов"
 #, elixir-autogen, elixir-format
 msgid "does not match password"
 msgstr "пароли не совпадают"
+
+#: lib/athena_web/hooks/permission.ex:21
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to access this page."
+msgstr "У вас нет прав для доступа к этой странице"

@@ -5,13 +5,14 @@ defmodule AthenaWeb.AdminLive.UserFormComponentTest do
   import Athena.Factory
   alias Athena.Identity
 
-  describe "User Form Component" do
-    setup %{conn: conn} do
-      admin = insert(:account)
-      conn = init_test_session(conn, %{"account_id" => admin.id})
-      %{conn: conn}
-    end
+  setup %{conn: conn} do
+    role = insert(:role, permissions: ["admin"])
+    admin = insert(:account, role: role)
+    conn = init_test_session(conn, %{"account_id" => admin.id})
+    %{conn: conn}
+  end
 
+  describe "User Form Component" do
     test "validates required fields on change", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/admin/users/new")
 

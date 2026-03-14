@@ -181,7 +181,7 @@
         </div>
       </div>
       <ul class="menu p-0 w-full gap-1 mb-4">
-        <li>
+        <li :if={Identity.can?(@current_user, "users.read")}>
           <.link
             navigate={~p"/admin/users"}
             class="flex items-center hover:bg-error/10 hover:text-error"
@@ -194,7 +194,7 @@
             </div>
           </.link>
         </li>
-        <li>
+        <li :if={Identity.can?(@current_user, "roles.read")}>
           <.link
             navigate={~p"/admin/roles"}
             class="flex items-center hover:bg-error/10 hover:text-error"

@@ -39,7 +39,7 @@ defmodule Athena.Identity.AccountsTest do
     end
   end
 
-  describe "get_account/1" do
+  describe "get_account/2" do
     test "should return account if exists" do
       account = insert(:account)
 
@@ -52,6 +52,17 @@ defmodule Athena.Identity.AccountsTest do
     test "should return error if account doesn't exists" do
       fake_id = Ecto.UUID.generate()
       assert {:error, :not_found} = Accounts.get_account(fake_id)
+    end
+
+    test "should preload associations if requested" do
+      account = insert(:account)
+      insert(:profile, owner: account)
+
+      assert {:ok, fetched_account} = Accounts.get_account(account.id, preload: [:profile, :role])
+
+      assert fetched_account.profile.id != nil
+      assert fetched_account.role.id != nil
+      assert fetched_account.profile.owner_id == account.id
     end
   end
 
