@@ -10,3 +10,69 @@
 #
 msgid ""
 msgstr ""
+
+msgid "system"
+msgstr ""
+
+msgid "users"
+msgstr ""
+
+msgid "courses"
+msgstr ""
+
+msgid "lessons"
+msgstr ""
+
+msgid "blocks"
+msgstr ""
+
+msgid "progress"
+msgstr ""
+
+msgid "enrollments"
+msgstr ""
+
+msgid "schedule"
+msgstr ""
+
+msgid "instructors"
+msgstr ""
+
+msgid "cohorts"
+msgstr ""
+
+msgid "files"
+msgstr ""
+
+msgid "create"
+msgstr ""
+
+msgid "read"
+msgstr ""
+
+msgid "update"
+msgstr ""
+
+msgid "delete"
+msgstr ""
+
+msgid "publish"
+msgstr ""
+
+msgid "execute"
+msgstr ""
+
+msgid "admin"
+msgstr ""
+
+msgid "own_only"
+msgstr ""
+
+msgid "not_published"
+msgstr ""
+
+msgid "only_published"
+msgstr ""
+
+msgid "published_or_owner"
+msgstr ""
