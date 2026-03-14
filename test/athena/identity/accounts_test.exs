@@ -26,9 +26,20 @@ defmodule Athena.Identity.AccountsTest do
       assert length(accounts) == 1
       assert hd(accounts).id == active_account.id
     end
+
+    test "should preload associations if requested" do
+      account = insert(:account)
+      insert(:profile, owner: account)
+
+      {:ok, {accounts, _meta}} = Accounts.list_accounts(%{}, preload: [:profile, :role])
+
+      fetched_account = hd(accounts)
+      assert fetched_account.profile.id != nil
+      assert fetched_account.role.id != nil
+    end
   end
 
-  describe "get_account/1" do
+  describe "get_account/2" do
     test "should return account if exists" do
       account = insert(:account)
 
@@ -41,6 +52,17 @@ defmodule Athena.Identity.AccountsTest do
     test "should return error if account doesn't exists" do
       fake_id = Ecto.UUID.generate()
       assert {:error, :not_found} = Accounts.get_account(fake_id)
+    end
+
+    test "should preload associations if requested" do
+      account = insert(:account)
+      insert(:profile, owner: account)
+
+      assert {:ok, fetched_account} = Accounts.get_account(account.id, preload: [:profile, :role])
+
+      assert fetched_account.profile.id != nil
+      assert fetched_account.role.id != nil
+      assert fetched_account.profile.owner_id == account.id
     end
   end
 
@@ -103,6 +125,61 @@ defmodule Athena.Identity.AccountsTest do
 
       assert {:error, :invalid_old_password} =
                Accounts.change_password(account, "WrongOldPass", "NewStrongPass1!")
+    end
+  end
+
+  describe "register_admin_user/2" do
+    test "should create account and profile atomically" do
+      role = insert(:role)
+
+      account_attrs = %{
+        "login" => "new_admin",
+        "password" => "StrongPass1!",
+        "role_id" => role.id
+      }
+
+      profile_attrs = %{"first_name" => "John", "last_name" => "Doe"}
+
+      assert {:ok, account} = Accounts.register_admin_user(account_attrs, profile_attrs)
+
+      assert account.login == "new_admin"
+      assert account.profile.first_name == "John"
+      assert account.profile.owner_id == account.id
+    end
+
+    test "should rollback if profile validation fails" do
+      role = insert(:role)
+
+      account_attrs = %{
+        "login" => "new_admin",
+        "password" => "StrongPass1!",
+        "role_id" => role.id
+      }
+
+      profile_attrs = %{"first_name" => ""}
+
+      assert {:error, :profile, changeset} =
+               Accounts.register_admin_user(account_attrs, profile_attrs)
+
+      assert "can't be blank" in errors_on(changeset).first_name
+
+      assert Athena.Repo.aggregate(Account, :count, :id) == 0
+    end
+  end
+
+  describe "update_admin_user/3" do
+    test "should update both account and profile" do
+      account = insert(:account, login: "old_login")
+      insert(:profile, owner: account, first_name: "OldName")
+
+      account_attrs = %{"login" => "new_login"}
+      profile_attrs = %{"first_name" => "NewName"}
+
+      assert {:ok, updated_account} =
+               Accounts.update_admin_user(account, account_attrs, profile_attrs)
+
+      assert updated_account.login == "new_login"
+      assert updated_account.profile.first_name == "NewName"
     end
   end
 end

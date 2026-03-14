@@ -19,7 +19,7 @@ defmodule Athena.Identity.Profile do
     Flop.Schema,
     filterable: [:first_name, :last_name],
     sortable: [:first_name, :last_name, :inserted_at],
-    default_limit: 20,
+    default_limit: 10,
     default_order: %{
       order_by: [:last_name],
       order_directions: [:asc]
@@ -33,8 +33,6 @@ defmodule Athena.Identity.Profile do
     field :avatar_url, :string
     field :birth_date, :date
     field :metadata, :map, default: %{}
-
-    field :full_name, :string, virtual: true
 
     belongs_to :owner, Athena.Identity.Account
 
@@ -62,19 +60,15 @@ defmodule Athena.Identity.Profile do
     |> validate_length(:patronymic, max: 100)
     |> unique_constraint(:owner_id, name: :profiles__owner_id__uk)
     |> foreign_key_constraint(:owner_id, name: :profiles__owner_id__fk, message: "does not exist")
-    |> compute_full_name()
   end
 
-  defp compute_full_name(changeset) do
-    first = get_field(changeset, :first_name)
-    last = get_field(changeset, :last_name)
-    patronymic = get_field(changeset, :patronymic)
-
-    if first && last do
-      full_name = Enum.join(Enum.reject([last, first, patronymic], &is_nil/1), " ")
-      put_change(changeset, :full_name, full_name)
-    else
-      changeset
-    end
+  @doc """
+  Dynamically computes the full name from a Profile struct.
+  """
+  @spec full_name(t()) :: String.t()
+  def full_name(%__MODULE__{} = profile) do
+    [profile.last_name, profile.first_name, profile.patronymic]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" ")
   end
 end

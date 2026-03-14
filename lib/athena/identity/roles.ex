@@ -7,7 +7,8 @@ defmodule Athena.Identity.Roles do
   """
 
   alias Athena.Repo
-  alias Athena.Identity.Role
+  alias Athena.Identity.{Role, Account}
+  import Ecto.Query
 
   @doc """
   Retrieves a paginated list of roles using Flop.
@@ -15,6 +16,15 @@ defmodule Athena.Identity.Roles do
   @spec list_roles(map()) :: {:ok, {[Role.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_roles(params \\ %{}) do
     Flop.validate_and_run(Role, params, for: Role)
+  end
+
+  @doc """
+  Retrieves all roles without pagination.
+  Useful for populating select dropdowns in the UI.
+  """
+  @spec list_all_roles() :: [Role.t()]
+  def list_all_roles do
+    Repo.all(Role)
   end
 
   @doc """
@@ -57,6 +67,15 @@ defmodule Athena.Identity.Roles do
     role
     |> Role.changeset(attrs)
     |> Repo.update()
+    |> case do
+      {:ok, updated_role} ->
+        clear_accounts_cache_for_role(updated_role.id)
+        Phoenix.PubSub.broadcast(Athena.PubSub, "role_updates:#{updated_role.id}", :role_updated)
+        {:ok, updated_role}
+
+      error ->
+        error
+    end
   end
 
   @doc """
@@ -69,7 +88,6 @@ defmodule Athena.Identity.Roles do
   def delete_role(%Role{} = role) do
     Ecto.Multi.new()
     |> Ecto.Multi.delete(:role, role_delete_changeset(role))
-    # |> Oban.insert(:outbox_event, Athena.Workers.RoleDeletedEvent.new(%{role_name: role.name}))
     |> Repo.transaction()
     |> case do
       {:ok, result} ->
@@ -94,5 +112,13 @@ defmodule Athena.Identity.Roles do
     Enum.any?(changeset.errors, fn {field, {_, meta}} ->
       field == :accounts and meta[:constraint] == :foreign
     end)
+  end
+
+  defp clear_accounts_cache_for_role(role_id) do
+    Account
+    |> where([a], a.role_id == ^role_id)
+    |> select([a], a.id)
+    |> Repo.all()
+    |> Enum.each(&Cachex.del(:account_cache, &1))
   end
 end

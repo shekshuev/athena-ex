@@ -1,8 +1,7 @@
 defmodule Athena.Identity.RolesTest do
   use Athena.DataCase, async: true
 
-  alias Athena.Identity.Roles
-  alias Athena.Identity.Role
+  alias Athena.Identity.{Role, Roles, Account}
   import Athena.Factory
 
   describe "list_roles/1" do
@@ -61,13 +60,38 @@ defmodule Athena.Identity.RolesTest do
       role = insert(:role, name: "Manager")
 
       attrs = %{
-        permissions: ["accounts.read", "accounts.update"],
-        policies: %{"accounts.delete" => ["own_only"]}
+        permissions: ["users.read", "users.update"],
+        policies: %{"users.delete" => ["own_only"]}
       }
 
       assert {:ok, updated_role} = Roles.update_role(role, attrs)
-      assert updated_role.permissions == ["accounts.read", "accounts.update"]
-      assert updated_role.policies == %{"accounts.delete" => ["own_only"]}
+      assert updated_role.permissions == ["users.read", "users.update"]
+      assert updated_role.policies == %{"users.delete" => ["own_only"]}
+    end
+
+    test "should clear associated accounts from cache on role update" do
+      role = insert(:role)
+      account1 = insert(:account, role: role)
+      account2 = insert(:account, role: role)
+
+      other_role = insert(:role)
+      other_account = insert(:account, role: other_role)
+
+      Cachex.put(:account_cache, account1.id, account1)
+      Cachex.put(:account_cache, account2.id, account2)
+      Cachex.put(:account_cache, other_account.id, other_account)
+
+      assert {:ok, %Account{}} = Cachex.get(:account_cache, account1.id)
+      assert {:ok, %Account{}} = Cachex.get(:account_cache, account2.id)
+      assert {:ok, %Account{}} = Cachex.get(:account_cache, other_account.id)
+
+      assert {:ok, _updated_role} = Roles.update_role(role, %{name: "Updated Role"})
+
+      assert {:ok, nil} = Cachex.get(:account_cache, account1.id)
+      assert {:ok, nil} = Cachex.get(:account_cache, account2.id)
+
+      assert {:ok, cached_other} = Cachex.get(:account_cache, other_account.id)
+      assert cached_other.id == other_account.id
     end
   end
 

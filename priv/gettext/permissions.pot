@@ -1,0 +1,78 @@
+## This file is a PO Template file.
+##
+## "msgid"s here are often extracted from source code.
+## Add new messages manually only if they're dynamic
+## messages that can't be statically extracted.
+##
+## Run "mix gettext.extract" to bring this file up to
+## date. Leave "msgstr"s empty as changing them here has no
+## effect: edit them in PO (.po) files instead.
+#
+msgid ""
+msgstr ""
+
+msgid "system"
+msgstr ""
+
+msgid "users"
+msgstr ""
+
+msgid "courses"
+msgstr ""
+
+msgid "lessons"
+msgstr ""
+
+msgid "blocks"
+msgstr ""
+
+msgid "progress"
+msgstr ""
+
+msgid "enrollments"
+msgstr ""
+
+msgid "schedule"
+msgstr ""
+
+msgid "instructors"
+msgstr ""
+
+msgid "cohorts"
+msgstr ""
+
+msgid "files"
+msgstr ""
+
+msgid "create"
+msgstr ""
+
+msgid "read"
+msgstr ""
+
+msgid "update"
+msgstr ""
+
+msgid "delete"
+msgstr ""
+
+msgid "publish"
+msgstr ""
+
+msgid "execute"
+msgstr ""
+
+msgid "admin"
+msgstr ""
+
+msgid "own_only"
+msgstr ""
+
+msgid "not_published"
+msgstr ""
+
+msgid "only_published"
+msgstr ""
+
+msgid "published_or_owner"
+msgstr ""

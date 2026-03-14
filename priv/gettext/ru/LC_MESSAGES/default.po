@@ -11,7 +11,7 @@ msgstr ""
 "Language: ru\n"
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100 != 11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10||n%100>=20) ? 1 : 2);\n"
 
-#: lib/athena_web/components/core_components.ex:381
+#: lib/athena_web/components/core_components.ex:378
 #, elixir-autogen, elixir-format
 msgid "Actions"
 msgstr "Действия"
@@ -33,6 +33,7 @@ msgid "We can't find the internet"
 msgstr "Нет подключения к интернету"
 
 #: lib/athena_web/components/core_components.ex:85
+#: lib/athena_web/components/core_components.ex:609
 #, elixir-autogen, elixir-format
 msgid "close"
 msgstr "закрыть"
@@ -98,11 +99,14 @@ msgstr "Неверный логин или пароль"
 msgid "Logged out successfully."
 msgstr "Вы успешно вышли."
 
+#: lib/athena_web/live/admin_live/user_form_component.ex:138
+#: lib/athena_web/live/admin_live/users.ex:188
 #: lib/athena_web/live/auth_live/login.ex:145
 #, elixir-autogen, elixir-format
 msgid "Login"
 msgstr "Логин"
 
+#: lib/athena_web/live/admin_live/user_form_component.ex:144
 #: lib/athena_web/live/auth_live/login.ex:152
 #, elixir-autogen, elixir-format
 msgid "Password"
@@ -162,7 +166,7 @@ msgstr "Управление курсами"
 msgid "Create and edit your course content."
 msgstr "Создавай и редактируй материалы курсов."
 
-#: lib/athena_web/components/core_components.ex:558
+#: lib/athena_web/components/core_components.ex:555
 #: lib/athena_web/components/layouts/dashboard.html.heex:37
 #, elixir-autogen, elixir-format
 msgid "Dashboard"
@@ -193,7 +197,7 @@ msgstr "Глобальные настройки и управление окру
 msgid "Global storage monitoring and quotas."
 msgstr "Мониторинг хранилища и квоты."
 
-#: lib/athena_web/components/core_components.ex:550
+#: lib/athena_web/components/core_components.ex:547
 #, elixir-autogen, elixir-format
 msgid "Go Back"
 msgstr "Назад"
@@ -242,22 +246,18 @@ msgstr "Мои файлы"
 msgid "My Learning"
 msgstr "Моё обучение"
 
-#: lib/athena_web/live/admin_live/roles.ex:9
-#, elixir-autogen, elixir-format
-msgid "RBAC management and permission scopes."
-msgstr "Управление ролями (RBAC) и правами доступа."
-
 #: lib/athena_web/live/studio_live/library.ex:9
 #, elixir-autogen, elixir-format
 msgid "Reusable assets, questions, and materials."
 msgstr "Переиспользуемые материалы, вопросы и ассеты."
 
 #: lib/athena_web/components/layouts/dashboard.html.heex:205
+#: lib/athena_web/live/admin_live/roles.ex:63
 #, elixir-autogen, elixir-format
 msgid "Roles"
 msgstr "Роли"
 
-#: lib/athena_web/live/admin_live/roles.ex:8
+#: lib/athena_web/live/admin_live/roles.ex:161
 #, elixir-autogen, elixir-format
 msgid "Roles & Policies"
 msgstr "Роли и политики"
@@ -290,11 +290,6 @@ msgstr "Системные файлы"
 msgid "System Settings"
 msgstr "Настройки системы"
 
-#: lib/athena_web/live/admin_live/users.ex:9
-#, elixir-autogen, elixir-format
-msgid "System-wide user management."
-msgstr "Управление всеми пользователями системы."
-
 #: lib/athena_web/components/layouts/dashboard.html.heex:151
 #, elixir-autogen, elixir-format
 msgid "Teaching"
@@ -311,7 +306,8 @@ msgid "Upcoming classes, deadlines, and events."
 msgstr "Предстоящие занятия, дедлайны и события."
 
 #: lib/athena_web/components/layouts/dashboard.html.heex:192
-#: lib/athena_web/live/admin_live/users.ex:8
+#: lib/athena_web/live/admin_live/users.ex:63
+#: lib/athena_web/live/admin_live/users.ex:152
 #, elixir-autogen, elixir-format
 msgid "Users"
 msgstr "Пользователи"
@@ -330,3 +326,278 @@ msgstr "Тут будут твои активные курсы и прогрес
 #, elixir-autogen, elixir-format
 msgid "Your personal storage space."
 msgstr "Твоё личное хранилище файлов."
+
+#: lib/athena_web/live/admin_live/roles.ex:212
+#, elixir-autogen, elixir-format
+msgid "%{count} permissions"
+msgstr "%{count} прав"
+
+#: lib/athena_web/live/admin_live/roles.ex:203
+#, elixir-autogen, elixir-format
+msgid "Access Level"
+msgstr "Уровень доступа"
+
+#: lib/athena_web/live/admin_live/roles.ex:285
+#, elixir-autogen, elixir-format
+msgid "Are you sure you want to delete this role? This action cannot be undone."
+msgstr "Уверен, что хочешь удалить эту роль? Это действие нельзя отменить."
+
+#: lib/athena_web/components/core_components.ex:595
+#: lib/athena_web/live/admin_live/role_form_component.ex:202
+#: lib/athena_web/live/admin_live/user_form_component.ex:188
+#, elixir-autogen, elixir-format
+msgid "Cancel"
+msgstr "Отмена"
+
+#: lib/athena_web/live/admin_live/roles.ex:139
+#, elixir-autogen, elixir-format
+msgid "Cannot delete role because it is assigned to users"
+msgstr "Невозможно удалить роль, так как она уже назначена пользователям"
+
+#: lib/athena_web/live/admin_live/roles.ex:68
+#: lib/athena_web/live/admin_live/roles.ex:173
+#, elixir-autogen, elixir-format
+msgid "Create Role"
+msgstr "Создать роль"
+
+#: lib/athena_web/live/admin_live/roles.ex:216
+#: lib/athena_web/live/admin_live/users.ex:200
+#, elixir-autogen, elixir-format
+msgid "Created At"
+msgstr "Дата создания"
+
+#: lib/athena_web/live/admin_live/roles.ex:287
+#: lib/athena_web/live/admin_live/users.ex:257
+#, elixir-autogen, elixir-format
+msgid "Delete"
+msgstr "Удалить"
+
+#: lib/athena_web/live/admin_live/roles.ex:283
+#, elixir-autogen, elixir-format
+msgid "Delete Role"
+msgstr "Удалить роль"
+
+#: lib/athena_web/live/admin_live/roles.ex:79
+#, elixir-autogen, elixir-format
+msgid "Edit Role"
+msgstr "Редактировать роль"
+
+#: lib/athena_web/live/admin_live/roles.ex:164
+#, elixir-autogen, elixir-format
+msgid "Manage system roles, permissions, and access policies."
+msgstr "Управление системными ролями, правами и политиками доступа."
+
+#: lib/athena_web/live/admin_live/roles.ex:200
+#, elixir-autogen, elixir-format
+msgid "Name"
+msgstr "Название"
+
+#: lib/athena_web/components/core_components.ex:672
+#, elixir-autogen, elixir-format
+msgid "Page %{current} of %{total}"
+msgstr "Страница %{current} из %{total}"
+
+#: lib/athena_web/live/admin_live/role_form_component.ex:90
+#, elixir-autogen, elixir-format
+msgid "Role created successfully"
+msgstr "Роль успешно создана"
+
+#: lib/athena_web/live/admin_live/roles.ex:131
+#, elixir-autogen, elixir-format
+msgid "Role deleted successfully"
+msgstr "Роль успешно удалена"
+
+#: lib/athena_web/live/admin_live/role_form_component.ex:75
+#, elixir-autogen, elixir-format
+msgid "Role updated successfully"
+msgstr "Роль успешно обновлена"
+
+#: lib/athena_web/live/admin_live/role_form_component.ex:204
+#: lib/athena_web/live/admin_live/user_form_component.ex:190
+#, elixir-autogen, elixir-format
+msgid "Save"
+msgstr "Сохранить"
+
+#: lib/athena_web/live/admin_live/role_form_component.ex:203
+#: lib/athena_web/live/admin_live/user_form_component.ex:189
+#, elixir-autogen, elixir-format
+msgid "Saving..."
+msgstr "Сохранение..."
+
+#: lib/athena_web/live/admin_live/roles.ex:188
+#, elixir-autogen, elixir-format
+msgid "Search roles..."
+msgstr "Поиск ролей..."
+
+#: lib/athena_web/live/admin_live/roles.ex:206
+#, elixir-autogen, elixir-format
+msgid "Super Admin"
+msgstr "Суперадмин"
+
+#: lib/athena_web/live/admin_live/role_form_component.ex:144
+#, elixir-autogen, elixir-format
+msgid "Permissions & Policies"
+msgstr "Права и политики"
+
+#: lib/athena_web/live/admin_live/role_form_component.ex:138
+#, elixir-autogen, elixir-format
+msgid "Role Name"
+msgstr "Название роли"
+
+#: lib/athena_web/live/admin_live/user_form_component.ex:135
+#, elixir-autogen, elixir-format
+msgid "Account Access"
+msgstr "Данные для входа"
+
+#: lib/athena_web/live/admin_live/users.ex:122
+#, elixir-autogen, elixir-format
+msgid "Account deleted successfully"
+msgstr "Аккаунт успешно удален"
+
+#: lib/athena_web/live/admin_live/user_form_component.ex:31
+#, elixir-autogen, elixir-format
+msgid "Active"
+msgstr "Активен"
+
+#: lib/athena_web/live/admin_live/users.ex:253
+#, elixir-autogen, elixir-format
+msgid "Are you sure you want to delete this account? This will also block profile access."
+msgstr "Уверен, что хочешь удалить этот аккаунт? Это также заблокирует доступ к профилю."
+
+#: lib/athena_web/live/admin_live/user_form_component.ex:184
+#, elixir-autogen, elixir-format
+msgid "Birth Date"
+msgstr "Дата рождения"
+
+#: lib/athena_web/live/admin_live/user_form_component.ex:32
+#, elixir-autogen, elixir-format
+msgid "Blocked"
+msgstr "Заблокирован"
+
+#: lib/athena_web/live/admin_live/users.ex:68
+#: lib/athena_web/live/admin_live/users.ex:161
+#, elixir-autogen, elixir-format
+msgid "Create User"
+msgstr "Создать пользователя"
+
+#: lib/athena_web/live/admin_live/users.ex:251
+#, elixir-autogen, elixir-format
+msgid "Delete User"
+msgstr "Удалить пользователя"
+
+#: lib/athena_web/live/admin_live/users.ex:79
+#, elixir-autogen, elixir-format
+msgid "Edit User"
+msgstr "Редактировать пользователя"
+
+#: lib/athena_web/live/admin_live/users.ex:127
+#, elixir-autogen, elixir-format
+msgid "Failed to delete account"
+msgstr "Не удалось удалить аккаунт"
+
+#: lib/athena_web/live/admin_live/user_form_component.ex:180
+#, elixir-autogen, elixir-format
+msgid "First Name"
+msgstr "Имя"
+
+#: lib/athena_web/live/admin_live/users.ex:191
+#, elixir-autogen, elixir-format
+msgid "Full Name"
+msgstr "ФИО"
+
+#: lib/athena_web/live/admin_live/user_form_component.ex:179
+#, elixir-autogen, elixir-format
+msgid "Last Name"
+msgstr "Фамилия"
+
+#: lib/athena_web/live/admin_live/user_form_component.ex:146
+#, elixir-autogen, elixir-format
+msgid "Leave blank to keep current"
+msgstr "Оставьте пустым, чтобы не менять"
+
+#: lib/athena_web/live/admin_live/users.ex:153
+#, elixir-autogen, elixir-format
+msgid "Manage system accounts and user profiles."
+msgstr "Управление системными аккаунтами и профилями пользователей."
+
+#: lib/athena_web/live/admin_live/user_form_component.ex:183
+#, elixir-autogen, elixir-format
+msgid "Patronymic"
+msgstr "Отчество"
+
+#: lib/athena_web/live/admin_live/user_form_component.ex:175
+#, elixir-autogen, elixir-format
+msgid "Personal Information"
+msgstr "Личные данные"
+
+#: lib/athena_web/live/admin_live/user_form_component.ex:151
+#, elixir-autogen, elixir-format
+msgid "Repeat Password"
+msgstr "Повторите пароль"
+
+#: lib/athena_web/live/admin_live/user_form_component.ex:160
+#: lib/athena_web/live/admin_live/users.ex:197
+#, elixir-autogen, elixir-format
+msgid "Role"
+msgstr "Роль"
+
+#: lib/athena_web/live/admin_live/users.ex:176
+#, elixir-autogen, elixir-format
+msgid "Search users..."
+msgstr "Поиск пользователей..."
+
+#: lib/athena_web/live/admin_live/user_form_component.ex:163
+#, elixir-autogen, elixir-format
+msgid "Select a role..."
+msgstr "Выберите роль..."
+
+#: lib/athena_web/live/admin_live/user_form_component.ex:168
+#: lib/athena_web/live/admin_live/users.ex:194
+#, elixir-autogen, elixir-format
+msgid "Status"
+msgstr "Статус"
+
+#: lib/athena_web/live/admin_live/user_form_component.ex:33
+#, elixir-autogen, elixir-format
+msgid "Temporary Blocked"
+msgstr "Временно заблокирован"
+
+#: lib/athena_web/live/admin_live/user_form_component.ex:91
+#, elixir-autogen, elixir-format
+msgid "User created successfully"
+msgstr "Пользователь успешно создан"
+
+#: lib/athena_web/live/admin_live/user_form_component.ex:108
+#, elixir-autogen, elixir-format
+msgid "User updated successfully"
+msgstr "Пользователь успешно обновлен"
+
+#: lib/athena_web/live/admin_live/roles.ex:71
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to create roles."
+msgstr "У вас нет прав на создание ролей."
+
+#: lib/athena_web/live/admin_live/users.ex:71
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to create users."
+msgstr "У вас нет прав на создание пользователей."
+
+#: lib/athena_web/live/admin_live/roles.ex:117
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to delete roles."
+msgstr "У вас нет прав на удаление ролей."
+
+#: lib/athena_web/live/admin_live/users.ex:112
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to delete users."
+msgstr "У вас нет прав на удаление пользователей."
+
+#: lib/athena_web/live/admin_live/roles.ex:84
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to edit roles."
+msgstr "У вас нет прав на редактирование ролей."
+
+#: lib/athena_web/live/admin_live/users.ex:84
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to edit users."
+msgstr "У вас нет прав на редактирование пользователей."

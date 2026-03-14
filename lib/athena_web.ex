@@ -93,6 +93,8 @@ defmodule AthenaWeb do
       alias Phoenix.LiveView.JS
       alias AthenaWeb.Layouts
 
+      alias Athena.Identity
+
       # Routes generation with the ~p sigil
       unquote(verified_routes())
     end
