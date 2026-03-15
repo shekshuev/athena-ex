@@ -84,7 +84,8 @@ defmodule Athena.MixProject do
       {:ex_aws, "~> 2.5"},
       {:ex_aws_s3, "~> 2.5"},
       {:hackney, "~> 1.18"},
-      {:sweet_xml, "~> 0.7"}
+      {:sweet_xml, "~> 0.7"},
+      {:ecto_ltree, "~> 0.3.0"}
     ]
   end
 
