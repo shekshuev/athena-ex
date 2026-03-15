@@ -68,6 +68,17 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
+  config :ex_aws,
+    access_key_id: System.get_env("MINIO_ACCESS_KEY") || raise("MINIO_ACCESS_KEY is missing"),
+    secret_access_key: System.get_env("MINIO_SECRET_KEY") || raise("MINIO_SECRET_KEY is missing"),
+    s3: [
+      scheme: System.get_env("MINIO_SCHEME") || "https://",
+      host: System.get_env("MINIO_HOST") || raise("MINIO_HOST is missing"),
+      port: String.to_integer(System.get_env("MINIO_PORT") || "443")
+    ]
+
+  config :athena, Athena.Media, bucket: System.get_env("MINIO_BUCKET") || "athena-private"
+
   # ## SSL Support
   #
   # To get SSL working, you will need to add the `https` key

@@ -39,3 +39,15 @@ config :phoenix_live_view,
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+# Config for local MinIO 
+config :ex_aws,
+  access_key_id: "minioadmin",
+  secret_access_key: "minioadmin",
+  s3: [
+    scheme: "http://",
+    host: "localhost",
+    port: 9000
+  ]
+
+config :athena, Athena.Media, bucket: "athena-test-#{System.get_env("MIX_TEST_PARTITION") || "0"}"

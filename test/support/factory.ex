@@ -5,6 +5,7 @@ defmodule Athena.Factory do
   use ExMachina.Ecto, repo: Athena.Repo
 
   alias Athena.Identity.{Account, Role, Profile}
+  alias Athena.Media.{File, Quota}
 
   def role_factory do
     %Role{
@@ -28,6 +29,25 @@ defmodule Athena.Factory do
       first_name: "John",
       last_name: sequence(:last_name, &"Doe #{&1}"),
       owner: build(:account)
+    }
+  end
+
+  def media_quota_factory do
+    %Quota{
+      role_id: Ecto.UUID.generate(),
+      limit_bytes: 500 * 1024 * 1024
+    }
+  end
+
+  def media_file_factory do
+    %File{
+      bucket: Application.get_env(:athena, Athena.Media)[:bucket] || "athena-test",
+      key: sequence(:key, &"users/test_owner/files/doc_#{&1}.pdf"),
+      original_name: "document.pdf",
+      mime_type: "application/pdf",
+      size: 1024 * 1024,
+      context: :personal,
+      owner_id: Ecto.UUID.generate()
     }
   end
 end
