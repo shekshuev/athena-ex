@@ -43,13 +43,15 @@ cd athena-ex
 
 #### Project Setup
 
-Ensure PostgreSQL is running. Configure your credentials in `config/dev.exs` if they differ from the defaults, then run the setup task:
+We use Docker Compose to spin up local infrastructure (PostgreSQL & MinIO) with zero configuration required.
 
 ```bash
+# 1. Start the local databases and object storage
+docker-compose -f docker-compose.infra.yml up -d
+
+# 2. Install dependencies, create DB, run migrations, and build assets
 mix setup
 ```
-
-_This command automatically installs dependencies, creates the database, runs migrations, executes the seed script (`priv/repo/seeds.exs`), and builds frontend assets._
 
 #### Start the Server
 
@@ -57,7 +59,15 @@ _This command automatically installs dependencies, creates the database, runs mi
 iex -S mix phx.server
 ```
 
-The application will be available at `http://localhost:4000`.
+The application will be available at `http://localhost:4000`. MinIO console is available at `http://localhost:9001` (Creds: `minioadmin` / `minioadmin`).
+
+## Production Deployment
+
+For production, Athena uses a separate `docker-compose.prod.yml` which relies entirely on environment variables for security.
+
+1. Copy `.env.example` to `.env` and fill in your secure passwords.
+2. Build your Elixir Docker image.
+3. Run `docker-compose -f docker-compose.prod.yml up -d`.
 
 ## Manual User Creation (IEx)
 

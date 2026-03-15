@@ -17,6 +17,7 @@ defmodule Athena.Application do
       # Start a worker by calling: Athena.Worker.start_link(arg)
       # {Athena.Worker, arg},
       # Start to serve requests, typically the last entry
+      Athena.Media.EventListener,
       {Cachex, name: :account_cache},
       AthenaWeb.Endpoint
     ]
