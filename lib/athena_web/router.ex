@@ -52,10 +52,13 @@ defmodule AthenaWeb.Router do
       live "/files", FileLive.Index, :index
       live "/community", CommunityLive.Index, :index
 
-      live "/studio", StudioLive.Index, :index
-      live "/studio/courses", StudioLive.Courses, :index
-      live "/studio/grading", StudioLive.Grading, :index
-      live "/studio/library", StudioLive.Library, :index
+      scope "/studio", StudioLive do
+        live "/courses", Courses, :index
+        live "/courses/new", Courses, :new
+        live "/courses/:id/edit", Courses, :edit
+        live "/grading", Grading, :index
+        live "/library", Library, :index
+      end
 
       live "/teaching/cohorts", TeachingLive.Cohorts, :index
       live "/teaching/instructors", TeachingLive.Instructors, :index
