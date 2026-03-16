@@ -41,9 +41,6 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
     ~H"""
     <div class="flex flex-col h-full animate-in fade-in duration-200">
       <div class="flex items-center gap-3 py-4 border-b border-base-300">
-        <div class="p-2 bg-base-200 rounded-md">
-          <.icon name="hero-book-open" class="size-5 text-primary" />
-        </div>
         <div>
           <div class="text-xs text-base-content/50 font-bold uppercase tracking-wider">
             {gettext("Type")}
@@ -71,7 +68,17 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
         </.form>
       </div>
 
-      <div class="pt-4 border-t border-base-300 mt-auto pb-4">
+      <div class="pt-4 border-t border-base-300 mt-auto pb-4 space-y-2">
+        <button
+          type="button"
+          phx-click="open_move_modal"
+          phx-value-id={@section.id}
+          class="btn btn-neutral btn-soft w-full"
+        >
+          <.icon name="hero-folder-arrow-down" class="size-4" />
+          {gettext("Move To...")}
+        </button>
+
         <button
           type="button"
           phx-click="delete_section"
@@ -92,12 +99,6 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
     ~H"""
     <div class="flex flex-col h-full animate-in fade-in duration-200">
       <div class="flex items-center gap-3 py-4 border-b border-base-300">
-        <div class="p-2 bg-base-200 rounded-md">
-          <.icon
-            name={if @block.type == :code, do: "hero-code-bracket", else: "hero-align-left"}
-            class="size-5 text-primary"
-          />
-        </div>
         <div>
           <div class="text-xs text-base-content/50 font-bold uppercase tracking-wider">
             {gettext("Type")}

@@ -81,16 +81,39 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
           </div>
         </div>
 
-        <div class="sticky bottom-4 mt-auto flex justify-center z-20 pointer-events-none pb-8">
-          <div class="pointer-events-auto bg-base-100 rounded-full shadow-xl ring-1 ring-base-300 p-1 flex gap-1">
-            <button phx-click="add_text_block" class="btn btn-primary rounded-full px-6">
-              <.icon name="hero-align-left" class="size-4" />
-              {gettext("Text")}
-            </button>
-            <button phx-click="add_code_block" class="btn btn-neutral btn-soft rounded-full px-6">
-              <.icon name="hero-code-bracket" class="size-4" />
-              {gettext("Code")}
-            </button>
+        <div class="sticky bottom-8 mt-auto flex justify-center z-30 pointer-events-none">
+          <div class="dropdown dropdown-top dropdown-center pointer-events-auto">
+            <div
+              tabindex="0"
+              role="button"
+              class="btn btn-primary btn-circle shadow-2xl size-14 group"
+            >
+              <.icon name="hero-plus" class="size-8 " />
+            </div>
+            <ul
+              tabindex="0"
+              class="dropdown-content z-1 menu p-2 shadow-2xl bg-base-100 border border-base-200 rounded-2xl w-100 mb-4 animate-in slide-in-from-bottom-2 duration-200"
+            >
+              <li class="menu-title text-xs uppercase tracking-widest opacity-50 px-4 py-2">
+                {gettext("Add Content")}
+              </li>
+              <li>
+                <.button
+                  phx-click="add_text_block"
+                  class="btn btn-ghost justify-start font-medium gap-3 h-12"
+                >
+                  {gettext("Text Block")}
+                </.button>
+              </li>
+              <li>
+                <.button
+                  phx-click="add_code_block"
+                  class="btn btn-ghost justify-start font-medium gap-3 h-12"
+                >
+                  {gettext("Code Sandbox")}
+                </.button>
+              </li>
+            </ul>
           </div>
         </div>
       </div>

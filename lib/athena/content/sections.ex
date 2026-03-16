@@ -31,19 +31,9 @@ defmodule Athena.Content.Sections do
   def create_section(attrs) do
     section_id = Map.get(attrs, "id") || Ecto.UUID.generate()
     parent_id = Map.get(attrs, "parent_id")
-
-    parent_path =
-      if parent_id do
-        case Repo.get(Section, parent_id) do
-          nil -> nil
-          parent -> parent.path
-        end
-      else
-        nil
-      end
+    parent_path = get_parent_path(parent_id)
 
     path_string = Section.build_path(section_id, parent_path)
-
     merged_attrs = Map.merge(attrs, %{"path" => path_string, "id" => section_id})
 
     %Section{id: section_id}
@@ -53,12 +43,21 @@ defmodule Athena.Content.Sections do
 
   @doc """
   Updates an existing section.
+
+  If the `parent_id` is changed, this automatically recalculates the `ltree` path
+  for the section and ALL its descendant sections in the tree to keep the hierarchy consistent.
   """
   @spec update_section(Section.t(), map()) :: {:ok, Section.t()} | {:error, Ecto.Changeset.t()}
   def update_section(%Section{} = section, attrs) do
-    section
-    |> Section.changeset(attrs)
-    |> Repo.update()
+    new_parent_id = Map.get(attrs, "parent_id", Map.get(attrs, :parent_id, :not_provided))
+
+    if parent_id_changed?(section.parent_id, new_parent_id) do
+      handle_parent_id_change(section, attrs, new_parent_id)
+    else
+      section
+      |> Section.changeset(attrs)
+      |> Repo.update()
+    end
   end
 
   @doc """
@@ -88,6 +87,78 @@ defmodule Athena.Content.Sections do
     build_tree(sections, nil)
   end
 
+  @doc """
+  Reorders a section among its siblings.
+  """
+  @spec reorder_section(Section.t(), integer()) :: {:ok, map()} | {:error, any()}
+  def reorder_section(%Section{} = section, new_index) when is_integer(new_index) do
+    query =
+      if is_nil(section.parent_id) do
+        where(Section, [s], s.course_id == ^section.course_id and is_nil(s.parent_id))
+      else
+        where(
+          Section,
+          [s],
+          s.course_id == ^section.course_id and s.parent_id == ^section.parent_id
+        )
+      end
+
+    siblings =
+      query
+      |> order_by([s], asc: s.order, asc: s.inserted_at)
+      |> Repo.all()
+
+    siblings_without_section = Enum.reject(siblings, &(&1.id == section.id))
+    updated_siblings = List.insert_at(siblings_without_section, new_index, section)
+
+    Repo.transaction(fn ->
+      updated_siblings
+      |> Enum.with_index()
+      |> Enum.each(&update_sibling_order(&1, section.id))
+    end)
+
+    {:ok, %{section | order: new_index}}
+  end
+
+  defp update_sibling_order({sib, index}, moved_section_id) do
+    if sib.id == moved_section_id or sib.order != index do
+      sib
+      |> Ecto.Changeset.change(%{order: index})
+      |> Repo.update!()
+    end
+  end
+
+  defp parent_id_changed?(_old_id, :not_provided), do: false
+  defp parent_id_changed?(old_id, new_id), do: old_id != new_id
+
+  defp get_parent_path(nil), do: nil
+
+  defp get_parent_path(parent_id) do
+    case Repo.get(Section, parent_id) do
+      nil -> nil
+      parent -> parent.path
+    end
+  end
+
+  defp handle_parent_id_change(section, attrs, new_parent_id) do
+    Repo.transaction(fn ->
+      new_parent_path = get_parent_path(new_parent_id)
+      new_path_str = Section.build_path(section.id, new_parent_path)
+      merged_attrs = Map.merge(attrs, %{"path" => new_path_str})
+
+      old_path_str = Enum.join(section.path.labels, ".")
+
+      case section |> Section.changeset(merged_attrs) |> Repo.update() do
+        {:ok, updated_section} ->
+          update_descendants_paths(updated_section.course_id, old_path_str, new_path_str)
+          updated_section
+
+        {:error, changeset} ->
+          Repo.rollback(changeset)
+      end
+    end)
+  end
+
   @spec build_tree([Section.t()], String.t() | nil) :: [Section.t()]
   defp build_tree(sections, parent_id) do
     sections
@@ -95,6 +166,23 @@ defmodule Athena.Content.Sections do
     |> Enum.map(fn section ->
       children = build_tree(sections, section.id)
       Map.put(section, :children, children)
+    end)
+  end
+
+  defp update_descendants_paths(course_id, old_path_str, new_path_str) do
+    Section
+    |> where([s], s.course_id == ^course_id)
+    |> Repo.all()
+    |> Enum.each(fn s ->
+      current_path_str = Enum.join(s.path.labels, ".")
+
+      if String.starts_with?(current_path_str, old_path_str <> ".") do
+        new_child_path = String.replace_prefix(current_path_str, old_path_str, new_path_str)
+
+        s
+        |> Ecto.Changeset.change(%{path: new_child_path})
+        |> Repo.update!()
+      end
     end)
   end
 end

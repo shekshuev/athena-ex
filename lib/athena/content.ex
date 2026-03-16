@@ -22,6 +22,7 @@ defmodule Athena.Content do
   defdelegate update_section(section, attrs), to: Sections
   defdelegate delete_section(section), to: Sections
   defdelegate get_course_tree(course_id), to: Sections
+  defdelegate reorder_section(section, new_index), to: Sections
 
   defdelegate list_blocks_by_section(section_id), to: Blocks
   defdelegate get_block(id), to: Blocks
