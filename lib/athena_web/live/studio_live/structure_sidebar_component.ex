@@ -1,10 +1,17 @@
 defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponent do
   @moduledoc """
-  LiveComponent for rendering the list of sections (lessons) in the Builder.
-  Handles Drag-and-Drop ordering and selecting the active section.
+  LiveComponent for rendering the list of sections in the Builder.
+
+  Provides navigation between different sections of the course. It includes
+  drag-and-drop reordering functionality via the Sortable.js hook and handles
+  the creation of new sections.
   """
   use AthenaWeb, :live_component
 
+  @doc """
+  Renders the sidebar with the list of sections and the "Add Section" button.
+  """
+  @spec render(map()) :: Phoenix.LiveView.Rendered.t()
   @impl true
   def render(assigns) do
     ~H"""
@@ -29,7 +36,7 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponent do
           <div class="flex items-center gap-3 overflow-hidden">
             <.icon
               name="hero-bars-2"
-              class="drag-handle size-4 opacity-0 group-hover:opacity-50 hover:!opacity-100 cursor-grab shrink-0 transition-opacity"
+              class="drag-handle size-4 opacity-0 group-hover:opacity-50 hover:opacity-100! cursor-grab shrink-0 transition-opacity"
             />
             <span class="truncate">{section.title}</span>
           </div>
@@ -37,12 +44,12 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponent do
           <.icon
             :if={@active_section_id == section.id}
             name="hero-chevron-right"
-            class="size-4 shrink-0"
+            class="size-4 shrink-0 text-primary"
           />
         </div>
 
         <div :if={@sections == []} class="text-xs text-base-content/50 italic p-4 text-center">
-          {gettext("No sections yet. Create your first lesson!")}
+          {gettext("No sections yet. Create your first one!")}
         </div>
       </div>
 

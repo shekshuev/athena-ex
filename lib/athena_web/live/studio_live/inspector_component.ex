@@ -1,10 +1,21 @@
 defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   @moduledoc """
   LiveComponent for the right sidebar in the Builder.
+
   Dynamically renders settings for the currently selected Section or Block.
+  Allows the user to update metadata (like titles, execution modes, languages)
+  and delete the selected entity. Uses explicit functional components for
+  different entity types to keep the render function clean.
   """
   use AthenaWeb, :live_component
 
+  @doc """
+  Renders the inspector panel.
+
+  Delegates to specific private function components depending on whether
+  a section or a block is currently selected in the builder workspace.
+  """
+  @spec render(map()) :: Phoenix.LiveView.Rendered.t()
   @impl true
   def render(assigns) do
     ~H"""
@@ -25,6 +36,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
     """
   end
 
+  @spec section_inspector(map()) :: Phoenix.LiveView.Rendered.t()
   defp section_inspector(assigns) do
     ~H"""
     <div class="flex flex-col h-full animate-in fade-in duration-200">
@@ -37,21 +49,26 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
             {gettext("Type")}
           </div>
           <div class="text-sm font-medium">
-            {gettext("Lesson")}
+            {gettext("Section")}
           </div>
         </div>
       </div>
 
       <div class="overflow-y-auto py-4 space-y-6 flex-1">
-        <form phx-change="update_section_meta" phx-submit="update_section_meta">
+        <.form
+          for={nil}
+          id={"section-inspector-form-#{@section.id}"}
+          phx-change="update_section_meta"
+          phx-submit="update_section_meta"
+        >
           <.input
             type="text"
             name="title"
             value={@section.title}
-            label={gettext("Lesson Title")}
+            label={gettext("Section Title")}
             phx-debounce="500"
           />
-        </form>
+        </.form>
       </div>
 
       <div class="pt-4 border-t border-base-300 mt-auto pb-4">
@@ -59,17 +76,18 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
           type="button"
           phx-click="delete_section"
           phx-value-id={@section.id}
-          data-confirm={gettext("Are you sure you want to delete this lesson and all its blocks?")}
+          data-confirm={gettext("Are you sure you want to delete this section and all its blocks?")}
           class="btn btn-error btn-soft w-full"
         >
           <.icon name="hero-trash" class="size-4" />
-          {gettext("Delete Lesson")}
+          {gettext("Delete Section")}
         </button>
       </div>
     </div>
     """
   end
 
+  @spec block_inspector(map()) :: Phoenix.LiveView.Rendered.t()
   defp block_inspector(assigns) do
     ~H"""
     <div class="flex flex-col h-full animate-in fade-in duration-200">
@@ -91,8 +109,12 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
       </div>
 
       <div class="overflow-y-auto py-4 space-y-6 flex-1">
-        <form phx-change="update_block_meta">
-          <input type="hidden" name="id" value={@block.id} />
+        <.form
+          for={nil}
+          id={"block-inspector-form-#{@block.id}"}
+          phx-change="update_block_meta"
+        >
+          <.input type="hidden" name="id" value={@block.id} />
 
           <%= if @block.type == :code do %>
             <div class="space-y-4">
@@ -120,7 +142,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
               <span>{gettext("Text blocks don't require additional configuration.")}</span>
             </div>
           <% end %>
-        </form>
+        </.form>
       </div>
 
       <div class="pt-4 border-t border-base-300 mt-auto pb-4 space-y-2">

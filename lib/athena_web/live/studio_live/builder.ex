@@ -1,14 +1,23 @@
 defmodule AthenaWeb.StudioLive.Builder do
   @moduledoc """
   The mother of all views: Course Builder Studio.
+
   Handles the layout and global state for the Sidebar, Canvas, and Inspector.
+  Manages the creation, reordering, and metadata updates for both sections
+  and content blocks using real-time Phoenix LiveView events.
   """
   use AthenaWeb, :live_view
 
   alias Athena.Content
+  alias Athena.Content.Block
 
   on_mount {AthenaWeb.Hooks.Permission, "courses.update"}
 
+  @doc """
+  Initializes the LiveView, loading the course, its section tree, and blocks
+  for the active section. Configures media upload constraints.
+  """
+  @spec mount(map(), map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def mount(%{"id" => course_id}, _session, socket) do
     case Content.get_course(course_id) do
@@ -17,9 +26,11 @@ defmodule AthenaWeb.StudioLive.Builder do
         active_section_id = if sections != [], do: hd(sections).id, else: nil
 
         blocks =
-          if active_section_id,
-            do: Content.list_blocks_by_section(active_section_id),
-            else: []
+          if active_section_id do
+            Content.list_blocks_by_section(active_section_id)
+          else
+            []
+          end
 
         {:ok,
          socket
@@ -43,10 +54,23 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
+  @doc """
+  Handles URL parameters for the builder view.
+  """
+  @spec handle_params(map(), String.t(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_params(_params, _url, socket) do
     {:noreply, socket}
   end
+
+  @doc """
+  Handles UI events for managing sections, blocks, and media uploads.
+  """
+  @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
+
+  # --- SECTION EVENTS ---
 
   @impl true
   def handle_event("select_section", %{"id" => id}, socket) do
@@ -58,7 +82,7 @@ defmodule AthenaWeb.StudioLive.Builder do
     course = socket.assigns.course
 
     attrs = %{
-      "title" => gettext("New Lesson"),
+      "title" => gettext("New Section"),
       "course_id" => course.id,
       "owner_id" => socket.assigns.current_user.id
     }
@@ -77,13 +101,33 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
+  def handle_event("update_section_meta", %{"title" => title}, socket) do
+    section = find_section_in_tree(socket.assigns.sections, socket.assigns.active_section_id)
+
+    {:ok, _updated_section} = Content.update_section(section, %{"title" => title})
+
+    updated_sections = Content.get_course_tree(socket.assigns.course.id)
+    {:noreply, assign(socket, sections: updated_sections)}
+  end
+
   def handle_event(
         "reorder",
         %{"id" => _id, "new_index" => _new_index, "old_index" => _old_index},
         socket
       ) do
+    # TODO: Implement section reordering in the database
     {:noreply, socket}
   end
+
+  def handle_event("delete_section", %{"id" => id}, socket) do
+    section = find_section_in_tree(socket.assigns.sections, id)
+    {:ok, _} = Content.delete_section(section)
+
+    updated_sections = Content.get_course_tree(socket.assigns.course.id)
+    {:noreply, assign(socket, sections: updated_sections, active_section_id: nil, blocks: [])}
+  end
+
+  # --- BLOCK EVENTS ---
 
   def handle_event("select_block", %{"id" => id}, socket) do
     {:noreply, assign(socket, active_block_id: id)}
@@ -147,23 +191,6 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
-  def handle_event("update_section_meta", %{"title" => title}, socket) do
-    section = find_section_in_tree(socket.assigns.sections, socket.assigns.active_section_id)
-
-    {:ok, _updated_section} = Content.update_section(section, %{"title" => title})
-
-    updated_sections = Content.get_course_tree(socket.assigns.course.id)
-    {:noreply, assign(socket, sections: updated_sections)}
-  end
-
-  def handle_event("delete_section", %{"id" => id}, socket) do
-    section = find_section_in_tree(socket.assigns.sections, id)
-    {:ok, _} = Content.delete_section(section)
-
-    updated_sections = Content.get_course_tree(socket.assigns.course.id)
-    {:noreply, assign(socket, sections: updated_sections, active_section_id: nil, blocks: [])}
-  end
-
   def handle_event("update_block_meta", params, socket) do
     id = params["id"]
     block = Enum.find(socket.assigns.blocks, &(&1.id == id))
@@ -186,6 +213,8 @@ defmodule AthenaWeb.StudioLive.Builder do
     updated_blocks = Enum.reject(socket.assigns.blocks, &(&1.id == id))
     {:noreply, assign(socket, blocks: updated_blocks, active_block_id: nil)}
   end
+
+  # --- MEDIA UPLOAD EVENTS ---
 
   def handle_event(
         "request_media_upload",
@@ -230,7 +259,9 @@ defmodule AthenaWeb.StudioLive.Builder do
     active_section = find_section_in_tree(assigns.sections, assigns.active_section_id)
     active_block = Enum.find(assigns.blocks, &(&1.id == assigns.active_block_id))
 
-    assigns = assign(assigns, active_section: active_section, active_block: active_block)
+    assigns =
+      assigns
+      |> assign(active_section: active_section, active_block: active_block)
 
     ~H"""
     <div class="fixed inset-0 pt-16 lg:pt-0 z-50 flex bg-base-200">
@@ -291,7 +322,7 @@ defmodule AthenaWeb.StudioLive.Builder do
         title={gettext("Upload Media")}
         on_cancel={JS.push("cancel_upload")}
       >
-        <form id="upload-form" phx-submit="save_media" phx-change="validate_media">
+        <.form for={nil} id="upload-form" phx-submit="save_media" phx-change="validate_media">
           <div
             class="border-2 border-dashed border-base-300 rounded-lg p-8 text-center"
             phx-drop-target={@uploads.media.ref}
@@ -327,11 +358,13 @@ defmodule AthenaWeb.StudioLive.Builder do
               {gettext("Upload")}
             </button>
           </div>
-        </form>
+        </.form>
       </.modal>
     </div>
     """
   end
+
+  # --- PRIVATE HELPERS ---
 
   defp find_section_in_tree(_, nil), do: nil
 
@@ -347,7 +380,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   defp replace_block(blocks, updated_block) do
     Enum.map(blocks, fn
-      %Athena.Content.Block{id: id} when id == updated_block.id -> updated_block
+      %Block{id: id} when id == updated_block.id -> updated_block
       b -> b
     end)
   end

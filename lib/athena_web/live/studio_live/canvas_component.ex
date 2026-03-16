@@ -1,9 +1,22 @@
 defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
   @moduledoc """
   LiveComponent for rendering the main canvas with blocks.
+
+  This component acts as the primary workspace for the course builder. 
+  It displays the list of blocks for the currently selected section, handles 
+  the drag-and-drop reordering interface via Sortable.js, renders the TipTap 
+  editor for text blocks, and provides floating controls for adding new blocks.
   """
   use AthenaWeb, :live_component
 
+  @doc """
+  Renders the canvas UI based on the selected section and its blocks.
+
+  Displays a prompt if no section is active. If a section is active, iterates 
+  through the `@blocks` assign and renders the appropriate interactive UI 
+  for each block type (:text, :code, etc.).
+  """
+  @spec render(map()) :: Phoenix.LiveView.Rendered.t()
   @impl true
   def render(assigns) do
     ~H"""
@@ -37,7 +50,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
               <.icon name="hero-bars-3" class="size-5" />
             </div>
 
-            <div class="p-4">
+            <div class="p-4 sm:px-6 py-4">
               <%= if block.type == :text do %>
                 <div
                   id={"tiptap-#{block.id}"}
