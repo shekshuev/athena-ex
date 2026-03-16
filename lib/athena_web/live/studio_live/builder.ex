@@ -28,7 +28,14 @@ defmodule AthenaWeb.StudioLive.Builder do
            sections: sections,
            active_section_id: active_section_id,
            active_block_id: nil,
-           blocks: blocks
+           blocks: blocks,
+           uploading_for_block: nil,
+           uploading_media_type: nil
+         )
+         |> allow_upload(:media,
+           accept: ~w(.jpg .jpeg .png .gif .webp .mp4 .mov .webm),
+           max_entries: 1,
+           max_file_size: 50_000_000
          )}
 
       _ ->
@@ -117,51 +124,27 @@ defmodule AthenaWeb.StudioLive.Builder do
   end
 
   def handle_event("update_content", %{"id" => id, "content" => content}, socket) do
-    with %Athena.Content.Block{} = block <- Enum.find(socket.assigns.blocks, &(&1.id == id)),
-         {:ok, updated_block} <- Content.update_block(block, %{"content" => content}) do
-      updated_blocks =
-        Enum.map(socket.assigns.blocks, fn
-          %Athena.Content.Block{id: ^id} -> updated_block
-          other_block -> other_block
-        end)
+    block = Enum.find(socket.assigns.blocks, &(&1.id == id))
 
-      {:noreply, assign(socket, blocks: updated_blocks)}
+    if block do
+      {:ok, updated_block} = Content.update_block(block, %{"content" => content})
+      {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
     else
-      _ -> {:noreply, socket}
+      {:noreply, socket}
     end
   end
 
   def handle_event("reorder_block", %{"id" => id, "new_index" => new_index}, socket) do
-    blocks = socket.assigns.blocks
-    block = Enum.find(blocks, &(&1.id == id))
+    block = Enum.find(socket.assigns.blocks, &(&1.id == id))
 
-    blocks_without_target = Enum.reject(blocks, &(&1.id == id))
+    if block do
+      {:ok, _updated_block} = Content.reorder_block(block, new_index)
 
-    reordered = List.insert_at(blocks_without_target, new_index, block)
-
-    prev = if new_index > 0, do: Enum.at(reordered, new_index - 1), else: nil
-    next = Enum.at(reordered, new_index + 1)
-
-    new_order =
-      cond do
-        is_nil(prev) ->
-          if next, do: div(next.order, 2), else: 1024
-
-        is_nil(next) ->
-          prev.order + 1024
-
-        true ->
-          div(prev.order + next.order, 2)
-      end
-
-    {:ok, updated_block} = Content.reorder_block(block, new_order)
-
-    final_blocks =
-      reordered
-      |> Enum.map(fn b -> if b.id == id, do: updated_block, else: b end)
-      |> Enum.sort_by(& &1.order)
-
-    {:noreply, assign(socket, blocks: final_blocks)}
+      blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
+      {:noreply, assign(socket, blocks: blocks)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("update_section_meta", %{"title" => title}, socket) do
@@ -183,22 +166,16 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   def handle_event("update_block_meta", params, socket) do
     id = params["id"]
+    block = Enum.find(socket.assigns.blocks, &(&1.id == id))
 
-    with %Athena.Content.Block{} = block <- Enum.find(socket.assigns.blocks, &(&1.id == id)) do
+    if block do
       meta_params = Map.drop(params, ["id", "_csrf_token", "_target"])
-
       new_content = Map.merge(block.content || %{}, meta_params)
 
       {:ok, updated_block} = Content.update_block(block, %{"content" => new_content})
-
-      updated_blocks =
-        Enum.map(socket.assigns.blocks, fn b ->
-          if b.id == id, do: updated_block, else: b
-        end)
-
-      {:noreply, assign(socket, blocks: updated_blocks)}
+      {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
     else
-      _ -> {:noreply, socket}
+      {:noreply, socket}
     end
   end
 
@@ -208,6 +185,44 @@ defmodule AthenaWeb.StudioLive.Builder do
 
     updated_blocks = Enum.reject(socket.assigns.blocks, &(&1.id == id))
     {:noreply, assign(socket, blocks: updated_blocks, active_block_id: nil)}
+  end
+
+  def handle_event(
+        "request_media_upload",
+        %{"block_id" => block_id, "media_type" => media_type},
+        socket
+      ) do
+    {:noreply, assign(socket, uploading_for_block: block_id, uploading_media_type: media_type)}
+  end
+
+  def handle_event("validate_media", _params, socket), do: {:noreply, socket}
+
+  def handle_event("cancel_upload", _, socket) do
+    {:noreply, assign(socket, uploading_for_block: nil)}
+  end
+
+  def handle_event("save_media", _params, socket) do
+    block_id = socket.assigns.uploading_for_block
+    media_type = socket.assigns.uploading_media_type || "image"
+
+    uploaded_urls =
+      consume_uploaded_entries(socket, :media, fn %{path: path}, entry ->
+        uploads_dir = Path.join(["priv", "static", "uploads"])
+        File.mkdir_p!(uploads_dir)
+
+        dest = Path.join([uploads_dir, "#{entry.uuid}-#{entry.client_name}"])
+        File.cp!(path, dest)
+
+        url = "/uploads/#{entry.uuid}-#{entry.client_name}"
+        {:ok, url}
+      end)
+
+    url = hd(uploaded_urls)
+
+    {:noreply,
+     socket
+     |> push_event("insert_media", %{url: url, block_id: block_id, type: media_type})
+     |> assign(uploading_for_block: nil, uploading_media_type: nil)}
   end
 
   @impl true
@@ -269,6 +284,51 @@ defmodule AthenaWeb.StudioLive.Builder do
           />
         </div>
       </div>
+
+      <.modal
+        id="media-upload-modal"
+        show={@uploading_for_block != nil}
+        title={gettext("Upload Media")}
+        on_cancel={JS.push("cancel_upload")}
+      >
+        <form id="upload-form" phx-submit="save_media" phx-change="validate_media">
+          <div
+            class="border-2 border-dashed border-base-300 rounded-lg p-8 text-center"
+            phx-drop-target={@uploads.media.ref}
+          >
+            <.live_file_input upload={@uploads.media} class="sr-only" id="media-upload-input" />
+            <label for="media-upload-input" class="cursor-pointer flex flex-col items-center gap-2">
+              <.icon name="hero-cloud-arrow-up" class="size-10 text-primary" />
+              <span class="font-bold">{gettext("Click or drag file here")}</span>
+              <span class="text-xs text-base-content/50">{gettext("PNG, JPG, GIF up to 10MB")}</span>
+            </label>
+          </div>
+
+          <div
+            :for={entry <- @uploads.media.entries}
+            class="mt-4 flex items-center justify-between bg-base-200 p-2 rounded"
+          >
+            <span class="text-sm truncate">{entry.client_name}</span>
+            <button
+              type="button"
+              phx-click="cancel-upload"
+              phx-value-ref={entry.ref}
+              class="text-error"
+            >
+              <.icon name="hero-x-mark" class="size-4" />
+            </button>
+          </div>
+
+          <div class="modal-action">
+            <button type="button" class="btn btn-ghost" phx-click="cancel_upload">
+              {gettext("Cancel")}
+            </button>
+            <button type="submit" class="btn btn-primary" disabled={@uploads.media.entries == []}>
+              {gettext("Upload")}
+            </button>
+          </div>
+        </form>
+      </.modal>
     </div>
     """
   end
@@ -282,6 +342,13 @@ defmodule AthenaWeb.StudioLive.Builder do
       else
         find_section_in_tree(section.children || [], id)
       end
+    end)
+  end
+
+  defp replace_block(blocks, updated_block) do
+    Enum.map(blocks, fn
+      %Athena.Content.Block{id: id} when id == updated_block.id -> updated_block
+      b -> b
     end)
   end
 end

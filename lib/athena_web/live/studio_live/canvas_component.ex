@@ -28,16 +28,16 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
             phx-click="select_block"
             phx-value-id={block.id}
             class={[
-              "group relative rounded-lg border-2 transition-all cursor-pointer bg-base-100",
-              @active_block_id == block.id && "border-primary shadow-sm",
-              @active_block_id != block.id && "border-transparent hover:border-base-300"
+              "group relative rounded-xl transition-all cursor-pointer bg-base-100 shadow-sm ring-1",
+              @active_block_id == block.id && "ring-primary shadow-md",
+              @active_block_id != block.id && "ring-base-200 hover:ring-base-300"
             ]}
           >
             <div class="absolute -left-10 top-1/2 -translate-y-1/2 p-2 opacity-0 group-hover:opacity-50 hover:opacity-100! cursor-grab drag-handle transition-opacity hidden sm:block">
               <.icon name="hero-bars-3" class="size-5" />
             </div>
 
-            <div class="p-6">
+            <div class="p-4">
               <%= if block.type == :text do %>
                 <div
                   id={"tiptap-#{block.id}"}

@@ -68,10 +68,34 @@ defmodule Athena.Content.Blocks do
   end
 
   @doc """
-  Reorders a block by updating its order index.
+  Reorders a block by moving it to a new index within its section.
+  Calculates the gap-based order automatically.
   """
   @spec reorder_block(Block.t(), integer()) :: {:ok, Block.t()} | {:error, Ecto.Changeset.t()}
-  def reorder_block(%Block{} = block, new_order) do
+  def reorder_block(%Block{} = block, new_index) do
+    blocks =
+      Block
+      |> where([b], b.section_id == ^block.section_id and b.id != ^block.id)
+      |> order_by([b], asc: b.order)
+      |> Repo.all()
+
+    reordered = List.insert_at(blocks, new_index, block)
+
+    prev = if new_index > 0, do: Enum.at(reordered, new_index - 1), else: nil
+    next = Enum.at(reordered, new_index + 1)
+
+    new_order =
+      cond do
+        is_nil(prev) ->
+          if next, do: div(next.order, 2), else: 1024
+
+        is_nil(next) ->
+          prev.order + 1024
+
+        true ->
+          div(prev.order + next.order, 2)
+      end
+
     block
     |> Ecto.Changeset.change(%{order: new_order})
     |> Repo.update()
