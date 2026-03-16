@@ -56,8 +56,12 @@ defmodule AthenaWeb.Router do
         live "/courses", Courses, :index
         live "/courses/new", Courses, :new
         live "/courses/:id/edit", Courses, :edit
+
         live "/grading", Grading, :index
+
         live "/library", Library, :index
+        live "/library/new", Library, :new
+        live "/library/:id/edit", Library, :edit
       end
 
       live "/teaching/cohorts", TeachingLive.Cohorts, :index
