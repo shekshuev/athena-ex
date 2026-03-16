@@ -29,8 +29,8 @@ defmodule Athena.Content.Sections do
   """
   @spec create_section(map()) :: {:ok, Section.t()} | {:error, Ecto.Changeset.t()}
   def create_section(attrs) do
-    section_id = Map.get(attrs, "id") || Map.get(attrs, :id) || Ecto.UUID.generate()
-    parent_id = Map.get(attrs, "parent_id") || Map.get(attrs, :parent_id)
+    section_id = Map.get(attrs, "id") || Ecto.UUID.generate()
+    parent_id = Map.get(attrs, "parent_id")
 
     parent_path =
       if parent_id do
@@ -44,14 +44,7 @@ defmodule Athena.Content.Sections do
 
     path_string = Section.build_path(section_id, parent_path)
 
-    has_string_keys = Enum.any?(Map.keys(attrs), &is_binary/1)
-
-    merged_attrs =
-      if has_string_keys do
-        Map.merge(attrs, %{"path" => path_string, "id" => section_id})
-      else
-        Map.merge(attrs, %{path: path_string, id: section_id})
-      end
+    merged_attrs = Map.merge(attrs, %{"path" => path_string, "id" => section_id})
 
     %Section{id: section_id}
     |> Section.changeset(merged_attrs)

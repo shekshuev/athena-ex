@@ -23,7 +23,7 @@ defmodule Athena.Content.SectionsTest do
     end
 
     test "should create root section with atom keys", %{course: c, owner_id: o} do
-      attrs = %{title: "Root Atom", course_id: c.id, owner_id: o, order: 10}
+      attrs = %{"title" => "Root Atom", "course_id" => c.id, "owner_id" => o, "order" => 10}
 
       assert {:ok, %Section{} = section} = Sections.create_section(attrs)
       assert section.title == "Root Atom"
@@ -42,9 +42,16 @@ defmodule Athena.Content.SectionsTest do
     end
 
     test "should create child section and save path correctly", %{course: c, owner_id: o} do
-      {:ok, parent} = Sections.create_section(%{title: "Parent", course_id: c.id, owner_id: o})
+      {:ok, parent} =
+        Sections.create_section(%{"title" => "Parent", "course_id" => c.id, "owner_id" => o})
 
-      attrs = %{title: "Child", course_id: c.id, parent_id: parent.id, owner_id: o}
+      attrs = %{
+        "title" => "Child",
+        "course_id" => c.id,
+        "parent_id" => parent.id,
+        "owner_id" => o
+      }
+
       assert {:ok, %Section{} = child} = Sections.create_section(attrs)
 
       expected_path = "#{Section.uuid_to_ltree(parent.id)}.#{Section.uuid_to_ltree(child.id)}"
@@ -53,12 +60,23 @@ defmodule Athena.Content.SectionsTest do
     end
 
     test "should create deep nestings", %{course: c, owner_id: o} do
-      {:ok, p} = Sections.create_section(%{title: "P", course_id: c.id, owner_id: o})
+      {:ok, p} = Sections.create_section(%{"title" => "P", "course_id" => c.id, "owner_id" => o})
 
       {:ok, c1} =
-        Sections.create_section(%{title: "C", course_id: c.id, parent_id: p.id, owner_id: o})
+        Sections.create_section(%{
+          "title" => "C",
+          "course_id" => c.id,
+          "parent_id" => p.id,
+          "owner_id" => o
+        })
 
-      attrs = %{title: "Grandchild", course_id: c.id, parent_id: c1.id, owner_id: o}
+      attrs = %{
+        "title" => "Grandchild",
+        "course_id" => c.id,
+        "parent_id" => c1.id,
+        "owner_id" => o
+      }
+
       assert {:ok, grandchild} = Sections.create_section(attrs)
 
       path = Enum.join(grandchild.path.labels, ".")
@@ -69,7 +87,7 @@ defmodule Athena.Content.SectionsTest do
 
     test "should create section with custom ID", %{course: c, owner_id: o} do
       my_id = Ecto.UUID.generate()
-      attrs = %{id: my_id, title: "Custom ID", course_id: c.id, owner_id: o}
+      attrs = %{"id" => my_id, "title" => "Custom ID", "course_id" => c.id, "owner_id" => o}
 
       assert {:ok, section} = Sections.create_section(attrs)
       assert section.id == my_id
@@ -77,7 +95,7 @@ defmodule Athena.Content.SectionsTest do
     end
 
     test "should not create section without required params", %{course: c} do
-      assert {:error, changeset} = Sections.create_section(%{course_id: c.id})
+      assert {:error, changeset} = Sections.create_section(%{"course_id" => c.id})
       assert "can't be blank" in errors_on(changeset).title
       assert "can't be blank" in errors_on(changeset).owner_id
     end
@@ -112,14 +130,37 @@ defmodule Athena.Content.SectionsTest do
     end
 
     test "should build correct tree", %{course: c, owner_id: o} do
-      {:ok, m1} = Sections.create_section(%{title: "M1", course_id: c.id, owner_id: o, order: 1})
-      {:ok, m2} = Sections.create_section(%{title: "M2", course_id: c.id, owner_id: o, order: 2})
+      {:ok, m1} =
+        Sections.create_section(%{
+          "title" => "M1",
+          "course_id" => c.id,
+          "owner_id" => o,
+          "order" => 1
+        })
+
+      {:ok, m2} =
+        Sections.create_section(%{
+          "title" => "M2",
+          "course_id" => c.id,
+          "owner_id" => o,
+          "order" => 2
+        })
 
       {:ok, l1} =
-        Sections.create_section(%{title: "L1", course_id: c.id, parent_id: m1.id, owner_id: o})
+        Sections.create_section(%{
+          "title" => "L1",
+          "course_id" => c.id,
+          "parent_id" => m1.id,
+          "owner_id" => o
+        })
 
       {:ok, sub} =
-        Sections.create_section(%{title: "Sub", course_id: c.id, parent_id: l1.id, owner_id: o})
+        Sections.create_section(%{
+          "title" => "Sub",
+          "course_id" => c.id,
+          "parent_id" => l1.id,
+          "owner_id" => o
+        })
 
       tree = Sections.get_course_tree(c.id)
 
@@ -138,10 +179,20 @@ defmodule Athena.Content.SectionsTest do
 
     test "should keep sort order", %{course: c, owner_id: o} do
       {:ok, s2} =
-        Sections.create_section(%{title: "Second", course_id: c.id, owner_id: o, order: 20})
+        Sections.create_section(%{
+          "title" => "Second",
+          "course_id" => c.id,
+          "owner_id" => o,
+          "order" => 20
+        })
 
       {:ok, s1} =
-        Sections.create_section(%{title: "First", course_id: c.id, owner_id: o, order: 10})
+        Sections.create_section(%{
+          "title" => "First",
+          "course_id" => c.id,
+          "owner_id" => o,
+          "order" => 10
+        })
 
       tree = Sections.get_course_tree(c.id)
 
@@ -152,10 +203,20 @@ defmodule Athena.Content.SectionsTest do
 
     test "should sort by creation date if order is the same", %{course: c, owner_id: o} do
       {:ok, s1} =
-        Sections.create_section(%{title: "First", course_id: c.id, owner_id: o, order: 1})
+        Sections.create_section(%{
+          "title" => "First",
+          "course_id" => c.id,
+          "owner_id" => o,
+          "order" => 1
+        })
 
       {:ok, s2} =
-        Sections.create_section(%{title: "Second", course_id: c.id, owner_id: o, order: 1})
+        Sections.create_section(%{
+          "title" => "Second",
+          "course_id" => c.id,
+          "owner_id" => o,
+          "order" => 1
+        })
 
       tree = Sections.get_course_tree(c.id)
 

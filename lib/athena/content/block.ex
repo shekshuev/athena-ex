@@ -26,7 +26,7 @@ defmodule Athena.Content.Block do
   }
 
   schema "blocks" do
-    field :type, Ecto.Enum, values: [:text, :code]
+    field :type, Ecto.Enum, values: [:text, :code, :quiz_question, :quiz_exam]
     field :content, :map, default: %{}
     field :order, :integer, default: 0
 
