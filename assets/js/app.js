@@ -24,12 +24,71 @@ import { Socket } from "phoenix";
 import { hooks as colocatedHooks } from "phoenix-colocated/athena";
 import { LiveSocket } from "phoenix_live_view";
 import topbar from "../vendor/topbar";
+import Sortable from "sortablejs";
+import { Editor } from "@tiptap/core";
+import StarterKit from "@tiptap/starter-kit";
 
 const csrfToken = document
   .querySelector("meta[name='csrf-token']")
   .getAttribute("content");
 
 const Hooks = {};
+
+Hooks.Sortable = {
+  mounted() {
+    const eventName = this.el.dataset.eventName || "reorder";
+
+    this.sortable = new Sortable(this.el, {
+      animation: 150,
+      handle: ".drag-handle",
+      ghostClass: "bg-base-200",
+      onEnd: (evt) => {
+        this.pushEvent(eventName, {
+          id: evt.item.dataset.id,
+          new_index: evt.newIndex,
+          old_index: evt.oldIndex,
+        });
+      },
+    });
+  },
+  destroyed() {
+    if (this.sortable) this.sortable.destroy();
+  },
+};
+
+Hooks.TiptapEditor = {
+  mounted() {
+    let content = this.el.dataset.content
+      ? JSON.parse(this.el.dataset.content)
+      : "";
+
+    const blockId = this.el.dataset.id;
+
+    let timeout;
+
+    this.editor = new Editor({
+      element: this.el,
+      extensions: [StarterKit],
+      content: content,
+      editorProps: {
+        attributes: {
+          class:
+            "prose dark:prose-invert max-w-none focus:outline-none min-h-[100px] p-4 bg-base-100 rounded-md border border-base-300",
+        },
+      },
+      onUpdate: ({ editor }) => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          const json = editor.getJSON();
+          this.pushEvent("update_content", { id: blockId, content: json });
+        }, 500);
+      },
+    });
+  },
+  destroyed() {
+    if (this.editor) this.editor.destroy();
+  },
+};
 
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
