@@ -12,13 +12,23 @@ defmodule Athena.Content.Blocks do
 
   @doc """
   Retrieves all blocks for a specific section, ordered by their `order` index.
+  If a user is provided, filters the blocks based on access policies.
   """
-  @spec list_blocks_by_section(String.t()) :: [Block.t()]
-  def list_blocks_by_section(section_id) do
-    Block
-    |> where([b], b.section_id == ^section_id)
-    |> order_by([b], asc: b.order)
-    |> Repo.all()
+  @spec list_blocks_by_section(String.t(), Athena.Identity.Account.t() | nil | :all) :: [
+          Block.t()
+        ]
+  def list_blocks_by_section(section_id, user_or_mode \\ :all) do
+    blocks =
+      Block
+      |> where([b], b.section_id == ^section_id)
+      |> order_by([b], asc: b.order)
+      |> Repo.all()
+
+    if user_or_mode == :all do
+      blocks
+    else
+      Enum.filter(blocks, &Athena.Content.Policy.can_view?(user_or_mode, &1))
+    end
   end
 
   @doc """

@@ -117,13 +117,18 @@ defmodule AthenaWeb.StudioLive.Builder do
     handle_event("add_section", %{"parent_id" => socket.assigns.viewing_parent_id || ""}, socket)
   end
 
-  def handle_event("update_section_meta", %{"title" => title}, socket) do
-    section = find_section_in_tree(socket.assigns.sections, socket.assigns.active_section_id)
+  def handle_event("update_section_meta", %{"section" => section_params}, socket) do
+    id = section_params["id"]
+    section = find_section_in_tree(socket.assigns.sections, id)
 
-    {:ok, _updated_section} = Content.update_section(section, %{"title" => title})
+    if section do
+      {:ok, _updated_section} = Content.update_section(section, section_params)
+      updated_sections = Content.get_course_tree(socket.assigns.course.id)
 
-    updated_sections = Content.get_course_tree(socket.assigns.course.id)
-    {:noreply, assign(socket, sections: updated_sections)}
+      {:noreply, assign(socket, sections: updated_sections)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("reorder_section", %{"id" => id, "new_index" => new_index}, socket) do
@@ -294,15 +299,17 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
-  def handle_event("update_block_meta", params, socket) do
-    id = params["id"]
+  def handle_event("update_block_meta", %{"block" => block_params}, socket) do
+    id = block_params["id"]
     block = Enum.find(socket.assigns.blocks, &(&1.id == id))
 
     if block do
-      meta_params = Map.drop(params, ["id", "_csrf_token", "_target"])
-      new_content = Map.merge(block.content || %{}, meta_params)
+      content_overrides = Map.get(block_params, "content", %{})
+      new_content = Map.merge(block.content || %{}, content_overrides)
 
-      {:ok, updated_block} = Content.update_block(block, %{"content" => new_content})
+      final_params = Map.put(block_params, "content", new_content)
+
+      {:ok, updated_block} = Content.update_block(block, final_params)
       {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
     else
       {:noreply, socket}

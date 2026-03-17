@@ -38,6 +38,11 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
 
   @spec section_inspector(map()) :: Phoenix.LiveView.Rendered.t()
   defp section_inspector(assigns) do
+    attrs = if assigns.section.access_rules, do: %{}, else: %{"access_rules" => %{}}
+    section_changeset = Athena.Content.Section.changeset(assigns.section, attrs)
+
+    assigns = assign(assigns, :form, to_form(section_changeset))
+
     ~H"""
     <div class="flex flex-col h-full animate-in fade-in duration-200">
       <div class="flex items-center gap-3 py-4 border-b border-base-300">
@@ -53,23 +58,61 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
 
       <div class="overflow-y-auto py-4 space-y-6 flex-1">
         <.form
-          for={nil}
+          for={@form}
           id={"section-inspector-form-#{@section.id}"}
           phx-change="update_section_meta"
           phx-submit="update_section_meta"
         >
+          <.input type="hidden" field={@form[:id]} />
+
           <.input
             type="text"
-            name="title"
-            value={@section.title}
+            field={@form[:title]}
             label={gettext("Section Title")}
             phx-debounce="500"
           />
+
+          <div class="divider my-4"></div>
+
+          <div class="space-y-4">
+            <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
+              {gettext("Access & Visibility")}
+            </div>
+
+            <.input
+              type="select"
+              field={@form[:visibility]}
+              label={gettext("Who can see this section?")}
+              options={[
+                {gettext("Enrolled Students"), "enrolled"},
+                {gettext("Public (Everyone)"), "public"},
+                {gettext("Restricted (Time)"), "restricted"},
+                {gettext("Hidden (Draft)"), "hidden"}
+              ]}
+            />
+
+            <%= if to_string(@form[:visibility].value) == "restricted" do %>
+              <div class="p-4 bg-base-200/50 rounded-xl border border-base-300 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                <.inputs_for :let={ar} field={@form[:access_rules]}>
+                  <.input
+                    type="datetime-local"
+                    field={ar[:unlock_at]}
+                    label={gettext("Unlock At (Optional)")}
+                  />
+                  <.input
+                    type="datetime-local"
+                    field={ar[:lock_at]}
+                    label={gettext("Lock At (Optional)")}
+                  />
+                </.inputs_for>
+              </div>
+            <% end %>
+          </div>
         </.form>
       </div>
 
       <div class="pt-4 border-t border-base-300 mt-auto pb-4 space-y-2">
-        <button
+        <.button
           type="button"
           phx-click="open_move_modal"
           phx-value-id={@section.id}
@@ -77,18 +120,17 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
         >
           <.icon name="hero-folder-arrow-down" class="size-4" />
           {gettext("Move To...")}
-        </button>
+        </.button>
 
-        <button
+        <.button
           type="button"
-          phx-click="delete_section"
+          phx-click="delete_section_click"
           phx-value-id={@section.id}
-          data-confirm={gettext("Are you sure you want to delete this section and all its blocks?")}
           class="btn btn-error btn-soft w-full"
         >
           <.icon name="hero-trash" class="size-4" />
           {gettext("Delete Section")}
-        </button>
+        </.button>
       </div>
     </div>
     """
@@ -96,6 +138,11 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
 
   @spec block_inspector(map()) :: Phoenix.LiveView.Rendered.t()
   defp block_inspector(assigns) do
+    attrs = if assigns.block.access_rules, do: %{}, else: %{"access_rules" => %{}}
+    block_changeset = Athena.Content.Block.changeset(assigns.block, attrs)
+
+    assigns = assign(assigns, :form, to_form(block_changeset))
+
     ~H"""
     <div class="flex flex-col h-full animate-in fade-in duration-200">
       <div class="flex items-center gap-3 py-4 border-b border-base-300">
@@ -111,57 +158,88 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
 
       <div class="overflow-y-auto py-4 space-y-6 flex-1">
         <.form
-          for={nil}
+          for={@form}
           id={"block-inspector-form-#{@block.id}"}
           phx-change="update_block_meta"
         >
-          <.input type="hidden" name="id" value={@block.id} />
+          <.input type="hidden" field={@form[:id]} />
 
           <%= if @block.type == :code do %>
-            <div class="space-y-4">
+            <div class="space-y-4 mb-6">
               <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
                 {gettext("Execution Settings")}
               </div>
               <.input
                 type="select"
-                name="language"
+                name="block[content][language]"
                 value={@block.content["language"] || "python"}
                 label={gettext("Programming Language")}
                 options={[{"Python", "python"}, {"SQL", "sql"}, {"Elixir", "elixir"}]}
               />
               <.input
                 type="select"
-                name="execution_mode"
+                name="block[content][execution_mode]"
                 value={@block.content["execution_mode"] || "run"}
                 label={gettext("Execution Mode")}
                 options={[{"Run Code", "run"}, {"Unit Tests", "test"}]}
               />
             </div>
-          <% else %>
-            <div class="alert alert-info text-sm shadow-none">
-              <.icon name="hero-information-circle" class="size-4 shrink-0 mt-0.5" />
-              <span>{gettext("Text blocks don't require additional configuration.")}</span>
-            </div>
+            <div class="divider my-4"></div>
           <% end %>
+
+          <div class="space-y-4">
+            <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
+              {gettext("Access & Visibility")}
+            </div>
+
+            <.input
+              type="select"
+              field={@form[:visibility]}
+              label={gettext("Who can see this block?")}
+              options={[
+                {gettext("Inherit from Section"), "inherit"},
+                {gettext("Enrolled Students"), "enrolled"},
+                {gettext("Public (Everyone)"), "public"},
+                {gettext("Restricted (Time)"), "restricted"},
+                {gettext("Hidden (Draft)"), "hidden"}
+              ]}
+            />
+
+            <%= if to_string(@form[:visibility].value) == "restricted" do %>
+              <div class="p-4 bg-base-200/50 rounded-xl border border-base-300 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                <.inputs_for :let={ar} field={@form[:access_rules]}>
+                  <.input
+                    type="datetime-local"
+                    field={ar[:unlock_at]}
+                    label={gettext("Unlock At (Optional)")}
+                  />
+                  <.input
+                    type="datetime-local"
+                    field={ar[:lock_at]}
+                    label={gettext("Lock At (Optional)")}
+                  />
+                </.inputs_for>
+              </div>
+            <% end %>
+          </div>
         </.form>
       </div>
 
       <div class="pt-4 border-t border-base-300 mt-auto pb-4 space-y-2">
-        <button type="button" class="btn btn-primary btn-soft w-full">
+        <.button type="button" class="btn btn-primary btn-soft w-full">
           <.icon name="hero-bookmark-square" class="size-4" />
           {gettext("Save to Library")}
-        </button>
+        </.button>
 
-        <button
+        <.button
           type="button"
-          phx-click="delete_block"
+          phx-click="delete_block_click"
           phx-value-id={@block.id}
-          data-confirm={gettext("Are you sure you want to delete this block?")}
           class="btn btn-error btn-soft w-full"
         >
           <.icon name="hero-trash" class="size-4" />
           {gettext("Delete Block")}
-        </button>
+        </.button>
       </div>
     </div>
     """

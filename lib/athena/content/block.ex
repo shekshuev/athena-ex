@@ -30,6 +30,12 @@ defmodule Athena.Content.Block do
     field :content, :map, default: %{}
     field :order, :integer, default: 0
 
+    field :visibility, Ecto.Enum,
+      values: [:public, :enrolled, :restricted, :hidden, :inherit],
+      default: :enrolled
+
+    embeds_one :access_rules, Athena.Content.AccessRules, on_replace: :update
+
     belongs_to :section, Athena.Content.Section
 
     timestamps(type: :utc_datetime)
@@ -41,8 +47,9 @@ defmodule Athena.Content.Block do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(block, attrs) do
     block
-    |> cast(attrs, [:type, :content, :order, :section_id])
-    |> validate_required([:type, :content, :section_id])
+    |> cast(attrs, [:type, :content, :order, :section_id, :visibility])
+    |> cast_embed(:access_rules, with: &Athena.Content.AccessRules.changeset/2)
+    |> validate_required([:type, :content, :section_id, :visibility])
     |> foreign_key_constraint(:section_id)
   end
 end

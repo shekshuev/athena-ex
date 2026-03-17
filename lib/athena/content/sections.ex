@@ -73,18 +73,30 @@ defmodule Athena.Content.Sections do
 
   @doc """
   Fetches all sections for a course and builds a nested tree structure.
-
-  Returns root sections with their `children` virtual field populated.
+  If a user is provided, filters the tree based on access policies.
   """
-  @spec get_course_tree(String.t()) :: [Section.t()]
-  def get_course_tree(course_id) do
+  @spec get_course_tree(String.t(), Athena.Identity.Account.t() | nil | :all) :: [Section.t()]
+  def get_course_tree(course_id, user_or_mode \\ :all) do
     sections =
       Section
       |> where([s], s.course_id == ^course_id)
       |> order_by([s], asc: s.order, asc: s.inserted_at)
       |> Repo.all()
 
-    build_tree(sections, nil)
+    build_tree(sections, nil, user_or_mode)
+  end
+
+  @spec build_tree([Section.t()], String.t() | nil, any()) :: [Section.t()]
+  defp build_tree(sections, parent_id, user_or_mode) do
+    sections
+    |> Enum.filter(fn section ->
+      section.parent_id == parent_id and
+        (user_or_mode == :all or Athena.Content.Policy.can_view?(user_or_mode, section))
+    end)
+    |> Enum.map(fn section ->
+      children = build_tree(sections, section.id, user_or_mode)
+      Map.put(section, :children, children)
+    end)
   end
 
   @doc """

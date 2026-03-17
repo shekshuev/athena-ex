@@ -34,6 +34,12 @@ defmodule Athena.Content.Section do
 
     field :owner_id, :binary_id
 
+    field :visibility, Ecto.Enum,
+      values: [:public, :enrolled, :restricted, :hidden],
+      default: :enrolled
+
+    embeds_one :access_rules, Athena.Content.AccessRules, on_replace: :update
+
     belongs_to :course, Athena.Content.Course
     belongs_to :parent, Athena.Content.Section
     has_many :blocks, Athena.Content.Block
@@ -47,8 +53,9 @@ defmodule Athena.Content.Section do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(section, attrs) do
     section
-    |> cast(attrs, [:id, :title, :order, :path, :course_id, :parent_id, :owner_id])
-    |> validate_required([:id, :title, :path, :course_id, :owner_id])
+    |> cast(attrs, [:id, :title, :order, :path, :course_id, :parent_id, :owner_id, :visibility])
+    |> cast_embed(:access_rules, with: &Athena.Content.AccessRules.changeset/2)
+    |> validate_required([:id, :title, :path, :course_id, :owner_id, :visibility])
     |> validate_length(:title, min: 1, max: 255)
     |> foreign_key_constraint(:course_id)
     |> foreign_key_constraint(:parent_id)
