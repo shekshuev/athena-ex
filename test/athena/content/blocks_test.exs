@@ -26,6 +26,24 @@ defmodule Athena.Content.BlocksTest do
     test "should return empty block list", %{section: s} do
       assert Blocks.list_blocks_by_section(s.id) == []
     end
+
+    test "should filter blocks based on user policies", %{section: s} do
+      b_public = insert(:block, section: s, visibility: :public, order: 1000)
+      _b_hidden = insert(:block, section: s, visibility: :hidden, order: 2000)
+
+      assert length(Blocks.list_blocks_by_section(s.id)) == 2
+
+      admin_role = insert(:role, permissions: ["admin"])
+      admin = insert(:account, role: admin_role)
+      assert length(Blocks.list_blocks_by_section(s.id, admin)) == 2
+
+      user_role = insert(:role, permissions: [])
+      user = insert(:account, role: user_role)
+
+      filtered_blocks = Blocks.list_blocks_by_section(s.id, user)
+      assert length(filtered_blocks) == 1
+      assert hd(filtered_blocks).id == b_public.id
+    end
   end
 
   describe "get_block/1" do
@@ -110,14 +128,48 @@ defmodule Athena.Content.BlocksTest do
       assert {:error, changeset} = Blocks.update_block(block, %{"type" => nil})
       assert "can't be blank" in errors_on(changeset).type
     end
+
+    test "should validate access_rules dates (lock_at cannot be before unlock_at)" do
+      block = insert(:block)
+
+      attrs = %{
+        "visibility" => "restricted",
+        "access_rules" => %{
+          "unlock_at" => "2026-03-20T10:00:00Z",
+          "lock_at" => "2026-03-19T10:00:00Z"
+        }
+      }
+
+      assert {:error, changeset} = Blocks.update_block(block, attrs)
+      assert %{lock_at: ["must be after the unlock time"]} = errors_on(changeset).access_rules
+    end
   end
 
   describe "reorder_block/2" do
-    test "should change order field" do
-      block = insert(:block, order: 1024)
+    test "should change order field when moving between blocks", %{section: s} do
+      _b1 = insert(:block, section: s, order: 1000)
+      _b2 = insert(:block, section: s, order: 2000)
+      b3 = insert(:block, section: s, order: 3000)
 
-      assert {:ok, updated} = Blocks.reorder_block(block, 1500)
+      assert {:ok, updated} = Blocks.reorder_block(b3, 1)
+
       assert updated.order == 1500
+    end
+
+    test "should handle moving to the beginning of the list", %{section: s} do
+      _b1 = insert(:block, section: s, order: 1000)
+      b2 = insert(:block, section: s, order: 2000)
+
+      assert {:ok, updated} = Blocks.reorder_block(b2, 0)
+      assert updated.order == 500
+    end
+
+    test "should handle moving to the end of the list", %{section: s} do
+      b1 = insert(:block, section: s, order: 1000)
+      _b2 = insert(:block, section: s, order: 2000)
+
+      assert {:ok, updated} = Blocks.reorder_block(b1, 1)
+      assert updated.order == 3024
     end
   end
 

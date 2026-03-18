@@ -114,6 +114,52 @@ defmodule Athena.Content.SectionsTest do
       assert {:error, changeset} = Sections.update_section(section, %{title: ""})
       assert "can't be blank" in errors_on(changeset).title
     end
+
+    test "should update ltree path of section and its descendants when parent_id changes" do
+      course = insert(:course)
+      owner_id = Ecto.UUID.generate()
+
+      {:ok, root1} =
+        Sections.create_section(%{
+          "title" => "Root1",
+          "course_id" => course.id,
+          "owner_id" => owner_id
+        })
+
+      {:ok, root2} =
+        Sections.create_section(%{
+          "title" => "Root2",
+          "course_id" => course.id,
+          "owner_id" => owner_id
+        })
+
+      {:ok, child} =
+        Sections.create_section(%{
+          "title" => "Child",
+          "course_id" => course.id,
+          "parent_id" => root1.id,
+          "owner_id" => owner_id
+        })
+
+      {:ok, grandchild} =
+        Sections.create_section(%{
+          "title" => "Grandchild",
+          "course_id" => course.id,
+          "parent_id" => child.id,
+          "owner_id" => owner_id
+        })
+
+      assert {:ok, updated_child} = Sections.update_section(child, %{"parent_id" => root2.id})
+
+      expected_child_path =
+        "#{Section.uuid_to_ltree(root2.id)}.#{Section.uuid_to_ltree(child.id)}"
+
+      assert Enum.join(updated_child.path.labels, ".") == expected_child_path
+
+      {:ok, updated_grandchild} = Sections.get_section(grandchild.id)
+      expected_grandchild_path = "#{expected_child_path}.#{Section.uuid_to_ltree(grandchild.id)}"
+      assert Enum.join(updated_grandchild.path.labels, ".") == expected_grandchild_path
+    end
   end
 
   describe "delete_section/1" do
@@ -228,6 +274,79 @@ defmodule Athena.Content.SectionsTest do
     test "should return empty list when no section exists" do
       course = insert(:course)
       assert Sections.get_course_tree(course.id) == []
+    end
+
+    test "should filter tree based on user policies", %{course: c, owner_id: o} do
+      {:ok, s_public} =
+        Sections.create_section(%{
+          "title" => "Public",
+          "course_id" => c.id,
+          "owner_id" => o,
+          "visibility" => :public
+        })
+
+      {:ok, _s_hidden} =
+        Sections.create_section(%{
+          "title" => "Hidden",
+          "course_id" => c.id,
+          "owner_id" => o,
+          "visibility" => :hidden
+        })
+
+      assert length(Sections.get_course_tree(c.id)) == 2
+
+      admin_role = insert(:role, permissions: ["admin"])
+      admin = insert(:account, role: admin_role)
+      assert length(Sections.get_course_tree(c.id, admin)) == 2
+
+      user_role = insert(:role, permissions: [])
+      user = insert(:account, role: user_role)
+
+      tree = Sections.get_course_tree(c.id, user)
+      assert length(tree) == 1
+      assert hd(tree).id == s_public.id
+    end
+  end
+
+  describe "reorder_section/2" do
+    setup do
+      %{course: insert(:course), owner_id: Ecto.UUID.generate()}
+    end
+
+    test "should reorder siblings and update their order fields", %{course: c, owner_id: o} do
+      {:ok, s1} =
+        Sections.create_section(%{
+          "title" => "S1",
+          "course_id" => c.id,
+          "owner_id" => o,
+          "order" => 0
+        })
+
+      {:ok, s2} =
+        Sections.create_section(%{
+          "title" => "S2",
+          "course_id" => c.id,
+          "owner_id" => o,
+          "order" => 1
+        })
+
+      {:ok, s3} =
+        Sections.create_section(%{
+          "title" => "S3",
+          "course_id" => c.id,
+          "owner_id" => o,
+          "order" => 2
+        })
+
+      assert {:ok, updated_s3} = Sections.reorder_section(s3, 0)
+
+      assert updated_s3.order == 0
+
+      {:ok, new_s1} = Sections.get_section(s1.id)
+      {:ok, new_s2} = Sections.get_section(s2.id)
+
+      assert new_s1.order == 1
+      assert new_s2.order == 2
     end
   end
 end

@@ -171,16 +171,6 @@ defmodule Athena.Content.Sections do
     end)
   end
 
-  @spec build_tree([Section.t()], String.t() | nil) :: [Section.t()]
-  defp build_tree(sections, parent_id) do
-    sections
-    |> Enum.filter(&(&1.parent_id == parent_id))
-    |> Enum.map(fn section ->
-      children = build_tree(sections, section.id)
-      Map.put(section, :children, children)
-    end)
-  end
-
   defp update_descendants_paths(course_id, old_path_str, new_path_str) do
     Section
     |> where([s], s.course_id == ^course_id)
@@ -192,7 +182,7 @@ defmodule Athena.Content.Sections do
         new_child_path = String.replace_prefix(current_path_str, old_path_str, new_path_str)
 
         s
-        |> Ecto.Changeset.change(%{path: new_child_path})
+        |> Ecto.Changeset.cast(%{"path" => new_child_path}, [:path])
         |> Repo.update!()
       end
     end)
