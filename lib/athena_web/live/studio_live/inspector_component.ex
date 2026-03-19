@@ -187,6 +187,46 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
             <div class="divider my-4"></div>
           <% end %>
 
+          <%= if @block.type in [:image, :video] do %>
+            <div class="space-y-4 mb-6">
+              <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
+                {gettext("Media Settings")}
+              </div>
+
+              <.button
+                type="button"
+                phx-click="request_media_upload"
+                phx-value-block_id={@block.id}
+                phx-value-media_type={@block.type}
+                class="btn btn-outline w-full mb-2"
+              >
+                <.icon name="hero-cloud-arrow-up" class="size-4" />
+                {if @block.content["url"], do: gettext("Replace File"), else: gettext("Upload File")}
+              </.button>
+
+              <%= if @block.type == :image do %>
+                <.input
+                  type="text"
+                  name="block[content][alt]"
+                  value={@block.content["alt"]}
+                  label={gettext("Alt Text (for accessibility)")}
+                  phx-debounce="500"
+                />
+              <% end %>
+
+              <%= if @block.type == :video do %>
+                <.input
+                  type="text"
+                  name="block[content][poster_url]"
+                  value={@block.content["poster_url"]}
+                  label={gettext("Poster URL (Thumbnail)")}
+                  phx-debounce="500"
+                />
+              <% end %>
+            </div>
+            <div class="divider my-4"></div>
+          <% end %>
+
           <div class="space-y-4">
             <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
               {gettext("Access & Visibility")}

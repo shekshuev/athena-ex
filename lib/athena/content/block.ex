@@ -26,12 +26,14 @@ defmodule Athena.Content.Block do
   }
 
   schema "blocks" do
-    field :type, Ecto.Enum, values: [:text, :code, :quiz_question, :quiz_exam]
+    field :type, Ecto.Enum,
+      values: ~w(text code quiz_question quiz_exam video image file_attachment)a
+
     field :content, :map, default: %{}
     field :order, :integer, default: 0
 
     field :visibility, Ecto.Enum,
-      values: [:public, :enrolled, :restricted, :hidden, :inherit],
+      values: ~w(public enrolled restricted hidden inherit)a,
       default: :enrolled
 
     embeds_one :access_rules, Athena.Content.AccessRules, on_replace: :update

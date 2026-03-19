@@ -51,24 +51,74 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
             </div>
 
             <div class="p-4 sm:px-6 py-4">
-              <%= if block.type == :text do %>
-                <div
-                  id={"tiptap-#{block.id}"}
-                  phx-hook="TiptapEditor"
-                  data-id={block.id}
-                  phx-update="ignore"
-                  data-content={Jason.encode!(block.content)}
-                  class="min-h-[100px]"
-                >
-                </div>
-              <% else %>
-                <div class="text-sm text-base-content/50 italic p-4 ring-1 ring-dashed ring-base-300 rounded select-none bg-base-200/50">
-                  <div class="flex items-center gap-2 mb-1">
-                    <.icon name="hero-code-bracket" class="size-4" />
-                    <span class="font-bold text-xs uppercase">{block.type}</span>
+              <%= cond do %>
+                <% block.type == :text -> %>
+                  <div
+                    id={"tiptap-#{block.id}"}
+                    phx-hook="TiptapEditor"
+                    data-id={block.id}
+                    phx-update="ignore"
+                    data-content={Jason.encode!(block.content)}
+                    class="min-h-[100px]"
+                  >
                   </div>
-                  {gettext("Preview block content")}
-                </div>
+                <% block.type == :image -> %>
+                  <%= if block.content["url"] do %>
+                    <img
+                      src={block.content["url"]}
+                      alt={block.content["alt"]}
+                      class="rounded-lg w-full object-cover"
+                    />
+                  <% else %>
+                    <button
+                      type="button"
+                      phx-click="request_media_upload"
+                      phx-value-block_id={block.id}
+                      phx-value-media_type="image"
+                      class="w-full text-center p-10 bg-base-200/50 hover:bg-base-200 rounded-lg border-2 border-dashed border-base-300 hover:border-primary/50 transition-colors flex flex-col items-center gap-3 group"
+                    >
+                      <.icon
+                        name="hero-cloud-arrow-up"
+                        class="size-10 text-base-content/20 group-hover:text-primary/50 transition-colors"
+                      />
+                      <span class="text-sm font-medium text-base-content/50 group-hover:text-primary transition-colors">
+                        {gettext("Click to upload image")}
+                      </span>
+                    </button>
+                  <% end %>
+                <% block.type == :video -> %>
+                  <%= if block.content["url"] do %>
+                    <video
+                      src={block.content["url"]}
+                      poster={block.content["poster_url"]}
+                      controls={block.content["controls"] not in [false, "false"]}
+                      class="rounded-lg w-full bg-black aspect-video"
+                    />
+                  <% else %>
+                    <button
+                      type="button"
+                      phx-click="request_media_upload"
+                      phx-value-block_id={block.id}
+                      phx-value-media_type="video"
+                      class="w-full text-center p-10 bg-base-200/50 hover:bg-base-200 rounded-lg border-2 border-dashed border-base-300 hover:border-primary/50 transition-colors flex flex-col items-center gap-3 group"
+                    >
+                      <.icon
+                        name="hero-cloud-arrow-up"
+                        class="size-10 text-base-content/20 group-hover:text-primary/50 transition-colors"
+                      />
+                      <span class="text-sm font-medium text-base-content/50 group-hover:text-primary transition-colors">
+                        {gettext("Click to upload video")}
+                      </span>
+                    </button>
+                  <% end %>
+                <% true -> %>
+                  <div class="text-sm text-base-content/50 italic p-4 ring-1 ring-dashed ring-base-300 rounded select-none bg-base-200/50">
+                    <div class="flex items-center gap-2 mb-1">
+                      <.icon name="hero-code-bracket" class="size-4" />
+                      <span class="font-bold text-xs uppercase">{block.type}</span>
+                    </div>
+                    {gettext("Preview block content")}
+                  </div>
               <% end %>
             </div>
           </div>
@@ -102,6 +152,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
                   phx-click="add_text_block"
                   class="btn btn-ghost justify-start font-medium gap-3 h-12"
                 >
+                  <.icon name="hero-document-text" class="size-5 opacity-50" />
                   {gettext("Text Block")}
                 </.button>
               </li>
@@ -110,7 +161,26 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
                   phx-click="add_code_block"
                   class="btn btn-ghost justify-start font-medium gap-3 h-12"
                 >
+                  <.icon name="hero-code-bracket" class="size-5 opacity-50" />
                   {gettext("Code Sandbox")}
+                </.button>
+              </li>
+              <li>
+                <.button
+                  phx-click="add_image_block"
+                  class="btn btn-ghost justify-start font-medium gap-3 h-12"
+                >
+                  <.icon name="hero-photo" class="size-5 opacity-50" />
+                  {gettext("Image")}
+                </.button>
+              </li>
+              <li>
+                <.button
+                  phx-click="add_video_block"
+                  class="btn btn-ghost justify-start font-medium gap-3 h-12"
+                >
+                  <.icon name="hero-video-camera" class="size-5 opacity-50" />
+                  {gettext("Video")}
                 </.button>
               </li>
             </ul>

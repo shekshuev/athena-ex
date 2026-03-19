@@ -408,7 +408,48 @@ Hooks.TiptapEditor = {
   },
 };
 
+let Uploaders = {};
+
+Uploaders.S3 = function (entries, onViewError) {
+  entries.forEach((entry) => {
+    let { url } = entry.meta;
+    let xhr = new XMLHttpRequest();
+
+    // 1. Если юзер нажал крестик отмены — обрываем HTTP запрос
+    onViewError(() => xhr.abort());
+
+    xhr.open("PUT", url, true);
+
+    xhr.onload = () => {
+      // MinIO возвращает 200 при успешной загрузке
+      if (xhr.status === 200) {
+        entry.progress(100);
+      } else {
+        // 2. ВОТ ИСПРАВЛЕНИЕ: говорим LiveView, что файл отвалился
+        entry.error();
+      }
+    };
+
+    xhr.onerror = () => {
+      // 3. И здесь тоже
+      entry.error();
+    };
+
+    xhr.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable) {
+        let percent = Math.round((event.loaded / event.total) * 100);
+        if (percent < 100) {
+          entry.progress(percent);
+        }
+      }
+    });
+
+    xhr.send(entry.file);
+  });
+};
+
 const liveSocket = new LiveSocket("/live", Socket, {
+  uploaders: Uploaders,
   longPollFallbackMs: 2500,
   params: { _csrf_token: csrfToken },
   hooks: { ...colocatedHooks, ...Hooks },

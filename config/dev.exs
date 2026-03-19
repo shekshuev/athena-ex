@@ -102,4 +102,4 @@ config :ex_aws,
     port: 9000
   ]
 
-config :athena, Athena.Media, bucket: "athena-private"
+config :athena, Athena.Media, bucket: "athena"

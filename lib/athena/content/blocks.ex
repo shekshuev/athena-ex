@@ -119,6 +119,66 @@ defmodule Athena.Content.Blocks do
     Repo.delete(block)
   end
 
+  @doc """
+  Prepares data for direct upload to S3
+  """
+  def prepare_media_upload(course_id, filename) do
+    bucket = Application.get_env(:athena, Athena.Media)[:bucket] || "athena"
+
+    unique_filename = "#{Ecto.UUID.generate()}-#{filename}"
+    key = "courses/#{course_id}/#{unique_filename}"
+
+    case Athena.Media.generate_upload_url(bucket, key) do
+      {:ok, presigned_url} ->
+        public_url = "/#{bucket}/#{key}"
+
+        meta = %{
+          uploader: "S3",
+          url: presigned_url,
+          url_for_saved_entry: public_url,
+          bucket: bucket,
+          key: key
+        }
+
+        {:ok, meta}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Creates a file entry in Media and attaches its URL to the block's content.
+  Executed in a single database transaction.
+  """
+  def attach_media_to_block(%Block{} = block, user_id, meta, file_info) do
+    file_attrs = %{
+      "bucket" => meta.bucket,
+      "key" => meta.key,
+      "original_name" => file_info.name,
+      "mime_type" => file_info.type,
+      "size" => file_info.size,
+      "context" => "course_material",
+      "owner_id" => user_id
+    }
+
+    new_content = Map.put(block.content || %{}, "url", meta.url_for_saved_entry)
+
+    Ecto.Multi.new()
+    |> Ecto.Multi.run(:file, fn _repo, _changes ->
+      Athena.Media.create_file(file_attrs)
+    end)
+    |> Ecto.Multi.update(:block, Block.changeset(block, %{"content" => new_content}))
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{block: updated_block}} ->
+        {:ok, updated_block}
+
+      {:error, _failed_operation, failed_value, _changes_so_far} ->
+        {:error, failed_value}
+    end
+  end
+
   @doc false
   defp calculate_next_order(section_id) do
     max_order =

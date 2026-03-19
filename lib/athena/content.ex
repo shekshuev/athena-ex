@@ -30,6 +30,8 @@ defmodule Athena.Content do
   defdelegate update_block(block, attrs), to: Blocks
   defdelegate reorder_block(block, new_order), to: Blocks
   defdelegate delete_block(block), to: Blocks
+  defdelegate prepare_media_upload(course_id, filename), to: Blocks
+  defdelegate attach_media_to_block(block, user_id, meta, file_info), to: Blocks
 
   defdelegate list_library_blocks(params, owner_id), to: Library
   defdelegate get_library_block(id), to: Library

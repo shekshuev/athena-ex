@@ -78,7 +78,7 @@ if config_env() == :prod do
       port: String.to_integer(System.get_env("MINIO_PORT") || "443")
     ]
 
-  config :athena, Athena.Media, bucket: System.get_env("MINIO_BUCKET") || "athena-private"
+  config :athena, Athena.Media, bucket: System.get_env("MINIO_BUCKET")
 
   # ## SSL Support
   #
