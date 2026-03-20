@@ -181,4 +181,56 @@ defmodule Athena.Content.BlocksTest do
       assert Repo.get(Block, block.id) == nil
     end
   end
+
+  describe "prepare_media_upload/2" do
+    test "should return presigned url and meta payload for the client" do
+      course_id = Ecto.UUID.generate()
+      filename = "test_video.mp4"
+
+      assert {:ok, meta} = Blocks.prepare_media_upload(course_id, filename)
+
+      assert meta.uploader == "S3"
+      assert is_binary(meta.bucket)
+      assert String.starts_with?(meta.key, "courses/#{course_id}/")
+      assert String.ends_with?(meta.key, "-test_video.mp4")
+      assert meta.url_for_saved_entry == "/#{meta.bucket}/#{meta.key}"
+      assert is_binary(meta.url)
+    end
+  end
+
+  describe "attach_media_to_block/4" do
+    test "should update block content with url in a transaction" do
+      block = insert(:block, content: %{"controls" => true, "poster_url" => "http://img.com"})
+      user_id = Ecto.UUID.generate()
+
+      meta = %{
+        bucket: "athena-test",
+        key: "courses/123/uuid-test.mp4",
+        url_for_saved_entry: "/athena-test/courses/123/uuid-test.mp4"
+      }
+
+      file_info = %{
+        name: "test.mp4",
+        type: "video/mp4",
+        size: 500_000
+      }
+
+      assert {:ok, updated_block} = Blocks.attach_media_to_block(block, user_id, meta, file_info)
+
+      assert updated_block.content["url"] == meta.url_for_saved_entry
+      assert updated_block.content["controls"] == true
+      assert updated_block.content["poster_url"] == "http://img.com"
+    end
+
+    test "should return error if block is invalid" do
+      invalid_block = %Block{id: Ecto.UUID.generate()}
+      user_id = Ecto.UUID.generate()
+
+      meta = %{bucket: "b", key: "k", url_for_saved_entry: "url"}
+      file_info = %{name: "n", type: "t", size: 10}
+
+      assert {:error, _changeset} =
+               Blocks.attach_media_to_block(invalid_block, user_id, meta, file_info)
+    end
+  end
 end
