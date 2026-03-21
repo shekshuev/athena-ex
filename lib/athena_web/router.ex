@@ -28,6 +28,12 @@ defmodule AthenaWeb.Router do
     delete "/auth/log_out", SessionController, :delete
   end
 
+  scope "/media", AthenaWeb do
+    pipe_through :browser
+
+    get "/*path", MediaController, :download
+  end
+
   live_session :public,
     layout: {AthenaWeb.Layouts, :app},
     on_mount: [{AthenaWeb.Hooks.Auth, :default}] do

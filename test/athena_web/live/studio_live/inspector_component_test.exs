@@ -134,5 +134,77 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "Unlock At (Optional)"
       assert html =~ ~s(name="block[access_rules][unlock_at]")
     end
+
+    test "renders image block media settings", %{block: base_block} do
+      block = %{
+        base_block
+        | type: :image,
+          content: %{"alt" => "My cool image", "url" => nil}
+      }
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block
+        )
+
+      assert html =~ "image Block"
+      assert html =~ "Media Settings"
+      assert html =~ "Upload File"
+      assert html =~ ~s(phx-click="request_media_upload")
+      assert html =~ ~s(phx-value-media_type="image")
+
+      assert html =~ "Alt Text (for accessibility)"
+      assert html =~ ~s(name="block[content][alt]")
+      assert html =~ "My cool image"
+
+      refute html =~ "Poster URL"
+    end
+
+    test "renders video block media settings", %{block: base_block} do
+      block = %{
+        base_block
+        | type: :video,
+          content: %{"poster_url" => "http://test.com/poster.jpg", "url" => nil}
+      }
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block
+        )
+
+      assert html =~ "video Block"
+      assert html =~ "Media Settings"
+      assert html =~ "Upload File"
+      assert html =~ ~s(phx-click="request_media_upload")
+      assert html =~ ~s(phx-value-media_type="video")
+
+      assert html =~ "Poster URL (Thumbnail)"
+      assert html =~ ~s(name="block[content][poster_url]")
+      assert html =~ "http://test.com/poster.jpg"
+
+      refute html =~ "Alt Text"
+    end
+
+    test "shows 'Replace File' button when media url is already present", %{block: base_block} do
+      block = %{
+        base_block
+        | type: :image,
+          content: %{"url" => "http://s3.com/file.jpg", "alt" => ""}
+      }
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block
+        )
+
+      assert html =~ "Replace File"
+      refute html =~ "Upload File"
+    end
   end
 end

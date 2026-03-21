@@ -30,6 +30,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       assert html =~ "Add Content"
       assert html =~ "Text Block"
       assert html =~ "Code Sandbox"
+      assert html =~ "Image"
+      assert html =~ "Video"
     end
   end
 
@@ -63,6 +65,81 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
 
       assert html =~ "code"
       refute html =~ "TiptapEditor"
+    end
+
+    test "renders image block placeholder when no url is set" do
+      image_block = %Block{id: "block-img-1", type: :image, content: %{"url" => nil}}
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [image_block],
+          active_block_id: nil
+        )
+
+      assert html =~ "Click to upload image"
+      assert html =~ "request_media_upload"
+      assert html =~ ~s(phx-value-media_type="image")
+    end
+
+    test "renders image tag when url is present" do
+      image_block = %Block{
+        id: "block-img-2",
+        type: :image,
+        content: %{"url" => "http://s3.com/pic.jpg", "alt" => "Cool pic"}
+      }
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [image_block],
+          active_block_id: nil
+        )
+
+      assert html =~ "<img"
+      assert html =~ ~s(src="http://s3.com/pic.jpg")
+      assert html =~ ~s(alt="Cool pic")
+      refute html =~ "Click to upload image"
+    end
+
+    test "renders video block placeholder when no url is set" do
+      video_block = %Block{id: "block-vid-1", type: :video, content: %{"url" => nil}}
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [video_block],
+          active_block_id: nil
+        )
+
+      assert html =~ "Click to upload video"
+      assert html =~ "request_media_upload"
+      assert html =~ ~s(phx-value-media_type="video")
+    end
+
+    test "renders video tag when url is present" do
+      video_block = %Block{
+        id: "block-vid-2",
+        type: :video,
+        content: %{
+          "url" => "http://s3.com/vid.mp4",
+          "poster_url" => "http://s3.com/poster.jpg",
+          "controls" => true
+        }
+      }
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [video_block],
+          active_block_id: nil
+        )
+
+      assert html =~ "<video"
+      assert html =~ ~s(src="http://s3.com/vid.mp4")
+      assert html =~ ~s(poster="http://s3.com/poster.jpg")
+      assert html =~ "controls"
+      refute html =~ "Click to upload video"
     end
   end
 

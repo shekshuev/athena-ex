@@ -112,7 +112,8 @@ defmodule Athena.Content.Blocks do
   end
 
   @doc """
-  Permanently deletes a block.
+  Permanently deletes a block. 
+  Media cleanup is handled asynchronously by Oban (Athena.Workers.MediaCleanup).
   """
   @spec delete_block(Block.t()) :: {:ok, Block.t()} | {:error, Ecto.Changeset.t()}
   def delete_block(%Block{} = block) do
@@ -130,12 +131,12 @@ defmodule Athena.Content.Blocks do
 
     case Athena.Media.generate_upload_url(bucket, key) do
       {:ok, presigned_url} ->
-        public_url = "/#{bucket}/#{key}"
+        local_url = "/media/#{key}"
 
         meta = %{
           uploader: "S3",
           url: presigned_url,
-          url_for_saved_entry: public_url,
+          url_for_saved_entry: local_url,
           bucket: bucket,
           key: key
         }

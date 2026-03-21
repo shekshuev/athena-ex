@@ -80,6 +80,19 @@ if config_env() == :prod do
 
   config :athena, Athena.Media, bucket: System.get_env("MINIO_BUCKET")
 
+  if config_env() != :test do
+    media_cron = System.get_env("MEDIA_CLEANUP_CRON") || "0 * * * *"
+
+    config :athena, Oban,
+      plugins: [
+        Oban.Plugins.Pruner,
+        {Oban.Plugins.Cron,
+         crontab: [
+           {media_cron, Athena.Workers.MediaCleanup}
+         ]}
+      ]
+  end
+
   # ## SSL Support
   #
   # To get SSL working, you will need to add the `https` key

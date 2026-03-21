@@ -52,3 +52,8 @@ config :ex_aws,
   ]
 
 config :athena, Athena.Media, bucket: "athena-test-#{System.get_env("MIX_TEST_PARTITION") || "0"}"
+
+config :athena, Oban,
+  testing: :manual,
+  queues: false,
+  plugins: false

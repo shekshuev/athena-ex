@@ -193,7 +193,7 @@ defmodule Athena.Content.BlocksTest do
       assert is_binary(meta.bucket)
       assert String.starts_with?(meta.key, "courses/#{course_id}/")
       assert String.ends_with?(meta.key, "-test_video.mp4")
-      assert meta.url_for_saved_entry == "/#{meta.bucket}/#{meta.key}"
+      assert meta.url_for_saved_entry == "/media/#{meta.key}"
       assert is_binary(meta.url)
     end
   end

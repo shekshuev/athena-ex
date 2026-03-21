@@ -173,6 +173,34 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       blocks = Content.list_blocks_by_section(section.id)
       assert blocks == []
     end
+
+    test "adds an image block to active section", %{conn: conn, course: course, section: section} do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("button[phx-click='add_image_block']") |> render_click()
+
+      blocks = Content.list_blocks_by_section(section.id)
+      assert length(blocks) == 1
+      assert hd(blocks).type == :image
+    end
+
+    test "adds a video block to active section", %{conn: conn, course: course, section: section} do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("button[phx-click='add_video_block']") |> render_click()
+
+      blocks = Content.list_blocks_by_section(section.id)
+      assert length(blocks) == 1
+      assert hd(blocks).type == :video
+    end
   end
 
   describe "Modals & Navigation" do
@@ -218,6 +246,74 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
 
       {:ok, updated_child} = Content.get_section(child.id)
       assert updated_child.parent_id == parent.id
+    end
+  end
+
+  describe "Media Upload State" do
+    setup %{course: course, admin: admin} do
+      {:ok, section} =
+        Content.create_section(%{
+          "title" => "Uploads Lesson",
+          "course_id" => course.id,
+          "owner_id" => admin.id
+        })
+
+      {:ok, block} =
+        Content.create_block(%{
+          "type" => "image",
+          "section_id" => section.id,
+          "content" => %{"url" => nil, "alt" => ""}
+        })
+
+      %{section: section, block: block}
+    end
+
+    test "opens media upload modal when requested", %{
+      conn: conn,
+      course: course,
+      section: section,
+      block: block
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']")
+      |> render_click()
+
+      lv
+      |> element("button[phx-click='request_media_upload']", "Upload File")
+      |> render_click()
+
+      html = render(lv)
+      assert html =~ "Upload Media"
+      assert html =~ "Click or drag file here"
+    end
+
+    test "cancels media upload and closes modal", %{
+      conn: conn,
+      course: course,
+      section: section,
+      block: block
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      render_hook(lv, "request_media_upload", %{"block_id" => block.id, "media_type" => "image"})
+
+      assert render(lv) =~ "Upload Media"
+
+      lv
+      |> element("button[phx-click='cancel_upload']")
+      |> render_click()
+
+      refute render(lv) =~ "Upload Media"
     end
   end
 end

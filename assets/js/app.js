@@ -1,4 +1,4 @@
-import { Editor, Extension, Node, mergeAttributes } from "@tiptap/core";
+import { Editor, Extension } from "@tiptap/core";
 import BubbleMenu from "@tiptap/extension-bubble-menu";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Highlight from "@tiptap/extension-highlight";
@@ -50,31 +50,6 @@ Hooks.Sortable = {
     if (this.sortable) this.sortable.destroy();
   },
 };
-
-const VideoNode = Node.create({
-  name: "video",
-  group: "block",
-  atom: true,
-  draggable: true,
-  addAttributes() {
-    return {
-      src: { default: null },
-      type: { default: "video/mp4" },
-    };
-  },
-  parseHTML() {
-    return [{ tag: "video[src]" }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return [
-      "video",
-      mergeAttributes(HTMLAttributes, {
-        controls: "true",
-        class: "w-full rounded-lg shadow-sm bg-black my-4",
-      }),
-    ];
-  },
-});
 
 const getSuggestionItems = ({ query }) => {
   const items = [
@@ -141,8 +116,7 @@ const getSuggestionItems = ({ query }) => {
       command: ({ editor, range }) =>
         editor.chain().focus().deleteRange(range).setHorizontalRule().run(),
     },
-    { title: "Image", icon: "🖼", type: "media", mediaType: "image" },
-    { title: "Video", icon: "🎥", type: "media", mediaType: "video" },
+    { title: "Image", icon: "🖼", type: "media", mediaType: "tiptap_image" },
     {
       title: "Table",
       icon: "▦",
@@ -331,7 +305,6 @@ Hooks.TiptapEditor = {
             class: "rounded-lg max-h-[500px] shadow-sm my-4 mx-auto",
           },
         }),
-        VideoNode,
         BubbleMenu.configure({ element: this.bubbleMenuEl }),
         SlashMenuPlugin,
         Highlight.configure({ multicolor: false }),
@@ -383,16 +356,8 @@ Hooks.TiptapEditor = {
     });
 
     this.handleInsertMedia = (e) => {
-      if (e.detail.block_id === blockId) {
-        if (e.detail.type === "image") {
-          this.editor.chain().focus().setImage({ src: e.detail.url }).run();
-        } else if (e.detail.type === "video") {
-          this.editor
-            .chain()
-            .focus()
-            .insertContent({ type: "video", attrs: { src: e.detail.url } })
-            .run();
-        }
+      if (e.detail.block_id === blockId && e.detail.type === "tiptap_image") {
+        this.editor.chain().focus().setImage({ src: e.detail.url }).run();
         hook.pushEvent("update_content", {
           id: blockId,
           content: this.editor.getJSON(),
@@ -415,23 +380,19 @@ Uploaders.S3 = function (entries, onViewError) {
     let { url } = entry.meta;
     let xhr = new XMLHttpRequest();
 
-    // 1. Если юзер нажал крестик отмены — обрываем HTTP запрос
     onViewError(() => xhr.abort());
 
     xhr.open("PUT", url, true);
 
     xhr.onload = () => {
-      // MinIO возвращает 200 при успешной загрузке
       if (xhr.status === 200) {
         entry.progress(100);
       } else {
-        // 2. ВОТ ИСПРАВЛЕНИЕ: говорим LiveView, что файл отвалился
         entry.error();
       }
     };
 
     xhr.onerror = () => {
-      // 3. И здесь тоже
       entry.error();
     };
 

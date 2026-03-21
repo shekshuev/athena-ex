@@ -184,6 +184,10 @@ defmodule AthenaWeb.StudioLive.Builder do
      )}
   end
 
+  def handle_event("cancel_section_delete", _, socket) do
+    {:noreply, assign(socket, section_to_delete: nil)}
+  end
+
   def handle_event("drill_down", %{"id" => id}, socket) do
     {:noreply, assign(socket, viewing_parent_id: id)}
   end
@@ -350,6 +354,10 @@ defmodule AthenaWeb.StudioLive.Builder do
      |> assign(blocks: updated_blocks, block_to_delete: nil, active_block_id: nil)}
   end
 
+  def handle_event("cancel_block_delete", _, socket) do
+    {:noreply, assign(socket, block_to_delete: nil)}
+  end
+
   def handle_event("add_image_block", _, socket) do
     attrs = %{
       "type" => "image",
@@ -498,8 +506,9 @@ defmodule AthenaWeb.StudioLive.Builder do
       </div>
 
       <.modal
+        :if={@uploading_for_block}
         id="media-upload-modal"
-        show={@uploading_for_block != nil}
+        show={true}
         title={gettext("Upload Media")}
         on_cancel={JS.push("cancel_upload")}
       >
@@ -608,8 +617,9 @@ defmodule AthenaWeb.StudioLive.Builder do
       </.modal>
 
       <.modal
+        :if={@moving_section_id}
         id="move-section-modal"
-        show={@moving_section_id != nil}
+        show={true}
         title={gettext("Move to...")}
         on_cancel={JS.push("cancel_move")}
       >
@@ -629,8 +639,9 @@ defmodule AthenaWeb.StudioLive.Builder do
       </.modal>
 
       <.modal
+        :if={@quick_nav_open}
         id="quick-nav-modal"
-        show={@quick_nav_open}
+        show={true}
         title={gettext("Course Map")}
         on_cancel={JS.push("close_quick_nav")}
       >
@@ -651,7 +662,7 @@ defmodule AthenaWeb.StudioLive.Builder do
       <.modal
         :if={@section_to_delete}
         id="delete-section-modal"
-        show={@section_to_delete != nil}
+        show={true}
         title={gettext("Delete Lesson")}
         description={
           gettext("Are you sure you want to delete '%{title}'? This action cannot be undone.",
@@ -667,7 +678,7 @@ defmodule AthenaWeb.StudioLive.Builder do
       <.modal
         :if={@block_to_delete}
         id="delete-block-modal"
-        show={@block_to_delete != nil}
+        show={true}
         title={gettext("Delete Block")}
         description={gettext("Remove this content block from the lesson?")}
         confirm_label={gettext("Delete")}
@@ -798,11 +809,9 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   defp process_media_save(socket, block) do
     user_id = socket.assigns.current_user.id
+    media_type = to_string(socket.assigns.uploading_media_type)
 
-    upload_name =
-      if to_string(socket.assigns.uploading_media_type) == "video",
-        do: :video_upload,
-        else: :image_upload
+    upload_name = if media_type == "video", do: :video_upload, else: :image_upload
 
     upload_results =
       consume_uploaded_entries(socket, upload_name, fn meta, entry ->
@@ -812,13 +821,37 @@ defmodule AthenaWeb.StudioLive.Builder do
           size: entry.client_size
         }
 
-        Content.attach_media_to_block(block, user_id, meta, file_info)
+        save_consumed_media(media_type, block, user_id, meta, file_info)
       end)
 
     apply_upload_results(socket, upload_results)
   end
 
-  defp apply_upload_results(socket, [{:ok, updated_block} | _]) do
+  defp save_consumed_media("tiptap_image", _block, user_id, meta, file_info) do
+    file_attrs = %{
+      "bucket" => meta.bucket,
+      "key" => meta.key,
+      "original_name" => file_info.name,
+      "mime_type" => file_info.type,
+      "size" => file_info.size,
+      "context" => "course_material",
+      "owner_id" => user_id
+    }
+
+    case Athena.Media.create_file(file_attrs) do
+      {:ok, _file} -> {:ok, {:ok, %{url: meta.url_for_saved_entry, type: "tiptap_image"}}}
+      {:error, err} -> {:ok, {:error, err}}
+    end
+  end
+
+  defp save_consumed_media(_media_type, block, user_id, meta, file_info) do
+    case Content.attach_media_to_block(block, user_id, meta, file_info) do
+      {:ok, updated_block} -> {:ok, {:ok, updated_block}}
+      {:error, err} -> {:ok, {:error, err}}
+    end
+  end
+
+  defp apply_upload_results(socket, [{:ok, %Block{} = updated_block} | _]) do
     {:noreply,
      socket
      |> assign(
@@ -827,6 +860,16 @@ defmodule AthenaWeb.StudioLive.Builder do
        uploading_media_type: nil
      )
      |> put_flash(:info, gettext("Media uploaded successfully!"))}
+  end
+
+  defp apply_upload_results(socket, [{:ok, %{url: url, type: "tiptap_image"}} | _]) do
+    block_id = socket.assigns.uploading_for_block
+
+    {:noreply,
+     socket
+     |> assign(uploading_for_block: nil, uploading_media_type: nil)
+     |> push_event("insert_media", %{block_id: block_id, url: url, type: "tiptap_image"})
+     |> put_flash(:info, gettext("Image inserted into text!"))}
   end
 
   defp apply_upload_results(socket, _errors) do
