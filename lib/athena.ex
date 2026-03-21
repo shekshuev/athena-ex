@@ -22,6 +22,7 @@ defmodule Athena do
       Content.Block,
       Content.LibraryBlock,
       Content.Section,
-      Content.Course
+      Content.Course,
+      Media
     ]
 end
