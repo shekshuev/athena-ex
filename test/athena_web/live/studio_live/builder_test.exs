@@ -201,6 +201,24 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert length(blocks) == 1
       assert hd(blocks).type == :video
     end
+
+    test "adds an attachment block to active section", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("button[phx-click='add_attachment_block']") |> render_click()
+
+      blocks = Content.list_blocks_by_section(section.id)
+      assert length(blocks) == 1
+      assert hd(blocks).type == :attachment
+    end
   end
 
   describe "Modals & Navigation" do

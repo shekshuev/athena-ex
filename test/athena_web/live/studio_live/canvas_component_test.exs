@@ -32,6 +32,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       assert html =~ "Code Sandbox"
       assert html =~ "Image"
       assert html =~ "Video"
+      assert html =~ "Files &amp; Materials"
     end
   end
 
@@ -140,6 +141,65 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       assert html =~ ~s(poster="http://s3.com/poster.jpg")
       assert html =~ "controls"
       refute html =~ "Click to upload video"
+    end
+
+    test "renders attachment block with tiptap and add button" do
+      attachment_block = %Block{
+        id: "block-att-1",
+        type: :attachment,
+        content: %{"description" => %{}, "files" => []}
+      }
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [attachment_block],
+          active_block_id: nil
+        )
+
+      assert html =~ ~s(id="tiptap-block-att-1")
+      assert html =~ ~s(phx-hook="TiptapEditor")
+      assert html =~ "Add Files"
+      assert html =~ "request_media_upload"
+      assert html =~ ~s(phx-value-media_type="attachment")
+    end
+
+    test "renders attachment block with listed files and sizes" do
+      attachment_block = %Block{
+        id: "block-att-2",
+        type: :attachment,
+        content: %{
+          "description" => %{"text" => "Download these"},
+          "files" => [
+            %{
+              "name" => "homework.pdf",
+              "size" => 2_097_152,
+              "url" => "/media/hw.pdf",
+              "mime" => "application/pdf"
+            },
+            %{
+              "name" => "notes.txt",
+              "size" => 1500,
+              "url" => "/media/notes.txt",
+              "mime" => "text/plain"
+            }
+          ]
+        }
+      }
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [attachment_block],
+          active_block_id: nil
+        )
+
+      assert html =~ "homework.pdf"
+      assert html =~ "notes.txt"
+      assert html =~ "2.0 MB"
+      assert html =~ "1.5 KB"
+      assert html =~ "delete_attachment"
+      assert html =~ ~s(phx-value-url="/media/hw.pdf")
     end
   end
 

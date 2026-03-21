@@ -111,6 +111,59 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
                       </span>
                     </button>
                   <% end %>
+                <% block.type == :attachment -> %>
+                  <div
+                    id={"tiptap-#{block.id}"}
+                    phx-hook="TiptapEditor"
+                    data-id={block.id}
+                    phx-update="ignore"
+                    data-content={Jason.encode!(block.content["description"] || %{})}
+                    class="min-h-[100px] mb-6"
+                  >
+                  </div>
+
+                  <div class="space-y-2 mb-4">
+                    <div
+                      :for={file <- block.content["files"] || []}
+                      class="flex items-center gap-3 p-3 bg-base-200/50 rounded-lg border border-base-300 hover:border-primary/30 transition-colors"
+                    >
+                      <div class="p-2 bg-base-100 rounded shadow-sm text-primary shrink-0">
+                        <.icon name="hero-document" class="size-5" />
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <div class="text-sm font-bold truncate text-base-content/80">
+                          {file["name"]}
+                        </div>
+                        <div class="text-xs text-base-content/50">{format_bytes(file["size"])}</div>
+                      </div>
+                      <.button
+                        type="button"
+                        phx-click="delete_attachment"
+                        phx-value-block_id={block.id}
+                        phx-value-url={file["url"]}
+                        class="btn-ghost btn-sm btn-square text-error hover:bg-error/20"
+                        title={gettext("Remove file")}
+                      >
+                        <.icon name="hero-trash" class="size-4" />
+                      </.button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    phx-click="request_media_upload"
+                    phx-value-block_id={block.id}
+                    phx-value-media_type="attachment"
+                    class="w-full text-center py-4 bg-base-100 hover:bg-base-200 rounded-lg border-2 border-dashed border-base-300 hover:border-primary/50 transition-colors flex items-center justify-center gap-2 group text-sm font-medium text-base-content/50"
+                  >
+                    <.icon
+                      name="hero-plus-circle"
+                      class="size-5 group-hover:text-primary transition-colors"
+                    />
+                    <span class="group-hover:text-primary transition-colors">
+                      {gettext("Add Files")}
+                    </span>
+                  </button>
                 <% true -> %>
                   <div class="text-sm text-base-content/50 italic p-4 ring-1 ring-dashed ring-base-300 rounded select-none bg-base-200/50">
                     <div class="flex items-center gap-2 mb-1">
@@ -183,11 +236,29 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
                   {gettext("Video")}
                 </.button>
               </li>
+              <li>
+                <.button
+                  phx-click="add_attachment_block"
+                  class="btn btn-ghost justify-start font-medium gap-3 h-12"
+                >
+                  <.icon name="hero-paper-clip" class="size-5 opacity-50" />
+                  {gettext("Files & Materials")}
+                </.button>
+              </li>
             </ul>
           </div>
         </div>
       </div>
     </div>
     """
+  end
+
+  @doc false
+  defp format_bytes(bytes) do
+    cond do
+      bytes >= 1_048_576 -> "#{Float.round(bytes / 1_048_576, 1)} MB"
+      bytes >= 1024 -> "#{Float.round(bytes / 1024, 1)} KB"
+      true -> "#{bytes} B"
+    end
   end
 end

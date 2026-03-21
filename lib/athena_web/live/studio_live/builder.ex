@@ -15,14 +15,18 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   @allowed_image_types ~w(.jpg .jpeg .png .gif .webp)
   @allowed_video_types ~w(.mp4 .mov .webm)
+  @allowed_attachment_types ~w(.pdf .doc .docx .xls .xlsx .ppt .pptx .txt .zip .rar .7z)
 
   @image_max_size 10 * 1024 * 1024
   @video_max_size 500 * 1024 * 1024
+  @attachment_max_size 50 * 1024 * 1024
 
   @image_types_str @allowed_image_types
                    |> Enum.map_join(", ", fn "." <> ext -> String.upcase(ext) end)
   @video_types_str @allowed_video_types
                    |> Enum.map_join(", ", fn "." <> ext -> String.upcase(ext) end)
+  @attachment_types_str @allowed_attachment_types
+                        |> Enum.map_join(", ", fn "." <> ext -> String.upcase(ext) end)
 
   @doc """
   Initializes the LiveView, loading the course, its section tree, and blocks
@@ -69,6 +73,12 @@ defmodule AthenaWeb.StudioLive.Builder do
            accept: @allowed_video_types,
            max_entries: 1,
            max_file_size: @video_max_size,
+           external: &presign_upload/2
+         )
+         |> allow_upload(:attachment_upload,
+           accept: @allowed_attachment_types,
+           max_entries: 10,
+           max_file_size: @attachment_max_size,
            external: &presign_upload/2
          )}
 
@@ -297,11 +307,18 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
-  def handle_event("update_content", %{"id" => id, "content" => content}, socket) do
+  def handle_event("update_content", %{"id" => id, "content" => text_content}, socket) do
     block = Enum.find(socket.assigns.blocks, &(&1.id == id))
 
     if block do
-      {:ok, updated_block} = Content.update_block(block, %{"content" => content})
+      new_content =
+        if block.type == :attachment do
+          Map.put(block.content || %{}, "description", text_content)
+        else
+          text_content
+        end
+
+      {:ok, updated_block} = Content.update_block(block, %{"content" => new_content})
       {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
     else
       {:noreply, socket}
@@ -392,6 +409,42 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
+  def handle_event("add_attachment_block", _, socket) do
+    attrs = %{
+      "type" => "attachment",
+      "content" => %{
+        "description" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+        "files" => []
+      },
+      "section_id" => socket.assigns.active_section_id
+    }
+
+    case Content.create_block(attrs) do
+      {:ok, block} ->
+        updated_blocks = socket.assigns.blocks ++ [block]
+        {:noreply, assign(socket, blocks: updated_blocks, active_block_id: block.id)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to create attachment block"))}
+    end
+  end
+
+  def handle_event("delete_attachment", %{"block_id" => block_id, "url" => url}, socket) do
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
+    if block do
+      files = Map.get(block.content || %{}, "files", [])
+      new_files = Enum.reject(files, &(&1["url"] == url))
+
+      {:ok, updated_block} =
+        Content.update_block(block, %{"content" => Map.put(block.content, "files", new_files)})
+
+      {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+    else
+      {:noreply, socket}
+    end
+  end
+
   # --- MEDIA UPLOAD EVENTS ---
 
   def handle_event(
@@ -406,9 +459,11 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   def handle_event("cancel_upload", _, socket) do
     upload_name =
-      if to_string(socket.assigns.uploading_media_type) == "video",
-        do: :video_upload,
-        else: :image_upload
+      case to_string(socket.assigns.uploading_media_type) do
+        "video" -> :video_upload
+        "attachment" -> :attachment_upload
+        _ -> :image_upload
+      end
 
     socket =
       if socket.assigns.uploading_media_type do
@@ -424,9 +479,11 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   def handle_event("cancel-upload", %{"ref" => ref}, socket) do
     upload_name =
-      if to_string(socket.assigns.uploading_media_type) == "video",
-        do: :video_upload,
-        else: :image_upload
+      case to_string(socket.assigns.uploading_media_type) do
+        "video" -> :video_upload
+        "attachment" -> :attachment_upload
+        _ -> :image_upload
+      end
 
     {:noreply, cancel_upload(socket, upload_name, ref)}
   end
@@ -448,7 +505,8 @@ defmodule AthenaWeb.StudioLive.Builder do
         active_section: active_section,
         active_block: active_block,
         image_types_str: @image_types_str,
-        video_types_str: @video_types_str
+        video_types_str: @video_types_str,
+        attachment_types_str: @attachment_types_str
       )
 
     ~H"""
@@ -513,9 +571,11 @@ defmodule AthenaWeb.StudioLive.Builder do
         on_cancel={JS.push("cancel_upload")}
       >
         <% active_upload =
-          if to_string(@uploading_media_type) == "video",
-            do: @uploads.video_upload,
-            else: @uploads.image_upload %>
+          case to_string(@uploading_media_type) do
+            "video" -> @uploads.video_upload
+            "attachment" -> @uploads.attachment_upload
+            _ -> @uploads.image_upload
+          end %>
         <% has_entries = active_upload.entries != [] %>
         <% is_uploading =
           Enum.any?(
@@ -536,10 +596,13 @@ defmodule AthenaWeb.StudioLive.Builder do
               <.icon name="hero-cloud-arrow-up" class="size-10 text-primary mb-2" />
               <span class="font-bold text-center">{gettext("Click or drag file here")}</span>
               <span class="text-xs text-base-content/50 mt-1">
-                <%= if to_string(@uploading_media_type) == "video" do %>
-                  {@video_types_str} (500MB)
-                <% else %>
-                  {@image_types_str} (10MB)
+                <%= case to_string(@uploading_media_type) do %>
+                  <% "video" -> %>
+                    {@video_types_str} (500MB)
+                  <% "attachment" -> %>
+                    {@attachment_types_str} (50MB, max 10)
+                  <% _ -> %>
+                    {@image_types_str} (10MB)
                 <% end %>
               </span>
             </label>
@@ -811,7 +874,12 @@ defmodule AthenaWeb.StudioLive.Builder do
     user_id = socket.assigns.current_user.id
     media_type = to_string(socket.assigns.uploading_media_type)
 
-    upload_name = if media_type == "video", do: :video_upload, else: :image_upload
+    upload_name =
+      case to_string(socket.assigns.uploading_media_type) do
+        "video" -> :video_upload
+        "attachment" -> :attachment_upload
+        _ -> :image_upload
+      end
 
     upload_results =
       consume_uploaded_entries(socket, upload_name, fn meta, entry ->
@@ -824,7 +892,7 @@ defmodule AthenaWeb.StudioLive.Builder do
         save_consumed_media(media_type, block, user_id, meta, file_info)
       end)
 
-    apply_upload_results(socket, upload_results)
+    apply_upload_results(socket, media_type, block, upload_results)
   end
 
   defp save_consumed_media("tiptap_image", _block, user_id, meta, file_info) do
@@ -844,6 +912,33 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
+  defp save_consumed_media("attachment", _block, user_id, meta, file_info) do
+    file_attrs = %{
+      "bucket" => meta.bucket,
+      "key" => meta.key,
+      "original_name" => file_info.name,
+      "mime_type" => file_info.type,
+      "size" => file_info.size,
+      "context" => "course_material",
+      "owner_id" => user_id
+    }
+
+    case Athena.Media.create_file(file_attrs) do
+      {:ok, _file} ->
+        file_data = %{
+          "url" => meta.url_for_saved_entry,
+          "name" => file_info.name,
+          "size" => file_info.size,
+          "mime" => file_info.type
+        }
+
+        {:ok, {:ok, file_data}}
+
+      {:error, err} ->
+        {:ok, {:error, err}}
+    end
+  end
+
   defp save_consumed_media(_media_type, block, user_id, meta, file_info) do
     case Content.attach_media_to_block(block, user_id, meta, file_info) do
       {:ok, updated_block} -> {:ok, {:ok, updated_block}}
@@ -851,7 +946,52 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
-  defp apply_upload_results(socket, [{:ok, %Block{} = updated_block} | _]) do
+  @doc false
+  defp apply_upload_results(socket, "tiptap_image", _block, [
+         {:ok, %{url: url, type: "tiptap_image"}} | _
+       ]) do
+    block_id = socket.assigns.uploading_for_block
+
+    {:noreply,
+     socket
+     |> assign(uploading_for_block: nil, uploading_media_type: nil)
+     |> push_event("insert_media", %{block_id: block_id, url: url, type: "tiptap_image"})
+     |> put_flash(:info, gettext("Image inserted into text!"))}
+  end
+
+  defp apply_upload_results(socket, "attachment", block, results) do
+    new_files =
+      Enum.reduce(results, [], fn
+        {:ok, file_map}, acc -> [file_map | acc]
+        _, acc -> acc
+      end)
+      |> Enum.reverse()
+
+    if new_files != [] do
+      existing_files = Map.get(block.content || %{}, "files", [])
+      new_content = Map.put(block.content || %{}, "files", existing_files ++ new_files)
+
+      {:ok, updated_block} = Content.update_block(block, %{"content" => new_content})
+
+      {:noreply,
+       socket
+       |> assign(
+         blocks: replace_block(socket.assigns.blocks, updated_block),
+         uploading_for_block: nil,
+         uploading_media_type: nil
+       )
+       |> put_flash(:info, gettext("Files attached successfully!"))}
+    else
+      {:noreply,
+       socket
+       |> assign(uploading_for_block: nil, uploading_media_type: nil)
+       |> put_flash(:error, gettext("Error saving attachments."))}
+    end
+  end
+
+  defp apply_upload_results(socket, _media_type, _block, [
+         {:ok, %Block{} = updated_block} | _
+       ]) do
     {:noreply,
      socket
      |> assign(
@@ -862,17 +1002,7 @@ defmodule AthenaWeb.StudioLive.Builder do
      |> put_flash(:info, gettext("Media uploaded successfully!"))}
   end
 
-  defp apply_upload_results(socket, [{:ok, %{url: url, type: "tiptap_image"}} | _]) do
-    block_id = socket.assigns.uploading_for_block
-
-    {:noreply,
-     socket
-     |> assign(uploading_for_block: nil, uploading_media_type: nil)
-     |> push_event("insert_media", %{block_id: block_id, url: url, type: "tiptap_image"})
-     |> put_flash(:info, gettext("Image inserted into text!"))}
-  end
-
-  defp apply_upload_results(socket, _errors) do
+  defp apply_upload_results(socket, _media_type, _block, _errors) do
     {:noreply,
      socket
      |> assign(uploading_for_block: nil, uploading_media_type: nil)
