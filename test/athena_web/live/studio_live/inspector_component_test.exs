@@ -79,7 +79,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       %{block: build(:block, type: :text)}
     end
 
-    test "renders text block fields", %{block: block} do
+    test "renders text block fields and basic progression rules", %{block: block} do
       html =
         render_component(InspectorComponent,
           id: "inspector",
@@ -91,14 +91,38 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "Who can see this block?"
       assert html =~ ~s(id="block-inspector-form-#{block.id}")
 
+      assert html =~ "Progression Rules"
+      assert html =~ "How to unlock the next block?"
+      assert html =~ ~s(name="block[completion_rule][type]")
+
+      assert html =~ "Require Button Click"
+      refute html =~ "Require Submission"
+
       refute html =~ "Execution Settings"
       refute html =~ "Programming Language"
-
       assert html =~ "Save to Library"
       assert html =~ "Delete Block"
     end
 
-    test "renders code block execution settings", %{block: base_block} do
+    test "renders button_text input when completion rule is button", %{block: base_block} do
+      block = %{
+        base_block
+        | completion_rule: %Athena.Content.CompletionRule{type: :button, button_text: "Let's go!"}
+      }
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block
+        )
+
+      assert html =~ "Button Text"
+      assert html =~ ~s(name="block[completion_rule][button_text]")
+      assert html =~ "Let&#39;s go!"
+    end
+
+    test "renders code block fields and advanced progression rules", %{block: base_block} do
       block = %{
         base_block
         | type: :code,
@@ -117,8 +141,27 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "Programming Language"
       assert html =~ "Execution Mode"
 
-      assert html =~ ~s(name="block[content][language]")
-      assert html =~ ~s(name="block[content][execution_mode]")
+      assert html =~ "Require Submission"
+      assert html =~ "Pass Auto-Grade"
+    end
+
+    test "renders min_score input when completion rule is pass_auto_grade", %{block: base_block} do
+      block = %{
+        base_block
+        | type: :code,
+          completion_rule: %Athena.Content.CompletionRule{type: :pass_auto_grade, min_score: 85}
+      }
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block
+        )
+
+      assert html =~ "Minimum Score to Pass"
+      assert html =~ ~s(name="block[completion_rule][min_score]")
+      assert html =~ "85"
     end
 
     test "shows access rules inputs when block visibility is restricted", %{block: base_block} do

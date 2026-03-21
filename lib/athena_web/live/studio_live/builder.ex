@@ -150,10 +150,14 @@ defmodule AthenaWeb.StudioLive.Builder do
     section = find_section_in_tree(socket.assigns.sections, id)
 
     if section do
-      {:ok, _updated_section} = Content.update_section(section, section_params)
-      updated_sections = Content.get_course_tree(socket.assigns.course.id)
+      case Content.update_section(section, section_params) do
+        {:ok, _updated_section} ->
+          updated_sections = Content.get_course_tree(socket.assigns.course.id)
+          {:noreply, assign(socket, sections: updated_sections)}
 
-      {:noreply, assign(socket, sections: updated_sections)}
+        {:error, _changeset} ->
+          {:noreply, socket}
+      end
     else
       {:noreply, socket}
     end
@@ -348,8 +352,16 @@ defmodule AthenaWeb.StudioLive.Builder do
 
       final_params = Map.put(block_params, "content", new_content)
 
-      {:ok, updated_block} = Content.update_block(block, final_params)
-      {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+      case Content.update_block(block, final_params) do
+        {:ok, updated_block} ->
+          {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+
+        {:error, changeset} ->
+          in_memory_block = Ecto.Changeset.apply_changes(changeset)
+
+          {:noreply,
+           assign(socket, blocks: replace_block(socket.assigns.blocks, in_memory_block))}
+      end
     else
       {:noreply, socket}
     end
