@@ -17,6 +17,12 @@ defmodule Athena do
       Identity.Role,
       Identity.Roles,
       Identity.Definitions,
-      Identity.Profile
+      Identity.Profile,
+      Content,
+      Content.Block,
+      Content.LibraryBlock,
+      Content.Section,
+      Content.Course,
+      Media
     ]
 end

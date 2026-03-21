@@ -119,4 +119,15 @@ defmodule Athena.Media do
         error
     end
   end
+
+  @doc """
+  Finds a file by its S3 key and deletes it from both S3 and the database.
+  """
+  @spec delete_file_by_key(String.t()) :: {:ok, File.t() | nil} | {:error, term()}
+  def delete_file_by_key(key) do
+    case Repo.get_by(File, key: key) do
+      %File{} = file -> delete_file(file)
+      nil -> {:ok, nil}
+    end
+  end
 end

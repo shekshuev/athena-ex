@@ -6,6 +6,7 @@ defmodule Athena.Factory do
 
   alias Athena.Identity.{Account, Role, Profile}
   alias Athena.Media.{File, Quota}
+  alias Athena.Content.{Course, Section, Block, LibraryBlock}
 
   def role_factory do
     %Role{
@@ -47,6 +48,45 @@ defmodule Athena.Factory do
       mime_type: "application/pdf",
       size: 1024 * 1024,
       context: :personal,
+      owner_id: Ecto.UUID.generate()
+    }
+  end
+
+  def course_factory do
+    %Course{
+      title: sequence(:title, &"Course #{&1}"),
+      description: "A test course description",
+      status: :published,
+      owner_id: Ecto.UUID.generate()
+    }
+  end
+
+  def section_factory do
+    %Section{
+      id: Ecto.UUID.generate(),
+      title: sequence(:title, &"Section #{&1}"),
+      order: 0,
+      path: %EctoLtree.LabelTree{labels: [Section.uuid_to_ltree(Ecto.UUID.generate())]},
+      course: build(:course),
+      owner_id: Ecto.UUID.generate()
+    }
+  end
+
+  def block_factory do
+    %Block{
+      type: :text,
+      content: %{"text" => "Default content for the block"},
+      order: 1024,
+      section: build(:section)
+    }
+  end
+
+  def library_block_factory do
+    %LibraryBlock{
+      title: sequence(:title, &"Template #{&1}"),
+      type: :quiz_question,
+      content: %{},
+      tags: [],
       owner_id: Ecto.UUID.generate()
     }
   end

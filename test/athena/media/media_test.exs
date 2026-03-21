@@ -7,14 +7,6 @@ defmodule Athena.MediaTest do
 
   @default_quota_bytes 100 * 1024 * 1024
 
-  setup_all do
-    bucket = Application.get_env(:athena, Athena.Media)[:bucket]
-
-    ExAws.S3.put_bucket(bucket, "us-east-1") |> ExAws.request()
-
-    :ok
-  end
-
   describe "list_files/1" do
     test "should return list of files with flop pagination" do
       insert_list(3, :media_file)

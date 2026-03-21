@@ -99,7 +99,7 @@ defmodule AthenaWeb.CoreComponents do
       <.button phx-click="go" variant="primary">Send!</.button>
       <.button navigate={~p"/"}>Home</.button>
   """
-  attr :rest, :global, include: ~w(href navigate patch method download name value disabled)
+  attr :rest, :global, include: ~w(href navigate patch method download name value disabled form)
   attr :class, :any
   attr :variant, :string, values: ~w(primary)
   slot :inner_block, required: true
@@ -308,7 +308,7 @@ defmodule AthenaWeb.CoreComponents do
   # Helper used by inputs to generate form errors
   defp error(assigns) do
     ~H"""
-    <p class="mt-1.5 text-error text-xs font-bold text-wrap break-words leading-tight flex gap-1 items-start">
+    <p class="mt-1.5 text-error text-xs font-bold text-wrap wrap-break-word leading-tight flex gap-1 items-start">
       <.icon name="hero-exclamation-circle" class="size-4 shrink-0 mt-0.5" />
       <span>{render_slot(@inner_block)}</span>
     </p>
@@ -567,7 +567,7 @@ defmodule AthenaWeb.CoreComponents do
   attr :title, :string, default: nil
   attr :description, :string, default: nil
   attr :on_cancel, JS, default: %JS{}
-  attr :on_confirm, JS, default: %JS{}
+  attr :on_confirm, JS, default: nil
   attr :confirm_label, :string, default: "Confirm"
   attr :danger, :boolean, default: false
   slot :inner_block
@@ -586,7 +586,7 @@ defmodule AthenaWeb.CoreComponents do
 
         {render_slot(@inner_block)}
 
-        <div class="modal-action">
+        <div :if={@on_confirm} class="modal-action">
           <button
             type="button"
             class="btn btn-ghost"
@@ -624,7 +624,7 @@ defmodule AthenaWeb.CoreComponents do
   def slide_over(assigns) do
     ~H"""
     <div
-      class={["drawer drawer-end absolute inset-0 z-[100]", !@show && "hidden"]}
+      class={["drawer drawer-end absolute inset-0 z-100", !@show && "hidden"]}
       style="pointer-events: none;"
     >
       <input
