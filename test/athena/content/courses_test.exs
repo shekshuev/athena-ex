@@ -94,8 +94,49 @@ defmodule Athena.Content.CoursesTest do
       assert {:ok, deleted_course} = Courses.soft_delete_course(course)
       assert deleted_course.deleted_at != nil
 
-      # Проверяем, что после этого get_course его не найдет
       assert {:error, :not_found} = Courses.get_course(course.id)
+    end
+  end
+
+  describe "get_courses_map/1" do
+    test "returns a map of active courses keyed by their IDs" do
+      course1 = insert(:course)
+      course2 = insert(:course)
+      _unrelated_course = insert(:course)
+
+      result = Courses.get_courses_map([course1.id, course2.id])
+
+      assert is_map(result)
+      assert map_size(result) == 2
+      assert Map.has_key?(result, course1.id)
+      assert Map.has_key?(result, course2.id)
+      assert result[course1.id].title == course1.title
+    end
+
+    test "ignores non-existent IDs" do
+      course = insert(:course)
+      fake_id = Ecto.UUID.generate()
+
+      result = Courses.get_courses_map([course.id, fake_id])
+
+      assert map_size(result) == 1
+      assert Map.has_key?(result, course.id)
+      refute Map.has_key?(result, fake_id)
+    end
+
+    test "excludes soft-deleted courses" do
+      active_course = insert(:course)
+      deleted_course = insert(:course, deleted_at: DateTime.utc_now(:second))
+
+      result = Courses.get_courses_map([active_course.id, deleted_course.id])
+
+      assert map_size(result) == 1
+      assert Map.has_key?(result, active_course.id)
+      refute Map.has_key?(result, deleted_course.id)
+    end
+
+    test "returns an empty map for an empty list" do
+      assert Courses.get_courses_map([]) == %{}
     end
   end
 end

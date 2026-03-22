@@ -14,18 +14,14 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponent do
   @spec render(map()) :: Phoenix.LiveView.Rendered.t()
   @impl true
   def render(assigns) do
-    # Находим текущую родительскую секцию (если мы провалились внутрь)
     current_parent = find_section(assigns.sections, assigns.viewing_parent_id)
 
-    # Строим хлебные крошки от корня до текущего родителя
     breadcrumbs = build_breadcrumbs(assigns.sections, current_parent)
 
-    # Получаем элементы только для текущего уровня
     current_level_sections =
       if current_parent do
         current_parent.children || []
       else
-        # Если нет родителя, показываем корневые секции
         assigns.sections
       end
 

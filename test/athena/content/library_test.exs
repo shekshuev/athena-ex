@@ -107,7 +107,6 @@ defmodule Athena.Content.LibraryTest do
     setup do
       owner = Ecto.UUID.generate()
 
-      # Insert varying blocks to test the array intersection (&&) queries
       insert(:library_block,
         type: :quiz_question,
         tags: ["elixir", "hard"],
@@ -161,9 +160,7 @@ defmodule Athena.Content.LibraryTest do
     test "should fill remaining quota using include_tags if mandatory tags are insufficient" do
       params = %{
         "count" => 3,
-        # Matches 1 block ("elixir", "hard")
         "mandatory_tags" => ["hard"],
-        # Should fetch 2 more from the remaining Elixir blocks
         "include_tags" => ["elixir"],
         "exclude_tags" => []
       }
@@ -174,18 +171,14 @@ defmodule Athena.Content.LibraryTest do
 
     test "should strictly exclude blocks matching exclude_tags" do
       params = %{
-        # High count to attempt fetching all available
         "count" => 5,
         "mandatory_tags" => [],
-        # Matches 2 blocks ("elixir easy", "js easy")
         "include_tags" => ["easy"],
-        # Should exclude "js easy"
         "exclude_tags" => ["js"]
       }
 
       results = Library.generate_exam_questions(params)
 
-      # Since "js" is excluded, only "elixir easy" remains
       assert length(results) == 1
       assert hd(results).question == "Q2"
     end
@@ -203,13 +196,11 @@ defmodule Athena.Content.LibraryTest do
 
       snapshot = hd(results)
 
-      # Verify mapping
       assert snapshot.id != nil
       assert snapshot.original_block_id != nil
       assert snapshot.type == "single"
       assert snapshot.question == "Q5"
 
-      # Keys should be atoms according to the struct/map format generated in the logic
       assert Map.has_key?(snapshot, :options)
       assert Map.has_key?(snapshot, :correct_answer_text)
       assert Map.has_key?(snapshot, :explanation)

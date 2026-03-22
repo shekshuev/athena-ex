@@ -182,4 +182,70 @@ defmodule Athena.Identity.AccountsTest do
       assert updated_account.profile.first_name == "NewName"
     end
   end
+
+  describe "get_accounts_map/1" do
+    test "should return a map of accounts keyed by their IDs" do
+      account1 = insert(:account)
+      account2 = insert(:account)
+      _unrelated_account = insert(:account)
+
+      result = Accounts.get_accounts_map([account1.id, account2.id])
+
+      assert is_map(result)
+      assert map_size(result) == 2
+      assert Map.has_key?(result, account1.id)
+      assert Map.has_key?(result, account2.id)
+      assert result[account1.id].login == account1.login
+    end
+
+    test "should ignore non-existent IDs" do
+      account = insert(:account)
+      fake_id = Ecto.UUID.generate()
+
+      result = Accounts.get_accounts_map([account.id, fake_id])
+
+      assert map_size(result) == 1
+      assert Map.has_key?(result, account.id)
+      refute Map.has_key?(result, fake_id)
+    end
+
+    test "should return an empty map for an empty list" do
+      assert Accounts.get_accounts_map([]) == %{}
+    end
+  end
+
+  describe "search_accounts_by_login/2" do
+    test "should return accounts matching the login query (case-insensitive)" do
+      acc1 = insert(:account, login: "john_doe")
+      acc2 = insert(:account, login: "john_smith")
+      _acc3 = insert(:account, login: "alice_jones")
+
+      results = Accounts.search_accounts_by_login("John")
+
+      assert length(results) == 2
+      ids = Enum.map(results, & &1.id)
+      assert acc1.id in ids
+      assert acc2.id in ids
+    end
+
+    test "should respect the provided limit" do
+      insert(:account, login: "test_user_1")
+      insert(:account, login: "test_user_2")
+      insert(:account, login: "test_user_3")
+      insert(:account, login: "test_user_4")
+      insert(:account, login: "test_user_5")
+
+      results = Accounts.search_accounts_by_login("test", 3)
+
+      assert length(results) == 3
+    end
+
+    test "should return an empty list if no accounts match" do
+      insert(:account, login: "test_user")
+
+      results = Accounts.search_accounts_by_login("unknown")
+
+      assert results == []
+    end
+  end
 end

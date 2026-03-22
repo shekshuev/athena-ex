@@ -16,6 +16,7 @@ defmodule Athena.Content do
   defdelegate create_course(attrs), to: Courses
   defdelegate update_course(course, attrs), to: Courses
   defdelegate soft_delete_course(course), to: Courses
+  defdelegate get_courses_map(ids), to: Courses
 
   defdelegate get_section(id), to: Sections
   defdelegate create_section(attrs), to: Sections
