@@ -1,0 +1,101 @@
+defmodule Athena.Content.CoursesTest do
+  use Athena.DataCase, async: true
+
+  alias Athena.Content.Courses
+  alias Athena.Content.Course
+  import Athena.Factory
+
+  describe "list_courses/1" do
+    test "returns a paginated list of active courses" do
+      insert_list(3, :course)
+
+      {:ok, {courses, meta}} = Courses.list_courses(%{page: 1, page_size: 2})
+
+      assert length(courses) == 2
+      assert meta.total_count == 3
+    end
+
+    test "excludes soft-deleted courses from the list" do
+      active_course = insert(:course)
+      insert(:course, deleted_at: DateTime.utc_now())
+
+      {:ok, {courses, _meta}} = Courses.list_courses(%{})
+
+      assert length(courses) == 1
+      assert hd(courses).id == active_course.id
+    end
+  end
+
+  describe "get_course/1" do
+    test "returns the course if it exists and is not deleted" do
+      course = insert(:course)
+
+      assert {:ok, fetched_course} = Courses.get_course(course.id)
+      assert fetched_course.id == course.id
+    end
+
+    test "returns error if course is soft-deleted" do
+      course = insert(:course, deleted_at: DateTime.utc_now())
+
+      assert {:error, :not_found} = Courses.get_course(course.id)
+    end
+
+    test "returns error if course does not exist" do
+      assert {:error, :not_found} = Courses.get_course(Ecto.UUID.generate())
+    end
+  end
+
+  describe "create_course/1" do
+    test "creates a course with valid attributes" do
+      owner_id = Ecto.UUID.generate()
+      attrs = %{title: "Elixir for Pro", description: "Deep dive", owner_id: owner_id}
+
+      assert {:ok, %Course{} = course} = Courses.create_course(attrs)
+      assert course.title == "Elixir for Pro"
+      assert course.status == :draft
+    end
+
+    test "returns error changeset with invalid attributes" do
+      assert {:error, changeset} = Courses.create_course(%{title: ""})
+      assert "can't be blank" in errors_on(changeset).title
+      assert "can't be blank" in errors_on(changeset).owner_id
+    end
+
+    test "enforces unique title constraint" do
+      insert(:course, title: "Unique Course")
+
+      assert {:error, changeset} =
+               Courses.create_course(%{title: "Unique Course", owner_id: Ecto.UUID.generate()})
+
+      assert "has already been taken" in errors_on(changeset).title
+    end
+  end
+
+  describe "update_course/2" do
+    test "updates course attributes" do
+      course = insert(:course, title: "Old Title")
+
+      assert {:ok, updated} = Courses.update_course(course, %{title: "New Title"})
+      assert updated.title == "New Title"
+    end
+
+    test "returns error changeset for invalid update" do
+      course = insert(:course)
+
+      assert {:error, changeset} = Courses.update_course(course, %{title: "ab"})
+      assert "should be at least 3 character(s)" in errors_on(changeset).title
+    end
+  end
+
+  describe "soft_delete_course/1" do
+    test "sets deleted_at timestamp" do
+      course = insert(:course)
+
+      assert {:ok, deleted_course} = Courses.soft_delete_course(course)
+      assert deleted_course.deleted_at != nil
+
+      # Проверяем, что после этого get_course его не найдет
+      assert {:error, :not_found} = Courses.get_course(course.id)
+    end
+  end
+end

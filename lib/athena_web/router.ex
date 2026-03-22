@@ -28,6 +28,12 @@ defmodule AthenaWeb.Router do
     delete "/auth/log_out", SessionController, :delete
   end
 
+  scope "/media", AthenaWeb do
+    pipe_through :browser
+
+    get "/*path", MediaController, :download
+  end
+
   live_session :public,
     layout: {AthenaWeb.Layouts, :app},
     on_mount: [{AthenaWeb.Hooks.Auth, :default}] do
@@ -52,10 +58,19 @@ defmodule AthenaWeb.Router do
       live "/files", FileLive.Index, :index
       live "/community", CommunityLive.Index, :index
 
-      live "/studio", StudioLive.Index, :index
-      live "/studio/courses", StudioLive.Courses, :index
-      live "/studio/grading", StudioLive.Grading, :index
-      live "/studio/library", StudioLive.Library, :index
+      scope "/studio", StudioLive do
+        live "/courses", Courses, :index
+        live "/courses/new", Courses, :new
+        live "/courses/:id/edit", Courses, :edit
+
+        live "/grading", Grading, :index
+
+        live "/library", Library, :index
+        live "/library/new", Library, :new
+        live "/library/:id/edit", Library, :edit
+
+        live "/courses/:id/builder", Builder, :index
+      end
 
       live "/teaching/cohorts", TeachingLive.Cohorts, :index
       live "/teaching/instructors", TeachingLive.Instructors, :index

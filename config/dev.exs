@@ -8,7 +8,8 @@ config :athena, Athena.Repo,
   database: "athena_dev",
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
-  pool_size: 10
+  pool_size: 10,
+  types: Athena.PostgresTypes
 
 # For development, we disable any cache and enable
 # debugging and code reloading.
@@ -90,3 +91,15 @@ config :phoenix_live_view,
 
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
+
+# Config for local MinIO
+config :ex_aws,
+  access_key_id: "minioadmin",
+  secret_access_key: "minioadmin",
+  s3: [
+    scheme: "http://",
+    host: "localhost",
+    port: 9000
+  ]
+
+config :athena, Athena.Media, bucket: "athena"

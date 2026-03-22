@@ -1,0 +1,48 @@
+version: "3.8"
+
+services:
+  athena_web:
+    # TODO: add dockerfile
+    image: athena_app:latest
+    container_name: athena_web
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "80:4000"
+    depends_on:
+      - postgres
+      - minio
+    networks:
+      - athena-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: athena_prod_postgres
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    networks:
+      - athena-network
+
+  minio:
+    image: minio/minio
+    container_name: athena_prod_minio
+    restart: always
+    command: server /data --console-address ":9001"
+    env_file:
+      - .env
+    volumes:
+      - minio_prod_data:/data
+    networks:
+      - athena-network
+
+networks:
+  athena-network:
+    driver: bridge
+
+volumes:
+  postgres_prod_data:
+  minio_prod_data:

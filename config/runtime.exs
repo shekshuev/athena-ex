@@ -39,7 +39,8 @@ if config_env() == :prod do
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
     # For machines with several cores, consider starting multiple pools of `pool_size`
     # pool_count: 4,
-    socket_options: maybe_ipv6
+    socket_options: maybe_ipv6,
+    types: Athena.PostgresTypes
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
@@ -67,6 +68,30 @@ if config_env() == :prod do
       ip: {0, 0, 0, 0, 0, 0, 0, 0}
     ],
     secret_key_base: secret_key_base
+
+  config :ex_aws,
+    access_key_id: System.get_env("MINIO_ACCESS_KEY") || raise("MINIO_ACCESS_KEY is missing"),
+    secret_access_key: System.get_env("MINIO_SECRET_KEY") || raise("MINIO_SECRET_KEY is missing"),
+    s3: [
+      scheme: System.get_env("MINIO_SCHEME") || "https://",
+      host: System.get_env("MINIO_HOST") || raise("MINIO_HOST is missing"),
+      port: String.to_integer(System.get_env("MINIO_PORT") || "443")
+    ]
+
+  config :athena, Athena.Media, bucket: System.get_env("MINIO_BUCKET")
+
+  if config_env() != :test do
+    media_cron = System.get_env("MEDIA_CLEANUP_CRON") || "0 * * * *"
+
+    config :athena, Oban,
+      plugins: [
+        Oban.Plugins.Pruner,
+        {Oban.Plugins.Cron,
+         crontab: [
+           {media_cron, Athena.Workers.MediaCleanup}
+         ]}
+      ]
+  end
 
   # ## SSL Support
   #
