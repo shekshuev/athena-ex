@@ -1,6 +1,10 @@
 defmodule Athena.Learning.Enrollments do
   @moduledoc """
   Business logic for managing course enrollments.
+
+  Handles assigning entire cohorts (or potentially individual students) 
+  to courses. Delegates data enrichment (fetching course details and 
+  account info) to the `Athena.Content` and `Athena.Identity` contexts.
   """
 
   import Ecto.Query
@@ -9,7 +13,16 @@ defmodule Athena.Learning.Enrollments do
   alias Athena.Content
   alias Athena.Identity
 
-  @doc "Retrieves a paginated list of enrollments for a specific cohort."
+  @doc """
+  Retrieves a paginated list of enrollments for a specific cohort.
+
+  Enriches the resulting enrollments with `Course` and `Account` data 
+  from their respective contexts.
+
+  ## Parameters
+    * `cohort_id` - The ID of the cohort.
+    * `params` - A map containing Flop parameters for pagination.
+  """
   @spec list_cohort_enrollments(String.t(), map()) ::
           {:ok, {[Enrollment.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_cohort_enrollments(cohort_id, params \\ %{}) do
@@ -24,7 +37,13 @@ defmodule Athena.Learning.Enrollments do
     end
   end
 
-  @doc "Gets a specific enrollment by ID."
+  @doc """
+  Gets a specific enrollment by ID.
+
+  Preloads the associated `Cohort` and enriches the enrollment with 
+  `Course` and `Account` data. Raises `Ecto.NoResultsError` if not found.
+  """
+  @spec get_enrollment!(String.t()) :: Enrollment.t()
   def get_enrollment!(id) do
     Enrollment
     |> preload(:cohort)
@@ -32,7 +51,12 @@ defmodule Athena.Learning.Enrollments do
     |> enrich_enrollments()
   end
 
-  @doc "Assigns an entire cohort to a course."
+  @doc """
+  Assigns an entire cohort to a course.
+
+  Defaults to an `:active` status. Enforces unique constraints 
+  (a cohort cannot be enrolled in the same course twice).
+  """
   @spec enroll_cohort(String.t(), String.t(), atom()) ::
           {:ok, Enrollment.t()} | {:error, Ecto.Changeset.t()}
   def enroll_cohort(cohort_id, course_id, status \\ :active) do
@@ -41,14 +65,22 @@ defmodule Athena.Learning.Enrollments do
     |> Repo.insert()
   end
 
-  @doc "Updates an enrollment status (e.g. active -> dropped)."
+  @doc """
+  Updates an enrollment's attributes (e.g., changing status from :active to :dropped).
+  """
+  @spec update_enrollment(Enrollment.t(), map()) ::
+          {:ok, Enrollment.t()} | {:error, Ecto.Changeset.t()}
   def update_enrollment(%Enrollment{} = enrollment, attrs) do
     enrollment
     |> Enrollment.changeset(attrs)
     |> Repo.update()
   end
 
-  @doc "Revokes access completely by deleting the enrollment."
+  @doc """
+  Revokes access completely by permanently deleting the enrollment record.
+  """
+  @spec delete_enrollment(Enrollment.t()) ::
+          {:ok, Enrollment.t()} | {:error, Ecto.Changeset.t()}
   def delete_enrollment(%Enrollment{} = enrollment) do
     Repo.delete(enrollment)
   end

@@ -45,13 +45,14 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponentTest do
       |> form("#membership-form")
       |> render_submit()
 
+      html = render(lv)
+      assert html =~ "Student successfully added"
+
       assert_patch(lv, ~p"/teaching/cohorts/#{cohort.id}")
 
       {:ok, {memberships, _meta}} = Learning.list_cohort_memberships(cohort.id)
       assert length(memberships) == 1
       assert hd(memberships).account_id == student_account.id
-
-      assert render(lv) =~ "Student successfully added"
     end
 
     test "shows error if the student is already in the cohort", %{conn: conn} do

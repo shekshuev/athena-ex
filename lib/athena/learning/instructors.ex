@@ -1,6 +1,9 @@
 defmodule Athena.Learning.Instructors do
   @moduledoc """
   Internal business logic for Instructor management.
+
+  Handles CRUD operations for `Instructor` profiles and enriches them
+  with user account data from the `Athena.Identity` context.
   """
 
   import Ecto.Query
@@ -10,7 +13,12 @@ defmodule Athena.Learning.Instructors do
 
   @doc """
   Retrieves a paginated list of instructors.
-  Preloads the associated account to display login/email in the UI.
+
+  Enriches the resulting instructors with `Account` data to display 
+  login/email in the UI without direct database joins across contexts.
+
+  ## Parameters
+    * `params` - A map containing Flop parameters for pagination and filtering.
   """
   @spec list_instructors(map()) ::
           {:ok, {[Instructor.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
@@ -26,6 +34,9 @@ defmodule Athena.Learning.Instructors do
 
   @doc """
   Searches for instructors by their title or their associated account login.
+
+  Performs a cross-context search: first queries the `Identity` context for 
+  matching logins, then combines those results with a title search in `Learning`.
   Useful for autocomplete and multi-select components.
   """
   @spec search_instructors(String.t(), integer()) :: [Instructor.t()]
@@ -59,6 +70,9 @@ defmodule Athena.Learning.Instructors do
 
   @doc """
   Retrieves a single instructor by its ID.
+
+  Enriches the result with `Account` data.
+  Raises `Ecto.NoResultsError` if the instructor does not exist.
   """
   @spec get_instructor!(String.t()) :: Instructor.t()
   def get_instructor!(id) do
@@ -67,7 +81,7 @@ defmodule Athena.Learning.Instructors do
   end
 
   @doc """
-  Creates a new instructor.
+  Creates a new instructor profile.
   """
   @spec create_instructor(map()) :: {:ok, Instructor.t()} | {:error, Ecto.Changeset.t()}
   def create_instructor(attrs) do
@@ -77,7 +91,7 @@ defmodule Athena.Learning.Instructors do
   end
 
   @doc """
-  Updates an existing instructor.
+  Updates an existing instructor profile.
   """
   @spec update_instructor(Instructor.t(), map()) ::
           {:ok, Instructor.t()} | {:error, Ecto.Changeset.t()}
@@ -88,13 +102,19 @@ defmodule Athena.Learning.Instructors do
   end
 
   @doc """
-  Deletes an instructor.
+  Deletes an instructor profile.
   """
   @spec delete_instructor(Instructor.t()) :: {:ok, Instructor.t()} | {:error, Ecto.Changeset.t()}
   def delete_instructor(%Instructor{} = instructor) do
     Repo.delete(instructor)
   end
 
+  @doc """
+  Enriches a single instructor or a list of instructors with Account data.
+  This function is public so it can be reused by the `Cohorts` context.
+  """
+  @spec enrich_with_accounts(Instructor.t() | [Instructor.t()]) ::
+          Instructor.t() | [Instructor.t()]
   def enrich_with_accounts(%Instructor{} = instructor) do
     [enriched] = enrich_with_accounts([instructor])
     enriched
@@ -102,7 +122,7 @@ defmodule Athena.Learning.Instructors do
 
   def enrich_with_accounts([]), do: []
 
-  def enrich_with_accounts(instructors) do
+  def enrich_with_accounts(instructors) when is_list(instructors) do
     account_ids = Enum.map(instructors, & &1.owner_id) |> Enum.uniq()
 
     accounts_map = Identity.get_accounts_map(account_ids)

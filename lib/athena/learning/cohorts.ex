@@ -1,6 +1,10 @@
 defmodule Athena.Learning.Cohorts do
   @moduledoc """
   Internal business logic for Cohort management.
+
+  Handles CRUD operations for `Cohort` and manages the many-to-many
+  relationships with `Instructor` and the one-to-many relationships
+  with `CohortMembership` (students).
   """
 
   import Ecto.Query
@@ -8,7 +12,14 @@ defmodule Athena.Learning.Cohorts do
   alias Athena.Learning.{Cohort, Instructor, CohortMembership, Instructors}
   alias Athena.Identity
 
-  @doc "Retrieves a paginated list of cohorts."
+  @doc """
+  Retrieves a paginated list of cohorts.
+
+  Preloads associated instructors and enriches them with Identity context data.
+
+  ## Parameters
+    * `params` - A map containing Flop parameters for pagination and filtering.
+  """
   @spec list_cohorts(map()) :: {:ok, {[Cohort.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_cohorts(params \\ %{}) do
     case Flop.validate_and_run(Cohort, params, for: Cohort) do
@@ -21,7 +32,12 @@ defmodule Athena.Learning.Cohorts do
     end
   end
 
-  @doc "Retrieves a single cohort by its ID."
+  @doc """
+  Retrieves a single cohort by its ID.
+
+  Preloads associated instructors and enriches them.
+  Raises `Ecto.NoResultsError` if the cohort does not exist.
+  """
   @spec get_cohort!(String.t()) :: Cohort.t()
   def get_cohort!(id) do
     Cohort
@@ -30,7 +46,11 @@ defmodule Athena.Learning.Cohorts do
     |> enrich_cohorts()
   end
 
-  @doc "Creates a new cohort."
+  @doc """
+  Creates a new cohort.
+
+  Optionally accepts a list of instructor IDs in `instructor_ids` to assign them immediately.
+  """
   @spec create_cohort(map()) :: {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()}
   def create_cohort(attrs) do
     %Cohort{}
@@ -40,7 +60,11 @@ defmodule Athena.Learning.Cohorts do
     |> Repo.insert()
   end
 
-  @doc "Updates an existing cohort."
+  @doc """
+  Updates an existing cohort.
+
+  If `instructor_ids` is provided, it completely replaces the current list of instructors.
+  """
   @spec update_cohort(Cohort.t(), map()) :: {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()}
   def update_cohort(%Cohort{} = cohort, attrs) do
     cohort
@@ -50,12 +74,15 @@ defmodule Athena.Learning.Cohorts do
     |> Repo.update()
   end
 
-  @doc "Deletes a cohort."
+  @doc """
+  Deletes a cohort.
+  """
   @spec delete_cohort(Cohort.t()) :: {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()}
   def delete_cohort(%Cohort{} = cohort) do
     Repo.delete(cohort)
   end
 
+  @doc false
   defp put_instructors(changeset, nil), do: changeset
 
   defp put_instructors(changeset, ids) when is_list(ids) do
@@ -64,7 +91,11 @@ defmodule Athena.Learning.Cohorts do
     Ecto.Changeset.put_assoc(changeset, :instructors, instructors)
   end
 
-  @doc "Retrieves a paginated list of students in a cohort."
+  @doc """
+  Retrieves a paginated list of students enrolled in a specific cohort.
+
+  Enriches the memberships with Account data from the Identity context.
+  """
   @spec list_cohort_memberships(String.t(), map()) ::
           {:ok, {[CohortMembership.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_cohort_memberships(cohort_id, params \\ %{}) do
@@ -79,13 +110,20 @@ defmodule Athena.Learning.Cohorts do
     end
   end
 
-  @doc "Gets a specific membership."
+  @doc """
+  Gets a specific cohort membership by ID.
+
+  Enriches the membership with Account data.
+  """
+  @spec get_cohort_membership!(String.t()) :: CohortMembership.t()
   def get_cohort_membership!(id) do
     Repo.get!(CohortMembership, id)
     |> enrich_memberships_with_accounts()
   end
 
-  @doc "Adds a student to a cohort."
+  @doc """
+  Adds a student account to a cohort.
+  """
   @spec add_student_to_cohort(String.t(), String.t()) ::
           {:ok, CohortMembership.t()} | {:error, Ecto.Changeset.t()}
   def add_student_to_cohort(cohort_id, account_id) do
@@ -94,7 +132,9 @@ defmodule Athena.Learning.Cohorts do
     |> Repo.insert()
   end
 
-  @doc "Removes a student from a cohort."
+  @doc """
+  Removes a student account from a cohort.
+  """
   @spec remove_student_from_cohort(CohortMembership.t()) ::
           {:ok, CohortMembership.t()} | {:error, Ecto.Changeset.t()}
   def remove_student_from_cohort(%CohortMembership{} = membership) do

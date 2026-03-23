@@ -1,5 +1,11 @@
 defmodule AthenaWeb.TeachingLive.CohortDetails do
-  @moduledoc "LiveView for viewing a specific cohort and managing its students and courses."
+  @moduledoc """
+  LiveView for viewing a specific cohort and managing its students and courses.
+
+  Displays cohort metadata, a list of assigned courses (enrollments), and a 
+  paginated list of students (memberships). Integrates with slide-over components
+  for adding new students and assigning courses.
+  """
   use AthenaWeb, :live_view
 
   alias Athena.Learning
@@ -9,6 +15,10 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
 
   on_mount {AthenaWeb.Hooks.Permission, "cohorts.read"}
 
+  @doc """
+  Initializes the LiveView by fetching the cohort and its non-paginated enrollments.
+  """
+  @spec mount(map(), map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     cohort = Learning.get_cohort!(id)
@@ -24,6 +34,11 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
      |> stream(:enrollments, enrollments)}
   end
 
+  @doc """
+  Handles URL parameters, fetching the paginated list of students and setting live actions.
+  """
+  @spec handle_params(map(), String.t(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_params(params, _url, socket) do
     flop_params = Map.put(params, "page_size", 20)
@@ -67,6 +82,11 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
     end
   end
 
+  @doc """
+  Handles UI events for initiating and confirming deletions of students or courses.
+  """
+  @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_event("delete_click", %{"id" => id}, socket) do
     if Identity.can?(socket.assigns.current_user, "cohorts.update") do
@@ -126,6 +146,11 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
     {:noreply, assign(socket, enrollment_to_delete: nil)}
   end
 
+  @doc """
+  Handles successful creation messages from child components.
+  """
+  @spec handle_info(term(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_info({MembershipFormComponent, {:saved, membership}}, socket) do
     reloaded = Learning.get_cohort_membership!(membership.id)
