@@ -1,10 +1,11 @@
 defmodule AthenaWeb.TeachingLive.CohortDetails do
-  @moduledoc "LiveView for viewing a specific cohort and managing its students."
+  @moduledoc "LiveView for viewing a specific cohort and managing its students and courses."
   use AthenaWeb, :live_view
 
   alias Athena.Learning
   alias Athena.Identity
   alias AthenaWeb.TeachingLive.MembershipFormComponent
+  alias AthenaWeb.TeachingLive.EnrollmentFormComponent
 
   on_mount {AthenaWeb.Hooks.Permission, "cohorts.read"}
 
@@ -12,11 +13,15 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   def mount(%{"id" => id}, _session, socket) do
     cohort = Learning.get_cohort!(id)
 
+    {:ok, {enrollments, _meta}} = Learning.list_cohort_enrollments(id, %{"page_size" => 50})
+
     {:ok,
      socket
      |> assign(:cohort, cohort)
      |> assign(:membership_to_delete, nil)
-     |> stream(:memberships, [])}
+     |> assign(:enrollment_to_delete, nil)
+     |> stream(:memberships, [])
+     |> stream(:enrollments, enrollments)}
   end
 
   @impl true
@@ -52,6 +57,16 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
     end
   end
 
+  defp apply_action(socket, :enroll_course, _params) do
+    if Identity.can?(socket.assigns.current_user, "enrollments.create") do
+      assign(socket, page_title: gettext("Assign Course to Cohort"))
+    else
+      socket
+      |> put_flash(:error, gettext("Permission denied."))
+      |> push_patch(to: ~p"/teaching/cohorts/#{socket.assigns.cohort.id}")
+    end
+  end
+
   @impl true
   def handle_event("delete_click", %{"id" => id}, socket) do
     if Identity.can?(socket.assigns.current_user, "cohorts.update") do
@@ -80,10 +95,46 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
     {:noreply, assign(socket, membership_to_delete: nil)}
   end
 
+  def handle_event("delete_enrollment_click", %{"id" => id}, socket) do
+    if Identity.can?(socket.assigns.current_user, "enrollments.delete") do
+      enrollment = Learning.get_enrollment!(id)
+      {:noreply, assign(socket, enrollment_to_delete: enrollment)}
+    else
+      {:noreply, put_flash(socket, :error, gettext("Permission denied."))}
+    end
+  end
+
+  def handle_event(
+        "confirm_delete_enrollment",
+        _,
+        %{assigns: %{enrollment_to_delete: enrollment}} = socket
+      ) do
+    case Learning.delete_enrollment(enrollment) do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, gettext("Course assignment removed."))
+         |> stream_delete(:enrollments, enrollment)
+         |> assign(enrollment_to_delete: nil)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to remove assignment."))}
+    end
+  end
+
+  def handle_event("cancel_delete_enrollment", _, socket) do
+    {:noreply, assign(socket, enrollment_to_delete: nil)}
+  end
+
   @impl true
   def handle_info({MembershipFormComponent, {:saved, membership}}, socket) do
     reloaded = Learning.get_cohort_membership!(membership.id)
     {:noreply, stream_insert(socket, :memberships, reloaded)}
+  end
+
+  def handle_info({EnrollmentFormComponent, {:saved, enrollment}}, socket) do
+    reloaded = Learning.get_enrollment!(enrollment.id)
+    {:noreply, stream_insert(socket, :enrollments, reloaded)}
   end
 
   @impl true
@@ -123,6 +174,57 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           </div>
         </:item>
       </.list>
+
+      <div class="space-y-4">
+        <div class="flex justify-between items-center">
+          <h2 class="text-xl font-display font-bold">{gettext("Assigned Courses")}</h2>
+          <.button
+            :if={Identity.can?(@current_user, "enrollments.create")}
+            patch={~p"/teaching/cohorts/#{@cohort.id}/enroll_course"}
+            class="btn btn-primary btn-sm"
+          >
+            <.icon name="hero-book-open" class="size-4" />
+            {gettext("Assign Course")}
+          </.button>
+        </div>
+
+        <.table id="enrollments" rows={@streams.enrollments}>
+          <:col :let={{_id, enrollment}} label={gettext("Course Title")}>
+            <span class="font-bold">
+              {if enrollment.course, do: enrollment.course.title, else: gettext("Unknown/Deleted")}
+            </span>
+          </:col>
+          <:col :let={{_id, enrollment}} label={gettext("Status")}>
+            <span class={[
+              "badge badge-sm font-bold",
+              enrollment.status == :active && "badge-success badge-soft",
+              enrollment.status == :completed && "badge-info badge-soft",
+              enrollment.status == :dropped && "badge-error badge-soft"
+            ]}>
+              {Atom.to_string(enrollment.status) |> String.capitalize()}
+            </span>
+          </:col>
+          <:col :let={{_id, enrollment}} label={gettext("Assigned At")}>
+            <span class="text-sm opacity-60">
+              {Calendar.strftime(enrollment.inserted_at, "%d.%m.%Y")}
+            </span>
+          </:col>
+          <:action :let={{_id, enrollment}}>
+            <div class="flex justify-end">
+              <.button
+                :if={Identity.can?(@current_user, "enrollments.delete")}
+                type="button"
+                phx-click="delete_enrollment_click"
+                phx-value-id={enrollment.id}
+                class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
+                title={gettext("Remove Assignment")}
+              >
+                <.icon name="hero-x-mark" class="size-4" />
+              </.button>
+            </div>
+          </:action>
+        </.table>
+      </div>
 
       <div class="space-y-4">
         <div class="flex justify-between items-center">
@@ -184,6 +286,20 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         />
       </.slide_over>
 
+      <.slide_over
+        id="enrollment-slideover"
+        show={@live_action == :enroll_course}
+        title={@page_title}
+        on_close={JS.patch(~p"/teaching/cohorts/#{@cohort.id}")}
+      >
+        <.live_component
+          module={EnrollmentFormComponent}
+          id="new-enrollment"
+          cohort_id={@cohort.id}
+          patch={~p"/teaching/cohorts/#{@cohort.id}"}
+        />
+      </.slide_over>
+
       <.modal
         id="delete-membership-modal"
         show={@membership_to_delete != nil}
@@ -193,6 +309,21 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         danger={true}
         on_cancel={JS.push("cancel_delete")}
         on_confirm={JS.push("confirm_delete")}
+      />
+
+      <.modal
+        id="delete-enrollment-modal"
+        show={@enrollment_to_delete != nil}
+        title={gettext("Remove Course Assignment")}
+        description={
+          gettext(
+            "Are you sure you want to remove this course from the cohort? Students will lose access to its materials."
+          )
+        }
+        confirm_label={gettext("Remove")}
+        danger={true}
+        on_cancel={JS.push("cancel_delete_enrollment")}
+        on_confirm={JS.push("confirm_delete_enrollment")}
       />
     </div>
     """

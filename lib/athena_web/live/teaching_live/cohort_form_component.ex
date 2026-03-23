@@ -1,10 +1,23 @@
 defmodule AthenaWeb.TeachingLive.CohortFormComponent do
-  @moduledoc "LiveComponent for creating and editing cohorts with a custom multi-select autocomplete."
+  @moduledoc """
+  A LiveComponent for creating and editing cohorts.
+
+  Features a custom multi-select autocomplete for searching and assigning
+  instructors to the cohort. Delegates database operations to the
+  `Athena.Learning` context.
+  """
   use AthenaWeb, :live_component
 
   alias Athena.Learning
   alias Athena.Learning.Cohort
 
+  @doc """
+  Initializes the component state.
+
+  Extracts already assigned instructors (if editing) into a format suitable
+  for the UI badges, and sets up the initial empty search state.
+  """
+  @spec update(map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def update(%{cohort: cohort} = assigns, socket) do
     selected_instructors = extract_instructors(cohort.instructors)
@@ -21,12 +34,14 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
      |> assign_form(changeset)}
   end
 
+  @doc false
   defp extract_instructors(%Ecto.Association.NotLoaded{}), do: []
 
   defp extract_instructors(instructors) when is_list(instructors) do
     Enum.map(instructors, &format_instructor/1)
   end
 
+  @doc false
   defp format_instructor(%{account: %{login: login}} = inst) do
     %{id: inst.id, name: "#{login} (#{inst.title})"}
   end
@@ -35,6 +50,12 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
     %{id: inst.id, name: "#{gettext("Unknown")} (#{inst.title})"}
   end
 
+  @doc """
+  Handles UI events: searching instructors, selecting/removing them from the list,
+  and validating/saving the form.
+  """
+  @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_event("search_instructors", %{"value" => query}, socket) do
     if String.length(query) >= 2 do
@@ -102,6 +123,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
     save_cohort(socket, socket.assigns.action, cohort_params)
   end
 
+  @doc false
   defp save_cohort(socket, :edit, cohort_params) do
     case Learning.update_cohort(socket.assigns.cohort, cohort_params) do
       {:ok, cohort} ->
@@ -117,6 +139,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
     end
   end
 
+  @doc false
   defp save_cohort(socket, :new, cohort_params) do
     case Learning.create_cohort(cohort_params) do
       {:ok, cohort} ->
@@ -132,10 +155,12 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
     end
   end
 
+  @doc false
   defp assign_form(socket, %Ecto.Changeset{} = changeset) do
     assign(socket, :form, to_form(changeset))
   end
 
+  @doc false
   defp notify_parent(msg), do: send(self(), {__MODULE__, msg})
 
   @impl true

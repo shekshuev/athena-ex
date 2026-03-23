@@ -1,5 +1,11 @@
 defmodule AthenaWeb.TeachingLive.Cohorts do
-  @moduledoc "LiveView for managing student cohorts."
+  @moduledoc """
+  LiveView for managing student cohorts.
+
+  Displays a paginated and searchable list of cohorts using Streams for optimal
+  DOM diffing. Handles cohort deletion and integrates with `CohortFormComponent`
+  for creating and editing groups via a slide-over.
+  """
   use AthenaWeb, :live_view
 
   alias Athena.Learning
@@ -9,6 +15,10 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
 
   on_mount {AthenaWeb.Hooks.Permission, "cohorts.read"}
 
+  @doc """
+  Initializes the LiveView, setting up the cohorts stream and default assigns.
+  """
+  @spec mount(map(), map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
@@ -17,6 +27,11 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
      |> stream(:cohorts, [])}
   end
 
+  @doc """
+  Handles URL parameters for pagination, search, and live actions (:index, :new, :edit).
+  """
+  @spec handle_params(map(), String.t(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_params(params, _url, socket) do
     search = Map.get(params, "search", "")
@@ -70,6 +85,11 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
     end
   end
 
+  @doc """
+  Handles UI events such as searching and cohort deletion confirmations.
+  """
+  @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_event("search", %{"search" => search}, socket) do
     params = %{"search" => search, "page" => 1, "page_size" => socket.assigns.meta.page_size}
@@ -106,6 +126,11 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
     {:noreply, assign(socket, cohort_to_delete: nil)}
   end
 
+  @doc """
+  Handles messages from child components, such as a successfully saved cohort.
+  """
+  @spec handle_info(term(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_info({CohortFormComponent, {:saved, cohort}}, socket) do
     reloaded = Learning.get_cohort!(cohort.id)

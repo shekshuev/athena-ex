@@ -79,4 +79,16 @@ defmodule Athena.Content.Courses do
     |> Repo.all()
     |> Map.new(&{&1.id, &1})
   end
+
+  @doc """
+  Searches active courses by title for autocomplete components.
+  """
+  def search_courses_by_title(query, limit \\ 10) do
+    search_term = "%#{query}%"
+
+    Course
+    |> where([c], ilike(c.title, ^search_term) and is_nil(c.deleted_at))
+    |> limit(^limit)
+    |> Repo.all()
+  end
 end

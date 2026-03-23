@@ -1,14 +1,24 @@
 defmodule AthenaWeb.TeachingLive.InstructorFormComponent do
   @moduledoc """
-  LiveComponent for creating and editing instructors.
-  Includes an asynchronous autocomplete search for linking user accounts.
+  A LiveComponent for creating and editing instructor profiles.
+
+  Features an asynchronous autocomplete search to link an existing `Account`
+  to the new instructor profile. Delegates database operations to the
+  `Athena.Learning` context and account searching to the `Athena.Identity` context.
   """
   use AthenaWeb, :live_component
 
+  alias Athena.Identity
   alias Athena.Learning
   alias Athena.Learning.Instructor
-  alias Athena.Identity
 
+  @doc """
+  Initializes the component state.
+
+  If editing an existing instructor, it safely extracts the preloaded account
+  information to pre-fill the selected account display.
+  """
+  @spec update(map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def update(%{instructor: instructor} = assigns, socket) do
     changeset = Instructor.changeset(instructor, %{})
@@ -29,6 +39,12 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponent do
      |> assign_form(changeset)}
   end
 
+  @doc """
+  Handles UI events: searching accounts, selecting/clearing the account,
+  and validating/saving the form.
+  """
+  @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_event("search_accounts", %{"value" => query}, socket) do
     if String.length(query) >= 2 do
@@ -103,6 +119,7 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponent do
     save_instructor(socket, socket.assigns.action, params_with_owner)
   end
 
+  @doc false
   defp save_instructor(socket, :edit, instructor_params) do
     case Learning.update_instructor(socket.assigns.instructor, instructor_params) do
       {:ok, instructor} ->
@@ -118,6 +135,7 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponent do
     end
   end
 
+  @doc false
   defp save_instructor(socket, :new, instructor_params) do
     case Learning.create_instructor(instructor_params) do
       {:ok, instructor} ->
@@ -133,10 +151,12 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponent do
     end
   end
 
+  @doc false
   defp assign_form(socket, %Ecto.Changeset{} = changeset) do
     assign(socket, :form, to_form(changeset))
   end
 
+  @doc false
   defp notify_parent(msg), do: send(self(), {__MODULE__, msg})
 
   @impl true

@@ -139,4 +139,50 @@ defmodule Athena.Content.CoursesTest do
       assert Courses.get_courses_map([]) == %{}
     end
   end
+
+  describe "search_courses_by_title/2" do
+    test "returns courses matching the title query (case-insensitive)" do
+      course1 = insert(:course, title: "Advanced Elixir")
+      course2 = insert(:course, title: "Elixir Basics")
+      _course3 = insert(:course, title: "Ruby on Rails")
+
+      results = Courses.search_courses_by_title("elixir")
+
+      assert length(results) == 2
+      ids = Enum.map(results, & &1.id)
+      assert course1.id in ids
+      assert course2.id in ids
+    end
+
+    test "respects the provided limit" do
+      insert(:course, title: "Test Course 1")
+      insert(:course, title: "Test Course 2")
+      insert(:course, title: "Test Course 3")
+      insert(:course, title: "Test Course 4")
+
+      results = Courses.search_courses_by_title("Test", 2)
+
+      assert length(results) == 2
+    end
+
+    test "excludes soft-deleted courses" do
+      active_course = insert(:course, title: "Phoenix LiveView")
+
+      _deleted_course =
+        insert(:course, title: "Phoenix Fundamentals", deleted_at: DateTime.utc_now(:second))
+
+      results = Courses.search_courses_by_title("Phoenix")
+
+      assert length(results) == 1
+      assert hd(results).id == active_course.id
+    end
+
+    test "returns an empty list if no courses match" do
+      insert(:course, title: "React Basics")
+
+      results = Courses.search_courses_by_title("Vue")
+
+      assert results == []
+    end
+  end
 end

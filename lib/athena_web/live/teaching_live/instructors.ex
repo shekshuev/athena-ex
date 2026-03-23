@@ -1,7 +1,10 @@
 defmodule AthenaWeb.TeachingLive.Instructors do
   @moduledoc """
   LiveView for managing instructors.
-  Displays a paginated and searchable list.
+
+  Displays a paginated and searchable list of instructors using Streams for optimal
+  DOM diffing. Handles instructor deletion and integrates with `InstructorFormComponent`
+  for creating and editing profiles via a slide-over.
   """
   use AthenaWeb, :live_view
 
@@ -12,6 +15,10 @@ defmodule AthenaWeb.TeachingLive.Instructors do
 
   on_mount {AthenaWeb.Hooks.Permission, "instructors.read"}
 
+  @doc """
+  Initializes the LiveView, setting up the instructors stream and default assigns.
+  """
+  @spec mount(map(), map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
@@ -20,6 +27,11 @@ defmodule AthenaWeb.TeachingLive.Instructors do
      |> stream(:instructors, [])}
   end
 
+  @doc """
+  Handles URL parameters for pagination, search, and live actions (:index, :new, :edit).
+  """
+  @spec handle_params(map(), String.t(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_params(params, _url, socket) do
     search = Map.get(params, "search", "")
@@ -73,6 +85,11 @@ defmodule AthenaWeb.TeachingLive.Instructors do
     end
   end
 
+  @doc """
+  Handles UI events such as searching and instructor deletion confirmations.
+  """
+  @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_event("search", %{"search" => search}, socket) do
     params = %{
@@ -114,6 +131,11 @@ defmodule AthenaWeb.TeachingLive.Instructors do
     {:noreply, assign(socket, instructor_to_delete: nil)}
   end
 
+  @doc """
+  Handles messages from child components, such as a successfully saved instructor.
+  """
+  @spec handle_info(term(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_info({InstructorFormComponent, {:saved, instructor}}, socket) do
     reloaded = Learning.get_instructor!(instructor.id)

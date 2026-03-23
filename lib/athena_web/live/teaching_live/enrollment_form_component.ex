@@ -1,14 +1,14 @@
-defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
+defmodule AthenaWeb.TeachingLive.EnrollmentFormComponent do
   @moduledoc """
-  A LiveComponent for adding a student to a cohort.
+  A LiveComponent for assigning a course to a cohort.
 
-  Features a real-time autocomplete search for user accounts by login.
+  Features a real-time autocomplete search for active courses.
   Delegates database operations to the `Athena.Learning` context 
-  and account searching to the `Athena.Identity` context.
+  and course searching to the `Athena.Content` context.
   """
   use AthenaWeb, :live_component
 
-  alias Athena.Identity
+  alias Athena.Content
   alias Athena.Learning
 
   @doc """
@@ -22,58 +22,53 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
      |> assign(assigns)
      |> assign(:search_query, "")
      |> assign(:search_results, [])
-     |> assign(:selected_account, nil)
+     |> assign(:selected_course, nil)
      |> assign(:error_msg, nil)}
   end
 
   @doc """
-  Handles UI events: searching accounts, selecting/clearing the account,
-  and submitting the membership form.
+  Handles UI events: searching courses, selecting/clearing the course,
+  and submitting the enrollment form.
   """
   @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
-  def handle_event("search_accounts", %{"value" => query}, socket) do
+  def handle_event("search_courses", %{"value" => query}, socket) do
     if String.length(query) >= 2 do
-      flop_params = %{
-        "filters" => %{"0" => %{"field" => "login", "op" => "ilike_and", "value" => query}},
-        "page_size" => 10
-      }
-
-      {:ok, {accounts, _}} = Identity.list_accounts(flop_params)
-      {:noreply, assign(socket, search_query: query, search_results: accounts)}
+      courses = Content.search_courses_by_title(query)
+      {:noreply, assign(socket, search_query: query, search_results: courses)}
     else
       {:noreply, assign(socket, search_query: query, search_results: [])}
     end
   end
 
-  def handle_event("select_account", %{"id" => id, "login" => login}, socket) do
+  def handle_event("select_course", %{"id" => id, "title" => title}, socket) do
     {:noreply,
      socket
-     |> assign(:selected_account, %{id: id, login: login})
+     |> assign(:selected_course, %{id: id, title: title})
      |> assign(:search_results, [])
      |> assign(:search_query, "")
      |> assign(:error_msg, nil)}
   end
 
-  def handle_event("clear_account", _, socket) do
-    {:noreply, assign(socket, selected_account: nil, error_msg: nil)}
+  def handle_event("clear_course", _, socket) do
+    {:noreply, assign(socket, selected_course: nil, error_msg: nil)}
   end
 
-  def handle_event("save", _, %{assigns: %{selected_account: nil}} = socket) do
-    {:noreply, assign(socket, error_msg: gettext("Please select a student."))}
+  def handle_event("save", _, %{assigns: %{selected_course: nil}} = socket) do
+    {:noreply, assign(socket, error_msg: gettext("Please select a course."))}
   end
 
   def handle_event("save", _, socket) do
-    %{cohort_id: cohort_id, selected_account: %{id: account_id}, patch: patch} = socket.assigns
+    %{cohort_id: cohort_id, selected_course: %{id: course_id}, patch: patch} = socket.assigns
 
-    case Learning.add_student_to_cohort(cohort_id, account_id) do
-      {:ok, membership} ->
-        send(self(), {__MODULE__, {:saved, membership}})
+    case Learning.enroll_cohort(cohort_id, course_id) do
+      {:ok, enrollment} ->
+        send(self(), {__MODULE__, {:saved, enrollment}})
 
         {:noreply,
          socket
-         |> put_flash(:info, gettext("Student successfully added to the cohort."))
+         |> put_flash(:info, gettext("Course successfully assigned to the cohort."))
          |> push_patch(to: patch)}
 
       {:error, changeset} ->
@@ -83,10 +78,10 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
 
   @doc false
   defp parse_error_msg(changeset) do
-    if changeset.errors[:cohort_id] || changeset.errors[:account_id] do
-      gettext("This student is already in the cohort.")
+    if changeset.errors[:cohort_id] || changeset.errors[:course_id] do
+      gettext("This course is already assigned to this cohort.")
     else
-      gettext("Failed to add student.")
+      gettext("Failed to assign course.")
     end
   end
 
@@ -94,22 +89,22 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
   def render(assigns) do
     ~H"""
     <div>
-      <form id="membership-form" phx-submit="save" phx-target={@myself} class="flex flex-col gap-6">
+      <form id="enrollment-form" phx-submit="save" phx-target={@myself} class="flex flex-col gap-6">
         <div class="form-control w-full relative">
           <label class="label">
-            <span class="label-text font-bold">{gettext("Search User by Login")}</span>
+            <span class="label-text font-bold">{gettext("Search Course by Title")}</span>
           </label>
 
-          <%= if @selected_account do %>
+          <%= if @selected_course do %>
             <div class="flex items-center justify-between p-3 border border-success/30 bg-success/10 text-success-content rounded-lg">
               <div class="flex items-center gap-2">
-                <.icon name="hero-user-check" class="size-5" />
-                <span class="font-bold">{@selected_account.login}</span>
+                <.icon name="hero-book-open" class="size-5" />
+                <span class="font-bold">{@selected_course.title}</span>
               </div>
 
               <.button
                 type="button"
-                phx-click="clear_account"
+                phx-click="clear_course"
                 phx-target={@myself}
                 class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/20"
               >
@@ -121,7 +116,7 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
               <input
                 type="text"
                 value={@search_query}
-                phx-keyup="search_accounts"
+                phx-keyup="search_courses"
                 phx-target={@myself}
                 class={["input input-bordered w-full", @error_msg && "input-error"]}
                 placeholder={gettext("Type at least 2 characters...")}
@@ -139,15 +134,15 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
               :if={@search_results != []}
               class="absolute top-18 left-0 w-full bg-base-100 shadow-2xl border border-base-200 rounded-lg z-50 max-h-60 overflow-y-auto"
             >
-              <%= for acc <- @search_results do %>
+              <%= for course <- @search_results do %>
                 <li
-                  phx-click="select_account"
+                  phx-click="select_course"
                   phx-target={@myself}
-                  phx-value-id={acc.id}
-                  phx-value-login={acc.login}
+                  phx-value-id={course.id}
+                  phx-value-title={course.title}
                   class="p-3 hover:bg-primary/10 hover:text-primary cursor-pointer border-b border-base-100 last:border-0 font-medium transition-colors"
                 >
-                  {acc.login}
+                  {course.title}
                 </li>
               <% end %>
             </ul>
@@ -167,8 +162,8 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
           >
             {gettext("Cancel")}
           </.button>
-          <.button type="submit" class="btn btn-primary" disabled={is_nil(@selected_account)}>
-            {gettext("Add Student")}
+          <.button type="submit" class="btn btn-primary" disabled={is_nil(@selected_course)}>
+            {gettext("Assign Course")}
           </.button>
         </div>
       </form>
