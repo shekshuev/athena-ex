@@ -306,7 +306,7 @@ defmodule AthenaWeb.CoreComponents do
   end
 
   # Helper used by inputs to generate form errors
-  defp error(assigns) do
+  def error(assigns) do
     ~H"""
     <p class="mt-1.5 text-error text-xs font-bold text-wrap wrap-break-word leading-tight flex gap-1 items-start">
       <.icon name="hero-exclamation-circle" class="size-4 shrink-0 mt-0.5" />

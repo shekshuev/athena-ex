@@ -57,7 +57,6 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
       if socket.assigns.action == :new do
         params
         |> Map.put("owner_id", socket.assigns.current_user.id)
-        # Default empty JSON for new blocks
         |> Map.put_new("content", %{})
       else
         params

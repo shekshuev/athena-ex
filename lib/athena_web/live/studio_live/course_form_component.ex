@@ -51,7 +51,6 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
   end
 
   def handle_event("save", %{"course" => course_params}, socket) do
-    # Inject the owner_id from the current session if creating a new course
     course_params =
       if socket.assigns.action == :new do
         Map.put(course_params, "owner_id", socket.assigns.current_user.id)

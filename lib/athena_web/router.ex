@@ -72,8 +72,18 @@ defmodule AthenaWeb.Router do
         live "/courses/:id/builder", Builder, :index
       end
 
-      live "/teaching/cohorts", TeachingLive.Cohorts, :index
-      live "/teaching/instructors", TeachingLive.Instructors, :index
+      scope "/teaching", TeachingLive do
+        live "/cohorts", Cohorts, :index
+        live "/cohorts/new", Cohorts, :new
+        live "/cohorts/:id", CohortDetails, :index
+        live "/cohorts/:id/add_student", CohortDetails, :add_student
+        live "/cohorts/:id/enroll_course", CohortDetails, :enroll_course
+        live "/cohorts/:id/edit", Cohorts, :edit
+
+        live "/instructors", Instructors, :index
+        live "/instructors/new", Instructors, :new
+        live "/instructors/:id/edit", Instructors, :edit
+      end
 
       scope "/admin", AdminLive do
         live "/users", Users, :index

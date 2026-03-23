@@ -8,7 +8,6 @@ defmodule Athena.Identity.Profiles do
 
   alias Athena.Repo
   alias Athena.Identity.Profile
-  # alias Athena.Workers.ProfileUpdatedEvent 
 
   @doc """
   Retrieves a profile by its owner ID (Account ID).
@@ -30,13 +29,6 @@ defmodule Athena.Identity.Profiles do
 
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:profile, Profile.changeset(%Profile{}, attrs))
-    # |> Ecto.Multi.insert(:outbox_event, fn %{profile: profile} ->
-    #   ProfileUpdatedEvent.new(%{
-    #     owner_id: profile.owner_id,
-    #     first_name: profile.first_name,
-    #     last_name: profile.last_name
-    #   })
-    # end)
     |> Repo.transaction()
     |> case do
       {:ok, %{profile: profile}} -> {:ok, profile}
@@ -51,13 +43,6 @@ defmodule Athena.Identity.Profiles do
   def update_profile(%Profile{} = profile, attrs) do
     Ecto.Multi.new()
     |> Ecto.Multi.update(:profile, Profile.changeset(profile, attrs))
-    # |> Ecto.Multi.insert(:outbox_event, fn %{profile: updated_profile} ->
-    #   ProfileUpdatedEvent.new(%{
-    #     owner_id: updated_profile.owner_id,
-    #     first_name: updated_profile.first_name,
-    #     last_name: updated_profile.last_name
-    #   })
-    # end)
     |> Repo.transaction()
     |> case do
       {:ok, %{profile: updated_profile}} -> {:ok, updated_profile}

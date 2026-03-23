@@ -67,4 +67,28 @@ defmodule Athena.Content.Courses do
     |> Ecto.Changeset.change(%{deleted_at: DateTime.utc_now(:second)})
     |> Repo.update()
   end
+
+  @doc """
+  Returns a map of `%{course_id => Course}` for bulk enrichment across contexts.
+  Excludes soft-deleted courses.
+  """
+  @spec get_courses_map([String.t()]) :: %{String.t() => Course.t()}
+  def get_courses_map(ids) when is_list(ids) do
+    Course
+    |> where([c], c.id in ^ids and is_nil(c.deleted_at))
+    |> Repo.all()
+    |> Map.new(&{&1.id, &1})
+  end
+
+  @doc """
+  Searches active courses by title for autocomplete components.
+  """
+  def search_courses_by_title(query, limit \\ 10) do
+    search_term = "%#{query}%"
+
+    Course
+    |> where([c], ilike(c.title, ^search_term) and is_nil(c.deleted_at))
+    |> limit(^limit)
+    |> Repo.all()
+  end
 end

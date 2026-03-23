@@ -243,7 +243,6 @@ defmodule AthenaWeb.AdminLive.Roles do
           meta={@meta}
           path_fn={
             fn page ->
-              # Собираем чистый URL для пагинации с учетом поиска и сортировки
               params =
                 %{
                   "search" => @search,
