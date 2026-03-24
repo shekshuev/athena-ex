@@ -3,27 +3,22 @@ defmodule Athena.Content.Policy do
   Centralized policy engine for determining content access.
 
   Evaluates whether a user can view a specific content item (such as a Section or Block)
-  based on their global permissions, the item's visibility status, and any dynamic 
-  access rules (like time boundaries or specific role requirements).
+  based on the item's visibility status, and any dynamic access rules (like time boundaries 
+  or specific role requirements).
   """
 
-  alias Athena.Identity.{Account, Role}
+  alias Athena.Identity.Account
   alias Athena.Content.AccessRules
 
   @doc """
   Determines if the given user is authorized to view the item.
 
-  Users with the `"admin"` permission always have access. For other users, 
-  access is evaluated against the item's `:visibility` and `:access_rules`.
+  - Passing `:all` bypasses all checks (used exclusively in Studio/Builder).
+  - Passing an `Account` strictly evaluates student-facing rules. This allows 
+    admins to experience the course exactly as a student would in the Player.
   """
-  @spec can_view?(Account.t() | nil, map()) :: boolean()
-  def can_view?(%Account{role: %Role{permissions: perms}} = user, item) do
-    if "admin" in (perms || []) do
-      true
-    else
-      evaluate_visibility(user, item)
-    end
-  end
+  @spec can_view?(Account.t() | :all | nil, map()) :: boolean()
+  def can_view?(:all, _item), do: true
 
   def can_view?(user, item) do
     evaluate_visibility(user, item)
@@ -76,7 +71,11 @@ defmodule Athena.Content.Policy do
 
   @doc false
   defp check_role(user, allowed_roles) when is_list(allowed_roles) do
-    user.role.name in allowed_roles
+    if user and user.role do
+      user.role.name in allowed_roles
+    else
+      false
+    end
   end
 
   @doc false

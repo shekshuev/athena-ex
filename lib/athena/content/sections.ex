@@ -132,6 +132,25 @@ defmodule Athena.Content.Sections do
     {:ok, %{section | order: new_index}}
   end
 
+  @doc """
+  Returns a flat list of all sections in a course safely.
+  By flattening the already-filtered tree, we guarantee that if a parent 
+  is hidden/locked, all its children are automatically excluded.
+  """
+  @spec list_linear_lessons(String.t(), Athena.Identity.Account.t() | nil | :all) :: [Section.t()]
+  def list_linear_lessons(course_id, user_or_mode \\ :all) do
+    course_id
+    |> get_course_tree(user_or_mode)
+    |> flatten_tree()
+  end
+
+  @doc false
+  defp flatten_tree(nodes) do
+    Enum.flat_map(nodes, fn node ->
+      [node | flatten_tree(node.children || [])]
+    end)
+  end
+
   defp update_sibling_order({sib, index}, moved_section_id) do
     if sib.id == moved_section_id or sib.order != index do
       sib
