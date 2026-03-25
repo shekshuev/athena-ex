@@ -54,17 +54,44 @@ defmodule Athena.Content.Policy do
   end
 
   @doc false
-  defp check_time(nil, nil), do: true
-
-  @doc false
   defp check_time(unlock_at, lock_at) do
-    now = DateTime.utc_now()
+    now_unix = DateTime.utc_now() |> DateTime.to_unix()
 
-    unlocked? = if unlock_at, do: DateTime.compare(now, unlock_at) != :lt, else: true
-    not_locked? = if lock_at, do: DateTime.compare(now, lock_at) == :lt, else: true
+    unlocked? =
+      case parse_to_unix(unlock_at) do
+        nil -> true
+        target_unix -> now_unix >= target_unix
+      end
 
-    unlocked? and not_locked?
+    locked? =
+      case parse_to_unix(lock_at) do
+        nil -> false
+        target_unix -> now_unix >= target_unix
+      end
+
+    unlocked? and not locked?
   end
+
+  defp parse_to_unix(nil), do: nil
+  defp parse_to_unix(%DateTime{} = dt), do: DateTime.to_unix(dt)
+
+  defp parse_to_unix(%NaiveDateTime{} = ndt),
+    do: DateTime.from_naive!(ndt, "Etc/UTC") |> DateTime.to_unix()
+
+  defp parse_to_unix(str) when is_binary(str) do
+    case DateTime.from_iso8601(str) do
+      {:ok, dt, _} ->
+        DateTime.to_unix(dt)
+
+      {:error, _} ->
+        case NaiveDateTime.from_iso8601(str) do
+          {:ok, ndt} -> DateTime.from_naive!(ndt, "Etc/UTC") |> DateTime.to_unix()
+          _ -> nil
+        end
+    end
+  end
+
+  defp parse_to_unix(_), do: nil
 
   @doc false
   defp check_role(_user, []), do: true

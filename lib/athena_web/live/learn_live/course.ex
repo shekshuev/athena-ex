@@ -1,5 +1,5 @@
 defmodule AthenaWeb.LearnLive.Course do
-  @moduledoc "Course Syllabus page with flat, brutalist drill-down navigation."
+  @moduledoc "Course Syllabus page with flat, brutalist drill-down navigation and real-time updates."
   use AthenaWeb, :live_view
 
   alias Athena.Content
@@ -11,6 +11,10 @@ defmodule AthenaWeb.LearnLive.Course do
     user = socket.assigns.current_user
 
     if Learning.has_access?(user.id, course_id) do
+      if connected?(socket) do
+        Phoenix.PubSub.subscribe(Athena.PubSub, "course_content:#{course_id}")
+      end
+
       course = Content.get_course(course_id) |> elem(1)
       full_tree = Content.get_course_tree(course_id, user)
       linear_sections = Content.list_linear_lessons(course_id, user)
@@ -33,12 +37,33 @@ defmodule AthenaWeb.LearnLive.Course do
   @impl true
   def handle_params(params, _url, socket) do
     parent_id = params["parent_id"]
-
     {current_nodes, breadcrumbs} = get_nodes_and_breadcrumbs(socket.assigns.full_tree, parent_id)
 
     {:noreply,
      socket
      |> assign(:viewing_parent_id, parent_id)
+     |> assign(:current_nodes, current_nodes)
+     |> assign(:breadcrumbs, breadcrumbs)}
+  end
+
+  @impl true
+  def handle_info(:refresh_content, socket) do
+    user = socket.assigns.current_user
+    course_id = socket.assigns.course.id
+
+    full_tree = Content.get_course_tree(course_id, user)
+    linear_sections = Content.list_linear_lessons(course_id, user)
+    accessible_ids = Progress.accessible_section_ids(user.id, course_id, linear_sections)
+    waterline_id = List.last(accessible_ids)
+
+    {current_nodes, breadcrumbs} =
+      get_nodes_and_breadcrumbs(full_tree, socket.assigns.viewing_parent_id)
+
+    {:noreply,
+     socket
+     |> assign(:full_tree, full_tree)
+     |> assign(:accessible_ids, accessible_ids)
+     |> assign(:waterline_id, waterline_id)
      |> assign(:current_nodes, current_nodes)
      |> assign(:breadcrumbs, breadcrumbs)}
   end
@@ -154,12 +179,14 @@ defmodule AthenaWeb.LearnLive.Course do
     """
   end
 
+  @doc false
   defp get_nodes_and_breadcrumbs(tree, nil), do: {tree, []}
 
   defp get_nodes_and_breadcrumbs(tree, parent_id) do
     find_node(tree, parent_id, []) || {[], []}
   end
 
+  @doc false
   defp find_node(nodes, target_id, breadcrumbs) do
     Enum.find_value(nodes, fn node ->
       if node.id == target_id do

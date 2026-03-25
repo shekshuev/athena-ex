@@ -37,6 +37,7 @@ defmodule AthenaWeb.StudioLive.Builder do
   def mount(%{"id" => course_id}, _session, socket) do
     case Content.get_course(course_id) do
       {:ok, course} ->
+        if connected?(socket), do: :timer.send_interval(1000, self(), :tick)
         sections = Content.get_course_tree(course.id)
         active_section_id = if sections != [], do: hd(sections).id, else: nil
 
@@ -85,6 +86,11 @@ defmodule AthenaWeb.StudioLive.Builder do
       _ ->
         {:ok, push_navigate(socket, to: ~p"/studio/courses")}
     end
+  end
+
+  @impl true
+  def handle_info(:tick, socket) do
+    {:noreply, assign(socket, server_now: DateTime.utc_now())}
   end
 
   @doc """

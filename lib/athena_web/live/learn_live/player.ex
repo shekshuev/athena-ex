@@ -11,11 +11,14 @@ defmodule AthenaWeb.LearnLive.Player do
     user = socket.assigns.current_user
 
     if Learning.has_access?(user.id, course_id) do
+      if connected?(socket) do
+        Phoenix.PubSub.subscribe(Athena.PubSub, "course_content:#{course_id}")
+      end
+
       course = Content.get_course(course_id) |> elem(1)
       linear_lessons = Content.list_linear_lessons(course_id, user)
 
       accessible_ids = Progress.accessible_section_ids(user.id, course_id, linear_lessons)
-
       section_id = params["section_id"] || linear_lessons |> List.first() |> Map.get(:id)
 
       if section_id not in accessible_ids do
@@ -36,22 +39,23 @@ defmodule AthenaWeb.LearnLive.Player do
           if current_index > 0, do: Enum.at(linear_lessons, current_index - 1), else: nil
 
         next_section = Enum.at(linear_lessons, current_index + 1)
-
         next_accessible? = next_section != nil and next_section.id in accessible_ids
 
-        {:ok,
-         socket
-         |> assign(:page_title, section.title)
-         |> assign(:course, course)
-         |> assign(:tree, tree)
-         |> assign(:linear_lessons, linear_lessons)
-         |> assign(:section, section)
-         |> assign(:blocks, blocks)
-         |> assign(:completed_ids, completed_ids)
-         |> assign(:prev_section_id, if(prev_section, do: prev_section.id, else: nil))
-         |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
-         |> assign(:course_map_open, false)
-         |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))}
+        socket =
+          socket
+          |> assign(:page_title, section.title)
+          |> assign(:course, course)
+          |> assign(:tree, tree)
+          |> assign(:linear_lessons, linear_lessons)
+          |> assign(:section, section)
+          |> assign(:blocks, blocks)
+          |> assign(:completed_ids, completed_ids)
+          |> assign(:prev_section_id, if(prev_section, do: prev_section.id, else: nil))
+          |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
+          |> assign(:course_map_open, false)
+          |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
+
+        {:ok, schedule_next_unlock(socket, course_id)}
       end
     else
       {:ok, push_navigate(socket |> put_flash(:error, gettext("Access denied.")), to: ~p"/learn")}
@@ -96,6 +100,46 @@ defmodule AthenaWeb.LearnLive.Player do
         {:cont, acc ++ [block]}
       end
     end)
+  end
+
+  @impl true
+  def handle_info(:refresh_content, socket) do
+    user = socket.assigns.current_user
+    course_id = socket.assigns.course.id
+    current_section_id = socket.assigns.section.id
+
+    linear_lessons = Content.list_linear_lessons(course_id, user)
+    accessible_ids = Progress.accessible_section_ids(user.id, course_id, linear_lessons)
+
+    if current_section_id not in accessible_ids do
+      {:noreply,
+       socket
+       |> put_flash(
+         :warning,
+         gettext("The instructor modified this content. Returning to safe zone.")
+       )
+       |> push_navigate(to: ~p"/learn/courses/#{course_id}")}
+    else
+      blocks =
+        Content.list_blocks_by_section(current_section_id, user) |> Enum.sort_by(& &1.order)
+
+      completed_ids = Progress.completed_block_ids(user.id, current_section_id)
+      tree = Content.get_course_tree(course_id, user)
+
+      current_index = Enum.find_index(linear_lessons, fn s -> s.id == current_section_id end)
+      next_section = Enum.at(linear_lessons, current_index + 1)
+      next_accessible? = next_section != nil and next_section.id in accessible_ids
+
+      {:noreply,
+       socket
+       |> assign(:tree, tree)
+       |> assign(:linear_lessons, linear_lessons)
+       |> assign(:blocks, blocks)
+       |> assign(:completed_ids, completed_ids)
+       |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
+       |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
+       |> schedule_next_unlock(course_id)}
+    end
   end
 
   defp is_gate?(block), do: block.completion_rule && block.completion_rule.type != :none
@@ -158,7 +202,6 @@ defmodule AthenaWeb.LearnLive.Player do
             class="animate-in slide-in-from-bottom-4 fade-in duration-500 fill-mode-both"
           >
             <.render_block_content block={block} />
-
             <div :if={is_gate?(block)} class="mt-8">
               <.render_gate block={block} is_completed={block.id in @completed_ids} />
             </div>
@@ -247,7 +290,6 @@ defmodule AthenaWeb.LearnLive.Player do
             <span class="truncate">{section.title}</span>
           </div>
         <% end %>
-
         <.course_map_tree
           :if={section.children != []}
           sections={section.children}
@@ -263,7 +305,7 @@ defmodule AthenaWeb.LearnLive.Player do
   defp render_block_content(%{block: %{type: :text}} = assigns) do
     ~H"""
     <div
-      id={"player-tiptap-#{@block.id}"}
+      id={"player-tiptap-#{@block.id}-#{DateTime.to_unix(@block.updated_at)}"}
       phx-hook="TiptapEditor"
       data-id={@block.id}
       data-readonly="true"
@@ -309,7 +351,7 @@ defmodule AthenaWeb.LearnLive.Player do
     <div class="my-8 p-6 bg-base-200/50 rounded-xl border border-base-300">
       <div
         :if={@block.content["description"]}
-        id={"player-attachment-tiptap-#{@block.id}"}
+        id={"player-attachment-tiptap-#{@block.id}-#{DateTime.to_unix(@block.updated_at)}"}
         phx-hook="TiptapEditor"
         data-id={"desc-#{@block.id}"}
         data-readonly="true"
@@ -318,7 +360,6 @@ defmodule AthenaWeb.LearnLive.Player do
         class="prose prose-sm max-w-none text-base-content/70 mb-4"
       >
       </div>
-
       <div class="space-y-3 mt-4">
         <a
           :for={file <- @block.content["files"] || []}
@@ -444,4 +485,65 @@ defmodule AthenaWeb.LearnLive.Player do
       true -> "#{bytes} B"
     end
   end
+
+  @doc false
+  defp schedule_next_unlock(socket, course_id) do
+    now_unix = DateTime.utc_now() |> DateTime.to_unix()
+
+    all_sections = Content.list_linear_lessons(course_id, :all)
+    all_section_ids = Enum.map(all_sections, & &1.id)
+
+    import Ecto.Query
+
+    all_blocks =
+      Athena.Repo.all(from b in Athena.Content.Block, where: b.section_id in ^all_section_ids)
+
+    all_rules =
+      (all_sections ++ all_blocks)
+      |> Enum.map(& &1.access_rules)
+      |> Enum.reject(&is_nil/1)
+
+    all_times =
+      all_rules
+      |> Enum.flat_map(&[&1.unlock_at, &1.lock_at])
+      |> Enum.reject(&is_nil/1)
+
+    future_unix_times =
+      all_times
+      |> Enum.map(&parse_to_unix/1)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.filter(&(&1 > now_unix))
+      |> Enum.sort()
+
+    case List.first(future_unix_times) do
+      nil ->
+        socket
+
+      target_unix ->
+        raw_diff_ms = (target_unix - now_unix) * 1000 + 1000
+        safe_diff_ms = min(raw_diff_ms, 86_400_000)
+        Process.send_after(self(), :refresh_content, safe_diff_ms)
+        socket
+    end
+  end
+
+  defp parse_to_unix(%DateTime{} = dt), do: DateTime.to_unix(dt)
+
+  defp parse_to_unix(%NaiveDateTime{} = ndt),
+    do: DateTime.from_naive!(ndt, "Etc/UTC") |> DateTime.to_unix()
+
+  defp parse_to_unix(str) when is_binary(str) do
+    case DateTime.from_iso8601(str) do
+      {:ok, dt, _} ->
+        DateTime.to_unix(dt)
+
+      {:error, _} ->
+        case NaiveDateTime.from_iso8601(str) do
+          {:ok, ndt} -> DateTime.from_naive!(ndt, "Etc/UTC") |> DateTime.to_unix()
+          _ -> nil
+        end
+    end
+  end
+
+  defp parse_to_unix(_), do: nil
 end
