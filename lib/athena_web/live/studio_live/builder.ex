@@ -62,7 +62,8 @@ defmodule AthenaWeb.StudioLive.Builder do
            moving_section_id: nil,
            quick_nav_open: false,
            section_to_delete: nil,
-           block_to_delete: nil
+           block_to_delete: nil,
+           server_now: DateTime.utc_now() |> DateTime.truncate(:second)
          )
          |> allow_upload(:image_upload,
            accept: @allowed_image_types,
@@ -90,7 +91,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   @impl true
   def handle_info(:tick, socket) do
-    {:noreply, assign(socket, server_now: DateTime.utc_now())}
+    {:noreply, assign(socket, server_now: DateTime.utc_now() |> DateTime.truncate(:second))}
   end
 
   @doc """
@@ -577,6 +578,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             id="inspector-component"
             active_section={@active_section}
             active_block={@active_block}
+            server_now={@server_now}
           />
         </div>
       </div>

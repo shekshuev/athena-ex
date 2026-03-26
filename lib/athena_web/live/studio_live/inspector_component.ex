@@ -14,9 +14,6 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   @spec render(map()) :: Phoenix.LiveView.Rendered.t()
   @impl true
   def render(assigns) do
-    assigns =
-      assign_new(assigns, :server_now, fn -> DateTime.utc_now() |> DateTime.truncate(:second) end)
-
     ~H"""
     <div class="flex flex-col h-full">
       <%= cond do %>
