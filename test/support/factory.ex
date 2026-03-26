@@ -7,7 +7,7 @@ defmodule Athena.Factory do
   alias Athena.Identity.{Account, Role, Profile}
   alias Athena.Media.{File, Quota}
   alias Athena.Content.{Course, Section, Block, LibraryBlock}
-  alias Athena.Learning.{Cohort, Instructor}
+  alias Athena.Learning.{Cohort, Instructor, Enrollment}
 
   def role_factory do
     %Role{
@@ -104,6 +104,12 @@ defmodule Athena.Factory do
     %Cohort{
       name: sequence(:name, &"Cohort #{&1}"),
       description: "A test cohort for integration tests."
+    }
+  end
+
+  def enrollment_factory do
+    %Enrollment{
+      status: :active
     }
   end
 end

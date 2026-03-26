@@ -10,12 +10,12 @@ defmodule AthenaWeb.LearnLive.Course do
   def mount(%{"id" => course_id} = params, _session, socket) do
     user = socket.assigns.current_user
 
-    if Learning.has_access?(user.id, course_id) do
+    with true <- Learning.has_access?(user.id, course_id),
+         {:ok, course} <- Content.get_course(course_id) do
       if connected?(socket) do
         Phoenix.PubSub.subscribe(Athena.PubSub, "course_content:#{course_id}")
       end
 
-      course = Content.get_course(course_id) |> elem(1)
       full_tree = Content.get_course_tree(course_id, user)
       linear_sections = Content.list_linear_lessons(course_id, user)
       accessible_ids = Progress.accessible_section_ids(user.id, course_id, linear_sections)
@@ -30,7 +30,9 @@ defmodule AthenaWeb.LearnLive.Course do
        |> assign(:waterline_id, waterline_id)
        |> assign(:viewing_parent_id, params["parent_id"])}
     else
-      {:ok, push_navigate(socket |> put_flash(:error, gettext("Access denied.")), to: ~p"/learn")}
+      _ ->
+        {:ok,
+         push_navigate(socket |> put_flash(:error, gettext("Access denied.")), to: ~p"/learn")}
     end
   end
 

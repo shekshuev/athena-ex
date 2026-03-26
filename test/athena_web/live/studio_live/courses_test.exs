@@ -40,6 +40,28 @@ defmodule AthenaWeb.StudioLive.CoursesTest do
       assert html =~ "Phoenix LiveView Guide"
       refute html =~ "PostgreSQL Basics"
     end
+
+    test "search functionality is case-insensitive", %{conn: conn} do
+      insert(:course, title: "Elixir Masterclass")
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses")
+
+      html =
+        lv
+        |> form("form[phx-change='search']", %{"search" => "elixir"})
+        |> render_change()
+
+      assert html =~ "Elixir Masterclass"
+    end
+
+    test "does not render soft-deleted courses in the list", %{conn: conn} do
+      insert(:course, title: "Active Course")
+      insert(:course, title: "Deleted Course", deleted_at: DateTime.utc_now())
+
+      {:ok, _lv, html} = live(conn, ~p"/studio/courses")
+
+      assert html =~ "Active Course"
+      refute html =~ "Deleted Course"
+    end
   end
 
   describe "Courses page (Create/Edit actions)" do

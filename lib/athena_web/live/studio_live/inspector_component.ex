@@ -9,6 +9,17 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   use AthenaWeb, :live_component
 
   @doc """
+  Lifecycle hook: handles incoming assigns and sets defaults.
+  """
+  @impl true
+  def update(assigns, socket) do
+    {:ok,
+     socket
+     |> assign(assigns)
+     |> assign_new(:server_now, fn -> DateTime.utc_now() |> DateTime.truncate(:second) end)}
+  end
+
+  @doc """
   Renders the inspector panel.
   """
   @spec render(map()) :: Phoenix.LiveView.Rendered.t()

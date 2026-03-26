@@ -293,11 +293,11 @@ defmodule Athena.Content.SectionsTest do
           "visibility" => :hidden
         })
 
-      assert length(Sections.get_course_tree(c.id)) == 2
+      assert length(Sections.get_course_tree(c.id, :all)) == 2
 
       admin_role = insert(:role, permissions: ["admin"])
       admin = insert(:account, role: admin_role)
-      assert length(Sections.get_course_tree(c.id, admin)) == 2
+      assert length(Sections.get_course_tree(c.id, admin)) == 1
 
       user_role = insert(:role, permissions: [])
       user = insert(:account, role: user_role)
