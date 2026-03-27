@@ -130,7 +130,7 @@ defmodule AthenaWeb.StudioLive.CoursesTest do
       refute html =~ "Create Course"
       refute html =~ "hero-pencil-square"
       refute html =~ "hero-trash"
-      assert html =~ "hero-wrench-screwdriver"
+      refute html =~ "hero-wrench-screwdriver"
     end
 
     test "should redirect from /new if user lacks create permission", %{conn: conn} do

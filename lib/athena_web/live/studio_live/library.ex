@@ -13,7 +13,7 @@ defmodule AthenaWeb.StudioLive.Library do
   alias Athena.Identity
   alias AthenaWeb.StudioLive.LibraryFormComponent
 
-  on_mount {AthenaWeb.Hooks.Permission, "courses.read"}
+  on_mount {AthenaWeb.Hooks.Permission, "library.read"}
 
   @doc """
   Initializes the LiveView, setting up the library blocks stream.
