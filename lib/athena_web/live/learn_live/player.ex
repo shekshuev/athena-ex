@@ -121,7 +121,7 @@ defmodule AthenaWeb.LearnLive.Player do
     Enum.reduce_while(blocks, [], fn block, acc ->
       is_completed = block.id in completed_ids
 
-      if is_gate?(block) and not is_completed do
+      if gate?(block) and not is_completed do
         {:halt, acc ++ [block]}
       else
         {:cont, acc ++ [block]}
@@ -176,11 +176,11 @@ defmodule AthenaWeb.LearnLive.Player do
     end
   end
 
-  defp is_gate?(block), do: block.completion_rule && block.completion_rule.type != :none
+  defp gate?(block), do: block.completion_rule && block.completion_rule.type != :none
 
   defp all_blocks_completed?(visible_blocks, completed_ids) do
     last_block = List.last(visible_blocks)
-    last_block == nil or (!is_gate?(last_block) or last_block.id in completed_ids)
+    last_block == nil or (!gate?(last_block) or last_block.id in completed_ids)
   end
 
   @doc "Renders the interactive course player UI."
@@ -238,7 +238,7 @@ defmodule AthenaWeb.LearnLive.Player do
             class="animate-in slide-in-from-bottom-4 fade-in duration-500 fill-mode-both"
           >
             <.render_block_content block={block} />
-            <div :if={is_gate?(block)} class="mt-8">
+            <div :if={gate?(block)} class="mt-8">
               <.render_gate block={block} is_completed={block.id in @completed_ids} />
             </div>
           </div>
