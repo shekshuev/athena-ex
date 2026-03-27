@@ -22,4 +22,5 @@ defmodule Athena.Identity do
   defdelegate get_role_by_name(name), to: Roles
 
   defdelegate can?(user, permission, resource \\ nil), to: Acl
+  defdelegate can_any?(user, permissions), to: Acl
 end

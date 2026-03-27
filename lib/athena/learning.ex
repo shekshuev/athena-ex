@@ -33,4 +33,6 @@ defmodule Athena.Learning do
   defdelegate enroll_cohort(cohort_id, course_id, status \\ :active), to: Enrollments
   defdelegate update_enrollment(enrollment, attrs), to: Enrollments
   defdelegate delete_enrollment(enrollment), to: Enrollments
+  defdelegate list_student_enrollments(account_id), to: Enrollments
+  defdelegate has_access?(account_id, course_id), to: Enrollments
 end

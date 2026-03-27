@@ -334,4 +334,115 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       refute render(lv) =~ "Upload Media"
     end
   end
+
+  describe "Library Integration" do
+    setup %{course: course, admin: admin} do
+      {:ok, section} =
+        Content.create_section(%{
+          "title" => "Library Lesson",
+          "course_id" => course.id,
+          "owner_id" => admin.id
+        })
+
+      %{section: section}
+    end
+
+    test "saves an existing block to the library", %{
+      conn: conn,
+      course: course,
+      section: section,
+      admin: admin
+    } do
+      {:ok, block} =
+        Content.create_block(%{
+          "type" => "text",
+          "section_id" => section.id,
+          "content" => %{"text" => "Important content"}
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']")
+      |> render_click()
+
+      lv |> element("button[phx-click='open_save_library_modal']") |> render_click()
+
+      assert render(lv) =~ "Save to Library"
+
+      lv
+      |> form("#save-library-modal form", %{
+        "title" => "My Reusable Text",
+        "tags_string" => "cool, text"
+      })
+      |> render_submit()
+
+      assert render(lv) =~ "Saved to library!"
+
+      {:ok, {lib_blocks, _}} = Content.list_library_blocks(%{}, admin.id)
+      assert length(lib_blocks) == 1
+      assert hd(lib_blocks).title == "My Reusable Text"
+      assert hd(lib_blocks).tags == ["cool", "text"]
+    end
+
+    test "inserts a block from the library into the active section", %{
+      conn: conn,
+      course: course,
+      section: section,
+      admin: admin
+    } do
+      lib_block =
+        insert(:library_block, title: "Global Quiz", type: :quiz_question, owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("button[phx-click='open_library_picker']") |> render_click()
+
+      assert render(lv) =~ "Global Quiz"
+
+      lv
+      |> element("button[phx-click='insert_from_library'][phx-value-id='#{lib_block.id}']")
+      |> render_click()
+
+      assert render(lv) =~ "Block inserted from library!"
+
+      blocks = Content.list_blocks_by_section(section.id)
+      assert length(blocks) == 1
+      assert hd(blocks).type == :quiz_question
+    end
+
+    test "searches library templates in the slide-over picker", %{
+      conn: conn,
+      course: course,
+      section: section,
+      admin: admin
+    } do
+      insert(:library_block, title: "Alpha Template", owner_id: admin.id)
+      insert(:library_block, title: "Beta Template", owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("button[phx-click='open_library_picker']") |> render_click()
+
+      html =
+        lv
+        |> form("#library-search-form", %{"search" => "Alpha"})
+        |> render_change()
+
+      assert html =~ "Alpha Template"
+      refute html =~ "Beta Template"
+    end
+  end
 end

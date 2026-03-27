@@ -153,7 +153,49 @@ msgstr ""
 msgid "does not match password"
 msgstr ""
 
-#: lib/athena_web/hooks/permission.ex:21
+#: lib/athena_web/hooks/permission.ex:22
 #, elixir-autogen, elixir-format
 msgid "You don't have permission to access this page."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/builder.ex:1074
+#, elixir-autogen, elixir-format
+msgid "Could not generate upload URL"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/builder.ex:1219
+#, elixir-autogen, elixir-format
+msgid "Error saving media data."
+msgstr ""
+
+## From Ecto.Changeset.cast/4
+#: lib/athena/content/competition_rule.ex:34
+#, elixir-autogen, elixir-format, fuzzy
+msgid "can't be blank for auto-grade"
+msgstr ""
+
+## From Ecto.Changeset.cast/4
+#: lib/athena/content/competition_rule.ex:28
+#, elixir-autogen, elixir-format, fuzzy
+msgid "can't be blank for button type"
+msgstr ""
+
+#: lib/athena/content/access_rules.ex:39
+#, elixir-autogen, elixir-format
+msgid "cannot be exactly the same as unlock time"
+msgstr ""
+
+#: lib/athena/learning/enrollment.ex:73
+#, elixir-autogen, elixir-format
+msgid "cannot have both account_id and cohort_id"
+msgstr ""
+
+#: lib/athena/content/access_rules.ex:33
+#, elixir-autogen, elixir-format
+msgid "must be after the unlock time"
+msgstr ""
+
+#: lib/athena/learning/enrollment.ex:66
+#, elixir-autogen, elixir-format
+msgid "must have either account_id or cohort_id"
 msgstr ""

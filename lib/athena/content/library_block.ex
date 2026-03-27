@@ -22,7 +22,10 @@ defmodule Athena.Content.LibraryBlock do
 
   schema "library_blocks" do
     field :title, :string
-    field :type, Ecto.Enum, values: [:text, :code, :quiz_question]
+
+    field :type, Ecto.Enum,
+      values: [:text, :code, :quiz_question, :quiz_exam, :video, :image, :attachment]
+
     field :content, :map, default: %{}
     field :tags, {:array, :string}, default: []
     field :owner_id, :binary_id

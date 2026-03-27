@@ -2,14 +2,14 @@
   <aside
     id="main-sidebar"
     class={[
-      "group/sidebar fixed inset-y-0 left-0 z-50 flex flex-col h-full border-r border-base-300 bg-base-100 transition-all duration-300 ease-in-out lg:static",
+      "peer group/sidebar fixed inset-y-0 left-0 z-50 flex flex-col h-full border-r border-base-300 bg-base-100 transition-all duration-300 ease-in-out lg:static",
       "w-64 [&.is-collapsed]:w-20",
       "-translate-x-full lg:translate-x-0 [&.is-mobile-open]:translate-x-0"
     ]}
   >
     <button
       phx-click={JS.toggle_class("is-collapsed", to: "#main-sidebar")}
-      class="absolute -right-3 top-10 z-[60] hidden lg:flex btn btn-circle btn-xs btn-primary shadow-lg border-2 border-base-100 items-center justify-center"
+      class="absolute -right-3 top-10 z-60 hidden lg:flex btn btn-circle btn-xs btn-primary shadow-lg border-2 border-base-100 items-center justify-center"
     >
       <.icon
         name="hero-chevron-left"
@@ -20,9 +20,12 @@
     <div class="h-16 flex items-center px-6 shrink-0 overflow-hidden">
       <a
         href="/"
-        class="font-display font-black text-2xl tracking-tighter hover:text-primary transition-colors whitespace-nowrap"
+        class="flex items-center gap-2 font-display font-black text-2xl tracking-tighter hover:text-primary transition-colors whitespace-nowrap"
       >
         <span class="group-[.is-collapsed]/sidebar:hidden text-base-content">ATHENA</span>
+        <span class="badge badge-primary font-display font-bold rounded-none group-[.is-collapsed]/sidebar:hidden">
+          LMS
+        </span>
         <span class="hidden group-[.is-collapsed]/sidebar:inline text-primary">A</span>
       </a>
     </div>
@@ -56,9 +59,6 @@
                 {gettext("My Learning")}
               </span>
             </div>
-            <span class="badge badge-sm badge-primary group-[.is-collapsed]/sidebar:hidden font-bold">
-              2
-            </span>
           </.link>
         </li>
         <li>
@@ -93,140 +93,164 @@
         </li>
       </ul>
 
-      <div class="py-4 overflow-hidden">
-        <div class="h-px bg-base-300 w-full"></div>
-        <div class="mt-4 px-3 text-[10px] font-black text-base-content/50 uppercase tracking-widest group-[.is-collapsed]/sidebar:hidden">
-          {gettext("Studio")}
+      <%= if Identity.can_any?(@current_user, ["courses.read", "library.read", "grading.read"]) do %>
+        <div class="py-4 overflow-hidden">
+          <div class="h-px bg-base-300 w-full"></div>
+          <div class="mt-4 px-3 text-[10px] font-black text-base-content/50 uppercase tracking-widest group-[.is-collapsed]/sidebar:hidden">
+            {gettext("Studio")}
+          </div>
         </div>
-      </div>
-      <ul class="menu p-0 w-full gap-1">
-        <li>
-          <.link navigate={~p"/studio/courses"} class="flex items-center">
-            <div class="flex items-center gap-2">
-              <.icon name="hero-building-library" class="size-6 shrink-0" />
-              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
-                {gettext("Course Manager")}
-              </span>
-            </div>
-          </.link>
-        </li>
-        <li>
-          <.link navigate={~p"/studio/grading"} class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <.icon name="hero-academic-cap" class="size-6 shrink-0" />
-              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
-                {gettext("Assignments")}
-              </span>
-            </div>
-            <span class="badge badge-sm badge-primary group-[.is-collapsed]/sidebar:hidden font-bold">
-              12
-            </span>
-          </.link>
-        </li>
-        <li>
-          <.link navigate={~p"/studio/library"} class="flex items-center">
-            <div class="flex items-center gap-2">
-              <.icon name="hero-bookmark-square" class="size-6 shrink-0" />
-              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
-                {gettext("Library")}
-              </span>
-            </div>
-          </.link>
-        </li>
-      </ul>
+        <ul class="menu p-0 w-full gap-1">
+          <li :if={Identity.can?(@current_user, "courses.read")}>
+            <.link navigate={~p"/studio/courses"} class="flex items-center">
+              <div class="flex items-center gap-2">
+                <.icon name="hero-building-library" class="size-6 shrink-0" />
+                <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                  {gettext("Course Manager")}
+                </span>
+              </div>
+            </.link>
+          </li>
+          <li :if={Identity.can?(@current_user, "grading.read")}>
+            <.link navigate={~p"/studio/grading"} class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <.icon name="hero-academic-cap" class="size-6 shrink-0" />
+                <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                  {gettext("Assignments")}
+                </span>
+              </div>
+            </.link>
+          </li>
+          <li :if={Identity.can?(@current_user, "library.read")}>
+            <.link navigate={~p"/studio/library"} class="flex items-center">
+              <div class="flex items-center gap-2">
+                <.icon name="hero-bookmark-square" class="size-6 shrink-0" />
+                <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                  {gettext("Library")}
+                </span>
+              </div>
+            </.link>
+          </li>
+        </ul>
+      <% end %>
 
-      <div class="py-4 overflow-hidden">
-        <div class="h-px bg-base-300 w-full"></div>
-        <div class="mt-4 px-3 text-[10px] font-black text-base-content/50 uppercase tracking-widest group-[.is-collapsed]/sidebar:hidden">
-          {gettext("Teaching")}
+      <%= if Identity.can_any?(@current_user, ["cohorts.read", "instructors.read"]) do %>
+        <div class="py-4 overflow-hidden">
+          <div class="h-px bg-base-300 w-full"></div>
+          <div class="mt-4 px-3 text-[10px] font-black text-base-content/50 uppercase tracking-widest group-[.is-collapsed]/sidebar:hidden">
+            {gettext("Teaching")}
+          </div>
         </div>
-      </div>
-      <ul class="menu p-0 w-full gap-1">
-        <li>
-          <.link navigate={~p"/teaching/cohorts"} class="flex items-center">
-            <div class="flex items-center gap-2">
-              <.icon name="hero-user-group" class="size-6 shrink-0" />
-              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
-                {gettext("Cohorts")}
-              </span>
-            </div>
-          </.link>
-        </li>
-        <li>
-          <.link navigate={~p"/teaching/instructors"} class="flex items-center">
-            <div class="flex items-center gap-2">
-              <.icon name="hero-users" class="size-6 shrink-0" />
-              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
-                {gettext("Instructors")}
-              </span>
-            </div>
-          </.link>
-        </li>
-      </ul>
+        <ul class="menu p-0 w-full gap-1">
+          <li :if={Identity.can?(@current_user, "cohorts.read")}>
+            <.link navigate={~p"/teaching/cohorts"} class="flex items-center">
+              <div class="flex items-center gap-2">
+                <.icon name="hero-user-group" class="size-6 shrink-0" />
+                <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                  {gettext("Cohorts")}
+                </span>
+              </div>
+            </.link>
+          </li>
+          <li :if={Identity.can?(@current_user, "instructors.read")}>
+            <.link navigate={~p"/teaching/instructors"} class="flex items-center">
+              <div class="flex items-center gap-2">
+                <.icon name="hero-users" class="size-6 shrink-0" />
+                <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                  {gettext("Instructors")}
+                </span>
+              </div>
+            </.link>
+          </li>
+        </ul>
+      <% end %>
 
-      <div class="py-4 overflow-hidden">
-        <div class="h-px bg-base-300 w-full"></div>
-        <div class="mt-4 px-3 text-[10px] font-black text-error uppercase tracking-widest group-[.is-collapsed]/sidebar:hidden">
-          {gettext("Admin")}
+      <%= if Identity.can_any?(@current_user, ["users.read", "roles.read", "files.read", "settings.read"]) do %>
+        <div class="py-4 overflow-hidden">
+          <div class="h-px bg-base-300 w-full"></div>
+          <div class="mt-4 px-3 text-[10px] font-black text-error uppercase tracking-widest group-[.is-collapsed]/sidebar:hidden">
+            {gettext("Admin")}
+          </div>
         </div>
-      </div>
-      <ul class="menu p-0 w-full gap-1 mb-4">
-        <li :if={Identity.can?(@current_user, "users.read")}>
-          <.link
-            navigate={~p"/admin/users"}
-            class="flex items-center hover:bg-error/10 hover:text-error"
-          >
-            <div class="flex items-center gap-2">
-              <.icon name="hero-users" class="size-6 shrink-0" />
-              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
-                {gettext("Users")}
-              </span>
-            </div>
-          </.link>
-        </li>
-        <li :if={Identity.can?(@current_user, "roles.read")}>
-          <.link
-            navigate={~p"/admin/roles"}
-            class="flex items-center hover:bg-error/10 hover:text-error"
-          >
-            <div class="flex items-center gap-2">
-              <.icon name="hero-shield-check" class="size-6 shrink-0" />
-              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
-                {gettext("Roles")}
-              </span>
-            </div>
-          </.link>
-        </li>
-        <li>
-          <.link
-            navigate={~p"/admin/files"}
-            class="flex items-center hover:bg-error/10 hover:text-error"
-          >
-            <div class="flex items-center gap-2">
-              <.icon name="hero-server" class="size-6 shrink-0" />
-              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
-                {gettext("Files")}
-              </span>
-            </div>
-          </.link>
-        </li>
-        <li>
-          <.link
-            navigate={~p"/admin/settings"}
-            class="flex items-center hover:bg-error/10 hover:text-error"
-          >
-            <div class="flex items-center gap-2">
-              <.icon name="hero-cog-8-tooth" class="size-6 shrink-0" />
-              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
-                {gettext("System Settings")}
-              </span>
-            </div>
-          </.link>
-        </li>
-      </ul>
+        <ul class="menu p-0 w-full gap-1 mb-4">
+          <li :if={Identity.can?(@current_user, "users.read")}>
+            <.link
+              navigate={~p"/admin/users"}
+              class="flex items-center hover:bg-error/10 hover:text-error"
+            >
+              <div class="flex items-center gap-2">
+                <.icon name="hero-users" class="size-6 shrink-0" />
+                <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                  {gettext("Users")}
+                </span>
+              </div>
+            </.link>
+          </li>
+          <li :if={Identity.can?(@current_user, "roles.read")}>
+            <.link
+              navigate={~p"/admin/roles"}
+              class="flex items-center hover:bg-error/10 hover:text-error"
+            >
+              <div class="flex items-center gap-2">
+                <.icon name="hero-shield-check" class="size-6 shrink-0" />
+                <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                  {gettext("Roles")}
+                </span>
+              </div>
+            </.link>
+          </li>
+          <li :if={Identity.can?(@current_user, "files.read")}>
+            <.link
+              navigate={~p"/admin/files"}
+              class="flex items-center hover:bg-error/10 hover:text-error"
+            >
+              <div class="flex items-center gap-2">
+                <.icon name="hero-server" class="size-6 shrink-0" />
+                <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                  {gettext("Files")}
+                </span>
+              </div>
+            </.link>
+          </li>
+          <li :if={Identity.can?(@current_user, "settings.read")}>
+            <.link
+              navigate={~p"/admin/settings"}
+              class="flex items-center hover:bg-error/10 hover:text-error"
+            >
+              <div class="flex items-center gap-2">
+                <.icon name="hero-cog-8-tooth" class="size-6 shrink-0" />
+                <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                  {gettext("System Settings")}
+                </span>
+              </div>
+            </.link>
+          </li>
+        </ul>
+      <% end %>
     </nav>
 
-    <div class="p-3 border-t border-base-300 shrink-0">
+    <div class="p-3 border-t border-base-300 shrink-0 flex flex-col gap-2">
+      <div class="flex items-center justify-around px-2 group-[.is-collapsed]/sidebar:flex-col group-[.is-collapsed]/sidebar:gap-3">
+        <% current_locale = Gettext.get_locale(AthenaWeb.Gettext) %>
+        <a
+          href={"/locale/#{if current_locale == "ru", do: "en", else: "ru"}"}
+          class="btn btn-ghost btn-sm font-bold opacity-70 hover:opacity-100"
+        >
+          {String.upcase(current_locale)}
+        </a>
+
+        <label class="btn btn-ghost btn-sm btn-circle swap swap-rotate opacity-70 hover:opacity-100">
+          <input
+            type="checkbox"
+            class="theme-controller"
+            value="dark"
+            onchange="window.dispatchEvent(new CustomEvent('phx:set-theme', {detail: {theme: this.checked ? 'dark' : 'light'}}))"
+          />
+          <.icon name="hero-sun" class="swap-off size-5" />
+          <.icon name="hero-moon" class="swap-on size-5" />
+        </label>
+      </div>
+
       <ul class="menu p-0 w-full gap-1">
         <li>
           <.link
@@ -254,7 +278,10 @@
       >
         <.icon name="hero-bars-3" class="size-6" />
       </button>
-      <div class="font-display font-black text-xl uppercase tracking-tighter">Athena</div>
+      <div class="flex items-center gap-2">
+        <div class="font-display font-black text-xl uppercase tracking-tighter">ATHENA</div>
+        <span class="badge badge-primary font-display font-bold rounded-none">LMS</span>
+      </div>
       <div class="size-10"></div>
     </header>
 
@@ -268,7 +295,7 @@
 
   <div
     phx-click={JS.remove_class("is-mobile-open", to: "#main-sidebar")}
-    class="fixed inset-0 z-40 bg-black/50 hidden group-[.is-mobile-open]/sidebar:block lg:hidden"
+    class="fixed inset-0 z-40 bg-black/50 hidden peer-[.is-mobile-open]:block lg:hidden"
   >
   </div>
 </div>

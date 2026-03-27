@@ -31,11 +31,13 @@ defmodule Athena.Content.BlocksTest do
       b_public = insert(:block, section: s, visibility: :public, order: 1000)
       _b_hidden = insert(:block, section: s, visibility: :hidden, order: 2000)
 
-      assert length(Blocks.list_blocks_by_section(s.id)) == 2
+      assert length(Blocks.list_blocks_by_section(s.id, :all)) == 2
 
       admin_role = insert(:role, permissions: ["admin"])
       admin = insert(:account, role: admin_role)
-      assert length(Blocks.list_blocks_by_section(s.id, admin)) == 2
+      filtered_for_admin = Blocks.list_blocks_by_section(s.id, admin)
+      assert length(filtered_for_admin) == 1
+      assert hd(filtered_for_admin).id == b_public.id
 
       user_role = insert(:role, permissions: [])
       user = insert(:account, role: user_role)

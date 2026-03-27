@@ -53,6 +53,8 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponentTest do
 
       assert_patch(lv, ~p"/teaching/instructors")
 
+      assert render(lv) =~ "Instructor created successfully"
+
       {:ok, {instructors, _meta}} = Learning.list_instructors(%{})
       assert length(instructors) == 1
       instructor = hd(instructors)
@@ -60,8 +62,6 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponentTest do
       assert instructor.title == "Elixir Grandmaster"
       assert instructor.bio == "Loves building scalable systems."
       assert instructor.owner_id == account_to_link.id
-
-      assert render(lv) =~ "Instructor created successfully"
     end
 
     test "updates an existing instructor's title and bio", %{conn: conn} do
@@ -80,13 +80,13 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponentTest do
 
       assert_patch(lv, ~p"/teaching/instructors")
 
+      assert render(lv) =~ "Instructor updated successfully"
+
       updated_instructor = Learning.get_instructor!(instructor.id)
 
       assert updated_instructor.title == "Updated Title"
       assert updated_instructor.bio == "Updated Bio"
       assert updated_instructor.owner_id == instructor.owner_id
-
-      assert render(lv) =~ "Instructor updated successfully"
     end
   end
 end

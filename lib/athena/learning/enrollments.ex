@@ -9,7 +9,7 @@ defmodule Athena.Learning.Enrollments do
 
   import Ecto.Query
   alias Athena.Repo
-  alias Athena.Learning.Enrollment
+  alias Athena.Learning.{Enrollment, CohortMembership}
   alias Athena.Content
   alias Athena.Identity
 
@@ -83,6 +83,45 @@ defmodule Athena.Learning.Enrollments do
           {:ok, Enrollment.t()} | {:error, Ecto.Changeset.t()}
   def delete_enrollment(%Enrollment{} = enrollment) do
     Repo.delete(enrollment)
+  end
+
+  @doc """
+  Retrieves all active course enrollments for a specific student.
+  Includes both direct enrollments (by account_id) and cohort-based enrollments.
+  Filters out duplicates and soft-deleted courses.
+  """
+  @spec list_student_enrollments(String.t()) :: [Enrollment.t()]
+  def list_student_enrollments(account_id) do
+    cohort_ids_query =
+      from cm in CohortMembership,
+        where: cm.account_id == ^account_id,
+        select: cm.cohort_id
+
+    Enrollment
+    |> where([e], e.account_id == ^account_id or e.cohort_id in subquery(cohort_ids_query))
+    |> where([e], e.status != :dropped)
+    |> distinct([e], e.course_id)
+    |> Repo.all()
+    |> enrich_enrollments()
+    |> Enum.reject(&is_nil(&1.course))
+  end
+
+  @doc """
+  Fast check if a student has active access to a course 
+  (either directly or via any of their cohorts).
+  """
+  @spec has_access?(String.t(), String.t()) :: boolean()
+  def has_access?(account_id, course_id) do
+    cohort_ids_query =
+      from cm in CohortMembership,
+        where: cm.account_id == ^account_id,
+        select: cm.cohort_id
+
+    Enrollment
+    |> where([e], e.course_id == ^course_id)
+    |> where([e], e.account_id == ^account_id or e.cohort_id in subquery(cohort_ids_query))
+    |> where([e], e.status != :dropped)
+    |> Repo.exists?()
   end
 
   @doc false
