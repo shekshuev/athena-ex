@@ -331,7 +331,12 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
       </div>
 
       <div class="pt-4 border-t border-base-300 mt-auto pb-4 space-y-2">
-        <.button type="button" class="btn btn-primary btn-soft w-full">
+        <.button
+          type="button"
+          phx-click="open_save_library_modal"
+          phx-value-id={@block.id}
+          class="btn btn-primary btn-soft w-full"
+        >
           <.icon name="hero-bookmark-square" class="size-4" />
           {gettext("Save to Library")}
         </.button>

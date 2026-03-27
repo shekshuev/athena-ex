@@ -63,7 +63,11 @@ defmodule AthenaWeb.StudioLive.Builder do
            quick_nav_open: false,
            section_to_delete: nil,
            block_to_delete: nil,
-           server_now: DateTime.utc_now() |> DateTime.truncate(:second)
+           server_now: DateTime.utc_now() |> DateTime.truncate(:second),
+           saving_block_to_library: nil,
+           library_picker_open: false,
+           library_blocks: [],
+           library_search: ""
          )
          |> allow_upload(:image_upload,
            accept: @allowed_image_types,
@@ -513,6 +517,93 @@ defmodule AthenaWeb.StudioLive.Builder do
     process_media_save(socket, block)
   end
 
+  # --- LIBRARY INTEGRATION EVENTS ---
+  def handle_event("open_library_picker", _, socket) do
+    {:ok, {blocks, _meta}} = Content.list_library_blocks(%{}, socket.assigns.current_user.id)
+
+    {:noreply,
+     assign(socket, library_picker_open: true, library_blocks: blocks, library_search: "")}
+  end
+
+  def handle_event("close_library_picker", _, socket) do
+    {:noreply, assign(socket, library_picker_open: false)}
+  end
+
+  def handle_event("search_library", %{"search" => search}, socket) do
+    flop_params =
+      if search != "",
+        do: %{
+          "filters" => %{"0" => %{"field" => "title", "op" => "ilike_and", "value" => search}}
+        },
+        else: %{}
+
+    {:ok, {blocks, _meta}} =
+      Content.list_library_blocks(flop_params, socket.assigns.current_user.id)
+
+    {:noreply, assign(socket, library_blocks: blocks, library_search: search)}
+  end
+
+  def handle_event("insert_from_library", %{"id" => lib_id}, socket) do
+    {:ok, lib_block} = Content.get_library_block(lib_id)
+
+    attrs = %{
+      "type" => Atom.to_string(lib_block.type),
+      "content" => lib_block.content,
+      "section_id" => socket.assigns.active_section_id
+    }
+
+    case Content.create_block(attrs) do
+      {:ok, block} ->
+        updated_blocks = socket.assigns.blocks ++ [block]
+
+        {:noreply,
+         socket
+         |> assign(blocks: updated_blocks, active_block_id: block.id, library_picker_open: false)
+         |> put_flash(:info, gettext("Block inserted from library!"))}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to insert block"))}
+    end
+  end
+
+  def handle_event("open_save_library_modal", %{"id" => id}, socket) do
+    block = Enum.find(socket.assigns.blocks, &(&1.id == id))
+    {:noreply, assign(socket, saving_block_to_library: block)}
+  end
+
+  def handle_event("cancel_save_library", _, socket) do
+    {:noreply, assign(socket, saving_block_to_library: nil)}
+  end
+
+  def handle_event("save_to_library", %{"title" => title, "tags_string" => tags_str}, socket) do
+    block = socket.assigns.saving_block_to_library
+
+    tags =
+      tags_str
+      |> String.split(",", trim: true)
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+
+    attrs = %{
+      "title" => title,
+      "type" => Atom.to_string(block.type),
+      "content" => block.content,
+      "tags" => tags,
+      "owner_id" => socket.assigns.current_user.id
+    }
+
+    case Content.create_library_block(attrs) do
+      {:ok, _lib_block} ->
+        {:noreply,
+         socket
+         |> assign(saving_block_to_library: nil)
+         |> put_flash(:info, gettext("Saved to library!"))}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to save to library"))}
+    end
+  end
+
   @impl true
   def render(assigns) do
     active_section = find_section_in_tree(assigns.sections, assigns.active_section_id)
@@ -529,7 +620,7 @@ defmodule AthenaWeb.StudioLive.Builder do
       )
 
     ~H"""
-    <div class="fixed inset-0 pt-16 lg:pt-0 z-50 flex bg-base-200">
+    <div class="hidden lg:flex fixed inset-0 pt-16 lg:pt-0 z-50 bg-base-200">
       <div class="w-80 flex flex-col bg-base-100 border-r border-base-300 shrink-0 z-10">
         <div class="p-4 border-b border-base-300 flex items-center justify-between">
           <h2 class="font-bold truncate" title={@course.title}>{@course.title}</h2>
@@ -769,6 +860,105 @@ defmodule AthenaWeb.StudioLive.Builder do
         on_cancel={JS.push("cancel_block_delete")}
         on_confirm={JS.push("confirm_delete_block")}
       />
+
+      <.slide_over
+        id="library-picker-slideover"
+        show={@library_picker_open}
+        title={gettext("Library")}
+        on_close={JS.push("close_library_picker")}
+      >
+        <div class="flex flex-col h-full">
+          <div class="p-6 border-b border-base-200 shrink-0">
+            <.form
+              for={nil}
+              id="library-search-form"
+              phx-change="search_library"
+              phx-submit="search_library"
+            >
+              <.input
+                type="text"
+                name="search"
+                value={@library_search}
+                placeholder={gettext("Search templates...")}
+                phx-debounce="300"
+              />
+            </.form>
+          </div>
+          <div class="flex-1 overflow-y-auto p-6 space-y-4">
+            <div
+              :for={lib_block <- @library_blocks}
+              class="p-5 bg-base-100 border border-base-300 rounded-xl hover:border-primary/50 transition-colors flex flex-col gap-3 shadow-sm"
+            >
+              <div class="flex justify-between items-start">
+                <h4 class="font-bold text-lg leading-tight">{lib_block.title}</h4>
+                <span class="badge badge-sm badge-outline uppercase tracking-widest text-[10px] font-black shrink-0">
+                  {lib_block.type}
+                </span>
+              </div>
+              <div class="flex flex-wrap gap-1">
+                <span :for={tag <- lib_block.tags || []} class="badge badge-xs badge-neutral">
+                  {tag}
+                </span>
+              </div>
+              <div class="mt-2 text-right border-t border-base-200 pt-3">
+                <.button
+                  type="button"
+                  phx-click="insert_from_library"
+                  phx-value-id={lib_block.id}
+                  class="btn btn-sm btn-primary w-full sm:w-auto"
+                >
+                  {gettext("Insert Block")}
+                </.button>
+              </div>
+            </div>
+            <div :if={@library_blocks == []} class="text-center py-10 opacity-50 font-medium">
+              {gettext("No templates found.")}
+            </div>
+          </div>
+        </div>
+      </.slide_over>
+
+      <.modal
+        :if={@saving_block_to_library}
+        id="save-library-modal"
+        show={true}
+        title={gettext("Save to Library")}
+        on_cancel={JS.push("cancel_save_library")}
+      >
+        <.form for={nil} phx-submit="save_to_library" class="space-y-4">
+          <.input type="text" name="title" value="" label={gettext("Template Title")} required />
+          <.input
+            type="text"
+            name="tags_string"
+            value=""
+            label={gettext("Tags (comma separated)")}
+            placeholder="elixir, hard, quiz"
+          />
+          <div class="modal-action">
+            <.button type="button" class="btn btn-ghost" phx-click="cancel_save_library">
+              {gettext("Cancel")}
+            </.button>
+            <.button type="submit" class="btn btn-primary">{gettext("Save Template")}</.button>
+          </div>
+        </.form>
+      </.modal>
+    </div>
+
+    <div class="flex lg:hidden h-screen w-full items-center justify-center bg-base-200 p-8 text-center relative z-50">
+      <div class="max-w-md space-y-4">
+        <.icon name="hero-computer-desktop" class="size-20 text-primary mx-auto opacity-50 mb-6" />
+        <h2 class="text-3xl font-black font-display tracking-tight text-base-content">
+          {gettext("Screen too small")}
+        </h2>
+        <p class="text-base-content/60 text-lg mb-8">
+          {gettext(
+            "The Course Builder requires a desktop or tablet screen to work comfortably. Please open this page on a larger device."
+          )}
+        </p>
+        <.link navigate={~p"/studio/courses"} class="btn btn-primary btn-lg mt-4 w-full">
+          {gettext("Back to Courses")}
+        </.link>
+      </div>
     </div>
     """
   end
