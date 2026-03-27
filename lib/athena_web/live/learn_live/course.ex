@@ -1,11 +1,22 @@
 defmodule AthenaWeb.LearnLive.Course do
-  @moduledoc "Course Syllabus page with flat, brutalist drill-down navigation and real-time updates."
+  @moduledoc """
+  Course Syllabus page with flat, brutalist drill-down navigation and real-time updates.
+
+  Handles the layout and global state for the student-facing syllabus,
+  fetching the course tree, computing breadcrumbs, and calculating the highest
+  accessible section (waterline) based on the user's progress.
+  """
   use AthenaWeb, :live_view
 
   alias Athena.Content
   alias Athena.Learning
   alias Athena.Learning.Progress
 
+  @doc """
+  Initializes the LiveView, verifying user access, subscribing to real-time content updates,
+  and calculating the accessible sections and the continue learning waterline.
+  """
+  @spec mount(map(), map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def mount(%{"id" => course_id} = params, _session, socket) do
     user = socket.assigns.current_user
@@ -36,6 +47,12 @@ defmodule AthenaWeb.LearnLive.Course do
     end
   end
 
+  @doc """
+  Handles URL parameters for drill-down navigation, resolving the current folder level
+  and building breadcrumbs.
+  """
+  @spec handle_params(map(), String.t(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_params(params, _url, socket) do
     parent_id = params["parent_id"]
@@ -48,6 +65,12 @@ defmodule AthenaWeb.LearnLive.Course do
      |> assign(:breadcrumbs, breadcrumbs)}
   end
 
+  @doc """
+  Handles real-time updates broadcasted via PubSub when course content changes.
+  Recalculates the course tree, accessible IDs, and breadcrumbs dynamically.
+  """
+  @spec handle_info(atom() | tuple(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_info(:refresh_content, socket) do
     user = socket.assigns.current_user
@@ -70,6 +93,10 @@ defmodule AthenaWeb.LearnLive.Course do
      |> assign(:breadcrumbs, breadcrumbs)}
   end
 
+  @doc """
+  Renders the syllabus view.
+  """
+  @spec render(map()) :: Phoenix.LiveView.Rendered.t()
   @impl true
   def render(assigns) do
     ~H"""

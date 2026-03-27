@@ -1,67 +1,94 @@
 defmodule AthenaWeb.LearnLive.Player do
-  @moduledoc "Player with strict Waterfall bounds and support for all block types."
+  @moduledoc """
+  The core learning interface: Progressive Disclosure Player.
+
+  Enforces strict Waterfall progression through course content. Handles
+  the rendering of various block types (text, media, code) and manages
+  interactive progression gates (e.g., "Require Button Click", "Pass Auto-Grade").
+
+  Features real-time synchronization via PubSub to immediately react to
+  instructor changes (like hiding a section or locking it with a timer)
+  and safely boot the student back to the syllabus if access is revoked.
+  """
   use AthenaWeb, :live_view
 
   alias Athena.Content
   alias Athena.Learning
   alias Athena.Learning.Progress
 
+  @doc """
+  Initializes the player, checks course access, and validates that the student
+  has reached the requested section. Redirects to a safe zone if access is blocked.
+  """
+  @spec mount(map(), map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def mount(%{"id" => course_id} = params, _session, socket) do
     user = socket.assigns.current_user
 
-    if Learning.has_access?(user.id, course_id) do
+    with true <- Learning.has_access?(user.id, course_id),
+         {:ok, course} <- Content.get_course(course_id) do
       if connected?(socket) do
         Phoenix.PubSub.subscribe(Athena.PubSub, "course_content:#{course_id}")
       end
 
-      course = Content.get_course(course_id) |> elem(1)
       linear_lessons = Content.list_linear_lessons(course_id, user)
-
       accessible_ids = Progress.accessible_section_ids(user.id, course_id, linear_lessons)
-      section_id = params["section_id"] || linear_lessons |> List.first() |> Map.get(:id)
 
-      if section_id not in accessible_ids do
+      first_lesson_id = linear_lessons |> List.first() |> Map.get(:id)
+      section_id = params["section_id"] || first_lesson_id
+
+      if section_id in accessible_ids do
+        setup_player_state(socket, course, section_id, linear_lessons, accessible_ids, user)
+      else
         {:ok,
          socket
          |> put_flash(:error, gettext("You must complete previous lessons first."))
          |> push_navigate(to: ~p"/learn/courses/#{course_id}")}
-      else
-        section = Content.get_section(section_id) |> elem(1)
-
-        blocks = Content.list_blocks_by_section(section_id, user) |> Enum.sort_by(& &1.order)
-        completed_ids = Progress.completed_block_ids(user.id, section_id)
-        tree = Content.get_course_tree(course_id, user)
-
-        current_index = Enum.find_index(linear_lessons, fn s -> s.id == section_id end)
-
-        prev_section =
-          if current_index > 0, do: Enum.at(linear_lessons, current_index - 1), else: nil
-
-        next_section = Enum.at(linear_lessons, current_index + 1)
-        next_accessible? = next_section != nil and next_section.id in accessible_ids
-
-        socket =
-          socket
-          |> assign(:page_title, section.title)
-          |> assign(:course, course)
-          |> assign(:tree, tree)
-          |> assign(:linear_lessons, linear_lessons)
-          |> assign(:section, section)
-          |> assign(:blocks, blocks)
-          |> assign(:completed_ids, completed_ids)
-          |> assign(:prev_section_id, if(prev_section, do: prev_section.id, else: nil))
-          |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
-          |> assign(:course_map_open, false)
-          |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
-
-        {:ok, schedule_next_unlock(socket, course_id)}
       end
     else
-      {:ok, push_navigate(socket |> put_flash(:error, gettext("Access denied.")), to: ~p"/learn")}
+      _ ->
+        {:ok,
+         push_navigate(socket |> put_flash(:error, gettext("Access denied.")), to: ~p"/learn")}
     end
   end
 
+  @doc false
+  defp setup_player_state(socket, course, section_id, linear_lessons, accessible_ids, user) do
+    section = Content.get_section(section_id) |> elem(1)
+
+    blocks = Content.list_blocks_by_section(section_id, user) |> Enum.sort_by(& &1.order)
+    completed_ids = Progress.completed_block_ids(user.id, section_id)
+    tree = Content.get_course_tree(course.id, user)
+
+    current_index = Enum.find_index(linear_lessons, fn s -> s.id == section_id end)
+
+    prev_section = if current_index > 0, do: Enum.at(linear_lessons, current_index - 1), else: nil
+    next_section = Enum.at(linear_lessons, current_index + 1)
+    next_accessible? = next_section != nil and next_section.id in accessible_ids
+
+    socket =
+      socket
+      |> assign(:page_title, section.title)
+      |> assign(:course, course)
+      |> assign(:tree, tree)
+      |> assign(:linear_lessons, linear_lessons)
+      |> assign(:section, section)
+      |> assign(:blocks, blocks)
+      |> assign(:completed_ids, completed_ids)
+      |> assign(:prev_section_id, if(prev_section, do: prev_section.id, else: nil))
+      |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
+      |> assign(:course_map_open, false)
+      |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
+
+    {:ok, schedule_next_unlock(socket, course.id)}
+  end
+
+  @doc """
+  Handles progression gates. When a student completes a mandatory block,
+  this records the progress and dynamically unlocks the rest of the content.
+  """
+  @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_event("complete_gate", %{"block-id" => block_id}, socket) do
     user = socket.assigns.current_user
@@ -102,6 +129,13 @@ defmodule AthenaWeb.LearnLive.Player do
     end)
   end
 
+  @doc """
+  Real-time event handler for content updates.
+  Re-evaluates access; if the current section was hidden/locked by the instructor,
+  it boots the student back to the safe zone (syllabus).
+  """
+  @spec handle_info(atom() | tuple(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_info(:refresh_content, socket) do
     user = socket.assigns.current_user
@@ -111,15 +145,7 @@ defmodule AthenaWeb.LearnLive.Player do
     linear_lessons = Content.list_linear_lessons(course_id, user)
     accessible_ids = Progress.accessible_section_ids(user.id, course_id, linear_lessons)
 
-    if current_section_id not in accessible_ids do
-      {:noreply,
-       socket
-       |> put_flash(
-         :warning,
-         gettext("The instructor modified this content. Returning to safe zone.")
-       )
-       |> push_navigate(to: ~p"/learn/courses/#{course_id}")}
-    else
+    if current_section_id in accessible_ids do
       blocks =
         Content.list_blocks_by_section(current_section_id, user) |> Enum.sort_by(& &1.order)
 
@@ -139,6 +165,14 @@ defmodule AthenaWeb.LearnLive.Player do
        |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
        |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
        |> schedule_next_unlock(course_id)}
+    else
+      {:noreply,
+       socket
+       |> put_flash(
+         :warning,
+         gettext("The instructor modified this content. Returning to safe zone.")
+       )
+       |> push_navigate(to: ~p"/learn/courses/#{course_id}")}
     end
   end
 
@@ -149,6 +183,8 @@ defmodule AthenaWeb.LearnLive.Player do
     last_block == nil or (!is_gate?(last_block) or last_block.id in completed_ids)
   end
 
+  @doc "Renders the interactive course player UI."
+  @spec render(map()) :: Phoenix.LiveView.Rendered.t()
   @impl true
   def render(assigns) do
     ~H"""

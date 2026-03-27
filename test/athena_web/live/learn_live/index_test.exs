@@ -3,7 +3,6 @@ defmodule AthenaWeb.LearnLive.IndexTest do
   import Phoenix.LiveViewTest
 
   import Athena.Factory
-  alias Athena.Learning.Enrollment
   alias Athena.Learning.Enrollments
   alias Athena.Learning.Cohorts
 
@@ -26,13 +25,7 @@ defmodule AthenaWeb.LearnLive.IndexTest do
       course_direct = insert(:course, title: "Direct Intro to Elixir")
       course_cohort = insert(:course, title: "Cohort Advanced OTP")
 
-      %Enrollment{}
-      |> Enrollment.changeset(%{
-        account_id: student.id,
-        course_id: course_direct.id,
-        status: :active
-      })
-      |> Athena.Repo.insert!()
+      insert(:enrollment, account_id: student.id, course_id: course_direct.id)
 
       cohort = insert(:cohort)
       Cohorts.add_student_to_cohort(cohort.id, student.id)
@@ -47,18 +40,15 @@ defmodule AthenaWeb.LearnLive.IndexTest do
 
       assert html =~ "Academic Cohort"
       assert html =~ "Self-paced"
+
+      assert html =~ "/learn/courses/#{course_direct.id}"
+      assert html =~ "/learn/courses/#{course_cohort.id}"
     end
 
     test "does not display soft-deleted courses", %{conn: conn, student: student} do
       deleted_course = insert(:course, title: "Ghost Course", deleted_at: DateTime.utc_now())
 
-      %Enrollment{}
-      |> Enrollment.changeset(%{
-        account_id: student.id,
-        course_id: deleted_course.id,
-        status: :active
-      })
-      |> Athena.Repo.insert!()
+      insert(:enrollment, account_id: student.id, course_id: deleted_course.id)
 
       {:ok, _lv, html} = live(conn, ~p"/learn")
 

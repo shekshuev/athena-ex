@@ -7,6 +7,11 @@ defmodule AthenaWeb.LearnLive.Index do
 
   alias Athena.Learning
 
+  @doc """
+  Initializes the student dashboard, fetching all active enrollments
+  (both direct and via cohorts) for the current user.
+  """
+  @spec mount(map(), map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def mount(_params, _session, socket) do
     current_user = socket.assigns.current_user
@@ -19,6 +24,11 @@ defmodule AthenaWeb.LearnLive.Index do
      |> assign(:enrollments, enrollments)}
   end
 
+  @doc """
+  Renders the dashboard interface, displaying either a grid of enrolled
+  courses or an empty state message.
+  """
+  @spec render(map()) :: Phoenix.LiveView.Rendered.t()
   @impl true
   def render(assigns) do
     ~H"""
