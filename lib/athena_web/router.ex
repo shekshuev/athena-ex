@@ -53,10 +53,16 @@ defmodule AthenaWeb.Router do
       pipe_through :browser
       live "/dashboard", DashboardLive.Index, :index
 
-      live "/learn", LearnLive.Index, :index
-      live "/learn/schedule", LearnLive.Schedule, :index
       live "/files", FileLive.Index, :index
       live "/community", CommunityLive.Index, :index
+
+      scope "/learn", LearnLive do
+        live "/", Index, :index
+        live "/schedule", Schedule, :index
+        live "/courses/:id", Course, :index
+        live "/courses/:id/play", Player, :play
+        live "/courses/:id/play/:section_id", Player, :play
+      end
 
       scope "/studio", StudioLive do
         live "/courses", Courses, :index
@@ -72,8 +78,18 @@ defmodule AthenaWeb.Router do
         live "/courses/:id/builder", Builder, :index
       end
 
-      live "/teaching/cohorts", TeachingLive.Cohorts, :index
-      live "/teaching/instructors", TeachingLive.Instructors, :index
+      scope "/teaching", TeachingLive do
+        live "/cohorts", Cohorts, :index
+        live "/cohorts/new", Cohorts, :new
+        live "/cohorts/:id", CohortDetails, :index
+        live "/cohorts/:id/add_student", CohortDetails, :add_student
+        live "/cohorts/:id/enroll_course", CohortDetails, :enroll_course
+        live "/cohorts/:id/edit", Cohorts, :edit
+
+        live "/instructors", Instructors, :index
+        live "/instructors/new", Instructors, :new
+        live "/instructors/:id/edit", Instructors, :edit
+      end
 
       scope "/admin", AdminLive do
         live "/users", Users, :index

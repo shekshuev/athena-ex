@@ -203,46 +203,60 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
               <li>
                 <.button
                   phx-click="add_text_block"
+                  onclick="document.activeElement.blur()"
                   class="btn btn-ghost justify-start font-medium gap-3 h-12"
                 >
-                  <.icon name="hero-document-text" class="size-5 opacity-50" />
-                  {gettext("Text Block")}
+                  <.icon name="hero-document-text" class="size-5 opacity-50" /> {gettext("Text Block")}
                 </.button>
               </li>
               <li>
                 <.button
                   phx-click="add_code_block"
+                  onclick="document.activeElement.blur()"
                   class="btn btn-ghost justify-start font-medium gap-3 h-12"
                 >
-                  <.icon name="hero-code-bracket" class="size-5 opacity-50" />
-                  {gettext("Code Sandbox")}
+                  <.icon name="hero-code-bracket" class="size-5 opacity-50" /> {gettext(
+                    "Code Sandbox"
+                  )}
                 </.button>
               </li>
               <li>
                 <.button
                   phx-click="add_image_block"
+                  onclick="document.activeElement.blur()"
                   class="btn btn-ghost justify-start font-medium gap-3 h-12"
                 >
-                  <.icon name="hero-photo" class="size-5 opacity-50" />
-                  {gettext("Image")}
+                  <.icon name="hero-photo" class="size-5 opacity-50" /> {gettext("Image")}
                 </.button>
               </li>
               <li>
                 <.button
                   phx-click="add_video_block"
+                  onclick="document.activeElement.blur()"
                   class="btn btn-ghost justify-start font-medium gap-3 h-12"
                 >
-                  <.icon name="hero-video-camera" class="size-5 opacity-50" />
-                  {gettext("Video")}
+                  <.icon name="hero-video-camera" class="size-5 opacity-50" /> {gettext("Video")}
                 </.button>
               </li>
               <li>
                 <.button
                   phx-click="add_attachment_block"
+                  onclick="document.activeElement.blur()"
                   class="btn btn-ghost justify-start font-medium gap-3 h-12"
                 >
-                  <.icon name="hero-paper-clip" class="size-5 opacity-50" />
-                  {gettext("Files & Materials")}
+                  <.icon name="hero-paper-clip" class="size-5 opacity-50" /> {gettext(
+                    "Files & Materials"
+                  )}
+                </.button>
+              </li>
+              <div class="divider my-1"></div>
+              <li>
+                <.button
+                  phx-click="open_library_picker"
+                  onclick="document.activeElement.blur()"
+                  class="btn btn-ghost justify-start font-bold text-primary gap-3 h-12"
+                >
+                  <.icon name="hero-bookmark-square" class="size-5" /> {gettext("Add from Library")}
                 </.button>
               </li>
             </ul>

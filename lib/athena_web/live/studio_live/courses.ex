@@ -196,6 +196,7 @@ defmodule AthenaWeb.StudioLive.Courses do
         <:action :let={{_id, course}}>
           <div class="flex justify-end gap-2">
             <.button
+              :if={Identity.can?(@current_user, "courses.update")}
               navigate={~p"/studio/courses/#{course.id}/builder"}
               class="btn btn-primary btn-xs btn-square btn-soft"
               title={gettext("Open Builder")}

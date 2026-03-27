@@ -3,27 +3,22 @@ defmodule Athena.Content.Policy do
   Centralized policy engine for determining content access.
 
   Evaluates whether a user can view a specific content item (such as a Section or Block)
-  based on their global permissions, the item's visibility status, and any dynamic 
-  access rules (like time boundaries or specific role requirements).
+  based on the item's visibility status, and any dynamic access rules (like time boundaries 
+  or specific role requirements).
   """
 
-  alias Athena.Identity.{Account, Role}
+  alias Athena.Identity.Account
   alias Athena.Content.AccessRules
 
   @doc """
   Determines if the given user is authorized to view the item.
 
-  Users with the `"admin"` permission always have access. For other users, 
-  access is evaluated against the item's `:visibility` and `:access_rules`.
+  - Passing `:all` bypasses all checks (used exclusively in Studio/Builder).
+  - Passing an `Account` strictly evaluates student-facing rules. This allows 
+    admins to experience the course exactly as a student would in the Player.
   """
-  @spec can_view?(Account.t() | nil, map()) :: boolean()
-  def can_view?(%Account{role: %Role{permissions: perms}} = user, item) do
-    if "admin" in (perms || []) do
-      true
-    else
-      evaluate_visibility(user, item)
-    end
-  end
+  @spec can_view?(Account.t() | :all | nil, map()) :: boolean()
+  def can_view?(:all, _item), do: true
 
   def can_view?(user, item) do
     evaluate_visibility(user, item)
@@ -59,24 +54,55 @@ defmodule Athena.Content.Policy do
   end
 
   @doc false
-  defp check_time(nil, nil), do: true
-
-  @doc false
   defp check_time(unlock_at, lock_at) do
-    now = DateTime.utc_now()
+    now_unix = DateTime.utc_now() |> DateTime.to_unix()
 
-    unlocked? = if unlock_at, do: DateTime.compare(now, unlock_at) != :lt, else: true
-    not_locked? = if lock_at, do: DateTime.compare(now, lock_at) == :lt, else: true
+    unlocked? =
+      case parse_to_unix(unlock_at) do
+        nil -> true
+        target_unix -> now_unix >= target_unix
+      end
 
-    unlocked? and not_locked?
+    locked? =
+      case parse_to_unix(lock_at) do
+        nil -> false
+        target_unix -> now_unix >= target_unix
+      end
+
+    unlocked? and not locked?
   end
+
+  defp parse_to_unix(nil), do: nil
+  defp parse_to_unix(%DateTime{} = dt), do: DateTime.to_unix(dt)
+
+  defp parse_to_unix(%NaiveDateTime{} = ndt),
+    do: DateTime.from_naive!(ndt, "Etc/UTC") |> DateTime.to_unix()
+
+  defp parse_to_unix(str) when is_binary(str) do
+    case DateTime.from_iso8601(str) do
+      {:ok, dt, _} ->
+        DateTime.to_unix(dt)
+
+      {:error, _} ->
+        case NaiveDateTime.from_iso8601(str) do
+          {:ok, ndt} -> DateTime.from_naive!(ndt, "Etc/UTC") |> DateTime.to_unix()
+          _ -> nil
+        end
+    end
+  end
+
+  defp parse_to_unix(_), do: nil
 
   @doc false
   defp check_role(_user, []), do: true
 
   @doc false
   defp check_role(user, allowed_roles) when is_list(allowed_roles) do
-    user.role.name in allowed_roles
+    if user and user.role do
+      user.role.name in allowed_roles
+    else
+      false
+    end
   end
 
   @doc false

@@ -7,6 +7,7 @@ defmodule Athena.Factory do
   alias Athena.Identity.{Account, Role, Profile}
   alias Athena.Media.{File, Quota}
   alias Athena.Content.{Course, Section, Block, LibraryBlock}
+  alias Athena.Learning.{Cohort, Instructor, Enrollment}
 
   def role_factory do
     %Role{
@@ -88,6 +89,27 @@ defmodule Athena.Factory do
       content: %{},
       tags: [],
       owner_id: Ecto.UUID.generate()
+    }
+  end
+
+  def instructor_factory do
+    %Instructor{
+      title: sequence(:title, &"Senior Instructor #{&1}"),
+      bio: "An experienced teacher.",
+      owner_id: Ecto.UUID.generate()
+    }
+  end
+
+  def cohort_factory do
+    %Cohort{
+      name: sequence(:name, &"Cohort #{&1}"),
+      description: "A test cohort for integration tests."
+    }
+  end
+
+  def enrollment_factory do
+    %Enrollment{
+      status: :active
     }
   end
 end

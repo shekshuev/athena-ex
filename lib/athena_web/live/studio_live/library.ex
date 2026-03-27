@@ -36,7 +36,6 @@ defmodule AthenaWeb.StudioLive.Library do
   def handle_params(params, _url, socket) do
     search = Map.get(params, "search", "")
 
-    # Configure Flop to search by title
     flop_params =
       if search != "" do
         Map.put(params, "filters", %{

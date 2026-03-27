@@ -28,6 +28,21 @@ defmodule Athena.Identity.Acl do
     end
   end
 
+  @doc """
+  Checks if a user has AT LEAST ONE of the provided permissions.
+  Useful for rendering navigation groups.
+  """
+  @spec can_any?(map() | nil, [String.t()]) :: boolean()
+  def can_any?(nil, _permissions), do: false
+
+  def can_any?(user, permissions) when is_list(permissions) do
+    if "admin" in user.role.permissions do
+      true
+    else
+      Enum.any?(permissions, &(&1 in user.role.permissions))
+    end
+  end
+
   defp check_policies([], _user, _resource), do: true
 
   defp check_policies(_policies, _user, nil), do: true

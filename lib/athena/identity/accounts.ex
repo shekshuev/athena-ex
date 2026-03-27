@@ -218,7 +218,6 @@ defmodule Athena.Identity.Accounts do
         {:error, :invalid_credentials}
 
       true ->
-        # Timing attack prevention
         Argon2.no_user_verify()
         {:error, :invalid_credentials}
     end
@@ -237,5 +236,30 @@ defmodule Athena.Identity.Accounts do
     else
       {:error, :invalid_old_password}
     end
+  end
+
+  @doc """
+  Returns a map of `%{account_id => Account}` for bulk enrichment across contexts.
+  """
+  @spec get_accounts_map([String.t()]) :: %{String.t() => Account.t()}
+  def get_accounts_map(ids) when is_list(ids) do
+    Account
+    |> where([a], a.id in ^ids)
+    |> Repo.all()
+    |> Map.new(&{&1.id, &1})
+  end
+
+  @doc """
+  Searches accounts by login using case-insensitive partial matching (`ilike`).
+  Useful for cross-context autocomplete features.
+  """
+  @spec search_accounts_by_login(String.t(), integer()) :: [Account.t()]
+  def search_accounts_by_login(query, limit \\ 10) do
+    search_term = "%#{query}%"
+
+    Account
+    |> where([a], ilike(a.login, ^search_term))
+    |> limit(^limit)
+    |> Repo.all()
   end
 end

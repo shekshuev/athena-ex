@@ -2,16 +2,15 @@ defmodule Athena.Identity.Definitions do
   @moduledoc "Centralized permissions and policies definitions."
 
   @permissions ~w"""
-  users.create users.read users.update users.delete
+  users.read users.update users.delete
   roles.create roles.read roles.update roles.delete
   courses.create courses.read courses.update courses.delete courses.publish
-  sections.create sections.read sections.update sections.delete
-  blocks.create blocks.read blocks.update blocks.delete
-  progress.create progress.read progress.update progress.delete
-  enrollments.create enrollments.read enrollments.update enrollments.delete
-  schedule.create schedule.read schedule.update schedule.delete
+  library.create library.read library.update library.delete
+  grading.read grading.update
+  enrollments.create enrollments.read enrollments.delete
   instructors.create instructors.read instructors.update instructors.delete
   cohorts.create cohorts.read cohorts.update cohorts.delete
+  settings.read settings.update
   files.read files.create files.delete
   admin
   """

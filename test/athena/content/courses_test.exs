@@ -94,8 +94,95 @@ defmodule Athena.Content.CoursesTest do
       assert {:ok, deleted_course} = Courses.soft_delete_course(course)
       assert deleted_course.deleted_at != nil
 
-      # Проверяем, что после этого get_course его не найдет
       assert {:error, :not_found} = Courses.get_course(course.id)
+    end
+  end
+
+  describe "get_courses_map/1" do
+    test "returns a map of active courses keyed by their IDs" do
+      course1 = insert(:course)
+      course2 = insert(:course)
+      _unrelated_course = insert(:course)
+
+      result = Courses.get_courses_map([course1.id, course2.id])
+
+      assert is_map(result)
+      assert map_size(result) == 2
+      assert Map.has_key?(result, course1.id)
+      assert Map.has_key?(result, course2.id)
+      assert result[course1.id].title == course1.title
+    end
+
+    test "ignores non-existent IDs" do
+      course = insert(:course)
+      fake_id = Ecto.UUID.generate()
+
+      result = Courses.get_courses_map([course.id, fake_id])
+
+      assert map_size(result) == 1
+      assert Map.has_key?(result, course.id)
+      refute Map.has_key?(result, fake_id)
+    end
+
+    test "excludes soft-deleted courses" do
+      active_course = insert(:course)
+      deleted_course = insert(:course, deleted_at: DateTime.utc_now(:second))
+
+      result = Courses.get_courses_map([active_course.id, deleted_course.id])
+
+      assert map_size(result) == 1
+      assert Map.has_key?(result, active_course.id)
+      refute Map.has_key?(result, deleted_course.id)
+    end
+
+    test "returns an empty map for an empty list" do
+      assert Courses.get_courses_map([]) == %{}
+    end
+  end
+
+  describe "search_courses_by_title/2" do
+    test "returns courses matching the title query (case-insensitive)" do
+      course1 = insert(:course, title: "Advanced Elixir")
+      course2 = insert(:course, title: "Elixir Basics")
+      _course3 = insert(:course, title: "Ruby on Rails")
+
+      results = Courses.search_courses_by_title("elixir")
+
+      assert length(results) == 2
+      ids = Enum.map(results, & &1.id)
+      assert course1.id in ids
+      assert course2.id in ids
+    end
+
+    test "respects the provided limit" do
+      insert(:course, title: "Test Course 1")
+      insert(:course, title: "Test Course 2")
+      insert(:course, title: "Test Course 3")
+      insert(:course, title: "Test Course 4")
+
+      results = Courses.search_courses_by_title("Test", 2)
+
+      assert length(results) == 2
+    end
+
+    test "excludes soft-deleted courses" do
+      active_course = insert(:course, title: "Phoenix LiveView")
+
+      _deleted_course =
+        insert(:course, title: "Phoenix Fundamentals", deleted_at: DateTime.utc_now(:second))
+
+      results = Courses.search_courses_by_title("Phoenix")
+
+      assert length(results) == 1
+      assert hd(results).id == active_course.id
+    end
+
+    test "returns an empty list if no courses match" do
+      insert(:course, title: "React Basics")
+
+      results = Courses.search_courses_by_title("Vue")
+
+      assert results == []
     end
   end
 end

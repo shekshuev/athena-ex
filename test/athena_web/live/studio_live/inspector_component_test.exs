@@ -198,7 +198,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ ~s(phx-click="request_media_upload")
       assert html =~ ~s(phx-value-media_type="image")
 
-      assert html =~ "Alt Text (for accessibility)"
+      assert html =~ "Alt Text"
       assert html =~ ~s(name="block[content][alt]")
       assert html =~ "My cool image"
 
@@ -225,7 +225,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ ~s(phx-click="request_media_upload")
       assert html =~ ~s(phx-value-media_type="video")
 
-      assert html =~ "Poster URL (Thumbnail)"
+      assert html =~ "Poster URL"
       assert html =~ ~s(name="block[content][poster_url]")
       assert html =~ "http://test.com/poster.jpg"
 

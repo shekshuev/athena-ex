@@ -142,178 +142,185 @@ Hooks.TiptapEditor = {
       : "";
     const blockId = this.el.dataset.id;
 
-    this.bubbleMenuEl = document.createElement("div");
-    this.bubbleMenuEl.innerHTML = `
-      <div class="join bg-base-100 shadow-xl border border-base-300 rounded-md">
-        <button class="join-item btn btn-sm btn-ghost" data-action="bold" title="Bold"><b>B</b></button>
-        <button class="join-item btn btn-sm btn-ghost" data-action="italic" title="Italic"><i>I</i></button>
-        <button class="join-item btn btn-sm btn-ghost" data-action="underline" title="Underline"><u>U</u></button>
-        <button class="join-item btn btn-sm btn-ghost" data-action="highlight" title="Highlight">🖍️</button>
-        <button class="join-item btn btn-sm btn-ghost" data-action="code" title="Code">&lt;&gt;</button>
-        <button class="join-item btn btn-sm btn-ghost" data-action="link" title="Link">🔗</button>
-        <div class="divider divider-horizontal m-0 w-0 p-0"></div>
-        <button class="join-item btn btn-sm btn-ghost" data-action="align-left" title="Align Left">⬅️</button>
-        <button class="join-item btn btn-sm btn-ghost" data-action="align-center" title="Align Center">↔️</button>
-        <button class="join-item btn btn-sm btn-ghost" data-action="align-right" title="Align Right">➡️</button>
-      </div>
-    `;
+    const isReadOnly = this.el.dataset.readonly === "true";
 
     let timeout;
 
-    const SlashMenuPlugin = Extension.create({
-      name: "slashMenu",
-      addOptions() {
-        return {
-          suggestion: {
-            char: "/",
-            items: getSuggestionItems,
-            render: () => {
-              let popup;
-              let selectedIndex = 0;
-              let currentItems = [];
-              let wrapper = document.createElement("div");
-              wrapper.className =
-                "bg-base-100 shadow-2xl border border-base-300 rounded-lg p-1 w-56 flex flex-col gap-0.5 max-h-80 overflow-y-auto";
+    const extensions = [
+      StarterKit.configure({ codeBlock: false }),
+      CodeBlockLowlight.configure({ lowlight }),
+      Underline,
+      Link.configure({ openOnClick: isReadOnly }),
+      TiptapImage.configure({
+        inline: false,
+        HTMLAttributes: {
+          class: "rounded-lg max-h-[500px] shadow-sm my-4 mx-auto",
+        },
+      }),
+      Highlight.configure({ multicolor: false }),
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
+      Table.configure({ resizable: !isReadOnly }),
+      TableRow,
+      TableHeader,
+      TableCell,
+    ];
 
-              const updateSelection = () => {
-                const buttons = wrapper.querySelectorAll("button");
-                buttons.forEach((btn, index) => {
-                  if (index === selectedIndex) {
-                    btn.classList.add("bg-base-200");
-                    btn.scrollIntoView({ block: "nearest" });
-                  } else {
-                    btn.classList.remove("bg-base-200");
-                  }
-                });
-              };
+    if (!isReadOnly) {
+      this.bubbleMenuEl = document.createElement("div");
+      this.bubbleMenuEl.innerHTML = `
+        <div class="join bg-base-100 shadow-xl border border-base-300 rounded-md">
+          <button class="join-item btn btn-sm btn-ghost" data-action="bold" title="Bold"><b>B</b></button>
+          <button class="join-item btn btn-sm btn-ghost" data-action="italic" title="Italic"><i>I</i></button>
+          <button class="join-item btn btn-sm btn-ghost" data-action="underline" title="Underline"><u>U</u></button>
+          <button class="join-item btn btn-sm btn-ghost" data-action="highlight" title="Highlight">🖍️</button>
+          <button class="join-item btn btn-sm btn-ghost" data-action="code" title="Code">&lt;&gt;</button>
+          <button class="join-item btn btn-sm btn-ghost" data-action="link" title="Link">🔗</button>
+          <div class="divider divider-horizontal m-0 w-0 p-0"></div>
+          <button class="join-item btn btn-sm btn-ghost" data-action="align-left" title="Align Left">⬅️</button>
+          <button class="join-item btn btn-sm btn-ghost" data-action="align-center" title="Align Center">↔️</button>
+          <button class="join-item btn btn-sm btn-ghost" data-action="align-right" title="Align Right">➡️</button>
+        </div>
+      `;
+      extensions.push(BubbleMenu.configure({ element: this.bubbleMenuEl }));
 
-              const executeItem = (item, range) => {
-                if (item.type === "media") {
-                  hook.editor.chain().focus().deleteRange(range).run();
-                  hook.pushEvent("request_media_upload", {
-                    block_id: blockId,
-                    media_type: item.mediaType,
-                  });
-                } else {
-                  item.command({ editor: hook.editor, range });
-                }
-                if (popup) popup[0].hide();
-              };
+      const SlashMenuPlugin = Extension.create({
+        name: "slashMenu",
+        addOptions() {
+          return {
+            suggestion: {
+              char: "/",
+              items: getSuggestionItems,
+              render: () => {
+                let popup;
+                let selectedIndex = 0;
+                let currentItems = [];
+                let wrapper = document.createElement("div");
+                wrapper.className =
+                  "bg-base-100 shadow-2xl border border-base-300 rounded-lg p-1 w-56 flex flex-col gap-0.5 max-h-80 overflow-y-auto";
 
-              const renderHTML = (items) => {
-                currentItems = items;
-                wrapper.innerHTML = items
-                  .map(
-                    (item, index) => `
-                  <button class="w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 transition-colors" data-index="${index}">
-                    <span class="w-5 text-center text-base-content/50 font-bold">${item.icon}</span>
-                    ${item.title}
-                  </button>
-                `,
-                  )
-                  .join("");
-
-                wrapper.querySelectorAll("button").forEach((btn) => {
-                  btn.addEventListener("click", (e) => {
-                    e.preventDefault();
-                    executeItem(
-                      currentItems[btn.dataset.index],
-                      popup[0].range,
-                    );
-                  });
-                });
-                updateSelection();
-              };
-
-              return {
-                onStart: (props) => {
-                  selectedIndex = 0;
-                  renderHTML(props.items);
-                  popup = tippy("body", {
-                    getReferenceClientRect: props.clientRect,
-                    appendTo: () => document.body,
-                    content: wrapper,
-                    showOnCreate: true,
-                    interactive: true,
-                    trigger: "manual",
-                    placement: "bottom-start",
-                  });
-                  popup[0].range = props.range;
-                },
-                onUpdate: (props) => {
-                  selectedIndex = 0;
-                  renderHTML(props.items);
-                  popup[0].range = props.range;
-                  popup[0].setProps({
-                    getReferenceClientRect: props.clientRect,
-                  });
-                },
-                onKeyDown: (props) => {
-                  if (props.event.key === "ArrowUp") {
-                    props.event.preventDefault();
-                    selectedIndex =
-                      (selectedIndex + currentItems.length - 1) %
-                      currentItems.length;
-                    updateSelection();
-                    return true;
-                  }
-                  if (props.event.key === "ArrowDown") {
-                    props.event.preventDefault();
-                    selectedIndex = (selectedIndex + 1) % currentItems.length;
-                    updateSelection();
-                    return true;
-                  }
-                  if (props.event.key === "Enter") {
-                    props.event.preventDefault();
-                    if (currentItems.length > 0) {
-                      executeItem(currentItems[selectedIndex], props.range);
+                const updateSelection = () => {
+                  const buttons = wrapper.querySelectorAll("button");
+                  buttons.forEach((btn, index) => {
+                    if (index === selectedIndex) {
+                      btn.classList.add("bg-base-200");
+                      btn.scrollIntoView({ block: "nearest" });
+                    } else {
+                      btn.classList.remove("bg-base-200");
                     }
-                    return true;
+                  });
+                };
+
+                const executeItem = (item, range) => {
+                  if (item.type === "media") {
+                    hook.editor.chain().focus().deleteRange(range).run();
+                    hook.pushEvent("request_media_upload", {
+                      block_id: blockId,
+                      media_type: item.mediaType,
+                    });
+                  } else {
+                    item.command({ editor: hook.editor, range });
                   }
-                  if (props.event.key === "Escape") {
-                    props.event.preventDefault();
-                    popup[0].hide();
-                    return true;
-                  }
-                  return false;
-                },
-                onExit: () => {
-                  if (popup) popup[0].destroy();
-                },
-              };
+                  if (popup) popup[0].hide();
+                };
+
+                const renderHTML = (items) => {
+                  currentItems = items;
+                  wrapper.innerHTML = items
+                    .map(
+                      (item, index) => `
+                    <button class="w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 transition-colors" data-index="${index}">
+                      <span class="w-5 text-center text-base-content/50 font-bold">${item.icon}</span>
+                      ${item.title}
+                    </button>
+                  `,
+                    )
+                    .join("");
+
+                  wrapper.querySelectorAll("button").forEach((btn) => {
+                    btn.addEventListener("click", (e) => {
+                      e.preventDefault();
+                      executeItem(
+                        currentItems[btn.dataset.index],
+                        popup[0].range,
+                      );
+                    });
+                  });
+                  updateSelection();
+                };
+
+                return {
+                  onStart: (props) => {
+                    selectedIndex = 0;
+                    renderHTML(props.items);
+                    popup = tippy("body", {
+                      getReferenceClientRect: props.clientRect,
+                      appendTo: () => document.body,
+                      content: wrapper,
+                      showOnCreate: true,
+                      interactive: true,
+                      trigger: "manual",
+                      placement: "bottom-start",
+                    });
+                    popup[0].range = props.range;
+                  },
+                  onUpdate: (props) => {
+                    selectedIndex = 0;
+                    renderHTML(props.items);
+                    popup[0].range = props.range;
+                    popup[0].setProps({
+                      getReferenceClientRect: props.clientRect,
+                    });
+                  },
+                  onKeyDown: (props) => {
+                    if (props.event.key === "ArrowUp") {
+                      props.event.preventDefault();
+                      selectedIndex =
+                        (selectedIndex + currentItems.length - 1) %
+                        currentItems.length;
+                      updateSelection();
+                      return true;
+                    }
+                    if (props.event.key === "ArrowDown") {
+                      props.event.preventDefault();
+                      selectedIndex = (selectedIndex + 1) % currentItems.length;
+                      updateSelection();
+                      return true;
+                    }
+                    if (props.event.key === "Enter") {
+                      props.event.preventDefault();
+                      if (currentItems.length > 0) {
+                        executeItem(currentItems[selectedIndex], props.range);
+                      }
+                      return true;
+                    }
+                    if (props.event.key === "Escape") {
+                      props.event.preventDefault();
+                      popup[0].hide();
+                      return true;
+                    }
+                    return false;
+                  },
+                  onExit: () => {
+                    if (popup) popup[0].destroy();
+                  },
+                };
+              },
             },
-          },
-        };
-      },
-      addProseMirrorPlugins() {
-        return [
-          Suggestion({ editor: this.editor, ...this.options.suggestion }),
-        ];
-      },
-    });
+          };
+        },
+        addProseMirrorPlugins() {
+          return [
+            Suggestion({ editor: this.editor, ...this.options.suggestion }),
+          ];
+        },
+      });
+      extensions.push(SlashMenuPlugin);
+    }
 
     this.editor = new Editor({
       element: this.el,
-      extensions: [
-        StarterKit.configure({ codeBlock: false }),
-        CodeBlockLowlight.configure({ lowlight }),
-        Underline,
-        Link.configure({ openOnClick: false }),
-        TiptapImage.configure({
-          inline: false,
-          HTMLAttributes: {
-            class: "rounded-lg max-h-[500px] shadow-sm my-4 mx-auto",
-          },
-        }),
-        BubbleMenu.configure({ element: this.bubbleMenuEl }),
-        SlashMenuPlugin,
-        Highlight.configure({ multicolor: false }),
-        TextAlign.configure({ types: ["heading", "paragraph"] }),
-        Table.configure({ resizable: true }),
-        TableRow,
-        TableHeader,
-        TableCell,
-      ],
+      editable: !isReadOnly,
+      extensions: extensions,
       content: content,
       editorProps: {
         attributes: {
@@ -321,6 +328,8 @@ Hooks.TiptapEditor = {
         },
       },
       onUpdate: ({ editor }) => {
+        if (isReadOnly) return;
+
         clearTimeout(timeout);
         timeout = setTimeout(() => {
           hook.pushEvent("update_content", {
@@ -331,45 +340,50 @@ Hooks.TiptapEditor = {
       },
     });
 
-    this.bubbleMenuEl.addEventListener("click", (e) => {
-      e.preventDefault();
-      const action = e.target.closest("button")?.dataset.action;
-      if (!action) return;
+    if (!isReadOnly) {
+      this.bubbleMenuEl.addEventListener("click", (e) => {
+        e.preventDefault();
+        const action = e.target.closest("button")?.dataset.action;
+        if (!action) return;
 
-      if (action === "bold") this.editor.chain().focus().toggleBold().run();
-      if (action === "italic") this.editor.chain().focus().toggleItalic().run();
-      if (action === "underline")
-        this.editor.chain().focus().toggleUnderline().run();
-      if (action === "highlight")
-        this.editor.chain().focus().toggleHighlight().run();
-      if (action === "code") this.editor.chain().focus().toggleCode().run();
-      if (action === "link") {
-        const url = window.prompt("URL:");
-        if (url) this.editor.chain().focus().setLink({ href: url }).run();
-      }
-      if (action === "align-left")
-        this.editor.chain().focus().setTextAlign("left").run();
-      if (action === "align-center")
-        this.editor.chain().focus().setTextAlign("center").run();
-      if (action === "align-right")
-        this.editor.chain().focus().setTextAlign("right").run();
-    });
+        if (action === "bold") this.editor.chain().focus().toggleBold().run();
+        if (action === "italic")
+          this.editor.chain().focus().toggleItalic().run();
+        if (action === "underline")
+          this.editor.chain().focus().toggleUnderline().run();
+        if (action === "highlight")
+          this.editor.chain().focus().toggleHighlight().run();
+        if (action === "code") this.editor.chain().focus().toggleCode().run();
+        if (action === "link") {
+          const url = window.prompt("URL:");
+          if (url) this.editor.chain().focus().setLink({ href: url }).run();
+        }
+        if (action === "align-left")
+          this.editor.chain().focus().setTextAlign("left").run();
+        if (action === "align-center")
+          this.editor.chain().focus().setTextAlign("center").run();
+        if (action === "align-right")
+          this.editor.chain().focus().setTextAlign("right").run();
+      });
 
-    this.handleInsertMedia = (e) => {
-      if (e.detail.block_id === blockId && e.detail.type === "tiptap_image") {
-        this.editor.chain().focus().setImage({ src: e.detail.url }).run();
-        hook.pushEvent("update_content", {
-          id: blockId,
-          content: this.editor.getJSON(),
-        });
-      }
-    };
-    window.addEventListener("phx:insert_media", this.handleInsertMedia);
+      this.handleInsertMedia = (e) => {
+        if (e.detail.block_id === blockId && e.detail.type === "tiptap_image") {
+          this.editor.chain().focus().setImage({ src: e.detail.url }).run();
+          hook.pushEvent("update_content", {
+            id: blockId,
+            content: this.editor.getJSON(),
+          });
+        }
+      };
+      window.addEventListener("phx:insert_media", this.handleInsertMedia);
+    }
   },
 
   destroyed() {
     if (this.editor) this.editor.destroy();
-    window.removeEventListener("phx:insert_media", this.handleInsertMedia);
+    if (this.handleInsertMedia) {
+      window.removeEventListener("phx:insert_media", this.handleInsertMedia);
+    }
   },
 };
 

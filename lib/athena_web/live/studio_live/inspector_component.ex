@@ -9,6 +9,17 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   use AthenaWeb, :live_component
 
   @doc """
+  Lifecycle hook: handles incoming assigns and sets defaults.
+  """
+  @impl true
+  def update(assigns, socket) do
+    {:ok,
+     socket
+     |> assign(assigns)
+     |> assign_new(:server_now, fn -> DateTime.utc_now() |> DateTime.truncate(:second) end)}
+  end
+
+  @doc """
   Renders the inspector panel.
   """
   @spec render(map()) :: Phoenix.LiveView.Rendered.t()
@@ -18,9 +29,9 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
     <div class="flex flex-col h-full">
       <%= cond do %>
         <% @active_block -> %>
-          <.block_inspector block={@active_block} />
+          <.block_inspector block={@active_block} server_now={@server_now} />
         <% @active_section -> %>
-          <.section_inspector section={@active_section} />
+          <.section_inspector section={@active_section} server_now={@server_now} />
         <% true -> %>
           <div class="flex-1 flex items-center justify-center p-4 text-center">
             <p class="text-sm text-base-content/50 italic">
@@ -89,7 +100,14 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
             />
 
             <%= if to_string(@form[:visibility].value) == "restricted" do %>
-              <div class="p-4 bg-base-200/50 rounded-xl border border-base-300 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div class="p-4 bg-base-200/50 rounded-xl border border-base-300 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div class="bg-base-300 p-2 rounded text-xs font-mono text-center text-base-content/70">
+                  SERVER TIME:
+                  <span class="font-bold text-base-content">
+                    {Calendar.strftime(@server_now, "%Y-%m-%d %H:%M:%S")}
+                  </span>
+                </div>
+
                 <.inputs_for :let={ar} field={@form[:access_rules]}>
                   <.input
                     type="datetime-local"
@@ -162,11 +180,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
       </div>
 
       <div class="overflow-y-auto py-4 space-y-6 flex-1">
-        <.form
-          for={@form}
-          id={"block-inspector-form-#{@block.id}"}
-          phx-change="update_block_meta"
-        >
+        <.form for={@form} id={"block-inspector-form-#{@block.id}"} phx-change="update_block_meta">
           <.input type="hidden" field={@form[:id]} />
 
           <%= if @block.type == :code do %>
@@ -197,7 +211,6 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
               <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
                 {gettext("Media Settings")}
               </div>
-
               <.button
                 type="button"
                 phx-click="request_media_upload"
@@ -208,23 +221,21 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                 <.icon name="hero-cloud-arrow-up" class="size-4" />
                 {if @block.content["url"], do: gettext("Replace File"), else: gettext("Upload File")}
               </.button>
-
               <%= if @block.type == :image do %>
                 <.input
                   type="text"
                   name="block[content][alt]"
                   value={@block.content["alt"]}
-                  label={gettext("Alt Text (for accessibility)")}
+                  label={gettext("Alt Text")}
                   phx-debounce="500"
                 />
               <% end %>
-
               <%= if @block.type == :video do %>
                 <.input
                   type="text"
                   name="block[content][poster_url]"
                   value={@block.content["poster_url"]}
-                  label={gettext("Poster URL (Thumbnail)")}
+                  label={gettext("Poster URL")}
                   phx-debounce="500"
                 />
               <% end %>
@@ -293,7 +304,14 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
             />
 
             <%= if to_string(@form[:visibility].value) == "restricted" do %>
-              <div class="p-4 bg-base-200/50 rounded-xl border border-base-300 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div class="p-4 bg-base-200/50 rounded-xl border border-base-300 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div class="bg-base-300 p-2 rounded text-xs font-mono text-center text-base-content/70">
+                  SERVER TIME:
+                  <span class="font-bold text-base-content">
+                    {Calendar.strftime(@server_now, "%Y-%m-%d %H:%M:%S")}
+                  </span>
+                </div>
+
                 <.inputs_for :let={ar} field={@form[:access_rules]}>
                   <.input
                     type="datetime-local"
@@ -313,7 +331,12 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
       </div>
 
       <div class="pt-4 border-t border-base-300 mt-auto pb-4 space-y-2">
-        <.button type="button" class="btn btn-primary btn-soft w-full">
+        <.button
+          type="button"
+          phx-click="open_save_library_modal"
+          phx-value-id={@block.id}
+          class="btn btn-primary btn-soft w-full"
+        >
           <.icon name="hero-bookmark-square" class="size-4" />
           {gettext("Save to Library")}
         </.button>
@@ -334,17 +357,11 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
 
   @doc false
   defp completion_options_for(type) when type in [:text, :image, :video] do
-    [
-      {gettext("None (Scroll past)"), "none"},
-      {gettext("Require Button Click"), "button"}
-    ]
+    [{gettext("None (Scroll past)"), "none"}, {gettext("Require Button Click"), "button"}]
   end
 
   defp completion_options_for(:attachment) do
-    [
-      {gettext("None (Scroll past)"), "none"},
-      {gettext("Require Submission"), "submit"}
-    ]
+    [{gettext("None (Scroll past)"), "none"}, {gettext("Require Submission"), "submit"}]
   end
 
   defp completion_options_for(:code) do
@@ -356,10 +373,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   end
 
   defp completion_options_for(type) when type in [:quiz_question, :quiz_exam] do
-    [
-      {gettext("Require Submission"), "submit"},
-      {gettext("Pass Auto-Grade"), "pass_auto_grade"}
-    ]
+    [{gettext("Require Submission"), "submit"}, {gettext("Pass Auto-Grade"), "pass_auto_grade"}]
   end
 
   defp completion_options_for(_), do: [{gettext("None"), "none"}]

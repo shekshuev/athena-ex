@@ -14,10 +14,13 @@ defmodule Athena.Identity do
   defdelegate soft_delete_account(account), to: Accounts
   defdelegate login_regex(), to: Account
   defdelegate password_regex(), to: Account
+  defdelegate get_accounts_map(ids), to: Accounts
+  defdelegate search_accounts_by_login(query, limit), to: Accounts
 
   defdelegate list_all_roles(), to: Roles
   defdelegate get_role(id), to: Roles
   defdelegate get_role_by_name(name), to: Roles
 
   defdelegate can?(user, permission, resource \\ nil), to: Acl
+  defdelegate can_any?(user, permissions), to: Acl
 end
