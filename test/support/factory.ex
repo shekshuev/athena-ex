@@ -7,7 +7,7 @@ defmodule Athena.Factory do
   alias Athena.Identity.{Account, Role, Profile}
   alias Athena.Media.{File, Quota}
   alias Athena.Content.{Course, Section, Block, LibraryBlock}
-  alias Athena.Learning.{Cohort, Instructor, Enrollment}
+  alias Athena.Learning.{Cohort, Instructor, Enrollment, Submission}
 
   def role_factory do
     %Role{
@@ -110,6 +110,16 @@ defmodule Athena.Factory do
   def enrollment_factory do
     %Enrollment{
       status: :active
+    }
+  end
+
+  def submission_factory do
+    %Submission{
+      account_id: Ecto.UUID.generate(),
+      block_id: Ecto.UUID.generate(),
+      content: %{"answer" => "test_answer"},
+      status: :pending,
+      score: 0
     }
   end
 end

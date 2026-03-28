@@ -199,3 +199,34 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "must have either account_id or cohort_id"
 msgstr ""
+
+#: lib/athena/learning/submission_content.ex:69
+#, elixir-autogen, elixir-format
+msgid "at least one file is required"
+msgstr ""
+
+## From Ecto.Changeset.cast/4
+#: lib/athena/learning/submission_content.ex:44
+#, elixir-autogen, elixir-format, fuzzy
+msgid "can't be blank for text answer"
+msgstr ""
+
+#: lib/athena/learning/submission_content.ex:55
+#, elixir-autogen, elixir-format
+msgid "code cannot be empty"
+msgstr ""
+
+#: lib/athena/learning/submission_content.ex:102
+#, elixir-autogen, elixir-format
+msgid "exam answers cannot be empty"
+msgstr ""
+
+#: lib/athena/learning/submission_content.ex:58
+#, elixir-autogen, elixir-format
+msgid "language is required for code"
+msgstr ""
+
+#: lib/athena/learning/submission_content.ex:86
+#, elixir-autogen, elixir-format
+msgid "please provide an answer or select a choice"
+msgstr ""

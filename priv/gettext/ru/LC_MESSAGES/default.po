@@ -1660,7 +1660,7 @@ msgstr "Текст"
 msgid "Text Block"
 msgstr "Текстовый блок"
 
-#: lib/athena_web/live/studio_live/builder.class:954
+#: lib/athena_web/live/studio_live/builder.ex:954
 #, elixir-autogen, elixir-format
 msgid "The Course Builder requires a desktop or tablet screen to work comfortably. Please open this page on a larger device."
 msgstr "Для комфортной работы в Конструкторе требуется экран компьютера или планшета. Пожалуйста, откройте эту страницу на устройстве с большим экраном."
@@ -1793,7 +1793,7 @@ msgstr "Просмотреть детали"
 msgid "View Root Level"
 msgstr "Перейти на верхний уровень"
 
-#: lib/athena_web/live/studio_live/course_form_component.class:132
+#: lib/athena_web/live/studio_live/course_form_component.ex:132
 #, elixir-autogen, elixir-format
 msgid "Visibility Status"
 msgstr "Статус видимости"

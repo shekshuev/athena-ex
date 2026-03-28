@@ -8,7 +8,7 @@ defmodule Athena.Learning do
   - `Enrollments`: Assigning cohorts or students to courses.
   """
 
-  alias Athena.Learning.{Instructors, Cohorts, Enrollments}
+  alias Athena.Learning.{Instructors, Cohorts, Enrollments, Submissions}
 
   defdelegate list_instructors(params \\ %{}), to: Instructors
   defdelegate search_instructors(search_query, limit \\ 10), to: Instructors
@@ -35,4 +35,8 @@ defmodule Athena.Learning do
   defdelegate delete_enrollment(enrollment), to: Enrollments
   defdelegate list_student_enrollments(account_id), to: Enrollments
   defdelegate has_access?(account_id, course_id), to: Enrollments
+
+  defdelegate get_submission(account_id, block_id), to: Submissions
+  defdelegate create_submission(attrs), to: Submissions
+  defdelegate update_submission(submission, attrs), to: Submissions
 end
