@@ -396,7 +396,16 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       admin: admin
     } do
       lib_block =
-        insert(:library_block, title: "Global Quiz", type: :quiz_question, owner_id: admin.id)
+        insert(:library_block,
+          title: "Global Quiz",
+          type: :quiz_question,
+          content: %{
+            "question_type" => "exact_match",
+            "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+            "correct_answer" => "flag{test}"
+          },
+          owner_id: admin.id
+        )
 
       {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
 

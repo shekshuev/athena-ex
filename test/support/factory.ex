@@ -7,7 +7,7 @@ defmodule Athena.Factory do
   alias Athena.Identity.{Account, Role, Profile}
   alias Athena.Media.{File, Quota}
   alias Athena.Content.{Course, Section, Block, LibraryBlock}
-  alias Athena.Learning.{Cohort, Instructor, Enrollment, Submission}
+  alias Athena.Learning.{Cohort, Instructor, Enrollment, Submission, SubmissionContent}
 
   def role_factory do
     %Role{
@@ -85,8 +85,8 @@ defmodule Athena.Factory do
   def library_block_factory do
     %LibraryBlock{
       title: sequence(:title, &"Template #{&1}"),
-      type: :quiz_question,
-      content: %{},
+      type: :text,
+      content: %{"text" => "Default content"},
       tags: [],
       owner_id: Ecto.UUID.generate()
     }
@@ -117,7 +117,10 @@ defmodule Athena.Factory do
     %Submission{
       account_id: Ecto.UUID.generate(),
       block_id: Ecto.UUID.generate(),
-      content: %{"answer" => "test_answer"},
+      content: %SubmissionContent{
+        type: :text,
+        text_answer: "test_answer"
+      },
       status: :pending,
       score: 0
     }

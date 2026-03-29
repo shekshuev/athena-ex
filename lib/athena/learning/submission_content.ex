@@ -7,6 +7,7 @@ defmodule Athena.Learning.SubmissionContent do
   use Gettext, backend: AthenaWeb.Gettext
 
   @primary_key false
+  @derive Jason.Encoder
   embedded_schema do
     field :type, Ecto.Enum,
       values: [:text, :code, :quiz_question, :quiz_exam, :video, :image, :attachment]

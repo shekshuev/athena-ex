@@ -9,6 +9,8 @@ defmodule Athena.Content.Block do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias Athena.Content.{QuizQuestion, QuizExam, Section, AccessRules, CompletionRule}
+
   @type t :: %__MODULE__{}
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -35,11 +37,11 @@ defmodule Athena.Content.Block do
       values: ~w(public enrolled restricted hidden inherit)a,
       default: :enrolled
 
-    embeds_one :access_rules, Athena.Content.AccessRules, on_replace: :update
+    embeds_one :access_rules, AccessRules, on_replace: :update
 
-    embeds_one :completion_rule, Athena.Content.CompletionRule, on_replace: :update
+    embeds_one :completion_rule, CompletionRule, on_replace: :update
 
-    belongs_to :section, Athena.Content.Section
+    belongs_to :section, Section
 
     timestamps(type: :utc_datetime)
   end
@@ -51,9 +53,39 @@ defmodule Athena.Content.Block do
   def changeset(block, attrs) do
     block
     |> cast(attrs, [:type, :content, :order, :section_id, :visibility])
-    |> cast_embed(:access_rules, with: &Athena.Content.AccessRules.changeset/2)
-    |> cast_embed(:completion_rule, with: &Athena.Content.CompletionRule.changeset/2)
+    |> cast_embed(:access_rules, with: &AccessRules.changeset/2)
+    |> cast_embed(:completion_rule, with: &CompletionRule.changeset/2)
     |> validate_required([:type, :content, :section_id, :visibility])
     |> foreign_key_constraint(:section_id)
+    |> validate_content_by_type()
+  end
+
+  @doc false
+  defp validate_content_by_type(changeset) do
+    type = get_field(changeset, :type)
+    content_map = get_field(changeset, :content) || %{}
+
+    type
+    |> case do
+      :quiz_question -> QuizQuestion.changeset(%QuizQuestion{}, content_map)
+      :quiz_exam -> QuizExam.changeset(%QuizExam{}, content_map)
+      _ -> nil
+    end
+    |> case do
+      nil ->
+        changeset
+
+      %Ecto.Changeset{valid?: true} = embed_cs ->
+        put_change(
+          changeset,
+          :content,
+          Ecto.Changeset.apply_changes(embed_cs) |> Map.from_struct()
+        )
+
+      %Ecto.Changeset{valid?: false} = embed_cs ->
+        Enum.reduce(embed_cs.errors, changeset, fn {field, {msg, opts}}, acc ->
+          add_error(acc, :content, "#{field}: #{msg}", opts)
+        end)
+    end
   end
 end

@@ -111,35 +111,35 @@ defmodule Athena.Content.LibraryTest do
         type: :quiz_question,
         tags: ["elixir", "hard"],
         owner_id: owner,
-        content: %{"question" => "Q1", "type" => "single"}
+        content: %{"body" => %{"text" => "Q1"}, "question_type" => "single"}
       )
 
       insert(:library_block,
         type: :quiz_question,
         tags: ["elixir", "easy"],
         owner_id: owner,
-        content: %{"question" => "Q2", "type" => "single"}
+        content: %{"body" => %{"text" => "Q2"}, "question_type" => "single"}
       )
 
       insert(:library_block,
         type: :quiz_question,
         tags: ["js", "easy"],
         owner_id: owner,
-        content: %{"question" => "Q3", "type" => "multiple"}
+        content: %{"body" => %{"text" => "Q3"}, "question_type" => "multiple"}
       )
 
       insert(:library_block,
         type: :quiz_question,
         tags: ["elixir", "theory"],
         owner_id: owner,
-        content: %{"question" => "Q4", "type" => "single"}
+        content: %{"body" => %{"text" => "Q4"}, "question_type" => "single"}
       )
 
       insert(:library_block,
         type: :quiz_question,
         tags: ["python"],
         owner_id: owner,
-        content: %{"question" => "Q5", "type" => "single"}
+        content: %{"body" => %{"text" => "Q5"}, "question_type" => "single"}
       )
 
       :ok
@@ -180,7 +180,7 @@ defmodule Athena.Content.LibraryTest do
       results = Library.generate_exam_questions(params)
 
       assert length(results) == 1
-      assert hd(results).question == "Q2"
+      assert hd(results).question == %{"text" => "Q2"}
     end
 
     test "should correctly map original block content to the required snapshot format" do
@@ -199,7 +199,7 @@ defmodule Athena.Content.LibraryTest do
       assert snapshot.id != nil
       assert snapshot.original_block_id != nil
       assert snapshot.type == "single"
-      assert snapshot.question == "Q5"
+      assert snapshot.question == %{"text" => "Q5"}
 
       assert Map.has_key?(snapshot, :options)
       assert Map.has_key?(snapshot, :correct_answer_text)
