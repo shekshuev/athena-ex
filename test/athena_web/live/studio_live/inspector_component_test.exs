@@ -249,5 +249,70 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "Replace File"
       refute html =~ "Upload File"
     end
+
+    test "renders quiz question block with open type by default", %{block: base_block} do
+      block = %{
+        base_block
+        | type: :quiz_question,
+          content: %{"question_type" => "open", "general_explanation" => "Think hard!"}
+      }
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block
+        )
+
+      assert html =~ "quiz question Block"
+      assert html =~ "Question Settings"
+      assert html =~ "Question Type"
+      assert html =~ ~s(name="block[content][question_type]")
+
+      assert html =~ "General Explanation"
+      assert html =~ "Think hard!"
+      refute html =~ "Case Sensitive"
+    end
+
+    test "renders case_sensitive checkbox when quiz type is exact_match", %{block: base_block} do
+      block = %{
+        base_block
+        | type: :quiz_question,
+          content: %{"question_type" => "exact_match", "case_sensitive" => true}
+      }
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block
+        )
+
+      assert html =~ "Case Sensitive"
+      assert html =~ ~s(name="block[content][case_sensitive]")
+      assert html =~ ~s(checked)
+    end
+
+    test "renders correct progression rules for quiz blocks", %{block: base_block} do
+      block = %{
+        base_block
+        | type: :quiz_question,
+          content: %{"question_type" => "single"}
+      }
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block
+        )
+
+      assert html =~ "Progression Rules"
+      assert html =~ "How to unlock the next block?"
+
+      refute html =~ "None (Scroll past)"
+      assert html =~ "Require Submission"
+      assert html =~ "Pass Auto-Grade"
+    end
   end
 end

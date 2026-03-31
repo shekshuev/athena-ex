@@ -65,24 +65,27 @@ defmodule Athena.Content.Block do
     type = get_field(changeset, :type)
     content_map = get_field(changeset, :content) || %{}
 
-    type
-    |> case do
-      :quiz_question -> QuizQuestion.changeset(%QuizQuestion{}, content_map)
-      :quiz_exam -> QuizExam.changeset(%QuizExam{}, content_map)
-      _ -> nil
-    end
-    |> case do
+    embed_cs =
+      case type do
+        :quiz_question -> QuizQuestion.changeset(struct(QuizQuestion), content_map)
+        :quiz_exam -> QuizExam.changeset(struct(QuizExam), content_map)
+        _ -> nil
+      end
+
+    case embed_cs do
       nil ->
         changeset
 
-      %Ecto.Changeset{valid?: true} = embed_cs ->
-        put_change(
-          changeset,
-          :content,
-          Ecto.Changeset.apply_changes(embed_cs) |> Map.from_struct()
-        )
+      %Ecto.Changeset{valid?: true} ->
+        pure_string_map =
+          embed_cs
+          |> Ecto.Changeset.apply_changes()
+          |> Jason.encode!()
+          |> Jason.decode!()
 
-      %Ecto.Changeset{valid?: false} = embed_cs ->
+        put_change(changeset, :content, pure_string_map)
+
+      %Ecto.Changeset{valid?: false} ->
         Enum.reduce(embed_cs.errors, changeset, fn {field, {msg, opts}}, acc ->
           add_error(acc, :content, "#{field}: #{msg}", opts)
         end)

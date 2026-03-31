@@ -174,7 +174,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
             {gettext("Type")}
           </div>
           <div class="text-sm font-medium capitalize">
-            {Atom.to_string(@block.type)} {gettext("Block")}
+            {Atom.to_string(@block.type) |> String.replace("_", " ")} {gettext("Block")}
           </div>
         </div>
       </div>
@@ -182,6 +182,55 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
       <div class="overflow-y-auto py-4 space-y-6 flex-1">
         <.form for={@form} id={"block-inspector-form-#{@block.id}"} phx-change="update_block_meta">
           <.input type="hidden" field={@form[:id]} />
+
+          <%= if @block.type == :quiz_question do %>
+            <div class="space-y-4 mb-6">
+              <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
+                {gettext("Question Settings")}
+              </div>
+
+              <.input
+                type="select"
+                name="block[content][question_type]"
+                value={@block.content["question_type"] || "open"}
+                label={gettext("Question Type")}
+                options={[
+                  {gettext("Exact Match (CTF / Text)"), "exact_match"},
+                  {gettext("Single Choice (Radio)"), "single"},
+                  {gettext("Multiple Choice (Checkbox)"), "multiple"},
+                  {gettext("Open Question (Essay)"), "open"}
+                ]}
+              />
+
+              <%= if @block.content["question_type"] == "exact_match" do %>
+                <div class="mt-2">
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="hidden" name="block[content][case_sensitive]" value="false" />
+                    <input
+                      type="checkbox"
+                      name="block[content][case_sensitive]"
+                      value="true"
+                      checked={@block.content["case_sensitive"]}
+                      class="checkbox checkbox-sm checkbox-primary"
+                    />
+                    <span class="label-text">{gettext("Case Sensitive")}</span>
+                  </label>
+                </div>
+              <% end %>
+
+              <div class="mt-4">
+                <.input
+                  type="textarea"
+                  name="block[content][general_explanation]"
+                  value={@block.content["general_explanation"]}
+                  label={gettext("General Explanation (shown after submission)")}
+                  phx-debounce="500"
+                  rows="3"
+                />
+              </div>
+            </div>
+            <div class="divider my-4"></div>
+          <% end %>
 
           <%= if @block.type == :code do %>
             <div class="space-y-4 mb-6">
