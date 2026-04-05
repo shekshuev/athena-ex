@@ -304,6 +304,56 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert opt["is_correct"] == true
       assert opt["explanation"] == "New expl"
     end
+
+    test "updates quiz exam metadata and parses tags correctly", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      {:ok, block} =
+        Content.create_block(%{
+          "type" => "quiz_exam",
+          "section_id" => section.id,
+          "content" => %{
+            "count" => 10,
+            "mandatory_tags" => [],
+            "include_tags" => [],
+            "exclude_tags" => []
+          }
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']") |> render_click()
+
+      lv
+      |> form("#block-inspector-form-#{block.id}", %{
+        "block" => %{
+          "id" => block.id,
+          "content" => %{
+            "count" => "15",
+            "time_limit" => "45"
+          }
+        },
+        "tags_mandatory" => " elixir , phoenix, backend ",
+        "tags_include" => "random, tricky",
+        "tags_exclude" => "draft"
+      })
+      |> render_change()
+
+      blocks = Content.list_blocks_by_section(section.id)
+      updated_block = Enum.find(blocks, &(&1.id == block.id))
+
+      assert updated_block.content["count"] == 15
+      assert updated_block.content["time_limit"] == 45
+      assert updated_block.content["mandatory_tags"] == ["elixir", "phoenix", "backend"]
+      assert updated_block.content["include_tags"] == ["random", "tricky"]
+      assert updated_block.content["exclude_tags"] == ["draft"]
+    end
   end
 
   describe "Modals & Navigation" do

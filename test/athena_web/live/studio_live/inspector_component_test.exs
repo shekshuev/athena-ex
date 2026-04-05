@@ -314,5 +314,66 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "Require Submission"
       refute html =~ "Pass Auto-Grade"
     end
+
+    test "renders quiz exam configuration fields", %{block: base_block} do
+      block = %{
+        base_block
+        | type: :quiz_exam,
+          content: %{
+            "count" => 15,
+            "time_limit" => 30,
+            "mandatory_tags" => ["elixir", "math"],
+            "include_tags" => ["hard"],
+            "exclude_tags" => ["draft"]
+          }
+      }
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block
+        )
+
+      assert html =~ "quiz exam Block"
+      assert html =~ "Exam Configuration"
+
+      assert html =~ ~s(name="block[content][count]")
+      assert html =~ "15"
+
+      assert html =~ ~s(name="block[content][time_limit]")
+      assert html =~ "30"
+
+      assert html =~ ~s(name="tags_mandatory")
+      assert html =~ "elixir, math"
+
+      assert html =~ ~s(name="tags_include")
+      assert html =~ "hard"
+
+      assert html =~ ~s(name="tags_exclude")
+      assert html =~ "draft"
+    end
+
+    test "renders correct progression rules for quiz exam blocks", %{block: base_block} do
+      block = %{
+        base_block
+        | type: :quiz_exam,
+          content: %{}
+      }
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block
+        )
+
+      assert html =~ "Progression Rules"
+      assert html =~ "How to unlock the next block?"
+
+      assert html =~ "None (Scroll past)"
+      assert html =~ "Require Submission"
+      assert html =~ "Pass Auto-Grade"
+    end
   end
 end

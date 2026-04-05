@@ -4,7 +4,6 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
   import Athena.Factory
   alias Athena.Content.{CompletionRule, AccessRules}
-  alias Athena.Repo
 
   setup %{conn: conn} do
     user = insert(:account)
@@ -281,9 +280,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
-      s1 |> Ecto.Changeset.change(visibility: :hidden) |> Repo.update!()
-
-      send(lv.pid, :refresh_content)
+      Athena.Content.update_section(s1, %{"visibility" => "hidden"})
 
       assert_redirect(lv, "/learn/courses/#{course.id}")
     end

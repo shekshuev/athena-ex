@@ -30,6 +30,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       assert html =~ "Add Content"
       assert html =~ "Text Block"
       assert html =~ "Code Sandbox"
+      assert html =~ "Quiz Exam"
+      assert html =~ "Quiz Question"
       assert html =~ "Image"
       assert html =~ "Video"
       assert html =~ "Files &amp; Materials"
@@ -299,5 +301,30 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       refute html =~ ~r/id="block-block-2"[^>]*ring-primary shadow-md/
       assert html =~ ~r/id="block-block-2"[^>]*ring-base-200/
     end
+  end
+
+  test "renders quiz_exam block with preview card and badges", %{conn: _conn} do
+    exam_block = %Block{
+      id: "block-exam-1",
+      type: :quiz_exam,
+      content: %{
+        "count" => 25,
+        "time_limit" => 60
+      }
+    }
+
+    html =
+      render_component(CanvasComponent,
+        active_section_id: "sec-1",
+        blocks: [exam_block],
+        active_block_id: nil
+      )
+
+    assert html =~ "Quiz Exam Generator"
+    assert html =~ "25"
+    assert html =~ "Questions"
+    assert html =~ "60"
+    assert html =~ "min"
+    assert html =~ "hero-clock"
   end
 end

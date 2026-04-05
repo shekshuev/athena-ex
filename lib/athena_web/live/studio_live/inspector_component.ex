@@ -232,6 +232,67 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
             <div class="divider my-4"></div>
           <% end %>
 
+          <%= if @block.type == :quiz_exam do %>
+            <div class="space-y-4 mb-6">
+              <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
+                {gettext("Exam Configuration")}
+              </div>
+
+              <div class="flex gap-4">
+                <div class="flex-1">
+                  <.input
+                    type="number"
+                    name="block[content][count]"
+                    value={@block.content["count"] || 10}
+                    label={gettext("Questions Count")}
+                    min="1"
+                    max="100"
+                  />
+                </div>
+                <div class="flex-1">
+                  <.input
+                    type="number"
+                    name="block[content][time_limit]"
+                    value={@block.content["time_limit"]}
+                    label={gettext("Time Limit (Minutes)")}
+                    placeholder={gettext("Optional")}
+                    min="1"
+                  />
+                </div>
+              </div>
+
+              <div class="divider my-2"></div>
+              <div class="text-xs text-base-content/50 italic mb-2">
+                {gettext("Enter tags separated by commas (e.g. elixir, hard, math)")}
+              </div>
+
+              <.input
+                type="text"
+                name="tags_mandatory"
+                value={Enum.join(@block.content["mandatory_tags"] || [], ", ")}
+                label={gettext("Mandatory Tags (Must include)")}
+                placeholder="elixir, basic"
+              />
+
+              <.input
+                type="text"
+                name="tags_include"
+                value={Enum.join(@block.content["include_tags"] || [], ", ")}
+                label={gettext("Include Tags (Random pool)")}
+                placeholder="advanced, tricky"
+              />
+
+              <.input
+                type="text"
+                name="tags_exclude"
+                value={Enum.join(@block.content["exclude_tags"] || [], ", ")}
+                label={gettext("Exclude Tags (Do not use)")}
+                placeholder="draft, deprecated"
+              />
+            </div>
+            <div class="divider my-4"></div>
+          <% end %>
+
           <%= if @block.type == :code do %>
             <div class="space-y-4 mb-6">
               <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">

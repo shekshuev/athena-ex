@@ -308,6 +308,34 @@ defmodule AthenaWeb.StudioLive.Builder do
     create_and_assign_block(socket, attrs, gettext("Failed to create quiz block"))
   end
 
+  @impl true
+  def handle_event("add_quiz_exam_block", _, socket) do
+    if section_id = socket.assigns.active_section_id do
+      attrs = %{
+        "type" => "quiz_exam",
+        "section_id" => section_id,
+        "content" => %{
+          "count" => 10,
+          "time_limit" => nil,
+          "mandatory_tags" => [],
+          "include_tags" => [],
+          "exclude_tags" => []
+        }
+      }
+
+      case Content.create_block(attrs) do
+        {:ok, new_block} ->
+          blocks = Content.list_blocks_by_section(section_id)
+          {:noreply, assign(socket, blocks: blocks, active_block_id: new_block.id)}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, gettext("Failed to create quiz exam block"))}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_event("add_image_block", _, socket) do
     attrs = %{
       "type" => "image",
@@ -446,7 +474,7 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
-  def handle_event("update_block_meta", %{"block" => block_params}, socket) do
+  def handle_event("update_block_meta", %{"block" => block_params} = params, socket) do
     id = block_params["id"]
     block = Enum.find(socket.assigns.blocks, &(&1.id == id))
 
@@ -454,7 +482,10 @@ defmodule AthenaWeb.StudioLive.Builder do
       content_map = normalize_content(block.content || %{})
       content_overrides = Map.get(block_params, "content", %{})
 
-      content_overrides = apply_quiz_meta_overrides(content_map, content_overrides)
+      content_overrides =
+        content_map
+        |> apply_quiz_meta_overrides(content_overrides)
+        |> apply_exam_meta_overrides(block.type, params)
 
       new_content = Map.merge(content_map, content_overrides)
       final_params = Map.put(block_params, "content", new_content)
@@ -1359,5 +1390,31 @@ defmodule AthenaWeb.StudioLive.Builder do
     else
       overrides
     end
+  end
+
+  defp apply_exam_meta_overrides(overrides, :quiz_exam, block_params) do
+    overrides
+    |> parse_and_put_tags(block_params, "tags_mandatory", "mandatory_tags")
+    |> parse_and_put_tags(block_params, "tags_include", "include_tags")
+    |> parse_and_put_tags(block_params, "tags_exclude", "exclude_tags")
+  end
+
+  defp apply_exam_meta_overrides(overrides, _block_type, _block_params), do: overrides
+
+  defp parse_and_put_tags(overrides, params, param_key, content_key) do
+    if Map.has_key?(params, param_key) do
+      Map.put(overrides, content_key, parse_tags(params[param_key]))
+    else
+      overrides
+    end
+  end
+
+  defp parse_tags(nil), do: []
+
+  defp parse_tags(tags_string) do
+    tags_string
+    |> String.split(",", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
   end
 end

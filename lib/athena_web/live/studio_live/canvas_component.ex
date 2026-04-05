@@ -192,6 +192,34 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
                       <% end %>
                     </form>
                   </div>
+                <% block.type == :quiz_exam -> %>
+                  <div class="bg-base-200/30 p-8 rounded-xl border-2 border-dashed border-base-300 flex flex-col items-center justify-center text-center gap-4">
+                    <div class="p-4 bg-primary/10 text-primary rounded-full">
+                      <.icon name="hero-academic-cap" class="size-8" />
+                    </div>
+                    <div>
+                      <h3 class="font-bold text-lg text-base-content">
+                        {gettext("Quiz Exam Generator")}
+                      </h3>
+                      <p class="text-sm text-base-content/60 max-w-md mx-auto mt-2">
+                        {gettext(
+                          "This block will dynamically generate a unique exam for each student based on the tags and configuration set in the inspector."
+                        )}
+                      </p>
+                    </div>
+                    <div class="flex flex-wrap items-center justify-center gap-2 mt-2">
+                      <span class="badge badge-primary badge-sm font-bold py-3 px-3">
+                        {block.content["count"] || 10} {gettext("Questions")}
+                      </span>
+                      <span
+                        :if={block.content["time_limit"]}
+                        class="badge badge-neutral badge-sm font-bold py-3 px-3"
+                      >
+                        <.icon name="hero-clock" class="size-4 mr-1.5" />
+                        {block.content["time_limit"]} {gettext("min")}
+                      </span>
+                    </div>
+                  </div>
                 <% block.type == :image -> %>
                   <%= if block.content["url"] do %>
                     <img
@@ -359,6 +387,15 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
                   <.icon name="hero-question-mark-circle" class="size-5 opacity-50" /> {gettext(
                     "Quiz Question"
                   )}
+                </.button>
+              </li>
+              <li>
+                <.button
+                  phx-click="add_quiz_exam_block"
+                  onclick="document.activeElement.blur()"
+                  class="btn btn-ghost justify-start font-medium gap-3 h-12"
+                >
+                  <.icon name="hero-academic-cap" class="size-5 opacity-50" /> {gettext("Quiz Exam")}
                 </.button>
               </li>
               <li>
