@@ -182,52 +182,6 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       assert html =~ "Completed"
     end
 
-    test "renders and processes :submit gate (Task Submission)", %{conn: conn, course: course} do
-      s1 = insert(:section, course: course)
-
-      b_gate =
-        insert(:block,
-          section: s1,
-          type: :text,
-          completion_rule: %CompletionRule{
-            type: :submit
-          }
-        )
-
-      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
-
-      assert html =~ "Task Submission Required"
-      assert html =~ "Simulate Pass"
-      refute html =~ "Submitted"
-
-      html = render_click(lv, "complete_gate", %{"block-id" => b_gate.id})
-      assert html =~ "Submitted"
-    end
-
-    test "renders and processes :pass_auto_grade gate", %{conn: conn, course: course} do
-      s1 = insert(:section, course: course)
-
-      b_gate =
-        insert(:block,
-          section: s1,
-          type: :code,
-          completion_rule: %CompletionRule{
-            type: :pass_auto_grade,
-            min_score: 95
-          }
-        )
-
-      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
-
-      assert html =~ "Auto-Graded Task"
-      assert html =~ "Minimum score required: 95"
-      assert html =~ "Simulate Pass"
-      refute html =~ "Passed"
-
-      html = render_click(lv, "complete_gate", %{"block-id" => b_gate.id})
-      assert html =~ "Passed"
-    end
-
     test "cascading blocks: hides blocks after an uncompleted gate", %{conn: conn, course: course} do
       s1 = insert(:section, course: course)
 
@@ -332,6 +286,177 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       send(lv.pid, :refresh_content)
 
       assert_redirect(lv, "/learn/courses/#{course.id}")
+    end
+  end
+
+  describe "Quiz Submissions" do
+    test "submits exact_match quiz correctly, shows feedback and locks input", %{
+      conn: conn,
+      course: course
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "exact_match",
+            "body" => %{"text" => "Find flag"},
+            "correct_answer" => "flag{123}",
+            "general_explanation" => "The flag is hidden in plain sight."
+          }
+        )
+
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      refute html =~ "Correct!"
+      refute html =~ "The flag is hidden in plain sight."
+
+      html =
+        lv
+        |> form("#quiz-form-#{block.id}", %{"answer" => "flag{123}"})
+        |> render_submit()
+
+      assert html =~ "Correct!"
+      assert html =~ "The flag is hidden in plain sight."
+      assert html =~ ~s(disabled="")
+    end
+
+    test "submits single choice quiz incorrectly, shows specific explanation and locks", %{
+      conn: conn,
+      course: course
+    } do
+      s1 = insert(:section, course: course)
+      opt1_id = Ecto.UUID.generate()
+      opt2_id = Ecto.UUID.generate()
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "single",
+            "body" => %{"text" => "Pick one"},
+            "options" => [
+              %{
+                "id" => opt1_id,
+                "text" => "Wrong option",
+                "is_correct" => false,
+                "explanation" => "This is why it's wrong."
+              },
+              %{
+                "id" => opt2_id,
+                "text" => "Right option",
+                "is_correct" => true,
+                "explanation" => "This is right."
+              }
+            ]
+          }
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      html =
+        lv
+        |> form("#quiz-form-#{block.id}", %{"answer" => opt1_id})
+        |> render_submit()
+
+      assert html =~ "Incorrect."
+      assert html =~ "This is why it&#39;s wrong."
+      assert html =~ ~s(disabled="")
+    end
+
+    test "submits open question and sets pending review status", %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "open",
+            "body" => %{"text" => "Write essay"}
+          }
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      html =
+        lv
+        |> form("#quiz-form-#{block.id}", %{"answer" => "This is my essay."})
+        |> render_submit()
+
+      assert html =~ "Pending Review"
+      assert html =~ ~s(disabled="")
+    end
+
+    test "pass_auto_grade gate unlocks next block only upon correct submission", %{
+      conn: conn,
+      course: course
+    } do
+      s1 = insert(:section, course: course)
+
+      quiz_block =
+        insert(:block,
+          section: s1,
+          order: 10,
+          type: :quiz_question,
+          completion_rule: %CompletionRule{type: :pass_auto_grade, min_score: 100},
+          content: %{
+            "question_type" => "exact_match",
+            "body" => %{"text" => "Key?"},
+            "correct_answer" => "42"
+          }
+        )
+
+      insert(:block, section: s1, order: 20, type: :text, content: %{"text" => "Secret Content"})
+
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      refute html =~ "Secret Content"
+
+      html =
+        lv
+        |> form("#quiz-form-#{quiz_block.id}", %{"answer" => "42"})
+        |> render_submit()
+
+      assert html =~ "Correct!"
+      assert html =~ "Secret Content"
+    end
+
+    test "submit gate unlocks next block regardless of correct/incorrect", %{
+      conn: conn,
+      course: course
+    } do
+      s1 = insert(:section, course: course)
+
+      quiz_block =
+        insert(:block,
+          section: s1,
+          order: 10,
+          type: :quiz_question,
+          completion_rule: %CompletionRule{type: :submit},
+          content: %{
+            "question_type" => "exact_match",
+            "body" => %{"text" => "Guess?"},
+            "correct_answer" => "42"
+          }
+        )
+
+      insert(:block, section: s1, order: 20, type: :text, content: %{"text" => "Secret Content"})
+
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      refute html =~ "Secret Content"
+
+      html =
+        lv
+        |> form("#quiz-form-#{quiz_block.id}", %{"answer" => "wrong"})
+        |> render_submit()
+
+      assert html =~ "Incorrect."
+      assert html =~ "Secret Content"
     end
   end
 end

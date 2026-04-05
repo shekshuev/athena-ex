@@ -36,6 +36,85 @@ defmodule Athena.Learning.SubmissionsTest do
     end
   end
 
+  describe "get_latest_submissions/2" do
+    test "returns a map of the latest submissions for the given block ids" do
+      account_id = Ecto.UUID.generate()
+      other_account_id = Ecto.UUID.generate()
+
+      block_1_id = Ecto.UUID.generate()
+      block_2_id = Ecto.UUID.generate()
+      block_3_id = Ecto.UUID.generate()
+
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      yesterday = DateTime.add(now, -1, :day)
+      last_week = DateTime.add(now, -7, :day)
+
+      insert(:submission,
+        account_id: account_id,
+        block_id: block_1_id,
+        score: 10,
+        inserted_at: last_week
+      )
+
+      insert(:submission,
+        account_id: account_id,
+        block_id: block_1_id,
+        score: 20,
+        inserted_at: yesterday
+      )
+
+      latest_b1 =
+        insert(:submission,
+          account_id: account_id,
+          block_id: block_1_id,
+          score: 50,
+          inserted_at: now
+        )
+
+      latest_b2 =
+        insert(:submission,
+          account_id: account_id,
+          block_id: block_2_id,
+          score: 100,
+          inserted_at: yesterday
+        )
+
+      insert(:submission,
+        account_id: account_id,
+        block_id: block_2_id,
+        score: 0,
+        inserted_at: last_week
+      )
+
+      insert(:submission,
+        account_id: other_account_id,
+        block_id: block_1_id,
+        score: 99,
+        inserted_at: now
+      )
+
+      block_ids = [block_1_id, block_2_id, block_3_id]
+      result = Submissions.get_latest_submissions(account_id, block_ids)
+
+      assert map_size(result) == 2
+
+      assert result[block_1_id].id == latest_b1.id
+      assert result[block_1_id].score == 50
+
+      assert result[block_2_id].id == latest_b2.id
+      assert result[block_2_id].score == 100
+
+      refute Map.has_key?(result, block_3_id)
+    end
+
+    test "returns an empty map if no submissions exist for the given blocks" do
+      account_id = Ecto.UUID.generate()
+      block_ids = [Ecto.UUID.generate(), Ecto.UUID.generate()]
+
+      assert %{} == Submissions.get_latest_submissions(account_id, block_ids)
+    end
+  end
+
   describe "create_submission/1" do
     test "creates a submission with valid attributes" do
       account_id = Ecto.UUID.generate()

@@ -6,9 +6,12 @@ defmodule Athena.Learning do
   - `Instructors`: Instructor profile management and search.
   - `Cohorts`: Cohort (group) CRUD and student memberships.
   - `Enrollments`: Assigning cohorts or students to courses.
+  - `Submissions`: Managing, creating, and retrieving student answers and task submissions.
+  - `Progress`: Tracking completed blocks and enforcing access rules (high watermark / retrograde locks).
+  - `Evaluator`: Auto-grading and synchronous evaluation of student submissions.
   """
 
-  alias Athena.Learning.{Instructors, Cohorts, Enrollments, Submissions}
+  alias Athena.Learning.{Instructors, Cohorts, Enrollments, Submissions, Progress, Evaluator}
 
   defdelegate list_instructors(params \\ %{}), to: Instructors
   defdelegate search_instructors(search_query, limit \\ 10), to: Instructors
@@ -39,4 +42,11 @@ defmodule Athena.Learning do
   defdelegate get_submission(account_id, block_id), to: Submissions
   defdelegate create_submission(attrs), to: Submissions
   defdelegate update_submission(submission, attrs), to: Submissions
+  defdelegate get_latest_submissions(account_id, block_ids), to: Submissions
+
+  defdelegate mark_completed(account_id, block_id), to: Progress
+  defdelegate completed_block_ids(account_id, section_id), to: Progress
+  defdelegate accessible_section_ids(account_id, course_id, linear_sections), to: Progress
+
+  defdelegate evaluate_sync(submission), to: Evaluator
 end

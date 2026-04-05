@@ -410,7 +410,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   end
 
   defp completion_options_for(:attachment) do
-    [{gettext("None (Scroll past)"), "none"}, {gettext("Require Submission"), "submit"}]
+    [{gettext("None (Scroll past)"), "none"}, {gettext("Require Button Click"), "button"}]
   end
 
   defp completion_options_for(:code) do
@@ -421,8 +421,16 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
     ]
   end
 
-  defp completion_options_for(type) when type in [:quiz_question, :quiz_exam] do
-    [{gettext("Require Submission"), "submit"}, {gettext("Pass Auto-Grade"), "pass_auto_grade"}]
+  defp completion_options_for(:quiz_question) do
+    [{gettext("None (Scroll past)"), "none"}, {gettext("Require Submission"), "submit"}]
+  end
+
+  defp completion_options_for(:quiz_exam) do
+    [
+      {gettext("None (Scroll past)"), "none"},
+      {gettext("Require Submission"), "submit"},
+      {gettext("Pass Auto-Grade"), "pass_auto_grade"}
+    ]
   end
 
   defp completion_options_for(_), do: [{gettext("None"), "none"}]

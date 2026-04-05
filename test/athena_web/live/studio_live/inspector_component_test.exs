@@ -310,9 +310,9 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "Progression Rules"
       assert html =~ "How to unlock the next block?"
 
-      refute html =~ "None (Scroll past)"
+      assert html =~ "None (Scroll past)"
       assert html =~ "Require Submission"
-      assert html =~ "Pass Auto-Grade"
+      refute html =~ "Pass Auto-Grade"
     end
   end
 end

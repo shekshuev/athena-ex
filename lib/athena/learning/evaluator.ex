@@ -31,10 +31,10 @@ defmodule Athena.Learning.Evaluator do
 
     answer_data = submission.content
 
-    score = calculate_score(question_data, answer_data)
+    {score, status} = calculate_score(question_data, answer_data)
 
     %{
-      status: :graded,
+      status: status,
       score: score,
       feedback: question_data.general_explanation
     }
@@ -43,7 +43,7 @@ defmodule Athena.Learning.Evaluator do
   def evaluate_sync(_submission), do: %{}
 
   @doc false
-  @spec calculate_score(QuizQuestion.t(), map()) :: integer()
+  @spec calculate_score(QuizQuestion.t(), map()) :: {integer(), atom()}
   defp calculate_score(
          %QuizQuestion{question_type: :exact_match} = q,
          %{type: :quiz_question} = a
@@ -58,14 +58,18 @@ defmodule Athena.Learning.Evaluator do
         String.downcase(String.trim(student)) == String.downcase(String.trim(correct))
       end
 
-    if match?, do: 100, else: 0
+    score = if match?, do: 100, else: 0
+
+    {score, :graded}
   end
 
   defp calculate_score(%QuizQuestion{question_type: :single} = q, %{type: :quiz_question} = a) do
     correct_option = Enum.find(q.options || [], & &1.is_correct)
     student_choice = List.first(a.selected_choices || [])
 
-    if correct_option && student_choice == correct_option.id, do: 100, else: 0
+    score = if correct_option && student_choice == correct_option.id, do: 100, else: 0
+
+    {score, :graded}
   end
 
   defp calculate_score(%QuizQuestion{question_type: :multiple} = q, %{type: :quiz_question} = a) do
@@ -77,10 +81,12 @@ defmodule Athena.Learning.Evaluator do
 
     student_ids = Enum.sort(a.selected_choices || [])
 
-    if correct_ids == student_ids and correct_ids != [], do: 100, else: 0
+    score = if correct_ids == student_ids and correct_ids != [], do: 100, else: 0
+
+    {score, :graded}
   end
 
-  defp calculate_score(%QuizQuestion{question_type: :open}, _a), do: 0
+  defp calculate_score(%QuizQuestion{question_type: :open}, _a), do: {0, :needs_review}
 
-  defp calculate_score(_q, _a), do: 0
+  defp calculate_score(_q, _a), do: {0, :graded}
 end
