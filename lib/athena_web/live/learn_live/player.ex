@@ -437,6 +437,81 @@ defmodule AthenaWeb.LearnLive.Player do
     """
   end
 
+  defp render_block_content(%{block: %{type: :quiz_question}} = assigns) do
+    ~H"""
+    <div class="my-8 p-6 lg:p-8 bg-base-100 rounded-2xl border border-base-200 shadow-sm">
+      <div
+        id={"player-quiz-tiptap-#{@block.id}-#{DateTime.to_unix(@block.updated_at)}"}
+        phx-hook="TiptapEditor"
+        data-id={"quiz-#{@block.id}"}
+        data-readonly="true"
+        phx-update="ignore"
+        data-content={Jason.encode!(@block.content["body"] || %{})}
+        class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed mb-8"
+      >
+      </div>
+
+      <form
+        phx-submit="submit_quiz"
+        id={"quiz-form-#{@block.id}"}
+        class="mt-6 pt-6 border-t border-base-200"
+      >
+        <input type="hidden" name="block_id" value={@block.id} />
+
+        <%= case @block.content["question_type"] do %>
+          <% "exact_match" -> %>
+            <div class="form-control w-full max-w-md">
+              <input
+                type="text"
+                name="answer"
+                placeholder={gettext("Enter your answer (flag)...")}
+                class="input input-bordered w-full font-mono text-lg"
+              />
+            </div>
+          <% "single" -> %>
+            <div class="space-y-3">
+              <%= for opt <- @block.content["options"] || [] do %>
+                <label class="flex items-start gap-4 p-4 rounded-xl border border-base-200 hover:bg-base-200/50 hover:border-primary/50 cursor-pointer transition-all has-checked:bg-primary/5 has-checked:border-primary">
+                  <input
+                    type="radio"
+                    name="answer"
+                    value={opt["id"]}
+                    class="radio radio-primary mt-0.5"
+                  />
+                  <span class="text-base-content font-medium mt-0.5">{opt["text"]}</span>
+                </label>
+              <% end %>
+            </div>
+          <% "multiple" -> %>
+            <div class="space-y-3">
+              <%= for opt <- @block.content["options"] || [] do %>
+                <label class="flex items-start gap-4 p-4 rounded-xl border border-base-200 hover:bg-base-200/50 hover:border-primary/50 cursor-pointer transition-all has-checked:bg-primary/5 has-checked:border-primary">
+                  <input
+                    type="checkbox"
+                    name="answer[]"
+                    value={opt["id"]}
+                    class="checkbox checkbox-primary mt-0.5"
+                  />
+                  <span class="text-base-content font-medium mt-0.5">{opt["text"]}</span>
+                </label>
+              <% end %>
+            </div>
+          <% "open" -> %>
+            <div class="form-control w-full">
+              <textarea
+                name="answer"
+                rows="5"
+                placeholder={gettext("Type your answer here...")}
+                class="textarea textarea-bordered w-full text-base leading-relaxed"
+              ></textarea>
+            </div>
+          <% _ -> %>
+        <% end %>
+      </form>
+    </div>
+    """
+  end
+
   defp render_block_content(assigns),
     do: ~H"""
     <div class="p-4 bg-base-200 rounded-lg text-sm text-base-content/50 italic">

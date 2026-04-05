@@ -87,6 +87,76 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       assert html =~ "IO.puts(:hello_world)"
       assert html =~ "editor.ex"
     end
+
+    test "renders quiz_question blocks correctly (all types)", %{
+      conn: conn,
+      course: course
+    } do
+      s1 = insert(:section, course: course, title: "Quiz Section")
+
+      insert(:block,
+        section: s1,
+        type: :quiz_question,
+        order: 10,
+        content: %{
+          "question_type" => "exact_match",
+          "body" => %{"text" => "Find the flag"}
+        }
+      )
+
+      insert(:block,
+        section: s1,
+        type: :quiz_question,
+        order: 20,
+        content: %{
+          "question_type" => "single",
+          "body" => %{"text" => "Pick one"},
+          "options" => [
+            %{"id" => "opt1", "text" => "Radio Option 1"},
+            %{"id" => "opt2", "text" => "Radio Option 2"}
+          ]
+        }
+      )
+
+      insert(:block,
+        section: s1,
+        type: :quiz_question,
+        order: 30,
+        content: %{
+          "question_type" => "multiple",
+          "body" => %{"text" => "Pick many"},
+          "options" => [
+            %{"id" => "chk1", "text" => "Check Option A"},
+            %{"id" => "chk2", "text" => "Check Option B"}
+          ]
+        }
+      )
+
+      insert(:block,
+        section: s1,
+        type: :quiz_question,
+        order: 40,
+        content: %{
+          "question_type" => "open",
+          "body" => %{"text" => "Write an essay"}
+        }
+      )
+
+      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ "Enter your answer (flag)..."
+
+      assert html =~ "type=\"radio\""
+      assert html =~ "Radio Option 1"
+      assert html =~ "Radio Option 2"
+
+      assert html =~ "type=\"checkbox\""
+      assert html =~ "Check Option A"
+      assert html =~ "Check Option B"
+
+      assert html =~ "<textarea"
+      assert html =~ "Type your answer here..."
+    end
   end
 
   describe "Completion Rules (Gates)" do
