@@ -219,6 +219,141 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert length(blocks) == 1
       assert hd(blocks).type == :attachment
     end
+
+    test "adds a code block to active section", %{conn: conn, course: course, section: section} do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("button[phx-click='add_code_block']") |> render_click()
+
+      blocks = Content.list_blocks_by_section(section.id)
+      assert length(blocks) == 1
+      assert hd(blocks).type == :code
+    end
+
+    test "adds a quiz question block to active section", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("button[phx-click='add_quiz_question_block']") |> render_click()
+
+      blocks = Content.list_blocks_by_section(section.id)
+      assert length(blocks) == 1
+
+      block = hd(blocks)
+      assert block.type == :quiz_question
+      assert block.content["question_type"] == "open"
+    end
+
+    test "updates quiz block options via canvas form", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      {:ok, block} =
+        Content.create_block(%{
+          "type" => "quiz_question",
+          "section_id" => section.id,
+          "content" => %{
+            "question_type" => "single",
+            "body" => %{},
+            "options" => [
+              %{"id" => "opt1", "text" => "A", "is_correct" => false, "explanation" => ""}
+            ]
+          }
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']") |> render_click()
+
+      lv
+      |> form("#quiz-form-#{block.id}", %{
+        "correct_option_id" => "opt1",
+        "options" => %{
+          "0" => %{
+            "id" => "opt1",
+            "text" => "Updated A",
+            "is_correct" => "false",
+            "explanation" => "New expl"
+          }
+        }
+      })
+      |> render_change()
+
+      blocks = Content.list_blocks_by_section(section.id)
+      updated_block = Enum.find(blocks, &(&1.id == block.id))
+
+      opt = hd(updated_block.content["options"])
+
+      assert opt["text"] == "Updated A"
+      assert opt["is_correct"] == true
+      assert opt["explanation"] == "New expl"
+    end
+
+    test "updates quiz exam metadata and parses tags correctly", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      {:ok, block} =
+        Content.create_block(%{
+          "type" => "quiz_exam",
+          "section_id" => section.id,
+          "content" => %{
+            "count" => 10,
+            "mandatory_tags" => [],
+            "include_tags" => [],
+            "exclude_tags" => []
+          }
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']") |> render_click()
+
+      lv
+      |> form("#block-inspector-form-#{block.id}", %{
+        "block" => %{
+          "id" => block.id,
+          "content" => %{
+            "count" => "15",
+            "time_limit" => "45"
+          }
+        },
+        "tags_mandatory" => " elixir , phoenix, backend ",
+        "tags_include" => "random, tricky",
+        "tags_exclude" => "draft"
+      })
+      |> render_change()
+
+      blocks = Content.list_blocks_by_section(section.id)
+      updated_block = Enum.find(blocks, &(&1.id == block.id))
+
+      assert updated_block.content["count"] == 15
+      assert updated_block.content["time_limit"] == 45
+      assert updated_block.content["mandatory_tags"] == ["elixir", "phoenix", "backend"]
+      assert updated_block.content["include_tags"] == ["random", "tricky"]
+      assert updated_block.content["exclude_tags"] == ["draft"]
+    end
   end
 
   describe "Modals & Navigation" do
@@ -396,7 +531,16 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       admin: admin
     } do
       lib_block =
-        insert(:library_block, title: "Global Quiz", type: :quiz_question, owner_id: admin.id)
+        insert(:library_block,
+          title: "Global Quiz",
+          type: :quiz_question,
+          content: %{
+            "question_type" => "exact_match",
+            "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+            "correct_answer" => "flag{test}"
+          },
+          owner_id: admin.id
+        )
 
       {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
 

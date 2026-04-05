@@ -14,7 +14,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
   alias Athena.Content
   alias Athena.Learning
-  alias Athena.Learning.Progress
+  alias Athena.Learning
 
   @doc """
   Initializes the player, checks course access, and validates that the student
@@ -32,7 +32,7 @@ defmodule AthenaWeb.LearnLive.Player do
       end
 
       linear_lessons = Content.list_linear_lessons(course_id, user)
-      accessible_ids = Progress.accessible_section_ids(user.id, course_id, linear_lessons)
+      accessible_ids = Learning.accessible_section_ids(user.id, course_id, linear_lessons)
 
       first_lesson_id = linear_lessons |> List.first() |> Map.get(:id)
       section_id = params["section_id"] || first_lesson_id
@@ -57,7 +57,7 @@ defmodule AthenaWeb.LearnLive.Player do
     section = Content.get_section(section_id) |> elem(1)
 
     blocks = Content.list_blocks_by_section(section_id, user) |> Enum.sort_by(& &1.order)
-    completed_ids = Progress.completed_block_ids(user.id, section_id)
+    completed_ids = Learning.completed_block_ids(user.id, section_id)
     tree = Content.get_course_tree(course.id, user)
 
     current_index = Enum.find_index(linear_lessons, fn s -> s.id == section_id end)
@@ -65,6 +65,8 @@ defmodule AthenaWeb.LearnLive.Player do
     prev_section = if current_index > 0, do: Enum.at(linear_lessons, current_index - 1), else: nil
     next_section = Enum.at(linear_lessons, current_index + 1)
     next_accessible? = next_section != nil and next_section.id in accessible_ids
+
+    submissions = Learning.get_latest_submissions(user.id, Enum.map(blocks, & &1.id))
 
     socket =
       socket
@@ -79,6 +81,7 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
       |> assign(:course_map_open, false)
       |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
+      |> assign(:submissions, submissions)
 
     {:ok, schedule_next_unlock(socket, course.id)}
   end
@@ -92,13 +95,13 @@ defmodule AthenaWeb.LearnLive.Player do
   @impl true
   def handle_event("complete_gate", %{"block-id" => block_id}, socket) do
     user = socket.assigns.current_user
-    {:ok, _} = Progress.mark_completed(user.id, block_id)
+    {:ok, _} = Learning.mark_completed(user.id, block_id)
     new_completed_ids = [block_id | socket.assigns.completed_ids]
 
     linear_lessons = socket.assigns.linear_lessons
 
     accessible_ids =
-      Progress.accessible_section_ids(user.id, socket.assigns.course.id, linear_lessons)
+      Learning.accessible_section_ids(user.id, socket.assigns.course.id, linear_lessons)
 
     current_index = Enum.find_index(linear_lessons, fn s -> s.id == socket.assigns.section.id end)
     next_section = Enum.at(linear_lessons, current_index + 1)
@@ -117,6 +120,47 @@ defmodule AthenaWeb.LearnLive.Player do
   def handle_event("close_course_map", _, socket),
     do: {:noreply, assign(socket, course_map_open: false)}
 
+  @impl true
+  def handle_event("submit_quiz", %{"block_id" => block_id} = params, socket) do
+    case Enum.find(socket.assigns.blocks, &(&1.id == block_id)) do
+      nil ->
+        {:noreply, socket}
+
+      block ->
+        handle_quiz_submission(socket, block, params["answer"])
+    end
+  end
+
+  @doc false
+  defp handle_quiz_submission(socket, block, answer) do
+    sub_attrs = %{
+      account_id: socket.assigns.current_user.id,
+      block_id: block.id,
+      status: :pending,
+      content: build_submission_content(block, answer)
+    }
+
+    case Learning.create_submission(sub_attrs) do
+      {:ok, submission} ->
+        eval_result = Learning.evaluate_sync(submission)
+        {:ok, final_sub} = Learning.update_submission(submission, eval_result)
+
+        submissions = Map.put(socket.assigns.submissions || %{}, block.id, final_sub)
+        socket = assign(socket, submissions: submissions)
+
+        {:noreply, process_gate_after_submission(socket, block, final_sub)}
+
+      {:error, changeset} ->
+        error_msg =
+          changeset.errors
+          |> Keyword.values()
+          |> Enum.map_join(", ", fn {msg, _} -> msg end)
+
+        {:noreply, put_flash(socket, :error, error_msg)}
+    end
+  end
+
+  @doc false
   defp calc_visible_blocks(blocks, completed_ids) do
     Enum.reduce_while(blocks, [], fn block, acc ->
       is_completed = block.id in completed_ids
@@ -127,6 +171,63 @@ defmodule AthenaWeb.LearnLive.Player do
         {:cont, acc ++ [block]}
       end
     end)
+  end
+
+  @doc false
+  defp build_submission_content(block, answer) do
+    case block.content["question_type"] do
+      "exact_match" -> %{type: :quiz_question, text_answer: answer || ""}
+      "open" -> %{type: :quiz_question, text_answer: answer || ""}
+      "single" -> %{type: :quiz_question, selected_choices: if(answer, do: [answer], else: [])}
+      "multiple" -> %{type: :quiz_question, selected_choices: List.wrap(answer)}
+      _ -> %{type: :quiz_question}
+    end
+  end
+
+  @doc false
+  defp process_gate_after_submission(socket, block, submission) do
+    cond do
+      block.id in socket.assigns.completed_ids ->
+        socket
+
+      gate_passed?(block.completion_rule, submission) ->
+        unlock_next_content(socket, block.id)
+
+      true ->
+        socket
+    end
+  end
+
+  @doc false
+  defp gate_passed?(%{type: :submit}, _submission), do: true
+
+  defp gate_passed?(%{type: :pass_auto_grade, min_score: min_score}, submission) do
+    submission.score >= (min_score || 0)
+  end
+
+  defp gate_passed?(_rule, _submission), do: false
+
+  @doc false
+  defp unlock_next_content(socket, block_id) do
+    user = socket.assigns.current_user
+    {:ok, _} = Learning.mark_completed(user.id, block_id)
+
+    new_completed_ids = [block_id | socket.assigns.completed_ids]
+    linear_lessons = socket.assigns.linear_lessons
+
+    accessible_ids =
+      Learning.accessible_section_ids(user.id, socket.assigns.course.id, linear_lessons)
+
+    current_index =
+      Enum.find_index(linear_lessons, fn s -> s.id == socket.assigns.section.id end)
+
+    next_section = Enum.at(linear_lessons, current_index + 1)
+    next_accessible? = next_section != nil and next_section.id in accessible_ids
+
+    socket
+    |> assign(:completed_ids, new_completed_ids)
+    |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
+    |> assign(:visible_blocks, calc_visible_blocks(socket.assigns.blocks, new_completed_ids))
   end
 
   @doc """
@@ -143,13 +244,13 @@ defmodule AthenaWeb.LearnLive.Player do
     current_section_id = socket.assigns.section.id
 
     linear_lessons = Content.list_linear_lessons(course_id, user)
-    accessible_ids = Progress.accessible_section_ids(user.id, course_id, linear_lessons)
+    accessible_ids = Learning.accessible_section_ids(user.id, course_id, linear_lessons)
 
     if current_section_id in accessible_ids do
       blocks =
         Content.list_blocks_by_section(current_section_id, user) |> Enum.sort_by(& &1.order)
 
-      completed_ids = Progress.completed_block_ids(user.id, current_section_id)
+      completed_ids = Learning.completed_block_ids(user.id, current_section_id)
       tree = Content.get_course_tree(course_id, user)
 
       current_index = Enum.find_index(linear_lessons, fn s -> s.id == current_section_id end)
@@ -237,7 +338,7 @@ defmodule AthenaWeb.LearnLive.Player do
             id={"block-wrapper-#{block.id}"}
             class="animate-in slide-in-from-bottom-4 fade-in duration-500 fill-mode-both"
           >
-            <.render_block_content block={block} />
+            <.render_block_content block={block} submission={Map.get(@submissions || %{}, block.id)} />
             <div :if={gate?(block)} class="mt-8">
               <.render_gate block={block} is_completed={block.id in @completed_ids} />
             </div>
@@ -437,6 +538,152 @@ defmodule AthenaWeb.LearnLive.Player do
     """
   end
 
+  defp render_block_content(%{block: %{type: :quiz_question}} = assigns) do
+    assigns = assign_new(assigns, :submission, fn -> nil end)
+
+    ~H"""
+    <div class="my-8 p-6 lg:p-8 bg-base-100 rounded-2xl border border-base-200 shadow-sm">
+      <div
+        id={"player-quiz-tiptap-#{@block.id}-#{DateTime.to_unix(@block.updated_at)}"}
+        phx-hook="TiptapEditor"
+        data-id={"quiz-#{@block.id}"}
+        data-readonly="true"
+        phx-update="ignore"
+        data-content={Jason.encode!(@block.content["body"] || %{})}
+        class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed mb-4"
+      >
+      </div>
+
+      <div
+        :if={@submission && @block.content["general_explanation"] not in [nil, ""]}
+        class="mb-8 p-4 bg-info/10 text-info-content rounded-xl text-sm border border-info/20"
+      >
+        <strong>{gettext("Explanation:")}</strong> {@block.content["general_explanation"]}
+      </div>
+
+      <form
+        phx-submit="submit_quiz"
+        id={"quiz-form-#{@block.id}"}
+        class="mt-6 pt-6 border-t border-base-200"
+      >
+        <input type="hidden" name="block_id" value={@block.id} />
+
+        <%= case @block.content["question_type"] do %>
+          <% "exact_match" -> %>
+            <div class="form-control w-full max-w-md">
+              <input
+                type="text"
+                name="answer"
+                value={if @submission, do: @submission.content["text_answer"], else: ""}
+                placeholder={gettext("Enter your answer (flag)...")}
+                class="input input-bordered w-full font-mono text-lg disabled:opacity-60"
+                disabled={@submission && @submission.status in [:graded, :needs_review]}
+              />
+            </div>
+          <% "single" -> %>
+            <div class="space-y-4">
+              <%= for opt <- @block.content["options"] || [] do %>
+                <div class="flex flex-col gap-2">
+                  <label class="flex items-start gap-4 p-4 rounded-xl border border-base-200 hover:bg-base-200/50 hover:border-primary/50 cursor-pointer transition-all has-checked:bg-primary/5 has-checked:border-primary has-disabled:cursor-not-allowed has-disabled:opacity-70">
+                    <input
+                      type="radio"
+                      name="answer"
+                      value={opt["id"]}
+                      checked={
+                        @submission && opt["id"] in (@submission.content["selected_choices"] || [])
+                      }
+                      disabled={@submission && @submission.status in [:graded, :needs_review]}
+                      class="radio radio-primary mt-0.5"
+                    />
+                    <span class="text-base-content font-medium mt-0.5">{opt["text"]}</span>
+                  </label>
+
+                  <div
+                    :if={@submission && opt["explanation"] not in [nil, ""]}
+                    class="ml-12 mr-4 p-3 bg-base-200/50 rounded-lg text-sm text-base-content/70 border-l-4 border-l-primary/30"
+                  >
+                    {opt["explanation"]}
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          <% "multiple" -> %>
+            <div class="space-y-4">
+              <%= for opt <- @block.content["options"] || [] do %>
+                <div class="flex flex-col gap-2">
+                  <label class="flex items-start gap-4 p-4 rounded-xl border border-base-200 hover:bg-base-200/50 hover:border-primary/50 cursor-pointer transition-all has-checked:bg-primary/5 has-checked:border-primary has-disabled:cursor-not-allowed has-disabled:opacity-70">
+                    <input
+                      type="checkbox"
+                      name="answer[]"
+                      value={opt["id"]}
+                      checked={
+                        @submission && opt["id"] in (@submission.content["selected_choices"] || [])
+                      }
+                      disabled={@submission && @submission.status in [:graded, :needs_review]}
+                      class="checkbox checkbox-primary mt-0.5"
+                    />
+                    <span class="text-base-content font-medium mt-0.5">{opt["text"]}</span>
+                  </label>
+
+                  <div
+                    :if={@submission && opt["explanation"] not in [nil, ""]}
+                    class="ml-12 mr-4 p-3 bg-base-200/50 rounded-lg text-sm text-base-content/70 border-l-4 border-l-primary/30"
+                  >
+                    {opt["explanation"]}
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          <% "open" -> %>
+            <div class="form-control w-full">
+              <textarea
+                name="answer"
+                rows="5"
+                placeholder={gettext("Type your answer here...")}
+                disabled={@submission && @submission.status in [:graded, :needs_review]}
+                class="textarea textarea-bordered w-full text-base leading-relaxed disabled:opacity-60"
+              ><%= if @submission, do: @submission.content["text_answer"] %></textarea>
+            </div>
+          <% _ -> %>
+        <% end %>
+
+        <div class="mt-8 flex items-center justify-between">
+          <button
+            type="submit"
+            class="btn btn-primary"
+            disabled={@submission && @submission.status in [:graded, :needs_review]}
+          >
+            {if @submission, do: gettext("Submitted"), else: gettext("Submit Answer")}
+          </button>
+
+          <%= if @submission do %>
+            <div
+              :if={@submission.status == :graded}
+              class={[
+                "font-bold flex items-center gap-1 text-lg",
+                if(@submission.score == 100, do: "text-success", else: "text-error")
+              ]}
+            >
+              <%= if @submission.score == 100 do %>
+                <.icon name="hero-check-circle-solid" class="size-6" /> {gettext("Correct!")}
+              <% else %>
+                <.icon name="hero-x-circle-solid" class="size-6" /> {gettext("Incorrect.")}
+              <% end %>
+            </div>
+
+            <div
+              :if={@submission.status == :needs_review}
+              class="font-bold flex items-center gap-1 text-info text-lg"
+            >
+              <.icon name="hero-clock" class="size-6" /> {gettext("Pending Review")}
+            </div>
+          <% end %>
+        </div>
+      </form>
+    </div>
+    """
+  end
+
   defp render_block_content(assigns),
     do: ~H"""
     <div class="p-4 bg-base-200 rounded-lg text-sm text-base-content/50 italic">
@@ -448,9 +695,7 @@ defmodule AthenaWeb.LearnLive.Player do
     ~H"""
     <div class="py-2 border-t border-base-100">
       <%= if @is_completed do %>
-        <div class="flex items-center gap-2 text-success font-bold text-sm">
-          <.icon name="hero-check-circle-solid" class="size-5" /> {gettext("Completed")}
-        </div>
+        <div></div>
       <% else %>
         <button
           phx-click="complete_gate"
@@ -460,52 +705,6 @@ defmodule AthenaWeb.LearnLive.Player do
           {@block.completion_rule.button_text || gettext("Continue")}
         </button>
       <% end %>
-    </div>
-    """
-  end
-
-  defp render_gate(%{block: %{completion_rule: %{type: :submit}}} = assigns) do
-    ~H"""
-    <div class="p-6 bg-warning/10 border border-warning/30 rounded-xl">
-      <div class="font-bold text-warning mb-2">{gettext("Task Submission Required")}</div>
-      <p class="text-sm mb-4 text-warning/80">
-        {gettext(
-          "This block requires you to submit an answer. Submissions module is under development."
-        )}
-      </p>
-      <button
-        :if={not @is_completed}
-        phx-click="complete_gate"
-        phx-value-block-id={@block.id}
-        class="btn btn-warning btn-sm"
-      >
-        {gettext("Simulate Pass")}
-      </button>
-      <div :if={@is_completed} class="text-success font-bold text-sm flex items-center gap-1">
-        <.icon name="hero-check-circle" class="size-4" /> Submitted
-      </div>
-    </div>
-    """
-  end
-
-  defp render_gate(%{block: %{completion_rule: %{type: :pass_auto_grade}}} = assigns) do
-    ~H"""
-    <div class="p-6 bg-info/10 border border-info/30 rounded-xl">
-      <div class="font-bold text-info mb-2">{gettext("Auto-Graded Task")}</div>
-      <p class="text-sm mb-4 text-info/80">
-        {gettext("Minimum score required: %{score}", score: @block.completion_rule.min_score || 0)}
-      </p>
-      <button
-        :if={not @is_completed}
-        phx-click="complete_gate"
-        phx-value-block-id={@block.id}
-        class="btn btn-info btn-sm"
-      >
-        {gettext("Simulate Pass")}
-      </button>
-      <div :if={@is_completed} class="text-success font-bold text-sm flex items-center gap-1">
-        <.icon name="hero-check-circle" class="size-4" /> Passed
-      </div>
     </div>
     """
   end

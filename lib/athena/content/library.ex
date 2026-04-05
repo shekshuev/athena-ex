@@ -81,11 +81,11 @@ defmodule Athena.Content.Library do
       %{
         id: Ecto.UUID.generate(),
         original_block_id: block.id,
-        type: Map.get(content, "type"),
-        question: Map.get(content, "question"),
+        type: Map.get(content, "question_type"),
+        question: Map.get(content, "body"),
         options: Map.get(content, "options"),
-        correct_answer_text: Map.get(content, "correctAnswerText"),
-        explanation: Map.get(content, "explanation")
+        correct_answer_text: Map.get(content, "correct_answer"),
+        explanation: Map.get(content, "general_explanation")
       }
     end)
   end

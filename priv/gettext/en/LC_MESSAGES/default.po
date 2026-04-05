@@ -219,7 +219,7 @@ msgid "Learn"
 msgstr ""
 
 #: lib/athena_web/components/layouts/dashboard.html.heex:129
-#: lib/athena_web/live/studio_live/builder.ex:867
+#: lib/athena_web/live/studio_live/builder.ex:910
 #: lib/athena_web/live/studio_live/library.ex:66
 #: lib/athena_web/live/studio_live/library.ex:149
 #, elixir-autogen, elixir-format
@@ -327,10 +327,10 @@ msgstr ""
 #: lib/athena_web/components/core_components.ex:595
 #: lib/athena_web/live/admin_live/role_form_component.ex:202
 #: lib/athena_web/live/admin_live/user_form_component.ex:188
-#: lib/athena_web/live/studio_live/builder.ex:776
-#: lib/athena_web/live/studio_live/builder.ex:939
+#: lib/athena_web/live/studio_live/builder.ex:819
+#: lib/athena_web/live/studio_live/builder.ex:982
 #: lib/athena_web/live/studio_live/course_form_component.ex:139
-#: lib/athena_web/live/studio_live/library_form_component.ex:163
+#: lib/athena_web/live/studio_live/library_form_component.ex:186
 #: lib/athena_web/live/teaching_live/cohort_form_component.ex:263
 #: lib/athena_web/live/teaching_live/enrollment_form_component.ex:163
 #: lib/athena_web/live/teaching_live/instructor_form_component.ex:257
@@ -361,8 +361,8 @@ msgstr ""
 
 #: lib/athena_web/live/admin_live/roles.ex:286
 #: lib/athena_web/live/admin_live/users.ex:257
-#: lib/athena_web/live/studio_live/builder.ex:846
-#: lib/athena_web/live/studio_live/builder.ex:858
+#: lib/athena_web/live/studio_live/builder.ex:889
+#: lib/athena_web/live/studio_live/builder.ex:901
 #: lib/athena_web/live/studio_live/courses.ex:222
 #: lib/athena_web/live/studio_live/courses.ex:263
 #: lib/athena_web/live/studio_live/library.ex:229
@@ -419,7 +419,7 @@ msgstr ""
 #: lib/athena_web/live/admin_live/role_form_component.ex:204
 #: lib/athena_web/live/admin_live/user_form_component.ex:190
 #: lib/athena_web/live/studio_live/course_form_component.ex:141
-#: lib/athena_web/live/studio_live/library_form_component.ex:165
+#: lib/athena_web/live/studio_live/library_form_component.ex:188
 #: lib/athena_web/live/teaching_live/cohort_form_component.ex:266
 #: lib/athena_web/live/teaching_live/instructor_form_component.ex:260
 #, elixir-autogen, elixir-format
@@ -429,7 +429,7 @@ msgstr ""
 #: lib/athena_web/live/admin_live/role_form_component.ex:203
 #: lib/athena_web/live/admin_live/user_form_component.ex:189
 #: lib/athena_web/live/studio_live/course_form_component.ex:140
-#: lib/athena_web/live/studio_live/library_form_component.ex:164
+#: lib/athena_web/live/studio_live/library_form_component.ex:187
 #: lib/athena_web/live/teaching_live/cohort_form_component.ex:265
 #: lib/athena_web/live/teaching_live/instructor_form_component.ex:259
 #, elixir-autogen, elixir-format
@@ -622,7 +622,7 @@ msgid "Academic Cohort"
 msgstr ""
 
 #: lib/athena_web/live/studio_live/inspector_component.ex:87
-#: lib/athena_web/live/studio_live/inspector_component.ex:290
+#: lib/athena_web/live/studio_live/inspector_component.ex:339
 #, elixir-autogen, elixir-format
 msgid "Access & Visibility"
 msgstr ""
@@ -638,12 +638,12 @@ msgstr ""
 msgid "Add Cohort"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/canvas_component.ex:201
+#: lib/athena_web/live/studio_live/canvas_component.ex:331
 #, elixir-autogen, elixir-format
 msgid "Add Content"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/canvas_component.ex:164
+#: lib/athena_web/live/studio_live/canvas_component.ex:294
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Add Files"
 msgstr ""
@@ -669,17 +669,17 @@ msgstr ""
 msgid "Add Student to Cohort"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/canvas_component.ex:259
+#: lib/athena_web/live/studio_live/canvas_component.ex:400
 #, elixir-autogen, elixir-format
 msgid "Add from Library"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:229
+#: lib/athena_web/live/studio_live/inspector_component.ex:278
 #, elixir-autogen, elixir-format
 msgid "Alt Text"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:1231
+#: lib/athena_web/live/studio_live/builder.ex:1290
 #, elixir-autogen, elixir-format
 msgid "An unknown error occurred"
 msgstr ""
@@ -689,7 +689,7 @@ msgstr ""
 msgid "Archived"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:842
+#: lib/athena_web/live/studio_live/builder.ex:885
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Are you sure you want to delete '%{title}'? This action cannot be undone."
 msgstr ""
@@ -750,18 +750,13 @@ msgstr ""
 msgid "Assigned Courses"
 msgstr ""
 
-#: lib/athena_web/live/learn_live/player.ex:494
-#, elixir-autogen, elixir-format
-msgid "Auto-Graded Task"
-msgstr ""
-
-#: lib/athena_web/live/studio_live/builder.ex:959
+#: lib/athena_web/live/studio_live/builder.ex:1002
 #, elixir-autogen, elixir-format
 msgid "Back to Courses"
 msgstr ""
 
-#: lib/athena_web/live/learn_live/player.ex:198
-#: lib/athena_web/live/learn_live/player.ex:273
+#: lib/athena_web/live/learn_live/player.ex:299
+#: lib/athena_web/live/learn_live/player.ex:374
 #, elixir-autogen, elixir-format
 msgid "Back to Syllabus"
 msgstr ""
@@ -776,17 +771,17 @@ msgstr ""
 msgid "Block"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/library_form_component.ex:138
+#: lib/athena_web/live/studio_live/library_form_component.ex:161
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Block Type"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:393
+#: lib/athena_web/live/studio_live/builder.ex:489
 #, elixir-autogen, elixir-format
 msgid "Block deleted"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:562
+#: lib/athena_web/live/studio_live/builder.ex:604
 #, elixir-autogen, elixir-format
 msgid "Block inserted from library!"
 msgstr ""
@@ -796,22 +791,22 @@ msgstr ""
 msgid "Briefly describe what students will learn..."
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:264
+#: lib/athena_web/live/studio_live/inspector_component.ex:313
 #, elixir-autogen, elixir-format
 msgid "Button Text"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:708
+#: lib/athena_web/live/studio_live/builder.ex:751
 #, elixir-autogen, elixir-format
 msgid "Click or drag file here"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/canvas_component.ex:85
+#: lib/athena_web/live/studio_live/canvas_component.ex:215
 #, elixir-autogen, elixir-format
 msgid "Click to upload image"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/canvas_component.ex:110
+#: lib/athena_web/live/studio_live/canvas_component.ex:240
 #, elixir-autogen, elixir-format
 msgid "Click to upload video"
 msgstr ""
@@ -821,7 +816,7 @@ msgstr ""
 msgid "Code"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/canvas_component.ex:218
+#: lib/athena_web/live/studio_live/canvas_component.ex:348
 #, elixir-autogen, elixir-format
 msgid "Code Sandbox"
 msgstr ""
@@ -851,17 +846,12 @@ msgstr ""
 msgid "Cohort updated successfully"
 msgstr ""
 
-#: lib/athena_web/live/learn_live/player.ex:452
-#, elixir-autogen, elixir-format
-msgid "Completed"
-msgstr ""
-
-#: lib/athena_web/live/learn_live/player.ex:443
+#: lib/athena_web/live/learn_live/player.ex:690
 #, elixir-autogen, elixir-format
 msgid "Content type:"
 msgstr ""
 
-#: lib/athena_web/live/learn_live/player.ex:460
+#: lib/athena_web/live/learn_live/player.ex:705
 #, elixir-autogen, elixir-format
 msgid "Continue"
 msgstr ""
@@ -876,19 +866,19 @@ msgstr ""
 msgid "Course"
 msgstr ""
 
-#: lib/athena_web/live/learn_live/player.ex:267
+#: lib/athena_web/live/learn_live/player.ex:368
 #, elixir-autogen, elixir-format
 msgid "Course Completed!"
 msgstr ""
 
-#: lib/athena_web/live/learn_live/player.ex:216
-#: lib/athena_web/live/learn_live/player.ex:283
-#: lib/athena_web/live/studio_live/builder.ex:819
+#: lib/athena_web/live/learn_live/player.ex:317
+#: lib/athena_web/live/learn_live/player.ex:384
+#: lib/athena_web/live/studio_live/builder.ex:862
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Course Map"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:808
+#: lib/athena_web/live/studio_live/builder.ex:851
 #, elixir-autogen, elixir-format
 msgid "Course Root (Top Level)"
 msgstr ""
@@ -961,8 +951,8 @@ msgstr ""
 msgid "Created"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:856
-#: lib/athena_web/live/studio_live/inspector_component.ex:351
+#: lib/athena_web/live/studio_live/builder.ex:899
+#: lib/athena_web/live/studio_live/inspector_component.ex:400
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Delete Block"
 msgstr ""
@@ -982,7 +972,7 @@ msgstr ""
 msgid "Delete Instructor"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:840
+#: lib/athena_web/live/studio_live/builder.ex:883
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Delete Lesson"
 msgstr ""
@@ -1050,7 +1040,7 @@ msgid "Edit Template"
 msgstr ""
 
 #: lib/athena_web/live/studio_live/inspector_component.ex:95
-#: lib/athena_web/live/studio_live/inspector_component.ex:299
+#: lib/athena_web/live/studio_live/inspector_component.ex:348
 #, elixir-autogen, elixir-format
 msgid "Enrolled Students"
 msgstr ""
@@ -1060,22 +1050,22 @@ msgstr ""
 msgid "Enter"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:1198
+#: lib/athena_web/live/studio_live/builder.ex:1257
 #, elixir-autogen, elixir-format
 msgid "Error saving attachments."
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:202
+#: lib/athena_web/live/studio_live/inspector_component.ex:251
 #, elixir-autogen, elixir-format
 msgid "Execution Mode"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:189
+#: lib/athena_web/live/studio_live/inspector_component.ex:238
 #, elixir-autogen, elixir-format
 msgid "Execution Settings"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:151
+#: lib/athena_web/live/studio_live/builder.ex:140
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Failed to add section"
 msgstr ""
@@ -1090,23 +1080,22 @@ msgstr ""
 msgid "Failed to assign course."
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:451
+#: lib/athena_web/live/studio_live/builder.ex:341
 #, elixir-autogen, elixir-format
 msgid "Failed to create attachment block"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:304
-#: lib/athena_web/live/studio_live/builder.ex:321
+#: lib/athena_web/live/studio_live/builder.ex:1292
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Failed to create block"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:414
+#: lib/athena_web/live/studio_live/builder.ex:318
 #, elixir-autogen, elixir-format
 msgid "Failed to create image block"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:431
+#: lib/athena_web/live/studio_live/builder.ex:328
 #, elixir-autogen, elixir-format
 msgid "Failed to create video block"
 msgstr ""
@@ -1131,7 +1120,7 @@ msgstr ""
 msgid "Failed to delete template"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:565
+#: lib/athena_web/live/studio_live/builder.ex:607
 #, elixir-autogen, elixir-format
 msgid "Failed to insert block"
 msgstr ""
@@ -1146,58 +1135,58 @@ msgstr ""
 msgid "Failed to remove student."
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:603
+#: lib/athena_web/live/studio_live/builder.ex:646
 #, elixir-autogen, elixir-format
 msgid "Failed to save to library"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:1223
+#: lib/athena_web/live/studio_live/builder.ex:1282
 #, elixir-autogen, elixir-format
 msgid "File is too large"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/canvas_component.ex:247
+#: lib/athena_web/live/studio_live/canvas_component.ex:388
 #, elixir-autogen, elixir-format
 msgid "Files & Materials"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:1193
+#: lib/athena_web/live/studio_live/builder.ex:1252
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Files attached successfully!"
 msgstr ""
 
 #: lib/athena_web/live/studio_live/inspector_component.ex:98
-#: lib/athena_web/live/studio_live/inspector_component.ex:302
+#: lib/athena_web/live/studio_live/inspector_component.ex:351
 #, elixir-autogen, elixir-format
 msgid "Hidden (Draft)"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:255
+#: lib/athena_web/live/studio_live/inspector_component.ex:304
 #, elixir-autogen, elixir-format
 msgid "How to unlock the next block?"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/canvas_component.ex:229
+#: lib/athena_web/live/studio_live/canvas_component.ex:370
 #, elixir-autogen, elixir-format
 msgid "Image"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:1169
+#: lib/athena_web/live/studio_live/builder.ex:1227
 #, elixir-autogen, elixir-format
 msgid "Image inserted into text!"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:298
+#: lib/athena_web/live/studio_live/inspector_component.ex:347
 #, elixir-autogen, elixir-format
 msgid "Inherit from Section"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:910
+#: lib/athena_web/live/studio_live/builder.ex:953
 #, elixir-autogen, elixir-format
 msgid "Insert Block"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:662
+#: lib/athena_web/live/studio_live/builder.ex:705
 #, elixir-autogen, elixir-format
 msgid "Inspector"
 msgstr ""
@@ -1222,13 +1211,13 @@ msgstr ""
 msgid "Joined At"
 msgstr ""
 
-#: lib/athena_web/live/learn_live/player.ex:256
+#: lib/athena_web/live/learn_live/player.ex:357
 #, elixir-autogen, elixir-format
 msgid "Lesson Completed!"
 msgstr ""
 
 #: lib/athena_web/live/studio_live/inspector_component.ex:120
-#: lib/athena_web/live/studio_live/inspector_component.ex:324
+#: lib/athena_web/live/studio_live/inspector_component.ex:373
 #, elixir-autogen, elixir-format
 msgid "Lock At (Optional)"
 msgstr ""
@@ -1253,24 +1242,19 @@ msgstr ""
 msgid "Manage your educational content and materials."
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:212
+#: lib/athena_web/live/studio_live/inspector_component.ex:261
 #, elixir-autogen, elixir-format
 msgid "Media Settings"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:1212
+#: lib/athena_web/live/studio_live/builder.ex:1271
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Media uploaded successfully!"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:276
+#: lib/athena_web/live/studio_live/inspector_component.ex:325
 #, elixir-autogen, elixir-format
 msgid "Minimum Score to Pass"
-msgstr ""
-
-#: lib/athena_web/live/learn_live/player.ex:496
-#, elixir-autogen, elixir-format
-msgid "Minimum score required: %{score}"
 msgstr ""
 
 #: lib/athena_web/live/studio_live/inspector_component.ex:137
@@ -1278,22 +1262,22 @@ msgstr ""
 msgid "Move To..."
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:797
+#: lib/athena_web/live/studio_live/builder.ex:840
 #, elixir-autogen, elixir-format
 msgid "Move to..."
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:279
+#: lib/athena_web/live/studio_live/builder.ex:265
 #, elixir-autogen, elixir-format
 msgid "Moved successfully"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:131
+#: lib/athena_web/live/studio_live/builder.ex:120
 #, elixir-autogen, elixir-format
 msgid "New Lesson"
 msgstr ""
 
-#: lib/athena_web/live/learn_live/player.ex:263
+#: lib/athena_web/live/learn_live/player.ex:364
 #, elixir-autogen, elixir-format
 msgid "Next Lesson"
 msgstr ""
@@ -1318,19 +1302,21 @@ msgstr ""
 msgid "No sections yet. Create your first one!"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:915
+#: lib/athena_web/live/studio_live/builder.ex:958
 #, elixir-autogen, elixir-format
 msgid "No templates found."
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:379
+#: lib/athena_web/live/studio_live/inspector_component.ex:436
 #, elixir-autogen, elixir-format
 msgid "None"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:360
-#: lib/athena_web/live/studio_live/inspector_component.ex:364
-#: lib/athena_web/live/studio_live/inspector_component.ex:369
+#: lib/athena_web/live/studio_live/inspector_component.ex:409
+#: lib/athena_web/live/studio_live/inspector_component.ex:413
+#: lib/athena_web/live/studio_live/inspector_component.ex:418
+#: lib/athena_web/live/studio_live/inspector_component.ex:425
+#: lib/athena_web/live/studio_live/inspector_component.ex:430
 #, elixir-autogen, elixir-format
 msgid "None (Scroll past)"
 msgstr ""
@@ -1365,8 +1351,8 @@ msgstr ""
 msgid "Overview"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:371
-#: lib/athena_web/live/studio_live/inspector_component.ex:376
+#: lib/athena_web/live/studio_live/inspector_component.ex:420
+#: lib/athena_web/live/studio_live/inspector_component.ex:432
 #, elixir-autogen, elixir-format
 msgid "Pass Auto-Grade"
 msgstr ""
@@ -1393,17 +1379,17 @@ msgstr ""
 msgid "Please select a student."
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:238
+#: lib/athena_web/live/studio_live/inspector_component.ex:287
 #, elixir-autogen, elixir-format
 msgid "Poster URL"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/canvas_component.ex:173
+#: lib/athena_web/live/studio_live/canvas_component.ex:303
 #, elixir-autogen, elixir-format
 msgid "Preview block content"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:195
+#: lib/athena_web/live/studio_live/inspector_component.ex:244
 #, elixir-autogen, elixir-format
 msgid "Programming Language"
 msgstr ""
@@ -1413,13 +1399,13 @@ msgstr ""
 msgid "Progress"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:248
+#: lib/athena_web/live/studio_live/inspector_component.ex:297
 #, elixir-autogen, elixir-format
 msgid "Progression Rules"
 msgstr ""
 
 #: lib/athena_web/live/studio_live/inspector_component.ex:96
-#: lib/athena_web/live/studio_live/inspector_component.ex:300
+#: lib/athena_web/live/studio_live/inspector_component.ex:349
 #, elixir-autogen, elixir-format
 msgid "Public (Everyone)"
 msgstr ""
@@ -1429,6 +1415,7 @@ msgstr ""
 msgid "Published"
 msgstr ""
 
+#: lib/athena_web/live/studio_live/canvas_component.ex:359
 #: lib/athena_web/live/studio_live/library_form_component.ex:27
 #, elixir-autogen, elixir-format
 msgid "Quiz Question"
@@ -1457,57 +1444,58 @@ msgstr ""
 msgid "Remove Student"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:747
-#: lib/athena_web/live/studio_live/canvas_component.ex:145
+#: lib/athena_web/live/studio_live/builder.ex:790
+#: lib/athena_web/live/studio_live/canvas_component.ex:275
 #, elixir-autogen, elixir-format
 msgid "Remove file"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:857
+#: lib/athena_web/live/studio_live/builder.ex:900
 #, elixir-autogen, elixir-format
 msgid "Remove this content block from the lesson?"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:222
+#: lib/athena_web/live/studio_live/inspector_component.ex:271
 #, elixir-autogen, elixir-format
 msgid "Replace File"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:360
+#: lib/athena_web/live/studio_live/inspector_component.ex:409
+#: lib/athena_web/live/studio_live/inspector_component.ex:413
 #, elixir-autogen, elixir-format
 msgid "Require Button Click"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:364
-#: lib/athena_web/live/studio_live/inspector_component.ex:370
-#: lib/athena_web/live/studio_live/inspector_component.ex:376
+#: lib/athena_web/live/studio_live/inspector_component.ex:419
+#: lib/athena_web/live/studio_live/inspector_component.ex:425
+#: lib/athena_web/live/studio_live/inspector_component.ex:431
 #, elixir-autogen, elixir-format
 msgid "Require Submission"
 msgstr ""
 
 #: lib/athena_web/live/studio_live/inspector_component.ex:97
-#: lib/athena_web/live/studio_live/inspector_component.ex:301
+#: lib/athena_web/live/studio_live/inspector_component.ex:350
 #, elixir-autogen, elixir-format
 msgid "Restricted (Time)"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:941
+#: lib/athena_web/live/studio_live/builder.ex:984
 #, elixir-autogen, elixir-format
 msgid "Save Template"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:925
-#: lib/athena_web/live/studio_live/inspector_component.ex:341
+#: lib/athena_web/live/studio_live/builder.ex:968
+#: lib/athena_web/live/studio_live/inspector_component.ex:390
 #, elixir-autogen, elixir-format
 msgid "Save to Library"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:600
+#: lib/athena_web/live/studio_live/builder.ex:643
 #, elixir-autogen, elixir-format
 msgid "Saved to library!"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:951
+#: lib/athena_web/live/studio_live/builder.ex:994
 #, elixir-autogen, elixir-format
 msgid "Screen too small"
 msgstr ""
@@ -1547,7 +1535,7 @@ msgstr ""
 msgid "Search courses..."
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:882
+#: lib/athena_web/live/studio_live/builder.ex:925
 #: lib/athena_web/live/studio_live/library.ex:175
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Search templates..."
@@ -1563,12 +1551,12 @@ msgstr ""
 msgid "Section Title"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:148
+#: lib/athena_web/live/studio_live/builder.ex:137
 #, elixir-autogen, elixir-format
 msgid "Section added"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:203
+#: lib/athena_web/live/studio_live/builder.ex:190
 #, elixir-autogen, elixir-format
 msgid "Section deleted"
 msgstr ""
@@ -1586,12 +1574,6 @@ msgstr ""
 #: lib/athena_web/live/learn_live/index.ex:72
 #, elixir-autogen, elixir-format
 msgid "Self-paced"
-msgstr ""
-
-#: lib/athena_web/live/learn_live/player.ex:482
-#: lib/athena_web/live/learn_live/player.ex:504
-#, elixir-autogen, elixir-format
-msgid "Simulate Pass"
 msgstr ""
 
 #: lib/athena_web/live/teaching_live/cohort_details.ex:105
@@ -1614,28 +1596,23 @@ msgstr ""
 msgid "Tags"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:934
-#: lib/athena_web/live/studio_live/library_form_component.ex:146
+#: lib/athena_web/live/studio_live/builder.ex:977
+#: lib/athena_web/live/studio_live/library_form_component.ex:169
 #, elixir-autogen, elixir-format
 msgid "Tags (comma separated)"
 msgstr ""
 
-#: lib/athena_web/live/learn_live/player.ex:470
-#, elixir-autogen, elixir-format
-msgid "Task Submission Required"
-msgstr ""
-
-#: lib/athena_web/live/studio_live/library_form_component.ex:124
+#: lib/athena_web/live/studio_live/library_form_component.ex:147
 #, elixir-autogen, elixir-format
 msgid "Template Metadata"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:929
+#: lib/athena_web/live/studio_live/builder.ex:972
 #, elixir-autogen, elixir-format
 msgid "Template Title"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/library_form_component.ex:90
+#: lib/athena_web/live/studio_live/library_form_component.ex:104
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Template created successfully"
 msgstr ""
@@ -1645,7 +1622,7 @@ msgstr ""
 msgid "Template deleted successfully"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/library_form_component.ex:75
+#: lib/athena_web/live/studio_live/library_form_component.ex:89
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Template updated successfully"
 msgstr ""
@@ -1655,24 +1632,19 @@ msgstr ""
 msgid "Text"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/canvas_component.ex:209
+#: lib/athena_web/live/studio_live/canvas_component.ex:339
 #, elixir-autogen, elixir-format
 msgid "Text Block"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:954
+#: lib/athena_web/live/studio_live/builder.ex:997
 #, elixir-autogen, elixir-format
 msgid "The Course Builder requires a desktop or tablet screen to work comfortably. Please open this page on a larger device."
 msgstr ""
 
-#: lib/athena_web/live/learn_live/player.ex:173
+#: lib/athena_web/live/learn_live/player.ex:274
 #, elixir-autogen, elixir-format
 msgid "The instructor modified this content. Returning to safe zone."
-msgstr ""
-
-#: lib/athena_web/live/learn_live/player.ex:472
-#, elixir-autogen, elixir-format
-msgid "This block requires you to submit an answer. Submissions module is under development."
 msgstr ""
 
 #: lib/athena_web/live/teaching_live/enrollment_form_component.ex:82
@@ -1686,7 +1658,7 @@ msgid "This folder is empty."
 msgstr ""
 
 #: lib/athena_web/live/learn_live/course.ex:152
-#: lib/athena_web/live/studio_live/canvas_component.ex:183
+#: lib/athena_web/live/studio_live/canvas_component.ex:313
 #, elixir-autogen, elixir-format
 msgid "This section is empty."
 msgstr ""
@@ -1699,7 +1671,7 @@ msgstr ""
 #: lib/athena_web/live/studio_live/course_form_component.ex:116
 #: lib/athena_web/live/studio_live/courses.ex:187
 #: lib/athena_web/live/studio_live/library.ex:184
-#: lib/athena_web/live/studio_live/library_form_component.ex:130
+#: lib/athena_web/live/studio_live/library_form_component.ex:153
 #: lib/athena_web/live/teaching_live/instructor_form_component.ex:240
 #: lib/athena_web/live/teaching_live/instructors.ex:191
 #, elixir-autogen, elixir-format
@@ -1733,37 +1705,37 @@ msgid "Unknown/Deleted"
 msgstr ""
 
 #: lib/athena_web/live/studio_live/inspector_component.ex:115
-#: lib/athena_web/live/studio_live/inspector_component.ex:319
+#: lib/athena_web/live/studio_live/inspector_component.ex:368
 #, elixir-autogen, elixir-format
 msgid "Unlock At (Optional)"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:788
+#: lib/athena_web/live/studio_live/builder.ex:831
 #, elixir-autogen, elixir-format
 msgid "Upload"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:222
+#: lib/athena_web/live/studio_live/inspector_component.ex:271
 #, elixir-autogen, elixir-format
 msgid "Upload File"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:681
+#: lib/athena_web/live/studio_live/builder.ex:724
 #, elixir-autogen, elixir-format
 msgid "Upload Media"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:1229
+#: lib/athena_web/live/studio_live/builder.ex:1288
 #, elixir-autogen, elixir-format
 msgid "Upload failed. Check your internet connection or cloud storage settings."
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:788
+#: lib/athena_web/live/studio_live/builder.ex:831
 #, elixir-autogen, elixir-format
 msgid "Uploading..."
 msgstr ""
 
-#: lib/athena_web/live/studio_live/library_form_component.ex:157
+#: lib/athena_web/live/studio_live/library_form_component.ex:180
 #, elixir-autogen, elixir-format
 msgid "Used for filtering and dynamic quiz generation."
 msgstr ""
@@ -1778,7 +1750,7 @@ msgstr ""
 msgid "User Account"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/canvas_component.ex:238
+#: lib/athena_web/live/studio_live/canvas_component.ex:379
 #, elixir-autogen, elixir-format
 msgid "Video"
 msgstr ""
@@ -1788,7 +1760,7 @@ msgstr ""
 msgid "View Details"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:829
+#: lib/athena_web/live/studio_live/builder.ex:872
 #, elixir-autogen, elixir-format
 msgid "View Root Level"
 msgstr ""
@@ -1798,7 +1770,7 @@ msgstr ""
 msgid "Visibility Status"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:296
+#: lib/athena_web/live/studio_live/inspector_component.ex:345
 #, elixir-autogen, elixir-format
 msgid "Who can see this block?"
 msgstr ""
@@ -1878,7 +1850,7 @@ msgstr ""
 msgid "You don't have permission to edit templates."
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:1226
+#: lib/athena_web/live/studio_live/builder.ex:1285
 #, elixir-autogen, elixir-format
 msgid "You have selected an unacceptable file type"
 msgstr ""
@@ -1893,17 +1865,127 @@ msgstr ""
 msgid "e.g. Advanced Elixir Mastery"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/library_form_component.ex:131
+#: lib/athena_web/live/studio_live/library_form_component.ex:154
 #, elixir-autogen, elixir-format
 msgid "e.g. Standard Python Quiz"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/inspector_component.ex:265
+#: lib/athena_web/live/studio_live/inspector_component.ex:314
 #, elixir-autogen, elixir-format
 msgid "e.g. Understood, Continue"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/library_form_component.ex:154
+#: lib/athena_web/live/studio_live/library_form_component.ex:177
 #, elixir-autogen, elixir-format
 msgid "elixir, hard, quiz"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/canvas_component.ex:185
+#, elixir-autogen, elixir-format
+msgid "Add Option"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:216
+#, elixir-autogen, elixir-format
+msgid "Case Sensitive"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/canvas_component.ex:88
+#, elixir-autogen, elixir-format
+msgid "Correct Answer (Flag)"
+msgstr ""
+
+#: lib/athena_web/live/learn_live/player.ex:668
+#, elixir-autogen, elixir-format
+msgid "Correct!"
+msgstr ""
+
+#: lib/athena_web/live/learn_live/player.ex:578
+#, elixir-autogen, elixir-format
+msgid "Enter your answer (flag)..."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:198
+#, elixir-autogen, elixir-format
+msgid "Exact Match (CTF / Text)"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/canvas_component.ex:158
+#, elixir-autogen, elixir-format
+msgid "Explanation (optional)"
+msgstr ""
+
+#: lib/athena_web/live/learn_live/player.ex:561
+#, elixir-autogen, elixir-format
+msgid "Explanation:"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/builder.ex:308
+#, elixir-autogen, elixir-format, fuzzy
+msgid "Failed to create quiz block"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:226
+#, elixir-autogen, elixir-format
+msgid "General Explanation (shown after submission)"
+msgstr ""
+
+#: lib/athena_web/live/learn_live/player.ex:670
+#, elixir-autogen, elixir-format
+msgid "Incorrect."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:200
+#, elixir-autogen, elixir-format
+msgid "Multiple Choice (Checkbox)"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:201
+#, elixir-autogen, elixir-format
+msgid "Open Question (Essay)"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/canvas_component.ex:149
+#, elixir-autogen, elixir-format
+msgid "Option text"
+msgstr ""
+
+#: lib/athena_web/live/learn_live/player.ex:678
+#, elixir-autogen, elixir-format
+msgid "Pending Review"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:189
+#, elixir-autogen, elixir-format, fuzzy
+msgid "Question Settings"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:196
+#, elixir-autogen, elixir-format
+msgid "Question Type"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:199
+#, elixir-autogen, elixir-format
+msgid "Single Choice (Radio)"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/canvas_component.ex:189
+#, elixir-autogen, elixir-format
+msgid "Student will see a text area to write their open answer."
+msgstr ""
+
+#: lib/athena_web/live/learn_live/player.ex:656
+#, elixir-autogen, elixir-format
+msgid "Submit Answer"
+msgstr ""
+
+#: lib/athena_web/live/learn_live/player.ex:656
+#, elixir-autogen, elixir-format
+msgid "Submitted"
+msgstr ""
+
+#: lib/athena_web/live/learn_live/player.ex:642
+#, elixir-autogen, elixir-format
+msgid "Type your answer here..."
 msgstr ""

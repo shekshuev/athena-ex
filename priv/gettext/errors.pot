@@ -155,12 +155,12 @@ msgstr ""
 msgid "You don't have permission to access this page."
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:1074
+#: lib/athena_web/live/studio_live/builder.ex:1132
 #, elixir-autogen, elixir-format
 msgid "Could not generate upload URL"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:1219
+#: lib/athena_web/live/studio_live/builder.ex:1278
 #, elixir-autogen, elixir-format
 msgid "Error saving media data."
 msgstr ""
@@ -193,4 +193,34 @@ msgstr ""
 #: lib/athena/learning/enrollment.ex:66
 #, elixir-autogen, elixir-format
 msgid "must have either account_id or cohort_id"
+msgstr ""
+
+#: lib/athena/learning/submission_content.ex:70
+#, elixir-autogen, elixir-format
+msgid "at least one file is required"
+msgstr ""
+
+#: lib/athena/learning/submission_content.ex:45
+#, elixir-autogen, elixir-format
+msgid "can't be blank for text answer"
+msgstr ""
+
+#: lib/athena/learning/submission_content.ex:56
+#, elixir-autogen, elixir-format
+msgid "code cannot be empty"
+msgstr ""
+
+#: lib/athena/learning/submission_content.ex:103
+#, elixir-autogen, elixir-format
+msgid "exam answers cannot be empty"
+msgstr ""
+
+#: lib/athena/learning/submission_content.ex:59
+#, elixir-autogen, elixir-format
+msgid "language is required for code"
+msgstr ""
+
+#: lib/athena/learning/submission_content.ex:87
+#, elixir-autogen, elixir-format
+msgid "please provide an answer or select a choice"
 msgstr ""

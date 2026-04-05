@@ -62,6 +62,164 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
                     class="min-h-[100px]"
                   >
                   </div>
+                <% block.type == :quiz_question -> %>
+                  <div
+                    id={"tiptap-#{block.id}"}
+                    phx-hook="TiptapEditor"
+                    data-id={block.id}
+                    phx-update="ignore"
+                    data-content={Jason.encode!(block.content["body"] || %{})}
+                    class="min-h-[50px]"
+                  >
+                  </div>
+
+                  <div class="mt-4 pt-4 border-t border-base-200">
+                    <form
+                      phx-change="update_quiz_content"
+                      phx-submit="ignore"
+                      id={"quiz-form-#{block.id}"}
+                    >
+                      <input type="hidden" name="block_id" value={block.id} />
+                      <%= case block.content["question_type"] do %>
+                        <% "exact_match" -> %>
+                          <div class="form-control">
+                            <label class="label">
+                              <span class="label-text font-bold text-xs uppercase tracking-wider text-base-content/70">
+                                {gettext("Correct Answer (Flag)")}
+                              </span>
+                            </label>
+                            <div class="flex items-center gap-3">
+                              <.icon name="hero-flag" class="size-5 text-primary" />
+                              <input
+                                type="text"
+                                name="correct_answer"
+                                value={block.content["correct_answer"]}
+                                class="input input-bordered flex-1 font-mono"
+                                placeholder="flag{...}"
+                                phx-debounce="500"
+                              />
+                            </div>
+                          </div>
+                        <% type when type in ["single", "multiple"] -> %>
+                          <div class="space-y-3" id={"quiz-options-#{block.id}"}>
+                            <%= for {opt, index} <- Enum.with_index(block.content["options"] || []) do %>
+                              <div class="flex items-start gap-3 group relative">
+                                <div class="pt-3 cursor-pointer">
+                                  <%= if type == "single" do %>
+                                    <input
+                                      type="radio"
+                                      name="correct_option_id"
+                                      value={opt["id"]}
+                                      checked={opt["is_correct"] in [true, "true"]}
+                                      class="radio radio-primary radio-sm"
+                                    />
+                                    <input
+                                      type="hidden"
+                                      name={"options[#{index}][is_correct]"}
+                                      value="false"
+                                    />
+                                  <% else %>
+                                    <input
+                                      type="hidden"
+                                      name={"options[#{index}][is_correct]"}
+                                      value="false"
+                                    />
+                                    <input
+                                      type="checkbox"
+                                      name={"options[#{index}][is_correct]"}
+                                      value="true"
+                                      checked={opt["is_correct"] in [true, "true"]}
+                                      class="checkbox checkbox-primary checkbox-sm"
+                                    />
+                                  <% end %>
+                                </div>
+
+                                <div class="flex-1 bg-base-100/50 p-2 rounded-lg border border-base-200/50 hover:border-base-300 transition-colors focus-within:border-primary focus-within:ring-1 focus-within:ring-primary space-y-2">
+                                  <input
+                                    type="hidden"
+                                    name={"options[#{index}][id]"}
+                                    value={opt["id"]}
+                                  />
+
+                                  <input
+                                    type="text"
+                                    name={"options[#{index}][text]"}
+                                    value={opt["text"]}
+                                    class="w-full bg-transparent border-none outline-none focus:ring-0 font-medium text-base-content placeholder:text-base-content/30"
+                                    placeholder={gettext("Option text")}
+                                    phx-debounce="500"
+                                  />
+
+                                  <input
+                                    type="text"
+                                    name={"options[#{index}][explanation]"}
+                                    value={opt["explanation"]}
+                                    class="w-full bg-transparent border-none outline-none focus:ring-0 text-sm text-base-content/60 placeholder:text-base-content/30"
+                                    placeholder={gettext("Explanation (optional)")}
+                                    phx-debounce="500"
+                                  />
+                                </div>
+
+                                <div class="pt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    type="button"
+                                    phx-click="remove_quiz_option"
+                                    phx-value-id={block.id}
+                                    phx-value-option_id={opt["id"]}
+                                    class="btn btn-ghost btn-sm btn-square text-error hover:bg-error/20"
+                                  >
+                                    <.icon name="hero-x-mark" class="size-5" />
+                                  </button>
+                                </div>
+                              </div>
+                            <% end %>
+                          </div>
+
+                          <button
+                            type="button"
+                            phx-click="add_quiz_option"
+                            phx-value-id={block.id}
+                            class="btn btn-ghost btn-sm mt-4 text-primary font-bold"
+                          >
+                            <.icon name="hero-plus" class="size-4 mr-1" />
+                            {gettext("Add Option")}
+                          </button>
+                        <% "open" -> %>
+                          <div class="text-sm text-base-content/50 italic bg-base-200/50 p-4 rounded-lg border border-dashed border-base-300">
+                            {gettext("Student will see a text area to write their open answer.")}
+                          </div>
+                        <% _ -> %>
+                      <% end %>
+                    </form>
+                  </div>
+                <% block.type == :quiz_exam -> %>
+                  <div class="bg-base-200/30 p-8 rounded-xl border-2 border-dashed border-base-300 flex flex-col items-center justify-center text-center gap-4">
+                    <div class="p-4 bg-primary/10 text-primary rounded-full">
+                      <.icon name="hero-academic-cap" class="size-8" />
+                    </div>
+                    <div>
+                      <h3 class="font-bold text-lg text-base-content">
+                        {gettext("Quiz Exam Generator")}
+                      </h3>
+                      <p class="text-sm text-base-content/60 max-w-md mx-auto mt-2">
+                        {gettext(
+                          "This block will dynamically generate a unique exam for each student based on the tags and configuration set in the inspector."
+                        )}
+                      </p>
+                    </div>
+                    <div class="flex flex-wrap items-center justify-center gap-2 mt-2">
+                      <span class="badge badge-primary badge-sm font-bold py-3 px-3">
+                        {block.content["count"] || 10} {gettext("Questions")}
+                      </span>
+                      <span
+                        :if={block.content["time_limit"]}
+                        class="badge badge-neutral badge-sm font-bold py-3 px-3"
+                      >
+                        <.icon name="hero-clock" class="size-4 mr-1.5" />
+                        {block.content["time_limit"]} {gettext("min")}
+                      </span>
+                    </div>
+                  </div>
                 <% block.type == :image -> %>
                   <%= if block.content["url"] do %>
                     <img
@@ -218,6 +376,26 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
                   <.icon name="hero-code-bracket" class="size-5 opacity-50" /> {gettext(
                     "Code Sandbox"
                   )}
+                </.button>
+              </li>
+              <li>
+                <.button
+                  phx-click="add_quiz_question_block"
+                  onclick="document.activeElement.blur()"
+                  class="btn btn-ghost justify-start font-medium gap-3 h-12"
+                >
+                  <.icon name="hero-question-mark-circle" class="size-5 opacity-50" /> {gettext(
+                    "Quiz Question"
+                  )}
+                </.button>
+              </li>
+              <li>
+                <.button
+                  phx-click="add_quiz_exam_block"
+                  onclick="document.activeElement.blur()"
+                  class="btn btn-ghost justify-start font-medium gap-3 h-12"
+                >
+                  <.icon name="hero-academic-cap" class="size-5 opacity-50" /> {gettext("Quiz Exam")}
                 </.button>
               </li>
               <li>

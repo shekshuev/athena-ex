@@ -30,6 +30,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       assert html =~ "Add Content"
       assert html =~ "Text Block"
       assert html =~ "Code Sandbox"
+      assert html =~ "Quiz Exam"
+      assert html =~ "Quiz Question"
       assert html =~ "Image"
       assert html =~ "Video"
       assert html =~ "Files &amp; Materials"
@@ -201,6 +203,85 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       assert html =~ "delete_attachment"
       assert html =~ ~s(phx-value-url="/media/hw.pdf")
     end
+
+    test "renders exact_match quiz block with text input", %{conn: _conn} do
+      quiz_block = %Block{
+        id: "block-quiz-exact",
+        type: :quiz_question,
+        content: %{
+          "question_type" => "exact_match",
+          "correct_answer" => "flag{h4ck3d}",
+          "body" => %{"text" => "What is the flag?"}
+        }
+      }
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [quiz_block],
+          active_block_id: nil
+        )
+
+      assert html =~ ~s(id="tiptap-block-quiz-exact")
+      assert html =~ "Correct Answer (Flag)"
+      assert html =~ ~s(name="correct_answer")
+      assert html =~ "flag{h4ck3d}"
+    end
+
+    test "renders single/multiple choice quiz blocks with options", %{conn: _conn} do
+      quiz_block = %Block{
+        id: "block-quiz-multi",
+        type: :quiz_question,
+        content: %{
+          "question_type" => "multiple",
+          "body" => %{},
+          "options" => [
+            %{
+              "id" => "opt1",
+              "text" => "Option A",
+              "is_correct" => true,
+              "explanation" => "Expl 1"
+            },
+            %{"id" => "opt2", "text" => "Option B", "is_correct" => false, "explanation" => ""}
+          ]
+        }
+      }
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [quiz_block],
+          active_block_id: nil
+        )
+
+      assert html =~ "Option A"
+      assert html =~ "Expl 1"
+      assert html =~ "Option B"
+      assert html =~ ~s(type="checkbox")
+      assert html =~ ~s(name="options[0][is_correct]")
+      assert html =~ "Add Option"
+      assert html =~ "remove_quiz_option"
+    end
+
+    test "renders open quiz block with text area placeholder", %{conn: _conn} do
+      quiz_block = %Block{
+        id: "block-quiz-open",
+        type: :quiz_question,
+        content: %{
+          "question_type" => "open",
+          "body" => %{}
+        }
+      }
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [quiz_block],
+          active_block_id: nil
+        )
+
+      assert html =~ "Student will see a text area to write their open answer."
+    end
   end
 
   describe "Active State" do
@@ -220,5 +301,30 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       refute html =~ ~r/id="block-block-2"[^>]*ring-primary shadow-md/
       assert html =~ ~r/id="block-block-2"[^>]*ring-base-200/
     end
+  end
+
+  test "renders quiz_exam block with preview card and badges", %{conn: _conn} do
+    exam_block = %Block{
+      id: "block-exam-1",
+      type: :quiz_exam,
+      content: %{
+        "count" => 25,
+        "time_limit" => 60
+      }
+    }
+
+    html =
+      render_component(CanvasComponent,
+        active_section_id: "sec-1",
+        blocks: [exam_block],
+        active_block_id: nil
+      )
+
+    assert html =~ "Quiz Exam Generator"
+    assert html =~ "25"
+    assert html =~ "Questions"
+    assert html =~ "60"
+    assert html =~ "min"
+    assert html =~ "hero-clock"
   end
 end

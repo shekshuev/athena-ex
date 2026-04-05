@@ -98,21 +98,10 @@ defmodule AthenaWeb.StudioLive.Builder do
     {:noreply, assign(socket, server_now: DateTime.utc_now() |> DateTime.truncate(:second))}
   end
 
-  @doc """
-  Handles URL parameters for the builder view.
-  """
-  @spec handle_params(map(), String.t(), Phoenix.LiveView.Socket.t()) ::
-          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_params(_params, _url, socket) do
     {:noreply, socket}
   end
-
-  @doc """
-  Handles UI events for managing sections, blocks, and media uploads.
-  """
-  @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
-          {:noreply, Phoenix.LiveView.Socket.t()}
 
   # --- SECTION EVENTS ---
 
@@ -179,9 +168,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
     if section do
       {:ok, _} = Content.reorder_section(section, new_index)
-
       updated_sections = Content.get_course_tree(socket.assigns.course.id)
-
       {:noreply, assign(socket, sections: updated_sections)}
     else
       {:noreply, socket}
@@ -270,7 +257,6 @@ defmodule AthenaWeb.StudioLive.Builder do
 
     if section do
       {:ok, _} = Content.update_section(section, %{"parent_id" => clean_target_id})
-
       updated_sections = Content.get_course_tree(socket.assigns.course.id)
 
       {:noreply,
@@ -295,14 +281,7 @@ defmodule AthenaWeb.StudioLive.Builder do
       "section_id" => socket.assigns.active_section_id
     }
 
-    case Content.create_block(attrs) do
-      {:ok, block} ->
-        updated_blocks = socket.assigns.blocks ++ [block]
-        {:noreply, assign(socket, blocks: updated_blocks, active_block_id: block.id)}
-
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, gettext("Failed to create block"))}
-    end
+    create_and_assign_block(socket, attrs)
   end
 
   def handle_event("add_code_block", _, socket) do
@@ -312,13 +291,154 @@ defmodule AthenaWeb.StudioLive.Builder do
       "section_id" => socket.assigns.active_section_id
     }
 
-    case Content.create_block(attrs) do
-      {:ok, block} ->
-        updated_blocks = socket.assigns.blocks ++ [block]
-        {:noreply, assign(socket, blocks: updated_blocks, active_block_id: block.id)}
+    create_and_assign_block(socket, attrs)
+  end
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, gettext("Failed to create block"))}
+  def handle_event("add_quiz_question_block", _, socket) do
+    attrs = %{
+      "type" => "quiz_question",
+      "content" => %{
+        "question_type" => "open",
+        "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+        "options" => []
+      },
+      "section_id" => socket.assigns.active_section_id
+    }
+
+    create_and_assign_block(socket, attrs, gettext("Failed to create quiz block"))
+  end
+
+  @impl true
+  def handle_event("add_quiz_exam_block", _, socket) do
+    if section_id = socket.assigns.active_section_id do
+      attrs = %{
+        "type" => "quiz_exam",
+        "section_id" => section_id,
+        "content" => %{
+          "count" => 10,
+          "time_limit" => nil,
+          "mandatory_tags" => [],
+          "include_tags" => [],
+          "exclude_tags" => []
+        }
+      }
+
+      case Content.create_block(attrs) do
+        {:ok, new_block} ->
+          blocks = Content.list_blocks_by_section(section_id)
+          {:noreply, assign(socket, blocks: blocks, active_block_id: new_block.id)}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, gettext("Failed to create quiz exam block"))}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("add_image_block", _, socket) do
+    attrs = %{
+      "type" => "image",
+      "content" => %{"url" => nil, "alt" => "", "caption" => ""},
+      "section_id" => socket.assigns.active_section_id
+    }
+
+    create_and_assign_block(socket, attrs, gettext("Failed to create image block"))
+  end
+
+  def handle_event("add_video_block", _, socket) do
+    attrs = %{
+      "type" => "video",
+      "content" => %{"url" => nil, "poster_url" => nil, "controls" => true},
+      "section_id" => socket.assigns.active_section_id
+    }
+
+    create_and_assign_block(socket, attrs, gettext("Failed to create video block"))
+  end
+
+  def handle_event("add_attachment_block", _, socket) do
+    attrs = %{
+      "type" => "attachment",
+      "content" => %{
+        "description" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+        "files" => []
+      },
+      "section_id" => socket.assigns.active_section_id
+    }
+
+    create_and_assign_block(socket, attrs, gettext("Failed to create attachment block"))
+  end
+
+  def handle_event("add_quiz_option", %{"id" => block_id}, socket) do
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
+    if block do
+      content_map = normalize_content(block.content || %{})
+      options = Map.get(content_map, "options", [])
+
+      new_option = %{
+        "id" => Ecto.UUID.generate(),
+        "text" => "",
+        "is_correct" => false,
+        "explanation" => ""
+      }
+
+      new_content = Map.put(content_map, "options", options ++ [new_option])
+      {:ok, updated_block} = Content.update_block(block, %{"content" => new_content})
+      {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("remove_quiz_option", %{"id" => block_id, "option_id" => option_id}, socket) do
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
+    if block do
+      content_map = normalize_content(block.content || %{})
+      options = Map.get(content_map, "options", []) |> Enum.reject(&(&1["id"] == option_id))
+      new_content = Map.put(content_map, "options", options)
+
+      {:ok, updated_block} = Content.update_block(block, %{"content" => new_content})
+      {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("update_quiz_content", %{"block_id" => id} = params, socket) do
+    block = Enum.find(socket.assigns.blocks, &(&1.id == id))
+
+    if block do
+      content_map = normalize_content(block.content || %{})
+
+      content_map =
+        if correct_answer = params["correct_answer"] do
+          Map.put(content_map, "correct_answer", correct_answer)
+        else
+          content_map
+        end
+
+      content_map =
+        if opts = params["options"] do
+          Map.put(content_map, "options", parse_quiz_options(opts, params["correct_option_id"]))
+        else
+          content_map
+        end
+
+      case Content.update_block(block, %{"content" => content_map}) do
+        {:ok, updated_block} ->
+          {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+
+        {:error, changeset} ->
+          {:noreply,
+           assign(
+             socket,
+             blocks: replace_block(socket.assigns.blocks, Ecto.Changeset.apply_changes(changeset))
+           )}
+      end
+    else
+      {:noreply, socket}
     end
   end
 
@@ -326,11 +446,13 @@ defmodule AthenaWeb.StudioLive.Builder do
     block = Enum.find(socket.assigns.blocks, &(&1.id == id))
 
     if block do
+      content_map = normalize_content(block.content || %{})
+
       new_content =
-        if block.type == :attachment do
-          Map.put(block.content || %{}, "description", text_content)
-        else
-          text_content
+        case block.type do
+          :attachment -> Map.put(content_map, "description", text_content)
+          :quiz_question -> Map.put(content_map, "body", text_content)
+          _ -> text_content
         end
 
       {:ok, updated_block} = Content.update_block(block, %{"content" => new_content})
@@ -345,7 +467,6 @@ defmodule AthenaWeb.StudioLive.Builder do
 
     if block do
       {:ok, _updated_block} = Content.reorder_block(block, new_index)
-
       blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
       {:noreply, assign(socket, blocks: blocks)}
     else
@@ -353,14 +474,20 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
-  def handle_event("update_block_meta", %{"block" => block_params}, socket) do
+  def handle_event("update_block_meta", %{"block" => block_params} = params, socket) do
     id = block_params["id"]
     block = Enum.find(socket.assigns.blocks, &(&1.id == id))
 
     if block do
+      content_map = normalize_content(block.content || %{})
       content_overrides = Map.get(block_params, "content", %{})
-      new_content = Map.merge(block.content || %{}, content_overrides)
 
+      content_overrides =
+        content_map
+        |> apply_quiz_meta_overrides(content_overrides)
+        |> apply_exam_meta_overrides(block.type, params)
+
+      new_content = Map.merge(content_map, content_overrides)
       final_params = Map.put(block_params, "content", new_content)
 
       case Content.update_block(block, final_params) do
@@ -398,69 +525,16 @@ defmodule AthenaWeb.StudioLive.Builder do
     {:noreply, assign(socket, block_to_delete: nil)}
   end
 
-  def handle_event("add_image_block", _, socket) do
-    attrs = %{
-      "type" => "image",
-      "content" => %{"url" => nil, "alt" => "", "caption" => ""},
-      "section_id" => socket.assigns.active_section_id
-    }
-
-    case Content.create_block(attrs) do
-      {:ok, block} ->
-        updated_blocks = socket.assigns.blocks ++ [block]
-        {:noreply, assign(socket, blocks: updated_blocks, active_block_id: block.id)}
-
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, gettext("Failed to create image block"))}
-    end
-  end
-
-  def handle_event("add_video_block", _, socket) do
-    attrs = %{
-      "type" => "video",
-      "content" => %{"url" => nil, "poster_url" => nil, "controls" => true},
-      "section_id" => socket.assigns.active_section_id
-    }
-
-    case Content.create_block(attrs) do
-      {:ok, block} ->
-        updated_blocks = socket.assigns.blocks ++ [block]
-        {:noreply, assign(socket, blocks: updated_blocks, active_block_id: block.id)}
-
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, gettext("Failed to create video block"))}
-    end
-  end
-
-  def handle_event("add_attachment_block", _, socket) do
-    attrs = %{
-      "type" => "attachment",
-      "content" => %{
-        "description" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
-        "files" => []
-      },
-      "section_id" => socket.assigns.active_section_id
-    }
-
-    case Content.create_block(attrs) do
-      {:ok, block} ->
-        updated_blocks = socket.assigns.blocks ++ [block]
-        {:noreply, assign(socket, blocks: updated_blocks, active_block_id: block.id)}
-
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, gettext("Failed to create attachment block"))}
-    end
-  end
-
   def handle_event("delete_attachment", %{"block_id" => block_id, "url" => url}, socket) do
     block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
 
     if block do
-      files = Map.get(block.content || %{}, "files", [])
+      content_map = normalize_content(block.content || %{})
+      files = Map.get(content_map, "files", [])
       new_files = Enum.reject(files, &(&1["url"] == url))
 
       {:ok, updated_block} =
-        Content.update_block(block, %{"content" => Map.put(block.content, "files", new_files)})
+        Content.update_block(block, %{"content" => Map.put(content_map, "files", new_files)})
 
       {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
     else
@@ -469,7 +543,6 @@ defmodule AthenaWeb.StudioLive.Builder do
   end
 
   # --- MEDIA UPLOAD EVENTS ---
-
   def handle_event(
         "request_media_upload",
         %{"block_id" => block_id, "media_type" => media_type},
@@ -577,6 +650,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   def handle_event("save_to_library", %{"title" => title, "tags_string" => tags_str}, socket) do
     block = socket.assigns.saving_block_to_library
+    content_map = normalize_content(block.content || %{})
 
     tags =
       tags_str
@@ -587,7 +661,7 @@ defmodule AthenaWeb.StudioLive.Builder do
     attrs = %{
       "title" => title,
       "type" => Atom.to_string(block.type),
-      "content" => block.content,
+      "content" => content_map,
       "tags" => tags,
       "owner_id" => socket.assigns.current_user.id
     }
@@ -965,6 +1039,21 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   # --- PRIVATE HELPERS ---
 
+  @doc false
+  defp normalize_content(%{__struct__: _} = struct) do
+    struct |> Map.from_struct() |> normalize_content()
+  end
+
+  defp normalize_content(map) when is_map(map) do
+    Map.new(map, fn {k, v} -> {to_string(k), normalize_content(v)} end)
+  end
+
+  defp normalize_content(list) when is_list(list) do
+    Enum.map(list, &normalize_content/1)
+  end
+
+  defp normalize_content(value), do: value
+
   defp find_section_in_tree(_, nil), do: nil
 
   defp find_section_in_tree(sections, id) do
@@ -1178,8 +1267,9 @@ defmodule AthenaWeb.StudioLive.Builder do
       |> Enum.reverse()
 
     if new_files != [] do
-      existing_files = Map.get(block.content || %{}, "files", [])
-      new_content = Map.put(block.content || %{}, "files", existing_files ++ new_files)
+      content_map = normalize_content(block.content || %{})
+      existing_files = Map.get(content_map, "files", [])
+      new_content = Map.put(content_map, "files", existing_files ++ new_files)
 
       {:ok, updated_block} = Content.update_block(block, %{"content" => new_content})
 
@@ -1229,4 +1319,102 @@ defmodule AthenaWeb.StudioLive.Builder do
     do: gettext("Upload failed. Check your internet connection or cloud storage settings.")
 
   defp upload_error_to_string(_), do: gettext("An unknown error occurred")
+
+  defp create_and_assign_block(socket, attrs, error_msg \\ gettext("Failed to create block")) do
+    case Content.create_block(attrs) do
+      {:ok, block} ->
+        updated_blocks = socket.assigns.blocks ++ [block]
+        {:noreply, assign(socket, blocks: updated_blocks, active_block_id: block.id)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, error_msg)}
+    end
+  end
+
+  defp parse_quiz_options(opts, correct_id) do
+    opts
+    |> Enum.sort_by(fn {k, _} -> String.to_integer(k) end)
+    |> Enum.map(fn {_, v} ->
+      is_correct =
+        if correct_id do
+          v["id"] == correct_id
+        else
+          v["is_correct"] in ["true", true]
+        end
+
+      %{v | "is_correct" => is_correct}
+    end)
+  end
+
+  defp apply_quiz_meta_overrides(original_content, overrides) do
+    overrides
+    |> apply_exact_match_default(original_content)
+    |> apply_single_choice_fix(original_content)
+    |> apply_case_sensitive_fix()
+  end
+
+  defp apply_exact_match_default(overrides, original) do
+    if overrides["question_type"] == "exact_match" and original["correct_answer"] in [nil, ""] do
+      Map.put(overrides, "correct_answer", "flag{...}")
+    else
+      overrides
+    end
+  end
+
+  defp apply_single_choice_fix(
+         %{"question_type" => "single"} = overrides,
+         %{"question_type" => "multiple"} = original
+       ) do
+    opts = original["options"] || []
+
+    {new_opts, _} = Enum.map_reduce(opts, false, &enforce_single_correct/2)
+
+    Map.put(overrides, "options", new_opts)
+  end
+
+  defp apply_single_choice_fix(overrides, _original), do: overrides
+
+  defp enforce_single_correct(opt, found_correct) do
+    is_correct = opt["is_correct"] in ["true", true]
+
+    if is_correct and not found_correct do
+      {%{opt | "is_correct" => true}, true}
+    else
+      {%{opt | "is_correct" => false}, found_correct}
+    end
+  end
+
+  defp apply_case_sensitive_fix(overrides) do
+    if Map.has_key?(overrides, "case_sensitive") do
+      Map.put(overrides, "case_sensitive", overrides["case_sensitive"] in ["true", true])
+    else
+      overrides
+    end
+  end
+
+  defp apply_exam_meta_overrides(overrides, :quiz_exam, block_params) do
+    overrides
+    |> parse_and_put_tags(block_params, "tags_mandatory", "mandatory_tags")
+    |> parse_and_put_tags(block_params, "tags_include", "include_tags")
+    |> parse_and_put_tags(block_params, "tags_exclude", "exclude_tags")
+  end
+
+  defp apply_exam_meta_overrides(overrides, _block_type, _block_params), do: overrides
+
+  defp parse_and_put_tags(overrides, params, param_key, content_key) do
+    if Map.has_key?(params, param_key) do
+      Map.put(overrides, content_key, parse_tags(params[param_key]))
+    else
+      overrides
+    end
+  end
+
+  defp parse_tags(nil), do: []
+
+  defp parse_tags(tags_string) do
+    tags_string
+    |> String.split(",", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
 end

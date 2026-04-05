@@ -42,6 +42,13 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
   def handle_event("validate", %{"library_block" => params} = form_data, socket) do
     params = put_tags_array(params, form_data["tags_string"])
 
+    params =
+      if socket.assigns.action == :new do
+        put_default_content(params)
+      else
+        params
+      end
+
     changeset =
       socket.assigns.library_block
       |> LibraryBlock.changeset(params)
@@ -52,6 +59,13 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
 
   def handle_event("save", %{"library_block" => params} = form_data, socket) do
     params = put_tags_array(params, form_data["tags_string"])
+
+    params =
+      if socket.assigns.action == :new do
+        put_default_content(params)
+      else
+        params
+      end
 
     params =
       if socket.assigns.action == :new do
@@ -106,6 +120,15 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
   end
 
   defp notify_parent(msg), do: send(self(), {__MODULE__, msg})
+
+  defp put_default_content(%{"type" => "quiz_question"} = params) do
+    Map.put_new(params, "content", %{
+      "question_type" => "open",
+      "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]}
+    })
+  end
+
+  defp put_default_content(params), do: Map.put_new(params, "content", %{})
 
   @impl true
   def render(assigns) do
