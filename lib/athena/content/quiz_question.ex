@@ -12,6 +12,13 @@ defmodule Athena.Content.QuizQuestion.Option do
     field :explanation, :string
   end
 
+  @type t :: %__MODULE__{
+          id: binary() | nil,
+          text: String.t() | nil,
+          is_correct: boolean(),
+          explanation: String.t() | nil
+        }
+
   def changeset(schema, attrs) do
     schema
     |> cast(attrs, [:id, :text, :is_correct, :explanation])
@@ -38,6 +45,15 @@ defmodule Athena.Content.QuizQuestion do
 
     field :general_explanation, :string
   end
+
+  @type t :: %__MODULE__{
+          question_type: :single | :multiple | :exact_match | :open | nil,
+          body: map() | nil,
+          correct_answer: String.t() | nil,
+          case_sensitive: boolean(),
+          options: [Athena.Content.QuizQuestion.Option.t()] | nil,
+          general_explanation: String.t() | nil
+        }
 
   def changeset(schema, attrs) do
     schema

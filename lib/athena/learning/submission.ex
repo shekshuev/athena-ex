@@ -24,6 +24,18 @@ defmodule Athena.Learning.Submission do
     timestamps(type: :utc_datetime)
   end
 
+  @type t :: %__MODULE__{
+          id: binary() | nil,
+          content: map(),
+          status: :pending | :processing | :graded | :needs_review,
+          score: integer(),
+          feedback: String.t() | nil,
+          account_id: binary() | nil,
+          block_id: binary() | nil,
+          inserted_at: DateTime.t() | NaiveDateTime.t() | nil,
+          updated_at: DateTime.t() | NaiveDateTime.t() | nil
+        }
+
   @doc false
   def changeset(submission, attrs) do
     submission

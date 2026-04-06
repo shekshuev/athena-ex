@@ -456,4 +456,111 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       assert html =~ "Secret Content"
     end
   end
+
+  describe "Quiz Exam Block" do
+    test "renders initial exam card and starts exam", %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :quiz_exam,
+          content: %{
+            "count" => 15,
+            "time_limit" => 45,
+            "allowed_blur_attempts" => 2,
+            "mandatory_tags" => [],
+            "include_tags" => [],
+            "exclude_tags" => []
+          }
+        )
+
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ "Final Exam"
+      assert html =~ "15"
+      assert html =~ "45"
+      assert html =~ "2"
+      assert html =~ "Start Exam"
+      lv |> element("button[phx-click='start_exam']") |> render_click()
+
+      assert_redirect(lv, "/learn/courses/#{course.id}/exam/#{block.id}")
+
+      sub = Athena.Repo.one(Athena.Learning.Submission)
+      assert sub.status == :pending
+      assert sub.block_id == block.id
+      assert sub.content["type"] == "quiz_exam"
+      assert sub.content["cheat_count"] == 0
+    end
+
+    test "renders continue button if exam is pending", %{conn: conn, course: course, user: user} do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :quiz_exam, content: %{"count" => 10})
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :pending,
+        content: %{"type" => "quiz_exam", "cheat_count" => 0, "started_at" => DateTime.utc_now()}
+      )
+
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ "Continue Exam"
+      refute html =~ "Start Exam"
+
+      lv |> element("button[phx-click='continue_exam']") |> render_click()
+      assert_redirect(lv, "/learn/courses/#{course.id}/exam/#{block.id}")
+    end
+
+    test "renders completed state with score if exam is graded successfully", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block, section: s1, type: :quiz_exam, content: %{"allowed_blur_attempts" => 3})
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :graded,
+        score: 85,
+        content: %{"type" => "quiz_exam", "cheat_count" => 1}
+      )
+
+      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ "Exam Completed"
+      assert html =~ "85 / 100"
+      refute html =~ "Start Exam"
+    end
+
+    test "renders failed state if cheat limit exceeded", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block, section: s1, type: :quiz_exam, content: %{"allowed_blur_attempts" => 3})
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :graded,
+        score: 0,
+        content: %{"type" => "quiz_exam", "cheat_count" => 3}
+      )
+
+      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ "Exam Failed (Violations)"
+      refute html =~ "Exam Completed"
+      refute html =~ "Start Exam"
+    end
+  end
 end

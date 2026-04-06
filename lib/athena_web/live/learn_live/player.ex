@@ -121,6 +121,53 @@ defmodule AthenaWeb.LearnLive.Player do
     do: {:noreply, assign(socket, course_map_open: false)}
 
   @impl true
+  def handle_event("start_exam", %{"block_id" => block_id}, socket) do
+    user = socket.assigns.current_user
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
+    if block && block.type == :quiz_exam do
+      questions = Content.generate_exam_questions(block.content)
+
+      sub_attrs = %{
+        account_id: user.id,
+        block_id: block.id,
+        status: :pending,
+        content: %{
+          type: :quiz_exam,
+          started_at: DateTime.utc_now(),
+          questions: questions,
+          answers: %{},
+          cheat_count: 0
+        }
+      }
+
+      case Learning.create_submission(sub_attrs) do
+        {:ok, _submission} ->
+          {:noreply,
+           push_navigate(socket,
+             to: ~p"/learn/courses/#{socket.assigns.course.id}/exam/#{block.id}"
+           )}
+
+        {:error, _} ->
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             gettext("Failed to start the exam. Not enough questions in library.")
+           )}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("continue_exam", %{"block_id" => block_id}, socket) do
+    {:noreply,
+     push_navigate(socket, to: ~p"/learn/courses/#{socket.assigns.course.id}/exam/#{block_id}")}
+  end
+
+  @impl true
   def handle_event("submit_quiz", %{"block_id" => block_id} = params, socket) do
     case Enum.find(socket.assigns.blocks, &(&1.id == block_id)) do
       nil ->
@@ -680,6 +727,84 @@ defmodule AthenaWeb.LearnLive.Player do
           <% end %>
         </div>
       </form>
+    </div>
+    """
+  end
+
+  defp render_block_content(%{block: %{type: :quiz_exam}} = assigns) do
+    assigns = assign_new(assigns, :submission, fn -> nil end)
+
+    ~H"""
+    <div class="my-8 p-10 bg-base-100 rounded-3xl border border-base-200 shadow-sm text-center relative overflow-hidden">
+      <div class="absolute top-0 left-0 w-full h-2 bg-primary"></div>
+
+      <div class="size-20 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-6">
+        <.icon name="hero-academic-cap-solid" class="size-10" />
+      </div>
+
+      <h3 class="text-3xl font-black mb-4">{gettext("Final Exam")}</h3>
+      <p class="text-base-content/60 max-w-md mx-auto mb-8">
+        {gettext(
+          "This is a dynamically generated exam. Once you start, a timer will begin. Do not leave the page, or your attempt may be voided."
+        )}
+      </p>
+
+      <div class="flex flex-wrap items-center justify-center gap-6 mb-10 text-base-content/80">
+        <div class="flex flex-col items-center gap-1">
+          <.icon name="hero-document-text" class="size-6 text-base-content/50" />
+          <span class="font-bold text-lg">{@block.content["count"] || 10}</span>
+          <span class="text-xs uppercase tracking-widest">{gettext("Questions")}</span>
+        </div>
+
+        <%= if @block.content["time_limit"] do %>
+          <div class="w-px h-10 bg-base-200"></div>
+          <div class="flex flex-col items-center gap-1">
+            <.icon name="hero-clock" class="size-6 text-base-content/50" />
+            <span class="font-bold text-lg">{@block.content["time_limit"]}</span>
+            <span class="text-xs uppercase tracking-widest">{gettext("Minutes")}</span>
+          </div>
+        <% end %>
+
+        <div class="w-px h-10 bg-base-200"></div>
+        <div class="flex flex-col items-center gap-1">
+          <.icon name="hero-eye-slash" class="size-6 text-base-content/50" />
+          <span class="font-bold text-lg">{@block.content["allowed_blur_attempts"] || 3}</span>
+          <span class="text-xs uppercase tracking-widest">{gettext("Violations Limit")}</span>
+        </div>
+      </div>
+
+      <div class="pt-8 border-t border-base-200">
+        <%= cond do %>
+          <% @submission && @submission.status == :graded && (@submission.content["cheat_count"] || 0) >= (@block.content["allowed_blur_attempts"] || 3) -> %>
+            <div class="inline-flex items-center gap-2 text-2xl font-black text-error bg-error/10 px-8 py-4 rounded-2xl">
+              <.icon name="hero-x-circle-solid" class="size-8" />
+              {gettext("Exam Failed (Violations)")}
+            </div>
+          <% @submission && @submission.status in [:graded, :needs_review] -> %>
+            <div class="inline-flex items-center gap-2 text-2xl font-black text-success bg-success/10 px-8 py-4 rounded-2xl">
+              <.icon name="hero-check-circle-solid" class="size-8" />
+              {gettext("Exam Completed")}
+              <span class="ml-2 text-success/50">|</span>
+              <span class="ml-2">{@submission.score} / 100</span>
+            </div>
+          <% @submission && @submission.status == :pending -> %>
+            <button
+              phx-click="continue_exam"
+              phx-value-block_id={@block.id}
+              class="btn btn-primary btn-lg px-12 shadow-lg shadow-primary/20"
+            >
+              {gettext("Continue Exam")} <.icon name="hero-arrow-right" class="size-5 ml-2" />
+            </button>
+          <% true -> %>
+            <button
+              phx-click="start_exam"
+              phx-value-block_id={@block.id}
+              class="btn btn-primary btn-lg px-12 shadow-lg shadow-primary/20"
+            >
+              {gettext("Start Exam")} <.icon name="hero-play-solid" class="size-5 ml-2" />
+            </button>
+        <% end %>
+      </div>
     </div>
     """
   end

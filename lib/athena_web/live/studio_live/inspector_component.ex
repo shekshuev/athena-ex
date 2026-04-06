@@ -259,6 +259,16 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                     min="1"
                   />
                 </div>
+                <div class="flex-1">
+                  <.input
+                    type="number"
+                    name="block[content][allowed_blur_attempts]"
+                    value={@block.content["allowed_blur_attempts"] || 3}
+                    label={gettext("Max Cheat Attempts")}
+                    placeholder="3"
+                    min="0"
+                  />
+                </div>
               </div>
 
               <div class="divider my-2"></div>

@@ -315,12 +315,37 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       refute html =~ "Pass Auto-Grade"
     end
 
+    test "renders default values for fresh quiz exam block", %{block: base_block} do
+      block = %{
+        base_block
+        | type: :quiz_exam,
+          content: %{}
+      }
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block
+        )
+
+      assert html =~ "quiz exam Block"
+      assert html =~ "Exam Configuration"
+
+      assert html =~ ~s(name="block[content][count]")
+      assert html =~ ~s(value="10")
+
+      assert html =~ ~s(name="block[content][allowed_blur_attempts]")
+      assert html =~ ~s(value="3")
+    end
+
     test "renders quiz exam configuration fields", %{block: base_block} do
       block = %{
         base_block
         | type: :quiz_exam,
           content: %{
             "count" => 15,
+            "allowed_blur_attempts" => 4,
             "time_limit" => 30,
             "mandatory_tags" => ["elixir", "math"],
             "include_tags" => ["hard"],
@@ -352,6 +377,9 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
 
       assert html =~ ~s(name="tags_exclude")
       assert html =~ "draft"
+
+      assert html =~ ~s(name="block[content][allowed_blur_attempts]")
+      assert html =~ "4"
     end
 
     test "renders correct progression rules for quiz exam blocks", %{block: base_block} do
