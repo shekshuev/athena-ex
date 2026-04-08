@@ -5,7 +5,7 @@ defmodule Athena.Learning.EvaluatorTest do
   alias Athena.Learning.SubmissionContent
   import Athena.Factory
 
-  describe "evaluate_sync/1" do
+  describe "evaluate_sync/1 for single quiz_question" do
     setup do
       section = insert(:section)
       account = insert(:account)
@@ -156,6 +156,117 @@ defmodule Athena.Learning.EvaluatorTest do
 
       assert Evaluator.evaluate_sync(sub_partial).score == 0
       assert Evaluator.evaluate_sync(sub_correct).score == 100
+    end
+  end
+
+  describe "evaluate_sync/1 for quiz_exam" do
+    setup do
+      section = insert(:section)
+      account = insert(:account)
+      block = insert(:block, section: section, type: :quiz_exam, content: %{})
+      %{account: account, block: block}
+    end
+
+    test "grades exam with 100% if all answers are correct", %{account: account, block: block} do
+      q1_id = Ecto.UUID.generate()
+      q2_id = Ecto.UUID.generate()
+
+      questions = [
+        %{"id" => q1_id, "question_type" => "exact_match", "correct_answer" => "flag"},
+        %{
+          "id" => q2_id,
+          "question_type" => "single",
+          "options" => [
+            %{"id" => "o1", "is_correct" => true},
+            %{"id" => "o2", "is_correct" => false}
+          ]
+        }
+      ]
+
+      answers = %{q1_id => "flag", q2_id => "o1"}
+
+      sub =
+        insert(:submission,
+          account_id: account.id,
+          block_id: block.id,
+          status: :pending,
+          content: %{
+            "type" => "quiz_exam",
+            "questions" => questions,
+            "answers" => answers
+          }
+        )
+
+      res = Evaluator.evaluate_sync(sub)
+      assert res.score == 100
+      assert res.status == :graded
+    end
+
+    test "grades exam with partial score", %{account: account, block: block} do
+      q1_id = Ecto.UUID.generate()
+      q2_id = Ecto.UUID.generate()
+
+      questions = [
+        %{"id" => q1_id, "question_type" => "exact_match", "correct_answer" => "flag"},
+        %{
+          "id" => q2_id,
+          "question_type" => "single",
+          "options" => [
+            %{"id" => "o1", "is_correct" => true},
+            %{"id" => "o2", "is_correct" => false}
+          ]
+        }
+      ]
+
+      answers = %{q1_id => "flag", q2_id => "o2"}
+
+      sub =
+        insert(:submission,
+          account_id: account.id,
+          block_id: block.id,
+          status: :pending,
+          content: %{
+            "type" => "quiz_exam",
+            "questions" => questions,
+            "answers" => answers
+          }
+        )
+
+      res = Evaluator.evaluate_sync(sub)
+      assert res.score == 50
+      assert res.status == :graded
+    end
+
+    test "sets exam status to needs_review if it contains open questions", %{
+      account: account,
+      block: block
+    } do
+      q1_id = Ecto.UUID.generate()
+      q2_id = Ecto.UUID.generate()
+
+      questions = [
+        %{"id" => q1_id, "question_type" => "exact_match", "correct_answer" => "flag"},
+        %{"id" => q2_id, "question_type" => "open"}
+      ]
+
+      answers = %{q1_id => "flag", q2_id => "My beautiful essay"}
+
+      sub =
+        insert(:submission,
+          account_id: account.id,
+          block_id: block.id,
+          status: :pending,
+          content: %{
+            "type" => "quiz_exam",
+            "questions" => questions,
+            "answers" => answers
+          }
+        )
+
+      res = Evaluator.evaluate_sync(sub)
+      assert res.score == 50
+
+      assert res.status == :needs_review
     end
   end
 end
