@@ -11,6 +11,15 @@ defmodule Athena.Learning.Submissions do
   alias Athena.Learning.Submission
 
   @doc """
+  Lists submissions with pagination, filtering, and sorting using Flop.
+  """
+  @spec list_submissions(map()) ::
+          {:ok, {[Submission.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
+  def list_submissions(params \\ %{}) do
+    Flop.validate_and_run(Submission, params, for: Submission)
+  end
+
+  @doc """
   Gets a student's latest submission for a specific block.
 
   Returns `nil` if no submission exists.

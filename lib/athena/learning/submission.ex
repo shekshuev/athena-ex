@@ -8,6 +8,13 @@ defmodule Athena.Learning.Submission do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
+  @derive {
+    Flop.Schema,
+    filterable: [:status, :score],
+    sortable: [:inserted_at, :status, :score],
+    default_order: %{order_by: [:inserted_at], order_directions: [:desc]}
+  }
+
   schema "submissions" do
     field :content, :map, default: %{}
 

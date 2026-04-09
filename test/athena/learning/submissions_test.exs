@@ -5,6 +5,52 @@ defmodule Athena.Learning.SubmissionsTest do
   alias Athena.Learning.Submission
   import Athena.Factory
 
+  describe "list_submissions/1" do
+    test "returns paginated submissions with default sorting (inserted_at desc)" do
+      sub1 = insert(:submission, inserted_at: ~U[2026-01-01 10:00:00Z])
+      sub2 = insert(:submission, inserted_at: ~U[2026-01-02 10:00:00Z])
+
+      assert {:ok, {submissions, meta}} = Submissions.list_submissions(%{})
+
+      assert length(submissions) == 2
+      assert Enum.at(submissions, 0).id == sub2.id
+      assert Enum.at(submissions, 1).id == sub1.id
+      assert meta.total_count == 2
+    end
+
+    test "filters submissions by status" do
+      insert(:submission, status: :graded)
+      insert(:submission, status: :graded)
+      sub_review = insert(:submission, status: :needs_review)
+
+      params = %{
+        "filters" => [
+          %{"field" => "status", "op" => "==", "value" => "needs_review"}
+        ]
+      }
+
+      assert {:ok, {submissions, meta}} = Submissions.list_submissions(params)
+
+      assert length(submissions) == 1
+      assert hd(submissions).id == sub_review.id
+      assert meta.total_count == 1
+    end
+
+    test "sorts submissions by score" do
+      sub1 = insert(:submission, score: 100)
+      sub2 = insert(:submission, score: 10)
+
+      params = %{
+        "order_by" => ["score"],
+        "order_directions" => ["asc"]
+      }
+
+      assert {:ok, {submissions, _meta}} = Submissions.list_submissions(params)
+
+      assert Enum.map(submissions, & &1.id) == [sub2.id, sub1.id]
+    end
+  end
+
   describe "get_submission/2" do
     test "returns the latest submission for a given account and block" do
       account_id = Ecto.UUID.generate()

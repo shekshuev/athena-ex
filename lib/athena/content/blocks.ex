@@ -180,6 +180,16 @@ defmodule Athena.Content.Blocks do
     end
   end
 
+  @doc """
+  Returns a map of blocks by their IDs
+  """
+  def get_blocks_map(ids) do
+    Block
+    |> where([b], b.id in ^ids)
+    |> Repo.all()
+    |> Map.new(&{&1.id, &1})
+  end
+
   @doc false
   defp calculate_next_order(section_id) do
     max_order =
