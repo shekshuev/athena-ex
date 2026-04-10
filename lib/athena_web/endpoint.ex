@@ -8,7 +8,8 @@ defmodule AthenaWeb.Endpoint do
     store: :cookie,
     key: "_athena_key",
     signing_salt: "IfRjTG2Q",
-    same_site: "Lax"
+    same_site: "Lax",
+    secure: Application.compile_env(:athena, :dev_routes) == false
   ]
 
   socket "/live", Phoenix.LiveView.Socket,

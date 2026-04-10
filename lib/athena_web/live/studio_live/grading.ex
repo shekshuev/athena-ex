@@ -21,10 +21,8 @@ defmodule AthenaWeb.StudioLive.Grading do
 
   @impl true
   def handle_params(params, _url, socket) do
-    # Читаем статус из URL (или ставим дефолтный)
     status = Map.get(params, "status", "needs_review")
 
-    # Конвертируем красивый параметр в то, что понимает Flop
     flop_params =
       if status != "" do
         Map.put(params, "filters", %{
@@ -59,7 +57,6 @@ defmodule AthenaWeb.StudioLive.Grading do
 
   @impl true
   def handle_event("update_filter", %{"status" => status}, socket) do
-    # Просто пушим новый параметр status в URL
     {:noreply, push_patch(socket, to: ~p"/studio/grading?status=#{status}")}
   end
 

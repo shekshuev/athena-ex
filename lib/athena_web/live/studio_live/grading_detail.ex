@@ -13,14 +13,11 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
-    # Достаем сабмишен, чтобы не плодить 100 мелких функций, дернем Repo прямо тут (или вынеси в контекст)
     submission = Athena.Repo.get!(Learning.Submission, id)
 
-    # Подтягиваем студента и блок
     {:ok, account} = Identity.get_account(submission.account_id)
     {:ok, block} = Content.get_block(submission.block_id)
 
-    # Собираем форму для оценки
     form = to_form(%{"score" => submission.score, "feedback" => submission.feedback || ""})
 
     {:ok,
@@ -39,7 +36,6 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
     attrs = %{
       "score" => String.to_integer(score),
       "feedback" => feedback,
-      # Как только препод сохранил, статус меняем на проверено
       "status" => "graded"
     }
 
@@ -58,109 +54,118 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="-m-4 sm:-m-8 flex flex-col lg:flex-row h-[calc(100vh-4rem)] lg:h-screen bg-base-200">
-      <div class="flex-1 overflow-y-auto p-6 lg:p-10">
-        <div class="max-w-3xl mx-auto">
-          <div class="flex items-center gap-4 mb-8">
-            <.link navigate={~p"/studio/grading"} class="btn btn-ghost btn-sm btn-square">
-              <.icon name="hero-arrow-left" class="size-5" />
-            </.link>
-            <div>
-              <h1 class="text-2xl font-black font-display tracking-tight">
-                {gettext("Submission from %{name}", name: @account.login)}
-              </h1>
-              <div class="text-sm font-mono text-base-content/50 uppercase tracking-widest mt-1">
-                {gettext("Block Type:")} {@block.type}
-              </div>
+    <div class="flex flex-col lg:flex-row items-start gap-8">
+      <div class="flex-1 w-full min-w-0">
+        <div class="flex items-center gap-4 mb-8">
+          <.link navigate={~p"/studio/grading"} class="btn btn-ghost btn-sm btn-square">
+            <.icon name="hero-arrow-left" class="size-5" />
+          </.link>
+          <div>
+            <h1 class="text-2xl font-black font-display tracking-tight">
+              {gettext("Submission from %{name}", name: @account.login)}
+            </h1>
+            <div class="text-sm font-mono text-base-content/50 uppercase tracking-widest mt-1">
+              {gettext("Block Type:")} {@block.type}
             </div>
           </div>
+        </div>
 
-          <div class="space-y-8">
-            <%= if @block.type == :quiz_exam do %>
-              <.render_exam_submission submission={@submission} block={@block} />
-            <% else %>
-              <.render_single_question submission={@submission} block={@block} />
-            <% end %>
-          </div>
-
-          <div class="h-20"></div>
+        <div class="space-y-8">
+          <%= if @block.type == :quiz_exam do %>
+            <.render_exam_submission submission={@submission} block={@block} />
+          <% else %>
+            <.render_single_question submission={@submission} block={@block} />
+          <% end %>
         </div>
       </div>
 
-      <div class="w-full lg:w-96 bg-base-100 border-t lg:border-t-0 lg:border-l border-base-300 flex flex-col shrink-0 z-10 shadow-xl lg:shadow-none">
-        <div class="p-6 border-b border-base-300 bg-base-200/50">
-          <div class="text-xs font-bold uppercase tracking-widest text-base-content/50 mb-1">
-            {gettext("Grading Panel")}
+      <div class="w-full lg:w-96 shrink-0 bg-base-100 rounded-3xl border border-base-300 shadow-sm sticky mt-22 flex flex-col overflow-hidden">
+        <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-300 bg-base-200/30">
+          <div>
+            <div class="text-xs text-base-content/50 font-bold uppercase tracking-wider">
+              {gettext("Grading Panel")}
+            </div>
+            <div class="text-sm font-medium">
+              {gettext("Evaluation")}
+            </div>
           </div>
-          <div class="flex items-center justify-between">
-            <h2 class="text-lg font-bold">{gettext("Evaluation")}</h2>
-            <.status_badge status={@submission.status} />
-          </div>
+          <.status_badge status={@submission.status} />
         </div>
 
-        <div class="flex-1 overflow-y-auto p-6">
-          <.form for={@form} id="grading-form" phx-submit="save_grade" class="space-y-6">
-            <div class="space-y-2">
-              <label class="text-sm font-bold uppercase tracking-widest text-base-content/70">
-                {gettext("Final Score (0-100)")}
-              </label>
+        <div class="p-6 space-y-6">
+          <.form for={@form} id="grading-form" phx-submit="save_grade">
+            <div class="space-y-4 mb-6">
+              <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
+                {gettext("Score Settings")}
+              </div>
+
               <.input
                 type="number"
                 field={@form[:score]}
+                label={gettext("Final Score (0-100)")}
                 min="0"
                 max="100"
-                class="input input-bordered input-lg w-full font-black text-2xl"
               />
-              <div class="text-xs text-base-content/50 leading-relaxed">
+              <div class="text-xs text-base-content/50 leading-relaxed -mt-2">
                 {gettext("Current automated score. You can override it manually.")}
               </div>
             </div>
 
-            <div class="divider"></div>
+            <div class="divider my-4"></div>
 
-            <div class="space-y-2">
-              <label class="text-sm font-bold uppercase tracking-widest text-base-content/70">
+            <div class="space-y-4 mb-6">
+              <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
                 {gettext("Instructor Feedback")}
-              </label>
+              </div>
+
               <.input
                 type="textarea"
                 field={@form[:feedback]}
                 rows="6"
+                label={gettext("Comments")}
                 placeholder={
                   gettext("Write your feedback here... It will be visible to the student.")
                 }
-                class="textarea textarea-bordered w-full leading-relaxed"
               />
             </div>
 
             <%= if (@submission.content["cheat_count"] || 0) > 0 do %>
-              <div class="p-4 bg-error/10 text-error rounded-xl border border-error/20 mt-4">
-                <div class="font-black flex items-center gap-2 mb-1">
-                  <.icon name="hero-eye" class="size-5" />
-                  {gettext("Cheating Detected")}
+              <div class="divider my-4"></div>
+              <div class="space-y-4 mb-6">
+                <div class="text-xs font-semibold text-error uppercase tracking-wider">
+                  {gettext("Violations")}
                 </div>
-                <div class="text-sm">
-                  {gettext("The student triggered %{count} window blur violations during this exam.",
-                    count: @submission.content["cheat_count"]
-                  )}
+                <div class="p-4 bg-error/10 text-error rounded-xl border border-error/20">
+                  <div class="font-black flex items-center gap-2 mb-1">
+                    <.icon name="hero-eye" class="size-4" />
+                    {gettext("Cheating Detected")}
+                  </div>
+                  <div class="text-sm">
+                    {gettext(
+                      "The student triggered %{count} window blur violations during this exam.",
+                      count: @submission.content["cheat_count"]
+                    )}
+                  </div>
                 </div>
               </div>
             <% end %>
-
-            <div class="pt-6 mt-auto">
-              <button type="submit" class="btn btn-primary w-full btn-lg shadow-lg shadow-primary/20">
-                <.icon name="hero-check-circle" class="size-6 mr-2" />
-                {gettext("Save & Mark as Graded")}
-              </button>
-            </div>
           </.form>
+        </div>
+
+        <div class="p-6 border-t border-base-300 bg-base-200/30">
+          <button
+            form="grading-form"
+            type="submit"
+            class="btn btn-primary w-full shadow-lg shadow-primary/20"
+          >
+            <.icon name="hero-check-circle" class="size-5 mr-2" />
+            {gettext("Save & Mark as Graded")}
+          </button>
         </div>
       </div>
     </div>
     """
   end
-
-  # --- КОМПОНЕНТЫ РЕНДЕРА (РОУТЕРЫ) ---
 
   defp render_exam_submission(assigns) do
     questions = assigns.submission.content["questions"] || []
@@ -229,7 +234,6 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
     q_type = assigns.block.content["question_type"]
     opts = assigns.block.content["options"] || []
 
-    # Для одиночного блока ответ лежит по-разному в зависимости от типа
     answer =
       case q_type do
         "exact_match" -> assigns.submission.content["text_answer"]
@@ -273,8 +277,6 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
     </div>
     """
   end
-
-  # --- КОМПОНЕНТЫ ОТВЕТОВ ---
 
   defp render_answer_readonly(%{q_type: "exact_match"} = assigns) do
     ~H"""
