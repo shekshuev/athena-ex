@@ -5,9 +5,9 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
   """
   use AthenaWeb, :live_view
 
-  alias Athena.Learning
-  alias Athena.Identity
-  alias Athena.Content
+  alias Athena.{Learning, Identity, Content}
+
+  import AthenaWeb.BlockComponents
 
   on_mount {AthenaWeb.Hooks.Permission, "grading.update"}
 
@@ -72,9 +72,56 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
 
         <div class="space-y-8">
           <%= if @block.type == :quiz_exam do %>
-            <.render_exam_submission submission={@submission} block={@block} />
+            <div class="space-y-8">
+              <.content_block block={@block} mode={:review} submission={@submission} />
+
+              <div
+                :for={{q, index} <- Enum.with_index(@submission.content["questions"] || [])}
+                class="p-8 bg-base-100 border border-base-300 rounded-3xl shadow-sm relative"
+              >
+                <div class="absolute -top-4 -left-4 size-8 bg-base-300 text-base-content font-black rounded-full flex items-center justify-center border-4 border-base-100 shadow-sm">
+                  {index + 1}
+                </div>
+
+                <div class="flex items-center justify-between mb-6 pb-6 border-b border-base-200">
+                  <h2 class="text-xl font-black">{gettext("Question Content")}</h2>
+                  <div class="flex items-center gap-2">
+                    <span class="badge badge-ghost uppercase font-bold tracking-widest text-[10px]">
+                      {q["question_type"] || q["type"]}
+                    </span>
+                    <%= if q["question_type"] == "open" do %>
+                      <span class="badge badge-warning badge-soft font-bold text-xs">
+                        <.icon name="hero-hand-raised" class="size-3 mr-1" /> {gettext(
+                          "Manual Review"
+                        )}
+                      </span>
+                    <% end %>
+                  </div>
+                </div>
+
+                <% fake_block = %{id: q["id"], type: :quiz_question, content: q}
+
+                ans = (@submission.content["answers"] || %{})[q["id"]]
+
+                fake_sub_content =
+                  case q["question_type"] do
+                    "exact_match" -> %{"text_answer" => ans}
+                    "open" -> %{"text_answer" => ans}
+                    _ -> %{"selected_choices" => ans}
+                  end
+
+                fake_submission = %{content: fake_sub_content} %>
+
+                <.content_block block={fake_block} mode={:review} submission={fake_submission} />
+              </div>
+            </div>
           <% else %>
-            <.render_single_question submission={@submission} block={@block} />
+            <div class="p-8 bg-base-100 border border-base-300 rounded-3xl shadow-sm">
+              <div class="flex items-center justify-between mb-6 pb-6 border-b border-base-200">
+                <h2 class="text-xl font-black">{gettext("Question Content")}</h2>
+              </div>
+              <.content_block block={@block} mode={:review} submission={@submission} />
+            </div>
           <% end %>
         </div>
       </div>
@@ -164,198 +211,6 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
         </div>
       </div>
     </div>
-    """
-  end
-
-  defp render_exam_submission(assigns) do
-    questions = assigns.submission.content["questions"] || []
-    answers = assigns.submission.content["answers"] || %{}
-
-    assigns = assign(assigns, :questions, questions)
-    assigns = assign(assigns, :answers, answers)
-
-    ~H"""
-    <div class="space-y-12">
-      <div class="text-center pb-6 border-b border-base-300">
-        <div class="inline-flex items-center justify-center p-4 bg-primary/10 text-primary rounded-full mb-4">
-          <.icon name="hero-academic-cap" class="size-10" />
-        </div>
-        <h2 class="text-2xl font-black">{gettext("Exam Review")}</h2>
-        <p class="text-base-content/60">{length(@questions)} {gettext("Questions total")}</p>
-      </div>
-
-      <div
-        :for={{q, index} <- Enum.with_index(@questions)}
-        class="p-6 bg-base-100 border border-base-300 rounded-2xl shadow-sm relative"
-      >
-        <div class="absolute -top-4 -left-4 size-8 bg-base-300 text-base-content font-black rounded-full flex items-center justify-center border-4 border-base-100 shadow-sm">
-          {index + 1}
-        </div>
-
-        <div class="flex items-center justify-between mb-4">
-          <span class="badge badge-ghost uppercase font-bold tracking-widest text-[10px]">
-            {q["question_type"] || q["type"]}
-          </span>
-          <%= if q["question_type"] == "open" do %>
-            <span class="badge badge-warning badge-soft font-bold text-xs">
-              <.icon name="hero-hand-raised" class="size-3 mr-1" /> {gettext("Manual Review")}
-            </span>
-          <% end %>
-        </div>
-
-        <div
-          id={"exam-q-tiptap-#{q["id"]}"}
-          phx-hook="TiptapEditor"
-          data-id={q["id"]}
-          data-readonly="true"
-          phx-update="ignore"
-          data-content={Jason.encode!(q["question"] || q["body"] || %{})}
-          class="prose prose-sm max-w-none mb-6 text-base-content/80"
-        >
-        </div>
-
-        <div class="bg-base-200/50 p-4 rounded-xl border border-base-200">
-          <div class="text-xs font-bold uppercase tracking-widest text-base-content/50 mb-3">
-            {gettext("Student's Answer:")}
-          </div>
-          <.render_answer_readonly
-            q_type={q["question_type"] || q["type"]}
-            options={q["options"] || []}
-            answer={@answers[q["id"]]}
-            correct_answer={q["correct_answer"]}
-          />
-        </div>
-      </div>
-    </div>
-    """
-  end
-
-  defp render_single_question(assigns) do
-    q_type = assigns.block.content["question_type"]
-    opts = assigns.block.content["options"] || []
-
-    answer =
-      case q_type do
-        "exact_match" -> assigns.submission.content["text_answer"]
-        "open" -> assigns.submission.content["text_answer"]
-        _ -> assigns.submission.content["selected_choices"]
-      end
-
-    assigns = assign(assigns, q_type: q_type, options: opts, answer: answer)
-
-    ~H"""
-    <div class="p-8 bg-base-100 border border-base-300 rounded-3xl shadow-sm">
-      <div class="flex items-center justify-between mb-6 pb-6 border-b border-base-200">
-        <h2 class="text-xl font-black">{gettext("Question Content")}</h2>
-        <span class="badge badge-ghost uppercase font-bold tracking-widest text-[10px]">
-          {@q_type}
-        </span>
-      </div>
-
-      <div
-        id={"single-q-tiptap-#{@block.id}"}
-        phx-hook="TiptapEditor"
-        data-id={@block.id}
-        data-readonly="true"
-        phx-update="ignore"
-        data-content={Jason.encode!(@block.content["body"] || %{})}
-        class="prose max-w-none mb-8 text-base-content/80"
-      >
-      </div>
-
-      <div class="bg-base-200/50 p-6 rounded-2xl border border-base-200">
-        <div class="text-xs font-bold uppercase tracking-widest text-base-content/50 mb-4">
-          {gettext("Student's Answer:")}
-        </div>
-        <.render_answer_readonly
-          q_type={@q_type}
-          options={@options}
-          answer={@answer}
-          correct_answer={@block.content["correct_answer"]}
-        />
-      </div>
-    </div>
-    """
-  end
-
-  defp render_answer_readonly(%{q_type: "exact_match"} = assigns) do
-    ~H"""
-    <div class="flex flex-col gap-2">
-      <input
-        type="text"
-        value={@answer}
-        class="input input-bordered w-full font-mono text-lg bg-base-100"
-        disabled
-      />
-      <div class="text-sm mt-2 flex items-center gap-2">
-        <span class="font-bold text-success">
-          <.icon name="hero-check-circle" class="size-4 inline" /> {gettext("Correct Answer:")}
-        </span>
-        <span class="font-mono bg-base-300 px-2 py-0.5 rounded">{@correct_answer}</span>
-      </div>
-    </div>
-    """
-  end
-
-  defp render_answer_readonly(%{q_type: "open"} = assigns) do
-    ~H"""
-    <textarea
-      rows="5"
-      class="textarea textarea-bordered w-full text-base leading-relaxed bg-base-100"
-      disabled
-    ><%= @answer %></textarea>
-    """
-  end
-
-  defp render_answer_readonly(%{q_type: q_type} = assigns)
-       when q_type in ["single", "multiple"] do
-    ~H"""
-    <div class="space-y-3">
-      <%= for opt <- @options do %>
-        <% is_selected = opt["id"] in List.wrap(@answer) %>
-        <% is_correct = opt["is_correct"] in [true, "true"] %>
-
-        <div class={[
-          "flex items-start gap-4 p-4 rounded-xl border transition-all",
-          is_selected && is_correct && "bg-success/10 border-success/30",
-          is_selected && not is_correct && "bg-error/10 border-error/30",
-          not is_selected && is_correct && "bg-base-100 border-success/30 ring-2 ring-success/20",
-          not is_selected && not is_correct && "bg-base-100 border-base-300 opacity-60"
-        ]}>
-          <input
-            type={if @q_type == "single", do: "radio", else: "checkbox"}
-            checked={is_selected}
-            class={
-              if @q_type == "single",
-                do: "radio radio-primary mt-0.5",
-                else: "checkbox checkbox-primary mt-0.5"
-            }
-            disabled
-          />
-          <div class="flex-1">
-            <span class="text-base font-medium">{opt["text"]}</span>
-            <div
-              :if={is_correct}
-              class="text-xs font-bold text-success uppercase tracking-widest mt-1"
-            >
-              {gettext("Correct Option")}
-            </div>
-            <div
-              :if={is_selected && not is_correct}
-              class="text-xs font-bold text-error uppercase tracking-widest mt-1"
-            >
-              {gettext("Student's Choice")}
-            </div>
-          </div>
-        </div>
-      <% end %>
-    </div>
-    """
-  end
-
-  defp render_answer_readonly(assigns) do
-    ~H"""
-    <div class="text-warning italic">{gettext("No answer recorded or unknown type.")}</div>
     """
   end
 

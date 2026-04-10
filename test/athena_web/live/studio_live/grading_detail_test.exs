@@ -40,9 +40,8 @@ defmodule AthenaWeb.StudioLive.GradingDetailTest do
       assert html =~ "Submission from hacker_boy"
       assert html =~ "quiz_question"
       assert html =~ "athena_flag"
-      assert html =~ "Correct Answer:"
-
-      assert html =~ "disabled"
+      assert html =~ "Correct:"
+      assert html =~ ~r/ disabled(?!:)/
     end
 
     test "renders open question (essay) properly", %{conn: conn} do
@@ -70,7 +69,7 @@ defmodule AthenaWeb.StudioLive.GradingDetailTest do
       assert html =~ "Submission from tolstoy"
       assert html =~ "War and Peace. Volume 1."
       assert html =~ "<textarea"
-      assert html =~ "disabled"
+      assert html =~ ~r/ disabled(?!:)/
     end
   end
 
@@ -101,7 +100,8 @@ defmodule AthenaWeb.StudioLive.GradingDetailTest do
       {:ok, _lv, html} = live(conn, ~p"/studio/grading/#{sub.id}")
 
       assert html =~ "sneaky_student"
-      assert html =~ "Exam Review"
+
+      assert html =~ "Final Exam"
 
       assert html =~ "Manual Review"
       assert html =~ "I don&#39;t know"

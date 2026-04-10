@@ -14,7 +14,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
   alias Athena.Content
   alias Athena.Learning
-  alias Athena.Learning
+  import AthenaWeb.BlockComponents
 
   @doc """
   Initializes the player, checks course access, and validates that the student
@@ -381,11 +381,99 @@ defmodule AthenaWeb.LearnLive.Player do
 
       <div class="space-y-10">
         <%= for block <- @visible_blocks do %>
+          <% submission = Map.get(@submissions || %{}, block.id) %>
+          <% is_submitted = submission && submission.status in [:graded, :needs_review] %>
+          <% mode = if is_submitted, do: :review, else: :play %>
+
           <div
             id={"block-wrapper-#{block.id}"}
             class="animate-in slide-in-from-bottom-4 fade-in duration-500 fill-mode-both"
           >
-            <.render_block_content block={block} submission={Map.get(@submissions || %{}, block.id)} />
+            <%= case block.type do %>
+              <% :quiz_question -> %>
+                <form phx-submit="submit_quiz" id={"quiz-form-#{block.id}"}>
+                  <input type="hidden" name="block_id" value={block.id} />
+
+                  <.content_block block={block} mode={mode} submission={submission} />
+
+                  <div
+                    :if={submission && block.content["general_explanation"] not in [nil, ""]}
+                    class="mt-4 mb-4 p-4 bg-info/10 text-info-content rounded-xl text-sm border border-info/20"
+                  >
+                    <strong>{gettext("Explanation:")}</strong> {block.content["general_explanation"]}
+                  </div>
+
+                  <div class="mt-6 flex items-center justify-between">
+                    <button
+                      type="submit"
+                      class="btn btn-primary shadow-lg shadow-primary/20"
+                      disabled={is_submitted}
+                    >
+                      {if submission, do: gettext("Submitted"), else: gettext("Submit Answer")}
+                    </button>
+
+                    <%= if submission do %>
+                      <div
+                        :if={submission.status == :graded}
+                        class={[
+                          "font-bold flex items-center gap-1 text-lg",
+                          if(submission.score == 100, do: "text-success", else: "text-error")
+                        ]}
+                      >
+                        <%= if submission.score == 100 do %>
+                          <.icon name="hero-check-circle-solid" class="size-6" /> {gettext("Correct!")}
+                        <% else %>
+                          <.icon name="hero-x-circle-solid" class="size-6" /> {gettext("Incorrect.")}
+                        <% end %>
+                      </div>
+
+                      <div
+                        :if={submission.status == :needs_review}
+                        class="font-bold flex items-center gap-1 text-info text-lg"
+                      >
+                        <.icon name="hero-clock" class="size-6" /> {gettext("Pending Review")}
+                      </div>
+                    <% end %>
+                  </div>
+                </form>
+              <% :quiz_exam -> %>
+                <% exam_mode = if submission, do: :review, else: :play %>
+                <div class="relative">
+                  <.content_block block={block} mode={exam_mode} submission={submission} />
+
+                  <%= if submission do %>
+                    <div class="mt-6 flex justify-center">
+                      <%= cond do %>
+                        <% submission.status == :graded && (submission.content["cheat_count"] || 0) >= (block.content["allowed_blur_attempts"] || 3) -> %>
+                          <div class="inline-flex items-center gap-2 text-xl font-black text-error bg-error/10 px-6 py-3 rounded-2xl">
+                            <.icon name="hero-x-circle-solid" class="size-6" />
+                            {gettext("Exam Failed (Violations)")}
+                          </div>
+                        <% submission.status in [:graded, :needs_review] -> %>
+                          <div class="inline-flex items-center gap-2 text-xl font-black text-success bg-success/10 px-6 py-3 rounded-2xl">
+                            <.icon name="hero-check-circle-solid" class="size-6" />
+                            {gettext("Exam Completed")}
+                            <span class="ml-2 text-success/50">|</span>
+                            <span class="ml-2">{submission.score} / 100</span>
+                          </div>
+                        <% submission.status == :pending -> %>
+                          <button
+                            phx-click="continue_exam"
+                            phx-value-block_id={block.id}
+                            class="btn btn-primary btn-lg px-12 shadow-lg shadow-primary/20"
+                          >
+                            {gettext("Continue Exam")}
+                            <.icon name="hero-arrow-right" class="size-5 ml-2" />
+                          </button>
+                        <% true -> %>
+                      <% end %>
+                    </div>
+                  <% end %>
+                </div>
+              <% _ -> %>
+                <.content_block block={block} mode={:play} />
+            <% end %>
+
             <div :if={gate?(block)} class="mt-8">
               <.render_gate block={block} is_completed={block.id in @completed_ids} />
             </div>
@@ -406,7 +494,7 @@ defmodule AthenaWeb.LearnLive.Player do
           <%= if @next_section_id do %>
             <.link
               navigate={~p"/learn/courses/#{@course.id}/play/#{@next_section_id}"}
-              class="btn btn-primary btn-lg px-12 mt-6"
+              class="btn btn-primary btn-lg px-12 mt-6 shadow-lg shadow-primary/20"
             >
               {gettext("Next Lesson")} <.icon name="hero-arrow-right" class="size-5 ml-2" />
             </.link>
@@ -486,339 +574,9 @@ defmodule AthenaWeb.LearnLive.Player do
     """
   end
 
-  defp render_block_content(%{block: %{type: :text}} = assigns) do
-    ~H"""
-    <div
-      id={"player-tiptap-#{@block.id}-#{DateTime.to_unix(@block.updated_at)}"}
-      phx-hook="TiptapEditor"
-      data-id={@block.id}
-      data-readonly="true"
-      phx-update="ignore"
-      data-content={Jason.encode!(@block.content)}
-      class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed"
-    >
-    </div>
-    """
-  end
-
-  defp render_block_content(%{block: %{type: :image}} = assigns) do
-    ~H"""
-    <%= if @block.content["url"] do %>
-      <figure class="m-0 my-8">
-        <img
-          src={@block.content["url"]}
-          alt={@block.content["alt"]}
-          class="rounded-xl w-full object-cover border border-base-200 shadow-sm"
-        />
-      </figure>
-    <% end %>
-    """
-  end
-
-  defp render_block_content(%{block: %{type: :video}} = assigns) do
-    ~H"""
-    <%= if @block.content["url"] do %>
-      <div class="my-8">
-        <video
-          src={@block.content["url"]}
-          poster={@block.content["poster_url"]}
-          controls={@block.content["controls"] not in [false, "false"]}
-          class="rounded-xl w-full bg-black aspect-video shadow-md"
-        />
-      </div>
-    <% end %>
-    """
-  end
-
-  defp render_block_content(%{block: %{type: :attachment}} = assigns) do
-    ~H"""
-    <div class="my-8 p-6 bg-base-200/50 rounded-xl border border-base-300">
-      <div
-        :if={@block.content["description"]}
-        id={"player-attachment-tiptap-#{@block.id}-#{DateTime.to_unix(@block.updated_at)}"}
-        phx-hook="TiptapEditor"
-        data-id={"desc-#{@block.id}"}
-        data-readonly="true"
-        phx-update="ignore"
-        data-content={Jason.encode!(@block.content["description"])}
-        class="prose prose-sm max-w-none text-base-content/70 mb-4"
-      >
-      </div>
-      <div class="space-y-3 mt-4">
-        <a
-          :for={file <- @block.content["files"] || []}
-          href={file["url"]}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="flex items-center gap-4 p-4 bg-base-100 rounded-lg border border-base-200 shadow-sm hover:border-primary/40 hover:shadow-md transition-all group"
-        >
-          <div class="p-3 bg-primary/10 rounded-lg text-primary shrink-0 group-hover:scale-110 transition-transform">
-            <.icon name="hero-document-arrow-down" class="size-6" />
-          </div>
-          <div class="flex-1 min-w-0">
-            <div class="font-bold text-base-content truncate group-hover:text-primary transition-colors">
-              {file["name"]}
-            </div>
-            <div class="text-xs text-base-content/50 mt-0.5">{format_bytes(file["size"])}</div>
-          </div>
-          <.icon
-            name="hero-arrow-down-tray"
-            class="size-5 text-base-content/30 group-hover:text-primary shrink-0"
-          />
-        </a>
-      </div>
-    </div>
-    """
-  end
-
-  defp render_block_content(%{block: %{type: :code}} = assigns) do
-    ~H"""
-    <div class="my-8 overflow-hidden rounded-xl border border-base-300 bg-base-300/20">
-      <div class="bg-base-300 px-4 py-2 flex items-center gap-2">
-        <div class="size-3 rounded-full bg-error"></div>
-        <div class="size-3 rounded-full bg-warning"></div>
-        <div class="size-3 rounded-full bg-success"></div>
-        <span class="ml-2 text-xs font-mono text-base-content/50">editor.ex</span>
-      </div>
-      <pre class="p-4 text-sm font-mono overflow-x-auto text-base-content/80">{@block.content["code"]}</pre>
-    </div>
-    """
-  end
-
-  defp render_block_content(%{block: %{type: :quiz_question}} = assigns) do
-    assigns = assign_new(assigns, :submission, fn -> nil end)
-
-    ~H"""
-    <div class="my-8 p-6 lg:p-8 bg-base-100 rounded-2xl border border-base-200 shadow-sm">
-      <div
-        id={"player-quiz-tiptap-#{@block.id}-#{DateTime.to_unix(@block.updated_at)}"}
-        phx-hook="TiptapEditor"
-        data-id={"quiz-#{@block.id}"}
-        data-readonly="true"
-        phx-update="ignore"
-        data-content={Jason.encode!(@block.content["body"] || %{})}
-        class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed mb-4"
-      >
-      </div>
-
-      <div
-        :if={@submission && @block.content["general_explanation"] not in [nil, ""]}
-        class="mb-8 p-4 bg-info/10 text-info-content rounded-xl text-sm border border-info/20"
-      >
-        <strong>{gettext("Explanation:")}</strong> {@block.content["general_explanation"]}
-      </div>
-
-      <form
-        phx-submit="submit_quiz"
-        id={"quiz-form-#{@block.id}"}
-        class="mt-6 pt-6 border-t border-base-200"
-      >
-        <input type="hidden" name="block_id" value={@block.id} />
-
-        <%= case @block.content["question_type"] do %>
-          <% "exact_match" -> %>
-            <div class="form-control w-full max-w-md">
-              <input
-                type="text"
-                name="answer"
-                value={if @submission, do: @submission.content["text_answer"], else: ""}
-                placeholder={gettext("Enter your answer (flag)...")}
-                class="input input-bordered w-full font-mono text-lg disabled:opacity-60"
-                disabled={@submission && @submission.status in [:graded, :needs_review]}
-              />
-            </div>
-          <% "single" -> %>
-            <div class="space-y-4">
-              <%= for opt <- @block.content["options"] || [] do %>
-                <div class="flex flex-col gap-2">
-                  <label class="flex items-start gap-4 p-4 rounded-xl border border-base-200 hover:bg-base-200/50 hover:border-primary/50 cursor-pointer transition-all has-checked:bg-primary/5 has-checked:border-primary has-disabled:cursor-not-allowed has-disabled:opacity-70">
-                    <input
-                      type="radio"
-                      name="answer"
-                      value={opt["id"]}
-                      checked={
-                        @submission && opt["id"] in (@submission.content["selected_choices"] || [])
-                      }
-                      disabled={@submission && @submission.status in [:graded, :needs_review]}
-                      class="radio radio-primary mt-0.5"
-                    />
-                    <span class="text-base-content font-medium mt-0.5">{opt["text"]}</span>
-                  </label>
-
-                  <div
-                    :if={@submission && opt["explanation"] not in [nil, ""]}
-                    class="ml-12 mr-4 p-3 bg-base-200/50 rounded-lg text-sm text-base-content/70 border-l-4 border-l-primary/30"
-                  >
-                    {opt["explanation"]}
-                  </div>
-                </div>
-              <% end %>
-            </div>
-          <% "multiple" -> %>
-            <div class="space-y-4">
-              <%= for opt <- @block.content["options"] || [] do %>
-                <div class="flex flex-col gap-2">
-                  <label class="flex items-start gap-4 p-4 rounded-xl border border-base-200 hover:bg-base-200/50 hover:border-primary/50 cursor-pointer transition-all has-checked:bg-primary/5 has-checked:border-primary has-disabled:cursor-not-allowed has-disabled:opacity-70">
-                    <input
-                      type="checkbox"
-                      name="answer[]"
-                      value={opt["id"]}
-                      checked={
-                        @submission && opt["id"] in (@submission.content["selected_choices"] || [])
-                      }
-                      disabled={@submission && @submission.status in [:graded, :needs_review]}
-                      class="checkbox checkbox-primary mt-0.5"
-                    />
-                    <span class="text-base-content font-medium mt-0.5">{opt["text"]}</span>
-                  </label>
-
-                  <div
-                    :if={@submission && opt["explanation"] not in [nil, ""]}
-                    class="ml-12 mr-4 p-3 bg-base-200/50 rounded-lg text-sm text-base-content/70 border-l-4 border-l-primary/30"
-                  >
-                    {opt["explanation"]}
-                  </div>
-                </div>
-              <% end %>
-            </div>
-          <% "open" -> %>
-            <div class="form-control w-full">
-              <textarea
-                name="answer"
-                rows="5"
-                placeholder={gettext("Type your answer here...")}
-                disabled={@submission && @submission.status in [:graded, :needs_review]}
-                class="textarea textarea-bordered w-full text-base leading-relaxed disabled:opacity-60"
-              ><%= if @submission, do: @submission.content["text_answer"] %></textarea>
-            </div>
-          <% _ -> %>
-        <% end %>
-
-        <div class="mt-8 flex items-center justify-between">
-          <button
-            type="submit"
-            class="btn btn-primary"
-            disabled={@submission && @submission.status in [:graded, :needs_review]}
-          >
-            {if @submission, do: gettext("Submitted"), else: gettext("Submit Answer")}
-          </button>
-
-          <%= if @submission do %>
-            <div
-              :if={@submission.status == :graded}
-              class={[
-                "font-bold flex items-center gap-1 text-lg",
-                if(@submission.score == 100, do: "text-success", else: "text-error")
-              ]}
-            >
-              <%= if @submission.score == 100 do %>
-                <.icon name="hero-check-circle-solid" class="size-6" /> {gettext("Correct!")}
-              <% else %>
-                <.icon name="hero-x-circle-solid" class="size-6" /> {gettext("Incorrect.")}
-              <% end %>
-            </div>
-
-            <div
-              :if={@submission.status == :needs_review}
-              class="font-bold flex items-center gap-1 text-info text-lg"
-            >
-              <.icon name="hero-clock" class="size-6" /> {gettext("Pending Review")}
-            </div>
-          <% end %>
-        </div>
-      </form>
-    </div>
-    """
-  end
-
-  defp render_block_content(%{block: %{type: :quiz_exam}} = assigns) do
-    assigns = assign_new(assigns, :submission, fn -> nil end)
-
-    ~H"""
-    <div class="my-8 p-10 bg-base-100 rounded-3xl border border-base-200 shadow-sm text-center relative overflow-hidden">
-      <div class="absolute top-0 left-0 w-full h-2 bg-primary"></div>
-
-      <div class="size-20 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-6">
-        <.icon name="hero-academic-cap-solid" class="size-10" />
-      </div>
-
-      <h3 class="text-3xl font-black mb-4">{gettext("Final Exam")}</h3>
-      <p class="text-base-content/60 max-w-md mx-auto mb-8">
-        {gettext(
-          "This is a dynamically generated exam. Once you start, a timer will begin. Do not leave the page, or your attempt may be voided."
-        )}
-      </p>
-
-      <div class="flex flex-wrap items-center justify-center gap-6 mb-10 text-base-content/80">
-        <div class="flex flex-col items-center gap-1">
-          <.icon name="hero-document-text" class="size-6 text-base-content/50" />
-          <span class="font-bold text-lg">{@block.content["count"] || 10}</span>
-          <span class="text-xs uppercase tracking-widest">{gettext("Questions")}</span>
-        </div>
-
-        <%= if @block.content["time_limit"] do %>
-          <div class="w-px h-10 bg-base-200"></div>
-          <div class="flex flex-col items-center gap-1">
-            <.icon name="hero-clock" class="size-6 text-base-content/50" />
-            <span class="font-bold text-lg">{@block.content["time_limit"]}</span>
-            <span class="text-xs uppercase tracking-widest">{gettext("Minutes")}</span>
-          </div>
-        <% end %>
-
-        <div class="w-px h-10 bg-base-200"></div>
-        <div class="flex flex-col items-center gap-1">
-          <.icon name="hero-eye-slash" class="size-6 text-base-content/50" />
-          <span class="font-bold text-lg">{@block.content["allowed_blur_attempts"] || 3}</span>
-          <span class="text-xs uppercase tracking-widest">{gettext("Violations Limit")}</span>
-        </div>
-      </div>
-
-      <div class="pt-8 border-t border-base-200">
-        <%= cond do %>
-          <% @submission && @submission.status == :graded && (@submission.content["cheat_count"] || 0) >= (@block.content["allowed_blur_attempts"] || 3) -> %>
-            <div class="inline-flex items-center gap-2 text-2xl font-black text-error bg-error/10 px-8 py-4 rounded-2xl">
-              <.icon name="hero-x-circle-solid" class="size-8" />
-              {gettext("Exam Failed (Violations)")}
-            </div>
-          <% @submission && @submission.status in [:graded, :needs_review] -> %>
-            <div class="inline-flex items-center gap-2 text-2xl font-black text-success bg-success/10 px-8 py-4 rounded-2xl">
-              <.icon name="hero-check-circle-solid" class="size-8" />
-              {gettext("Exam Completed")}
-              <span class="ml-2 text-success/50">|</span>
-              <span class="ml-2">{@submission.score} / 100</span>
-            </div>
-          <% @submission && @submission.status == :pending -> %>
-            <button
-              phx-click="continue_exam"
-              phx-value-block_id={@block.id}
-              class="btn btn-primary btn-lg px-12 shadow-lg shadow-primary/20"
-            >
-              {gettext("Continue Exam")} <.icon name="hero-arrow-right" class="size-5 ml-2" />
-            </button>
-          <% true -> %>
-            <button
-              phx-click="start_exam"
-              phx-value-block_id={@block.id}
-              class="btn btn-primary btn-lg px-12 shadow-lg shadow-primary/20"
-            >
-              {gettext("Start Exam")} <.icon name="hero-play-solid" class="size-5 ml-2" />
-            </button>
-        <% end %>
-      </div>
-    </div>
-    """
-  end
-
-  defp render_block_content(assigns),
-    do: ~H"""
-    <div class="p-4 bg-base-200 rounded-lg text-sm text-base-content/50 italic">
-      [{gettext("Content type:")} {@block.type}]
-    </div>
-    """
-
   defp render_gate(%{block: %{completion_rule: %{type: :button}}} = assigns) do
     ~H"""
-    <div class="py-2 border-t border-base-100">
+    <div class="py-2 border-t border-base-200">
       <%= if @is_completed do %>
         <div></div>
       <% else %>
@@ -835,16 +593,6 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   defp render_gate(assigns), do: ~H""
-
-  @doc false
-  defp format_bytes(bytes) do
-    cond do
-      is_nil(bytes) -> "0 B"
-      bytes >= 1_048_576 -> "#{Float.round(bytes / 1_048_576, 1)} MB"
-      bytes >= 1024 -> "#{Float.round(bytes / 1024, 1)} KB"
-      true -> "#{bytes} B"
-    end
-  end
 
   @doc false
   defp schedule_next_unlock(socket, course_id) do

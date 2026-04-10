@@ -1,22 +1,12 @@
 defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
   @moduledoc """
   LiveComponent for rendering the main canvas with blocks.
-
-  This component acts as the primary workspace for the course builder. 
-  It displays the list of blocks for the currently selected section, handles 
-  the drag-and-drop reordering interface via Sortable.js, renders the TipTap 
-  editor for text blocks, and provides floating controls for adding new blocks.
+  Uses universal content_block for rendering, and overlays contextual editors 
+  when a block is selected.
   """
   use AthenaWeb, :live_component
+  import AthenaWeb.BlockComponents
 
-  @doc """
-  Renders the canvas UI based on the selected section and its blocks.
-
-  Displays a prompt if no section is active. If a section is active, iterates 
-  through the `@blocks` assign and renders the appropriate interactive UI 
-  for each block type (:text, :code, etc.).
-  """
-  @spec render(map()) :: Phoenix.LiveView.Rendered.t()
   @impl true
   def render(assigns) do
     ~H"""
@@ -38,307 +28,183 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
             :for={block <- @blocks}
             id={"block-#{block.id}"}
             data-id={block.id}
-            phx-click="select_block"
-            phx-value-id={block.id}
-            class={[
-              "group relative rounded-xl transition-all cursor-pointer bg-base-100 shadow-sm ring-1",
-              @active_block_id == block.id && "ring-primary shadow-md",
-              @active_block_id != block.id && "ring-base-200 hover:ring-base-300"
-            ]}
+            class="relative group"
           >
-            <div class="absolute -left-10 top-1/2 -translate-y-1/2 p-2 opacity-0 group-hover:opacity-50 hover:opacity-100! cursor-grab drag-handle transition-opacity hidden sm:block">
+            <div class="absolute -left-10 top-1/2 -translate-y-1/2 p-2 opacity-0 group-hover:opacity-50 hover:opacity-100 cursor-grab drag-handle transition-opacity hidden sm:block">
               <.icon name="hero-bars-3" class="size-5" />
             </div>
 
-            <div class="p-4 sm:px-6 py-4">
-              <%= cond do %>
-                <% block.type == :text -> %>
-                  <div
-                    id={"tiptap-#{block.id}"}
-                    phx-hook="TiptapEditor"
-                    data-id={block.id}
-                    phx-update="ignore"
-                    data-content={Jason.encode!(block.content)}
-                    class="min-h-[100px]"
-                  >
-                  </div>
-                <% block.type == :quiz_question -> %>
-                  <div
-                    id={"tiptap-#{block.id}"}
-                    phx-hook="TiptapEditor"
-                    data-id={block.id}
-                    phx-update="ignore"
-                    data-content={Jason.encode!(block.content["body"] || %{})}
-                    class="min-h-[50px]"
-                  >
-                  </div>
+            <div phx-click="select_block" phx-value-id={block.id}>
+              <.content_block block={block} mode={:edit} active={@active_block_id == block.id} />
+            </div>
 
-                  <div class="mt-4 pt-4 border-t border-base-200">
-                    <form
-                      phx-change="update_quiz_content"
-                      phx-submit="ignore"
-                      id={"quiz-form-#{block.id}"}
-                    >
-                      <input type="hidden" name="block_id" value={block.id} />
-                      <%= case block.content["question_type"] do %>
-                        <% "exact_match" -> %>
-                          <div class="form-control">
-                            <label class="label">
-                              <span class="label-text font-bold text-xs uppercase tracking-wider text-base-content/70">
-                                {gettext("Correct Answer (Flag)")}
-                              </span>
-                            </label>
-                            <div class="flex items-center gap-3">
-                              <.icon name="hero-flag" class="size-5 text-primary" />
-                              <input
-                                type="text"
-                                name="correct_answer"
-                                value={block.content["correct_answer"]}
-                                class="input input-bordered flex-1 font-mono"
-                                placeholder="flag{...}"
-                                phx-debounce="500"
-                              />
-                            </div>
+            <%= if @active_block_id == block.id do %>
+              <%= if block.type == :quiz_question do %>
+                <div class="mt-2 p-6 bg-base-100 ring-1 ring-base-300 rounded-xl shadow-lg border-t-4 border-t-primary animate-in slide-in-from-top-2 duration-200">
+                  <div class="text-xs font-bold uppercase tracking-widest text-primary mb-4 border-b border-base-200 pb-2">
+                    {gettext("Answer Editor")}
+                  </div>
+                  <form
+                    phx-change="update_quiz_content"
+                    phx-submit="ignore"
+                    id={"quiz-form-#{block.id}"}
+                  >
+                    <input type="hidden" name="block_id" value={block.id} />
+                    <%= case block.content["question_type"] do %>
+                      <% "exact_match" -> %>
+                        <div class="form-control">
+                          <label class="label">
+                            <span class="label-text font-bold text-xs uppercase tracking-wider text-base-content/70">
+                              {gettext("Correct Answer (Flag)")}
+                            </span>
+                          </label>
+                          <div class="flex items-center gap-3">
+                            <.icon name="hero-flag" class="size-5 text-primary" />
+                            <input
+                              type="text"
+                              name="correct_answer"
+                              value={block.content["correct_answer"]}
+                              class="input input-bordered flex-1 font-mono"
+                              placeholder="flag{...}"
+                              phx-debounce="500"
+                            />
                           </div>
-                        <% type when type in ["single", "multiple"] -> %>
-                          <div class="space-y-3" id={"quiz-options-#{block.id}"}>
-                            <%= for {opt, index} <- Enum.with_index(block.content["options"] || []) do %>
-                              <div class="flex items-start gap-3 group relative">
-                                <div class="pt-3 cursor-pointer">
-                                  <%= if type == "single" do %>
-                                    <input
-                                      type="radio"
-                                      name="correct_option_id"
-                                      value={opt["id"]}
-                                      checked={opt["is_correct"] in [true, "true"]}
-                                      class="radio radio-primary radio-sm"
-                                    />
-                                    <input
-                                      type="hidden"
-                                      name={"options[#{index}][is_correct]"}
-                                      value="false"
-                                    />
-                                  <% else %>
-                                    <input
-                                      type="hidden"
-                                      name={"options[#{index}][is_correct]"}
-                                      value="false"
-                                    />
-                                    <input
-                                      type="checkbox"
-                                      name={"options[#{index}][is_correct]"}
-                                      value="true"
-                                      checked={opt["is_correct"] in [true, "true"]}
-                                      class="checkbox checkbox-primary checkbox-sm"
-                                    />
-                                  <% end %>
-                                </div>
-
-                                <div class="flex-1 bg-base-100/50 p-2 rounded-lg border border-base-200/50 hover:border-base-300 transition-colors focus-within:border-primary focus-within:ring-1 focus-within:ring-primary space-y-2">
+                        </div>
+                      <% type when type in ["single", "multiple"] -> %>
+                        <div class="space-y-3" id={"quiz-options-#{block.id}"}>
+                          <%= for {opt, index} <- Enum.with_index(block.content["options"] || []) do %>
+                            <div class="flex items-start gap-3 group relative">
+                              <div class="pt-3 cursor-pointer">
+                                <%= if type == "single" do %>
+                                  <input
+                                    type="radio"
+                                    name="correct_option_id"
+                                    value={opt["id"]}
+                                    checked={opt["is_correct"] in [true, "true"]}
+                                    class="radio radio-primary radio-sm"
+                                  />
                                   <input
                                     type="hidden"
-                                    name={"options[#{index}][id]"}
-                                    value={opt["id"]}
+                                    name={"options[#{index}][is_correct]"}
+                                    value="false"
                                   />
-
+                                <% else %>
                                   <input
-                                    type="text"
-                                    name={"options[#{index}][text]"}
-                                    value={opt["text"]}
-                                    class="w-full bg-transparent border-none outline-none focus:ring-0 font-medium text-base-content placeholder:text-base-content/30"
-                                    placeholder={gettext("Option text")}
-                                    phx-debounce="500"
+                                    type="hidden"
+                                    name={"options[#{index}][is_correct]"}
+                                    value="false"
                                   />
-
                                   <input
-                                    type="text"
-                                    name={"options[#{index}][explanation]"}
-                                    value={opt["explanation"]}
-                                    class="w-full bg-transparent border-none outline-none focus:ring-0 text-sm text-base-content/60 placeholder:text-base-content/30"
-                                    placeholder={gettext("Explanation (optional)")}
-                                    phx-debounce="500"
+                                    type="checkbox"
+                                    name={"options[#{index}][is_correct]"}
+                                    value="true"
+                                    checked={opt["is_correct"] in [true, "true"]}
+                                    class="checkbox checkbox-primary checkbox-sm"
                                   />
-                                </div>
-
-                                <div class="pt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <button
-                                    type="button"
-                                    phx-click="remove_quiz_option"
-                                    phx-value-id={block.id}
-                                    phx-value-option_id={opt["id"]}
-                                    class="btn btn-ghost btn-sm btn-square text-error hover:bg-error/20"
-                                  >
-                                    <.icon name="hero-x-mark" class="size-5" />
-                                  </button>
-                                </div>
+                                <% end %>
                               </div>
-                            <% end %>
-                          </div>
+                              <div class="flex-1 bg-base-100/50 p-2 rounded-lg border border-base-200/50 hover:border-base-300 transition-colors focus-within:border-primary focus-within:ring-1 focus-within:ring-primary space-y-2">
+                                <input type="hidden" name={"options[#{index}][id]"} value={opt["id"]} />
+                                <input
+                                  type="text"
+                                  name={"options[#{index}][text]"}
+                                  value={opt["text"]}
+                                  class="w-full bg-transparent border-none outline-none focus:ring-0 font-medium text-base-content placeholder:text-base-content/30"
+                                  placeholder={gettext("Option text")}
+                                  phx-debounce="500"
+                                />
+                                <input
+                                  type="text"
+                                  name={"options[#{index}][explanation]"}
+                                  value={opt["explanation"]}
+                                  class="w-full bg-transparent border-none outline-none focus:ring-0 text-sm text-base-content/60 placeholder:text-base-content/30"
+                                  placeholder={gettext("Explanation (optional)")}
+                                  phx-debounce="500"
+                                />
+                              </div>
+                              <div class="pt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  type="button"
+                                  phx-click="remove_quiz_option"
+                                  phx-value-id={block.id}
+                                  phx-value-option_id={opt["id"]}
+                                  class="btn btn-ghost btn-sm btn-square text-error hover:bg-error/20"
+                                >
+                                  <.icon name="hero-x-mark" class="size-5" />
+                                </button>
+                              </div>
+                            </div>
+                          <% end %>
+                        </div>
+                        <button
+                          type="button"
+                          phx-click="add_quiz_option"
+                          phx-value-id={block.id}
+                          class="btn btn-ghost btn-sm mt-4 text-primary font-bold"
+                        >
+                          <.icon name="hero-plus" class="size-4 mr-1" /> {gettext("Add Option")}
+                        </button>
+                      <% "open" -> %>
+                        <div class="text-sm text-base-content/50 italic bg-base-200/50 p-4 rounded-lg border border-dashed border-base-300">
+                          {gettext("Student will see a text area to write their open answer.")}
+                        </div>
+                      <% _ -> %>
+                    <% end %>
+                  </form>
+                </div>
+              <% end %>
 
-                          <button
-                            type="button"
-                            phx-click="add_quiz_option"
-                            phx-value-id={block.id}
-                            class="btn btn-ghost btn-sm mt-4 text-primary font-bold"
-                          >
-                            <.icon name="hero-plus" class="size-4 mr-1" />
-                            {gettext("Add Option")}
-                          </button>
-                        <% "open" -> %>
-                          <div class="text-sm text-base-content/50 italic bg-base-200/50 p-4 rounded-lg border border-dashed border-base-300">
-                            {gettext("Student will see a text area to write their open answer.")}
-                          </div>
-                        <% _ -> %>
-                      <% end %>
-                    </form>
+              <%= if block.type == :attachment do %>
+                <div class="mt-2 p-4 bg-base-100 ring-1 ring-base-300 rounded-xl shadow-lg animate-in slide-in-from-top-2 duration-200">
+                  <div class="text-xs font-bold uppercase tracking-widest text-primary mb-3">
+                    {gettext("Manage Files")}
                   </div>
-                <% block.type == :quiz_exam -> %>
-                  <div class="bg-base-200/30 p-8 rounded-xl border-2 border-dashed border-base-300 flex flex-col items-center justify-center text-center gap-4">
-                    <div class="p-4 bg-primary/10 text-primary rounded-full">
-                      <.icon name="hero-academic-cap" class="size-8" />
-                    </div>
-                    <div>
-                      <h3 class="font-bold text-lg text-base-content">
-                        {gettext("Quiz Exam Generator")}
-                      </h3>
-                      <p class="text-sm text-base-content/60 max-w-md mx-auto mt-2">
-                        {gettext(
-                          "This block will dynamically generate a unique exam for each student based on the tags and configuration set in the inspector."
-                        )}
-                      </p>
-                    </div>
-                    <div class="flex flex-wrap items-center justify-center gap-2 mt-2">
-                      <span class="badge badge-primary badge-sm font-bold py-3 px-3">
-                        {block.content["count"] || 10} {gettext("Questions")}
-                      </span>
-                      <span
-                        :if={block.content["time_limit"]}
-                        class="badge badge-neutral badge-sm font-bold py-3 px-3"
-                      >
-                        <.icon name="hero-clock" class="size-4 mr-1.5" />
-                        {block.content["time_limit"]} {gettext("min")}
-                      </span>
-                    </div>
-                  </div>
-                <% block.type == :image -> %>
-                  <%= if block.content["url"] do %>
-                    <img
-                      src={block.content["url"]}
-                      alt={block.content["alt"]}
-                      class="rounded-lg w-full object-cover"
-                    />
-                  <% else %>
-                    <button
-                      type="button"
-                      phx-click="request_media_upload"
-                      phx-value-block_id={block.id}
-                      phx-value-media_type="image"
-                      class="w-full text-center p-10 bg-base-200/50 hover:bg-base-200 rounded-lg border-2 border-dashed border-base-300 hover:border-primary/50 transition-colors flex flex-col items-center gap-3 group"
-                    >
-                      <.icon
-                        name="hero-cloud-arrow-up"
-                        class="size-10 text-base-content/20 group-hover:text-primary/50 transition-colors"
-                      />
-                      <span class="text-sm font-medium text-base-content/50 group-hover:text-primary transition-colors">
-                        {gettext("Click to upload image")}
-                      </span>
-                    </button>
-                  <% end %>
-                <% block.type == :video -> %>
-                  <%= if block.content["url"] do %>
-                    <video
-                      src={block.content["url"]}
-                      poster={block.content["poster_url"]}
-                      controls={block.content["controls"] not in [false, "false"]}
-                      class="rounded-lg w-full bg-black aspect-video"
-                    />
-                  <% else %>
-                    <button
-                      type="button"
-                      phx-click="request_media_upload"
-                      phx-value-block_id={block.id}
-                      phx-value-media_type="video"
-                      class="w-full text-center p-10 bg-base-200/50 hover:bg-base-200 rounded-lg border-2 border-dashed border-base-300 hover:border-primary/50 transition-colors flex flex-col items-center gap-3 group"
-                    >
-                      <.icon
-                        name="hero-cloud-arrow-up"
-                        class="size-10 text-base-content/20 group-hover:text-primary/50 transition-colors"
-                      />
-                      <span class="text-sm font-medium text-base-content/50 group-hover:text-primary transition-colors">
-                        {gettext("Click to upload video")}
-                      </span>
-                    </button>
-                  <% end %>
-                <% block.type == :attachment -> %>
-                  <div
-                    id={"tiptap-#{block.id}"}
-                    phx-hook="TiptapEditor"
-                    data-id={block.id}
-                    phx-update="ignore"
-                    data-content={Jason.encode!(block.content["description"] || %{})}
-                    class="min-h-[100px] mb-6"
-                  >
-                  </div>
-
-                  <div class="space-y-2 mb-4">
+                  <div class="space-y-2">
                     <div
                       :for={file <- block.content["files"] || []}
-                      class="flex items-center gap-3 p-3 bg-base-200/50 rounded-lg border border-base-300 hover:border-primary/30 transition-colors"
+                      class="flex items-center justify-between p-2 bg-base-200/50 border border-base-300 rounded-lg"
                     >
-                      <div class="p-2 bg-base-100 rounded shadow-sm text-primary shrink-0">
-                        <.icon name="hero-document" class="size-5" />
+                      <div class="flex items-center gap-2 min-w-0">
+                        <.icon name="hero-document" class="size-4 text-base-content/50 shrink-0" />
+                        <span class="text-sm truncate flex-1 font-medium">{file["name"]}</span>
                       </div>
-                      <div class="flex-1 min-w-0">
-                        <div class="text-sm font-bold truncate text-base-content/80">
-                          {file["name"]}
-                        </div>
-                        <div class="text-xs text-base-content/50">{format_bytes(file["size"])}</div>
-                      </div>
-                      <.button
-                        type="button"
+                      <button
                         phx-click="delete_attachment"
                         phx-value-block_id={block.id}
                         phx-value-url={file["url"]}
-                        class="btn-ghost btn-sm btn-square text-error hover:bg-error/20"
-                        title={gettext("Remove file")}
+                        class="btn btn-ghost btn-xs btn-square text-error shrink-0"
                       >
                         <.icon name="hero-trash" class="size-4" />
-                      </.button>
+                      </button>
                     </div>
                   </div>
-
                   <button
-                    type="button"
                     phx-click="request_media_upload"
                     phx-value-block_id={block.id}
                     phx-value-media_type="attachment"
-                    class="w-full text-center py-4 bg-base-100 hover:bg-base-200 rounded-lg border-2 border-dashed border-base-300 hover:border-primary/50 transition-colors flex items-center justify-center gap-2 group text-sm font-medium text-base-content/50"
+                    class="btn btn-primary btn-sm mt-3 w-full shadow-sm"
                   >
-                    <.icon
-                      name="hero-plus-circle"
-                      class="size-5 group-hover:text-primary transition-colors"
-                    />
-                    <span class="group-hover:text-primary transition-colors">
-                      {gettext("Add Files")}
-                    </span>
+                    <.icon name="hero-cloud-arrow-up" class="size-4 mr-1" /> {gettext("Upload File")}
                   </button>
-                <% true -> %>
-                  <div class="text-sm text-base-content/50 italic p-4 ring-1 ring-dashed ring-base-300 rounded select-none bg-base-200/50">
-                    <div class="flex items-center gap-2 mb-1">
-                      <.icon name="hero-code-bracket" class="size-4" />
-                      <span class="font-bold text-xs uppercase">{block.type}</span>
-                    </div>
-                    {gettext("Preview block content")}
-                  </div>
+                </div>
               <% end %>
-            </div>
-          </div>
 
-          <div
-            :if={@blocks == []}
-            class="text-center py-20 border-2 border-dashed border-base-300 rounded-lg"
-          >
-            <p class="text-base-content/50 mb-4">{gettext("This section is empty.")}</p>
+              <%= if block.type in [:image, :video] do %>
+                <div class="mt-2 flex justify-end animate-in fade-in duration-200">
+                  <button
+                    phx-click="request_media_upload"
+                    phx-value-block_id={block.id}
+                    phx-value-media_type={block.type}
+                    class="btn btn-primary btn-sm shadow-sm"
+                  >
+                    <.icon name="hero-cloud-arrow-up" class="size-4 mr-1" />
+                    {if block.content["url"],
+                      do: gettext("Replace Media"),
+                      else: gettext("Upload Media")}
+                  </button>
+                </div>
+              <% end %>
+            <% end %>
           </div>
         </div>
 
@@ -349,7 +215,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
               role="button"
               class="btn btn-primary btn-circle shadow-2xl size-14 group"
             >
-              <.icon name="hero-plus" class="size-8 " />
+              <.icon name="hero-plus" class="size-8" />
             </div>
             <ul
               tabindex="0"
@@ -443,14 +309,5 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       </div>
     </div>
     """
-  end
-
-  @doc false
-  defp format_bytes(bytes) do
-    cond do
-      bytes >= 1_048_576 -> "#{Float.round(bytes / 1_048_576, 1)} MB"
-      bytes >= 1024 -> "#{Float.round(bytes / 1024, 1)} KB"
-      true -> "#{bytes} B"
-    end
   end
 end

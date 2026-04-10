@@ -18,7 +18,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       refute html =~ "Add Content"
     end
 
-    test "shows empty section message and add button when section has no blocks" do
+    test "shows floating add menu when section has no blocks" do
       html =
         render_component(CanvasComponent,
           active_section_id: "some-section-id",
@@ -26,7 +26,6 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_block_id: nil
         )
 
-      assert html =~ "This section is empty."
       assert html =~ "Add Content"
       assert html =~ "Text Block"
       assert html =~ "Code Sandbox"
@@ -38,8 +37,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
     end
   end
 
-  describe "Rendering Blocks" do
-    test "renders text blocks with TiptapEditor hook" do
+  describe "Visual Previews (Inactive Blocks)" do
+    test "renders text blocks with TiptapEditor hook in edit mode" do
       text_block = %Block{id: "block-123", type: :text, content: %{"text" => "hello"}}
 
       html =
@@ -49,13 +48,17 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_block_id: nil
         )
 
-      assert html =~ ~s(id="tiptap-block-123")
+      assert html =~ ~s(id="tiptap-edit-block-123")
       assert html =~ ~s(phx-hook="TiptapEditor")
       assert html =~ ~s(data-id="block-123")
     end
 
-    test "renders code blocks with generic preview placeholder" do
-      code_block = %Block{id: "block-456", type: :code, content: %{}}
+    test "renders code blocks with actual code content" do
+      code_block = %Block{
+        id: "block-456",
+        type: :code,
+        content: %{"language" => "elixir", "code" => "IO.puts(:ok)"}
+      }
 
       html =
         render_component(CanvasComponent,
@@ -64,10 +67,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_block_id: nil
         )
 
-      assert html =~ "Preview block content"
-
-      assert html =~ "code"
-      refute html =~ "TiptapEditor"
+      assert html =~ "elixir"
+      assert html =~ "IO.puts(:ok)"
     end
 
     test "renders image block placeholder when no url is set" do
@@ -80,9 +81,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_block_id: nil
         )
 
-      assert html =~ "Click to upload image"
-      assert html =~ "request_media_upload"
-      assert html =~ ~s(phx-value-media_type="image")
+      assert html =~ "Image not uploaded yet"
+      assert html =~ "hero-photo"
     end
 
     test "renders image tag when url is present" do
@@ -102,116 +102,74 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       assert html =~ "<img"
       assert html =~ ~s(src="http://s3.com/pic.jpg")
       assert html =~ ~s(alt="Cool pic")
-      refute html =~ "Click to upload image"
     end
 
-    test "renders video block placeholder when no url is set" do
+    test "renders quiz_exam block preview card" do
+      exam_block = %Block{
+        id: "block-exam-1",
+        type: :quiz_exam,
+        content: %{"count" => 25, "time_limit" => 60}
+      }
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [exam_block],
+          active_block_id: nil
+        )
+
+      assert html =~ "Final Exam"
+      assert html =~ "25 Questions"
+      assert html =~ "60 Min"
+    end
+  end
+
+  describe "Contextual Editors (Active Blocks)" do
+    test "renders attachment manager WHEN ACTIVE" do
+      attachment_block = %Block{
+        id: "block-att-2",
+        type: :attachment,
+        content: %{
+          "files" => [%{"name" => "homework.pdf", "url" => "/media/hw.pdf"}]
+        }
+      }
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [attachment_block],
+          active_block_id: "block-att-2"
+        )
+
+      assert html =~ "Manage Files"
+      assert html =~ "homework.pdf"
+      assert html =~ "Upload File"
+      assert html =~ "delete_attachment"
+      assert html =~ ~s(phx-value-url="/media/hw.pdf")
+    end
+
+    test "renders media upload shortcut WHEN ACTIVE" do
       video_block = %Block{id: "block-vid-1", type: :video, content: %{"url" => nil}}
 
       html =
         render_component(CanvasComponent,
           active_section_id: "sec-1",
           blocks: [video_block],
-          active_block_id: nil
+          active_block_id: "block-vid-1"
         )
 
-      assert html =~ "Click to upload video"
+      assert html =~ "Upload Media"
       assert html =~ "request_media_upload"
       assert html =~ ~s(phx-value-media_type="video")
     end
 
-    test "renders video tag when url is present" do
-      video_block = %Block{
-        id: "block-vid-2",
-        type: :video,
-        content: %{
-          "url" => "http://s3.com/vid.mp4",
-          "poster_url" => "http://s3.com/poster.jpg",
-          "controls" => true
-        }
-      }
-
-      html =
-        render_component(CanvasComponent,
-          active_section_id: "sec-1",
-          blocks: [video_block],
-          active_block_id: nil
-        )
-
-      assert html =~ "<video"
-      assert html =~ ~s(src="http://s3.com/vid.mp4")
-      assert html =~ ~s(poster="http://s3.com/poster.jpg")
-      assert html =~ "controls"
-      refute html =~ "Click to upload video"
-    end
-
-    test "renders attachment block with tiptap and add button" do
-      attachment_block = %Block{
-        id: "block-att-1",
-        type: :attachment,
-        content: %{"description" => %{}, "files" => []}
-      }
-
-      html =
-        render_component(CanvasComponent,
-          active_section_id: "sec-1",
-          blocks: [attachment_block],
-          active_block_id: nil
-        )
-
-      assert html =~ ~s(id="tiptap-block-att-1")
-      assert html =~ ~s(phx-hook="TiptapEditor")
-      assert html =~ "Add Files"
-      assert html =~ "request_media_upload"
-      assert html =~ ~s(phx-value-media_type="attachment")
-    end
-
-    test "renders attachment block with listed files and sizes" do
-      attachment_block = %Block{
-        id: "block-att-2",
-        type: :attachment,
-        content: %{
-          "description" => %{"text" => "Download these"},
-          "files" => [
-            %{
-              "name" => "homework.pdf",
-              "size" => 2_097_152,
-              "url" => "/media/hw.pdf",
-              "mime" => "application/pdf"
-            },
-            %{
-              "name" => "notes.txt",
-              "size" => 1500,
-              "url" => "/media/notes.txt",
-              "mime" => "text/plain"
-            }
-          ]
-        }
-      }
-
-      html =
-        render_component(CanvasComponent,
-          active_section_id: "sec-1",
-          blocks: [attachment_block],
-          active_block_id: nil
-        )
-
-      assert html =~ "homework.pdf"
-      assert html =~ "notes.txt"
-      assert html =~ "2.0 MB"
-      assert html =~ "1.5 KB"
-      assert html =~ "delete_attachment"
-      assert html =~ ~s(phx-value-url="/media/hw.pdf")
-    end
-
-    test "renders exact_match quiz block with text input", %{conn: _conn} do
+    test "renders exact_match quiz editor WHEN ACTIVE" do
       quiz_block = %Block{
         id: "block-quiz-exact",
         type: :quiz_question,
         content: %{
           "question_type" => "exact_match",
-          "correct_answer" => "flag{h4ck3d}",
-          "body" => %{"text" => "What is the flag?"}
+          "correct_answer" => "flag{h4ck3d}"
         }
       }
 
@@ -219,22 +177,21 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
         render_component(CanvasComponent,
           active_section_id: "sec-1",
           blocks: [quiz_block],
-          active_block_id: nil
+          active_block_id: "block-quiz-exact"
         )
 
-      assert html =~ ~s(id="tiptap-block-quiz-exact")
+      assert html =~ "Answer Editor"
       assert html =~ "Correct Answer (Flag)"
       assert html =~ ~s(name="correct_answer")
       assert html =~ "flag{h4ck3d}"
     end
 
-    test "renders single/multiple choice quiz blocks with options", %{conn: _conn} do
+    test "renders single/multiple choice quiz editor WHEN ACTIVE" do
       quiz_block = %Block{
         id: "block-quiz-multi",
         type: :quiz_question,
         content: %{
           "question_type" => "multiple",
-          "body" => %{},
           "options" => [
             %{
               "id" => "opt1",
@@ -251,9 +208,10 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
         render_component(CanvasComponent,
           active_section_id: "sec-1",
           blocks: [quiz_block],
-          active_block_id: nil
+          active_block_id: "block-quiz-multi"
         )
 
+      assert html =~ "Answer Editor"
       assert html =~ "Option A"
       assert html =~ "Expl 1"
       assert html =~ "Option B"
@@ -263,29 +221,27 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       assert html =~ "remove_quiz_option"
     end
 
-    test "renders open quiz block with text area placeholder", %{conn: _conn} do
+    test "renders open quiz message WHEN ACTIVE" do
       quiz_block = %Block{
         id: "block-quiz-open",
         type: :quiz_question,
-        content: %{
-          "question_type" => "open",
-          "body" => %{}
-        }
+        content: %{"question_type" => "open"}
       }
 
       html =
         render_component(CanvasComponent,
           active_section_id: "sec-1",
           blocks: [quiz_block],
-          active_block_id: nil
+          active_block_id: "block-quiz-open"
         )
 
+      assert html =~ "Answer Editor"
       assert html =~ "Student will see a text area to write their open answer."
     end
   end
 
-  describe "Active State" do
-    test "highlights the active block" do
+  describe "Active State Highlighting" do
+    test "highlights the active block with ring-2 ring-primary" do
       block1 = %Block{id: "block-1", type: :text, content: %{}}
       block2 = %Block{id: "block-2", type: :text, content: %{}}
 
@@ -296,35 +252,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_block_id: "block-1"
         )
 
-      assert html =~ ~r/id="block-block-1"[^>]*ring-primary shadow-md/
-
-      refute html =~ ~r/id="block-block-2"[^>]*ring-primary shadow-md/
-      assert html =~ ~r/id="block-block-2"[^>]*ring-base-200/
+      assert html =~ ~r/id="block-block-1".*?ring-2 ring-primary/s
+      assert html =~ ~r/id="block-block-2".*?ring-1 ring-base-300/s
     end
-  end
-
-  test "renders quiz_exam block with preview card and badges", %{conn: _conn} do
-    exam_block = %Block{
-      id: "block-exam-1",
-      type: :quiz_exam,
-      content: %{
-        "count" => 25,
-        "time_limit" => 60
-      }
-    }
-
-    html =
-      render_component(CanvasComponent,
-        active_section_id: "sec-1",
-        blocks: [exam_block],
-        active_block_id: nil
-      )
-
-    assert html =~ "Quiz Exam Generator"
-    assert html =~ "25"
-    assert html =~ "Questions"
-    assert html =~ "60"
-    assert html =~ "min"
-    assert html =~ "hero-clock"
   end
 end

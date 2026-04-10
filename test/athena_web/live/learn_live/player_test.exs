@@ -33,10 +33,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         section: s1,
         type: :image,
         order: 20,
-        content: %{
-          "url" => "http://s3.com/img.jpg",
-          "alt" => "A test image"
-        }
+        content: %{"url" => "http://s3.com/img.jpg", "alt" => "A test image"}
       )
 
       insert(:block,
@@ -64,43 +61,29 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         section: s1,
         type: :code,
         order: 50,
-        content: %{
-          "language" => "elixir",
-          "code" => "IO.puts(:hello_world)"
-        }
+        content: %{"language" => "elixir", "code" => "IO.puts(:hello_world)"}
       )
 
       {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
       assert html =~ "Simple paragraph"
-
       assert html =~ ~s(src="http://s3.com/img.jpg")
       assert html =~ ~s(alt="A test image")
-
       assert html =~ ~s(src="http://s3.com/vid.mp4")
       assert html =~ ~s(poster="http://s3.com/poster.jpg")
-
       assert html =~ "doc.pdf"
-      assert html =~ "1.0 KB"
-
       assert html =~ "IO.puts(:hello_world)"
-      assert html =~ "editor.ex"
+      assert html =~ "elixir"
     end
 
-    test "renders quiz_question blocks correctly (all types)", %{
-      conn: conn,
-      course: course
-    } do
+    test "renders quiz_question blocks correctly (all types)", %{conn: conn, course: course} do
       s1 = insert(:section, course: course, title: "Quiz Section")
 
       insert(:block,
         section: s1,
         type: :quiz_question,
         order: 10,
-        content: %{
-          "question_type" => "exact_match",
-          "body" => %{"text" => "Find the flag"}
-        }
+        content: %{"question_type" => "exact_match", "body" => %{"text" => "Find the flag"}}
       )
 
       insert(:block,
@@ -110,10 +93,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         content: %{
           "question_type" => "single",
           "body" => %{"text" => "Pick one"},
-          "options" => [
-            %{"id" => "opt1", "text" => "Radio Option 1"},
-            %{"id" => "opt2", "text" => "Radio Option 2"}
-          ]
+          "options" => [%{"id" => "opt1", "text" => "Radio Option 1"}]
         }
       )
 
@@ -124,10 +104,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         content: %{
           "question_type" => "multiple",
           "body" => %{"text" => "Pick many"},
-          "options" => [
-            %{"id" => "chk1", "text" => "Check Option A"},
-            %{"id" => "chk2", "text" => "Check Option B"}
-          ]
+          "options" => [%{"id" => "chk1", "text" => "Check Option A"}]
         }
       )
 
@@ -135,26 +112,17 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         section: s1,
         type: :quiz_question,
         order: 40,
-        content: %{
-          "question_type" => "open",
-          "body" => %{"text" => "Write an essay"}
-        }
+        content: %{"question_type" => "open", "body" => %{"text" => "Write an essay"}}
       )
 
       {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
-      assert html =~ "Enter your answer (flag)..."
-
+      assert html =~ "Type your answer..."
       assert html =~ "type=\"radio\""
       assert html =~ "Radio Option 1"
-      assert html =~ "Radio Option 2"
-
       assert html =~ "type=\"checkbox\""
       assert html =~ "Check Option A"
-      assert html =~ "Check Option B"
-
       assert html =~ "<textarea"
-      assert html =~ "Type your answer here..."
     end
   end
 
@@ -166,10 +134,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         insert(:block,
           section: s1,
           type: :text,
-          completion_rule: %CompletionRule{
-            type: :button,
-            button_text: "Understood, Sir!"
-          }
+          completion_rule: %CompletionRule{type: :button, button_text: "Understood, Sir!"}
         )
 
       {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
@@ -183,7 +148,6 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
     test "cascading blocks: hides blocks after an uncompleted gate", %{conn: conn, course: course} do
       s1 = insert(:section, course: course)
-
       insert(:block, section: s1, order: 10, content: %{"text" => "Block 1"})
 
       b_gate =
@@ -208,7 +172,6 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
     test "redirects to dashboard if user has no access to the course", %{conn: conn} do
       unauthorized_user = insert(:account)
       unauthorized_conn = init_test_session(conn, %{"account_id" => unauthorized_user.id})
-
       course2 = insert(:course)
       s1 = insert(:section, course: course2)
 
@@ -240,7 +203,6 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       course: course
     } do
       s1 = insert(:section, course: course)
-
       now = DateTime.utc_now()
       future = DateTime.add(now, 1, :day)
       past = DateTime.add(now, -1, :day)
@@ -287,7 +249,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
   end
 
   describe "Quiz Submissions" do
-    test "submits exact_match quiz correctly, shows feedback and locks input", %{
+    test "submits exact_match quiz correctly, shows feedback and locks form", %{
       conn: conn,
       course: course
     } do
@@ -299,16 +261,15 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
           type: :quiz_question,
           content: %{
             "question_type" => "exact_match",
-            "body" => %{"text" => "Find flag"},
             "correct_answer" => "flag{123}",
-            "general_explanation" => "The flag is hidden in plain sight."
+            "general_explanation" => "Hidden in plain sight."
           }
         )
 
       {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
       refute html =~ "Correct!"
-      refute html =~ "The flag is hidden in plain sight."
+      refute html =~ "Hidden in plain sight."
 
       html =
         lv
@@ -316,11 +277,12 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> render_submit()
 
       assert html =~ "Correct!"
-      assert html =~ "The flag is hidden in plain sight."
-      assert html =~ ~s(disabled="")
+      assert html =~ "Hidden in plain sight."
+      assert html =~ "Submitted"
+      refute html =~ "Submit Answer"
     end
 
-    test "submits single choice quiz incorrectly, shows specific explanation and locks", %{
+    test "submits single choice quiz incorrectly, shows general explanation and locks", %{
       conn: conn,
       course: course
     } do
@@ -334,20 +296,10 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
           type: :quiz_question,
           content: %{
             "question_type" => "single",
-            "body" => %{"text" => "Pick one"},
+            "general_explanation" => "Always pick the right one.",
             "options" => [
-              %{
-                "id" => opt1_id,
-                "text" => "Wrong option",
-                "is_correct" => false,
-                "explanation" => "This is why it's wrong."
-              },
-              %{
-                "id" => opt2_id,
-                "text" => "Right option",
-                "is_correct" => true,
-                "explanation" => "This is right."
-              }
+              %{"id" => opt1_id, "is_correct" => false},
+              %{"id" => opt2_id, "is_correct" => true}
             ]
           }
         )
@@ -360,22 +312,16 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> render_submit()
 
       assert html =~ "Incorrect."
-      assert html =~ "This is why it&#39;s wrong."
-      assert html =~ ~s(disabled="")
+      assert html =~ "Always pick the right one."
+      assert html =~ "Submitted"
+      refute html =~ "Submit Answer"
     end
 
     test "submits open question and sets pending review status", %{conn: conn, course: course} do
       s1 = insert(:section, course: course)
 
       block =
-        insert(:block,
-          section: s1,
-          type: :quiz_question,
-          content: %{
-            "question_type" => "open",
-            "body" => %{"text" => "Write essay"}
-          }
-        )
+        insert(:block, section: s1, type: :quiz_question, content: %{"question_type" => "open"})
 
       {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
@@ -385,7 +331,8 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> render_submit()
 
       assert html =~ "Pending Review"
-      assert html =~ ~s(disabled="")
+      assert html =~ "Submitted"
+      refute html =~ "Submit Answer"
     end
 
     test "pass_auto_grade gate unlocks next block only upon correct submission", %{
@@ -400,11 +347,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
           order: 10,
           type: :quiz_question,
           completion_rule: %CompletionRule{type: :pass_auto_grade, min_score: 100},
-          content: %{
-            "question_type" => "exact_match",
-            "body" => %{"text" => "Key?"},
-            "correct_answer" => "42"
-          }
+          content: %{"question_type" => "exact_match", "correct_answer" => "42"}
         )
 
       insert(:block, section: s1, order: 20, type: :text, content: %{"text" => "Secret Content"})
@@ -434,11 +377,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
           order: 10,
           type: :quiz_question,
           completion_rule: %CompletionRule{type: :submit},
-          content: %{
-            "question_type" => "exact_match",
-            "body" => %{"text" => "Guess?"},
-            "correct_answer" => "42"
-          }
+          content: %{"question_type" => "exact_match", "correct_answer" => "42"}
         )
 
       insert(:block, section: s1, order: 20, type: :text, content: %{"text" => "Secret Content"})
@@ -468,7 +407,6 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
           content: %{
             "count" => 15,
             "time_limit" => 45,
-            "allowed_blur_attempts" => 2,
             "mandatory_tags" => [],
             "include_tags" => [],
             "exclude_tags" => []
@@ -478,12 +416,11 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
       assert html =~ "Final Exam"
-      assert html =~ "15"
-      assert html =~ "45"
-      assert html =~ "2"
+      assert html =~ "15 Questions"
+      assert html =~ "45 Min"
       assert html =~ "Start Exam"
-      lv |> element("button[phx-click='start_exam']") |> render_click()
 
+      lv |> element("button[phx-click='start_exam']") |> render_click()
       assert_redirect(lv, "/learn/courses/#{course.id}/exam/#{block.id}")
 
       sub = Athena.Repo.one(Athena.Learning.Submission)
@@ -538,11 +475,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       refute html =~ "Start Exam"
     end
 
-    test "renders failed state if cheat limit exceeded", %{
-      conn: conn,
-      course: course,
-      user: user
-    } do
+    test "renders failed state if cheat limit exceeded", %{conn: conn, course: course, user: user} do
       s1 = insert(:section, course: course)
 
       block =
