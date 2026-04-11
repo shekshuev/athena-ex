@@ -38,7 +38,9 @@ defmodule AthenaWeb.StudioLive.GradingDetailTest do
       {:ok, _lv, html} = live(conn, ~p"/studio/grading/#{sub.id}")
 
       assert html =~ "Submission from hacker_boy"
-      assert html =~ "quiz_question"
+
+      # В новом UI подчеркивания заменяются на пробелы: "quiz_question" -> "quiz question"
+      assert html =~ "quiz question"
       assert html =~ "athena_flag"
       assert html =~ "Correct:"
       assert html =~ ~r/ disabled(?!:)/
@@ -101,7 +103,8 @@ defmodule AthenaWeb.StudioLive.GradingDetailTest do
 
       assert html =~ "sneaky_student"
 
-      assert html =~ "Final Exam"
+      # "quiz_exam" -> "quiz exam"
+      assert html =~ "quiz exam"
 
       assert html =~ "Manual Review"
       assert html =~ "I don&#39;t know"

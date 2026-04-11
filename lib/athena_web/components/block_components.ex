@@ -345,4 +345,179 @@ defmodule AthenaWeb.BlockComponents do
     </div>
     """
   end
+
+  @doc """
+  Contextual editor panels for specific block types (Quiz options, File manager).
+  Used in both Builder Canvas and Library Editor.
+  """
+  attr :block, :map, required: true
+  attr :target, :any, default: nil
+
+  def block_editor(assigns) do
+    ~H"""
+    <div>
+      <%= if @block.type == :quiz_question do %>
+        <div class="mt-2 p-6 bg-base-100 ring-1 ring-base-300 rounded-xl shadow-lg border-t-4 border-t-primary animate-in slide-in-from-top-2 duration-200">
+          <div class="text-xs font-bold uppercase tracking-widest text-primary mb-4 border-b border-base-200 pb-2">
+            {gettext("Answer Editor")}
+          </div>
+          <form
+            phx-change="update_quiz_content"
+            phx-submit="ignore"
+            phx-target={@target}
+            id={"quiz-form-#{@block.id}"}
+          >
+            <input type="hidden" name="block_id" value={@block.id} />
+
+            <%= case @block.content["question_type"] do %>
+              <% "exact_match" -> %>
+                <div class="form-control">
+                  <label class="label">
+                    <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                      {gettext("Correct Answer (Flag)")}
+                    </span>
+                  </label>
+                  <div class="flex items-center gap-3">
+                    <.icon name="hero-flag" class="size-5 text-primary" />
+                    <input
+                      type="text"
+                      name="correct_answer"
+                      value={@block.content["correct_answer"]}
+                      class="input input-bordered flex-1 font-mono"
+                      phx-debounce="500"
+                    />
+                  </div>
+                </div>
+              <% type when type in ["single", "multiple"] -> %>
+                <div class="space-y-3">
+                  <%= for {opt, index} <- Enum.with_index(@block.content["options"] || []) do %>
+                    <div class="flex items-start gap-3 group relative">
+                      <div class="pt-3 cursor-pointer">
+                        <%= if type == "single" do %>
+                          <input
+                            type="radio"
+                            name="correct_option_id"
+                            value={opt["id"]}
+                            checked={opt["is_correct"] in [true, "true"]}
+                            class="radio radio-primary radio-sm"
+                          />
+                          <input type="hidden" name={"options[#{index}][is_correct]"} value="false" />
+                        <% else %>
+                          <input type="hidden" name={"options[#{index}][is_correct]"} value="false" />
+                          <input
+                            type="checkbox"
+                            name={"options[#{index}][is_correct]"}
+                            value="true"
+                            checked={opt["is_correct"] in [true, "true"]}
+                            class="checkbox checkbox-primary checkbox-sm"
+                          />
+                        <% end %>
+                      </div>
+                      <div class="flex-1 bg-base-100/50 p-2 rounded-lg border border-base-200/50 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary space-y-2">
+                        <input type="hidden" name={"options[#{index}][id]"} value={opt["id"]} />
+                        <input
+                          type="text"
+                          name={"options[#{index}][text]"}
+                          value={opt["text"]}
+                          class="w-full bg-transparent border-none outline-none focus:ring-0 font-medium text-base-content"
+                          placeholder={gettext("Option text")}
+                          phx-debounce="500"
+                        />
+                        <input
+                          type="text"
+                          name={"options[#{index}][explanation]"}
+                          value={opt["explanation"]}
+                          class="w-full bg-transparent border-none outline-none focus:ring-0 text-sm text-base-content/60"
+                          placeholder={gettext("Explanation (optional)")}
+                          phx-debounce="500"
+                        />
+                      </div>
+                      <div class="pt-2 opacity-0 group-hover:opacity-100">
+                        <button
+                          type="button"
+                          phx-click="remove_quiz_option"
+                          phx-value-id={@block.id}
+                          phx-value-option_id={opt["id"]}
+                          phx-target={@target}
+                          class="btn btn-ghost btn-sm btn-square text-error"
+                        >
+                          <.icon name="hero-x-mark" class="size-5" />
+                        </button>
+                      </div>
+                    </div>
+                  <% end %>
+                </div>
+                <button
+                  type="button"
+                  phx-click="add_quiz_option"
+                  phx-value-id={@block.id}
+                  phx-target={@target}
+                  class="btn btn-ghost btn-sm mt-4 text-primary font-bold"
+                >
+                  <.icon name="hero-plus" class="size-4 mr-1" /> {gettext("Add Option")}
+                </button>
+              <% "open" -> %>
+                <div class="text-sm text-base-content/50 italic bg-base-200/50 p-4 rounded-lg border border-dashed border-base-300">
+                  {gettext("Student will see a text area to write their open answer.")}
+                </div>
+              <% _ -> %>
+            <% end %>
+          </form>
+        </div>
+      <% end %>
+
+      <%= if @block.type == :attachment do %>
+        <div class="mt-2 p-4 bg-base-100 ring-1 ring-base-300 rounded-xl shadow-lg animate-in slide-in-from-top-2 duration-200">
+          <div class="text-xs font-bold uppercase tracking-widest text-primary mb-3">
+            {gettext("Manage Files")}
+          </div>
+          <div class="space-y-2">
+            <div
+              :for={file <- @block.content["files"] || []}
+              class="flex items-center justify-between p-2 bg-base-200/50 border border-base-300 rounded-lg"
+            >
+              <div class="flex items-center gap-2 min-w-0">
+                <.icon name="hero-document" class="size-4 text-base-content/50 shrink-0" />
+                <span class="text-sm truncate flex-1 font-medium">{file["name"]}</span>
+              </div>
+              <button
+                phx-click="delete_attachment"
+                phx-value-block_id={@block.id}
+                phx-value-url={file["url"]}
+                phx-target={@target}
+                class="btn btn-ghost btn-xs btn-square text-error shrink-0"
+              >
+                <.icon name="hero-trash" class="size-4" />
+              </button>
+            </div>
+          </div>
+          <button
+            phx-click="request_media_upload"
+            phx-value-block_id={@block.id}
+            phx-value-media_type="attachment"
+            phx-target={@target}
+            class="btn btn-primary btn-sm mt-3 w-full shadow-sm"
+          >
+            <.icon name="hero-cloud-arrow-up" class="size-4 mr-1" /> {gettext("Upload File")}
+          </button>
+        </div>
+      <% end %>
+
+      <%= if @block.type in [:image, :video] do %>
+        <div class="mt-2 flex justify-end animate-in fade-in duration-200">
+          <button
+            phx-click="request_media_upload"
+            phx-value-block_id={@block.id}
+            phx-value-media_type={@block.type}
+            phx-target={@target}
+            class="btn btn-primary btn-sm shadow-sm"
+          >
+            <.icon name="hero-cloud-arrow-up" class="size-4 mr-1" />
+            {if @block.content["url"], do: gettext("Replace Media"), else: gettext("Upload Media")}
+          </button>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
 end

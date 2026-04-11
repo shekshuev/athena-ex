@@ -443,7 +443,8 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
 
       html = render(lv)
       assert html =~ "Upload Media"
-      assert html =~ "Click or drag file here"
+      # Ищем новый текст для мульти-загрузки
+      assert html =~ "Click or drag files here"
     end
 
     test "cancels media upload and closes modal", %{
@@ -463,7 +464,8 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert render(lv) =~ "Upload Media"
 
       lv
-      |> element("button[phx-click='cancel_upload']")
+      # Ищем правильный эвент для новой модалки
+      |> element("button[phx-click='cancel_media_upload']")
       |> render_click()
 
       refute render(lv) =~ "Upload Media"

@@ -17,10 +17,6 @@ defmodule AthenaWeb.StudioLive.Builder do
   @allowed_video_types ~w(.mp4 .mov .webm)
   @allowed_attachment_types ~w(.pdf .doc .docx .xls .xlsx .ppt .pptx .txt .zip .rar .7z)
 
-  @image_max_size 10 * 1024 * 1024
-  @video_max_size 500 * 1024 * 1024
-  @attachment_max_size 50 * 1024 * 1024
-
   @image_types_str @allowed_image_types
                    |> Enum.map_join(", ", fn "." <> ext -> String.upcase(ext) end)
   @video_types_str @allowed_video_types
@@ -67,25 +63,10 @@ defmodule AthenaWeb.StudioLive.Builder do
            saving_block_to_library: nil,
            library_picker_open: false,
            library_blocks: [],
-           library_search: ""
-         )
-         |> allow_upload(:image_upload,
-           accept: @allowed_image_types,
-           max_entries: 1,
-           max_file_size: @image_max_size,
-           external: &presign_upload/2
-         )
-         |> allow_upload(:video_upload,
-           accept: @allowed_video_types,
-           max_entries: 1,
-           max_file_size: @video_max_size,
-           external: &presign_upload/2
-         )
-         |> allow_upload(:attachment_upload,
-           accept: @allowed_attachment_types,
-           max_entries: 10,
-           max_file_size: @attachment_max_size,
-           external: &presign_upload/2
+           library_search: "",
+           show_media_modal: false,
+           active_upload_block_id: nil,
+           upload_type: nil
          )}
 
       _ ->
@@ -98,12 +79,54 @@ defmodule AthenaWeb.StudioLive.Builder do
     {:noreply, assign(socket, server_now: DateTime.utc_now() |> DateTime.truncate(:second))}
   end
 
+  def handle_info(
+        {AthenaWeb.StudioLive.MediaUploadComponent, {:saved, block_id, media_type, results}},
+        socket
+      ) do
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+    content_map = normalize_content(block.content || %{})
+
+    if media_type == "tiptap_image" do
+      file_map = List.first(results)
+
+      {:noreply,
+       socket
+       |> assign(show_media_modal: false, active_upload_block_id: nil, upload_type: nil)
+       |> push_event("insert_media", %{
+         block_id: block_id,
+         url: file_map["url"],
+         type: "tiptap_image"
+       })
+       |> put_flash(:info, gettext("Image inserted into text!"))}
+    else
+      new_content =
+        case media_type do
+          "attachment" ->
+            Map.put(content_map, "files", Map.get(content_map, "files", []) ++ results)
+
+          _ ->
+            file_map = List.first(results)
+            Map.put(content_map, "url", file_map["url"])
+        end
+
+      {:ok, updated_block} = Content.update_block(block, %{"content" => new_content})
+
+      {:noreply,
+       socket
+       |> assign(
+         blocks: replace_block(socket.assigns.blocks, updated_block),
+         show_media_modal: false,
+         active_upload_block_id: nil,
+         upload_type: nil
+       )
+       |> put_flash(:info, gettext("Media uploaded successfully!"))}
+    end
+  end
+
   @impl true
   def handle_params(_params, _url, socket) do
     {:noreply, socket}
   end
-
-  # --- SECTION EVENTS ---
 
   @impl true
   def handle_event("select_section", %{"id" => id}, socket) do
@@ -111,7 +134,6 @@ defmodule AthenaWeb.StudioLive.Builder do
     {:noreply, assign(socket, active_section_id: id, active_block_id: nil, blocks: blocks)}
   end
 
-  @impl true
   def handle_event("add_section", %{"parent_id" => parent_id}, socket) do
     course = socket.assigns.course
     clean_parent_id = if parent_id == "", do: nil, else: parent_id
@@ -268,8 +290,6 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
-  # --- BLOCK EVENTS ---
-
   def handle_event("select_block", %{"id" => id}, socket) do
     {:noreply, assign(socket, active_block_id: id)}
   end
@@ -308,7 +328,6 @@ defmodule AthenaWeb.StudioLive.Builder do
     create_and_assign_block(socket, attrs, gettext("Failed to create quiz block"))
   end
 
-  @impl true
   def handle_event("add_quiz_exam_block", _, socket) do
     if section_id = socket.assigns.active_section_id do
       attrs = %{
@@ -542,13 +561,18 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
-  # --- MEDIA UPLOAD EVENTS ---
   def handle_event(
         "request_media_upload",
-        %{"block_id" => block_id, "media_type" => media_type},
+        %{"block_id" => block_id, "media_type" => type},
         socket
       ) do
-    {:noreply, assign(socket, uploading_for_block: block_id, uploading_media_type: media_type)}
+    {:noreply,
+     assign(socket, show_media_modal: true, active_upload_block_id: block_id, upload_type: type)}
+  end
+
+  def handle_event("cancel_media_upload", _, socket) do
+    {:noreply,
+     assign(socket, show_media_modal: false, active_upload_block_id: nil, upload_type: nil)}
   end
 
   def handle_event("validate_media", _params, socket), do: {:noreply, socket}
@@ -584,13 +608,6 @@ defmodule AthenaWeb.StudioLive.Builder do
     {:noreply, cancel_upload(socket, upload_name, ref)}
   end
 
-  def handle_event("save_media", _params, socket) do
-    block_id = socket.assigns.uploading_for_block
-    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
-    process_media_save(socket, block)
-  end
-
-  # --- LIBRARY INTEGRATION EVENTS ---
   def handle_event("open_library_picker", _, socket) do
     {:ok, {blocks, _meta}} = Content.list_library_blocks(%{}, socket.assigns.current_user.id)
 
@@ -748,121 +765,16 @@ defmodule AthenaWeb.StudioLive.Builder do
         </div>
       </div>
 
-      <.modal
-        :if={@uploading_for_block}
-        id="media-upload-modal"
-        show={true}
-        title={gettext("Upload Media")}
-        on_cancel={JS.push("cancel_upload")}
-      >
-        <% active_upload =
-          case to_string(@uploading_media_type) do
-            "video" -> @uploads.video_upload
-            "attachment" -> @uploads.attachment_upload
-            _ -> @uploads.image_upload
-          end %>
-        <% has_entries = active_upload.entries != [] %>
-        <% is_uploading =
-          Enum.any?(
-            active_upload.entries,
-            &(&1.progress > 0 and &1.progress < 100 and upload_errors(active_upload, &1) == [])
-          ) %>
-
-        <.form for={nil} id="upload-form" phx-submit="save_media" phx-change="validate_media">
-          <div
-            class={[
-              "relative border-2 border-dashed border-base-300 rounded-lg hover:border-primary/50 hover:bg-base-200/50 transition-all",
-              has_entries && "hidden"
-            ]}
-            phx-drop-target={active_upload.ref}
-          >
-            <label class="cursor-pointer flex flex-col items-center justify-center p-8 w-full h-full">
-              <.live_file_input upload={active_upload} class="sr-only" />
-              <.icon name="hero-cloud-arrow-up" class="size-10 text-primary mb-2" />
-              <span class="font-bold text-center">{gettext("Click or drag file here")}</span>
-              <span class="text-xs text-base-content/50 mt-1">
-                <%= case to_string(@uploading_media_type) do %>
-                  <% "video" -> %>
-                    {@video_types_str} (500MB)
-                  <% "attachment" -> %>
-                    {@attachment_types_str} (50MB, max 10)
-                  <% _ -> %>
-                    {@image_types_str} (10MB)
-                <% end %>
-              </span>
-            </label>
-          </div>
-        </.form>
-
-        <div
-          :for={entry <- active_upload.entries}
-          class="mt-4 flex flex-col gap-2 p-4 bg-base-200 rounded-xl border border-base-300"
-        >
-          <div class="flex items-center justify-between text-sm">
-            <div class="flex items-center gap-2 truncate font-medium">
-              <.icon
-                name={
-                  if to_string(@uploading_media_type) == "video",
-                    do: "hero-video-camera",
-                    else: "hero-photo"
-                }
-                class="size-5 text-base-content/50 shrink-0"
-              />
-              <span class="truncate">{entry.client_name}</span>
-            </div>
-
-            <div class="flex items-center gap-3 shrink-0">
-              <span class="text-base-content/50 font-bold">{entry.progress}%</span>
-              <button
-                type="button"
-                phx-click="cancel-upload"
-                phx-value-ref={entry.ref}
-                class="btn btn-ghost btn-xs btn-circle text-error hover:bg-error/20"
-                title={gettext("Remove file")}
-              >
-                <.icon name="hero-x-mark" class="size-4" />
-              </button>
-            </div>
-          </div>
-
-          <progress
-            class={[
-              "progress w-full",
-              upload_errors(active_upload, entry) != [] && "progress-error",
-              upload_errors(active_upload, entry) == [] && "progress-primary"
-            ]}
-            value={entry.progress}
-            max="100"
-          >
-          </progress>
-
-          <div
-            :for={err <- upload_errors(active_upload, entry)}
-            class="text-error text-xs font-bold flex items-center gap-1 mt-1"
-          >
-            <.icon name="hero-exclamation-circle" class="size-4 shrink-0" />
-            {upload_error_to_string(err)}
-          </div>
-        </div>
-
-        <div class="modal-action mt-6">
-          <.button type="button" class="btn btn-ghost" phx-click="cancel_upload">
-            {gettext("Cancel")}
-          </.button>
-
-          <.button
-            type="submit"
-            form="upload-form"
-            class="btn btn-primary"
-            disabled={
-              not has_entries or is_uploading or
-                Enum.any?(active_upload.entries, &(upload_errors(active_upload, &1) != []))
-            }
-          >
-            {if is_uploading, do: gettext("Uploading..."), else: gettext("Upload")}
-          </.button>
-        </div>
-      </.modal>
+      <%= if @show_media_modal do %>
+        <.live_component
+          module={AthenaWeb.StudioLive.MediaUploadComponent}
+          id="media-uploader"
+          block_id={@active_upload_block_id}
+          upload_type={@upload_type}
+          current_user={@current_user}
+          course_id={@course.id}
+        />
+      <% end %>
 
       <.modal
         :if={@moving_section_id}
@@ -1037,8 +949,6 @@ defmodule AthenaWeb.StudioLive.Builder do
     """
   end
 
-  # --- PRIVATE HELPERS ---
-
   @doc false
   defp normalize_content(%{__struct__: _} = struct) do
     struct |> Map.from_struct() |> normalize_content()
@@ -1054,6 +964,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   defp normalize_content(value), do: value
 
+  @doc false
   defp find_section_in_tree(_, nil), do: nil
 
   defp find_section_in_tree(sections, id) do
@@ -1066,6 +977,7 @@ defmodule AthenaWeb.StudioLive.Builder do
     end)
   end
 
+  @doc false
   defp replace_block(blocks, updated_block) do
     Enum.map(blocks, fn
       %Block{id: id} when id == updated_block.id -> updated_block
@@ -1150,175 +1062,6 @@ defmodule AthenaWeb.StudioLive.Builder do
     </div>
     """
   end
-
-  @doc false
-  defp presign_upload(entry, socket) do
-    course_id = socket.assigns.course.id
-
-    case Content.prepare_media_upload(course_id, entry.client_name) do
-      {:ok, meta} ->
-        {:ok, meta, socket}
-
-      {:error, _} ->
-        {:error, dgettext("errors", "Could not generate upload URL")}
-    end
-  end
-
-  @doc false
-  defp process_media_save(socket, nil) do
-    {:noreply, assign(socket, uploading_for_block: nil, uploading_media_type: nil)}
-  end
-
-  defp process_media_save(socket, block) do
-    user_id = socket.assigns.current_user.id
-    media_type = to_string(socket.assigns.uploading_media_type)
-
-    upload_name =
-      case to_string(socket.assigns.uploading_media_type) do
-        "video" -> :video_upload
-        "attachment" -> :attachment_upload
-        _ -> :image_upload
-      end
-
-    upload_results =
-      consume_uploaded_entries(socket, upload_name, fn meta, entry ->
-        file_info = %{
-          name: entry.client_name,
-          type: entry.client_type,
-          size: entry.client_size
-        }
-
-        save_consumed_media(media_type, block, user_id, meta, file_info)
-      end)
-
-    apply_upload_results(socket, media_type, block, upload_results)
-  end
-
-  defp save_consumed_media("tiptap_image", _block, user_id, meta, file_info) do
-    file_attrs = %{
-      "bucket" => meta.bucket,
-      "key" => meta.key,
-      "original_name" => file_info.name,
-      "mime_type" => file_info.type,
-      "size" => file_info.size,
-      "context" => "course_material",
-      "owner_id" => user_id
-    }
-
-    case Athena.Media.create_file(file_attrs) do
-      {:ok, _file} -> {:ok, {:ok, %{url: meta.url_for_saved_entry, type: "tiptap_image"}}}
-      {:error, err} -> {:ok, {:error, err}}
-    end
-  end
-
-  defp save_consumed_media("attachment", _block, user_id, meta, file_info) do
-    file_attrs = %{
-      "bucket" => meta.bucket,
-      "key" => meta.key,
-      "original_name" => file_info.name,
-      "mime_type" => file_info.type,
-      "size" => file_info.size,
-      "context" => "course_material",
-      "owner_id" => user_id
-    }
-
-    case Athena.Media.create_file(file_attrs) do
-      {:ok, _file} ->
-        file_data = %{
-          "url" => meta.url_for_saved_entry,
-          "name" => file_info.name,
-          "size" => file_info.size,
-          "mime" => file_info.type
-        }
-
-        {:ok, {:ok, file_data}}
-
-      {:error, err} ->
-        {:ok, {:error, err}}
-    end
-  end
-
-  defp save_consumed_media(_media_type, block, user_id, meta, file_info) do
-    case Content.attach_media_to_block(block, user_id, meta, file_info) do
-      {:ok, updated_block} -> {:ok, {:ok, updated_block}}
-      {:error, err} -> {:ok, {:error, err}}
-    end
-  end
-
-  @doc false
-  defp apply_upload_results(socket, "tiptap_image", _block, [
-         {:ok, %{url: url, type: "tiptap_image"}} | _
-       ]) do
-    block_id = socket.assigns.uploading_for_block
-
-    {:noreply,
-     socket
-     |> assign(uploading_for_block: nil, uploading_media_type: nil)
-     |> push_event("insert_media", %{block_id: block_id, url: url, type: "tiptap_image"})
-     |> put_flash(:info, gettext("Image inserted into text!"))}
-  end
-
-  defp apply_upload_results(socket, "attachment", block, results) do
-    new_files =
-      Enum.reduce(results, [], fn
-        {:ok, file_map}, acc -> [file_map | acc]
-        _, acc -> acc
-      end)
-      |> Enum.reverse()
-
-    if new_files != [] do
-      content_map = normalize_content(block.content || %{})
-      existing_files = Map.get(content_map, "files", [])
-      new_content = Map.put(content_map, "files", existing_files ++ new_files)
-
-      {:ok, updated_block} = Content.update_block(block, %{"content" => new_content})
-
-      {:noreply,
-       socket
-       |> assign(
-         blocks: replace_block(socket.assigns.blocks, updated_block),
-         uploading_for_block: nil,
-         uploading_media_type: nil
-       )
-       |> put_flash(:info, gettext("Files attached successfully!"))}
-    else
-      {:noreply,
-       socket
-       |> assign(uploading_for_block: nil, uploading_media_type: nil)
-       |> put_flash(:error, gettext("Error saving attachments."))}
-    end
-  end
-
-  defp apply_upload_results(socket, _media_type, _block, [
-         {:ok, %Block{} = updated_block} | _
-       ]) do
-    {:noreply,
-     socket
-     |> assign(
-       blocks: replace_block(socket.assigns.blocks, updated_block),
-       uploading_for_block: nil,
-       uploading_media_type: nil
-     )
-     |> put_flash(:info, gettext("Media uploaded successfully!"))}
-  end
-
-  defp apply_upload_results(socket, _media_type, _block, _errors) do
-    {:noreply,
-     socket
-     |> assign(uploading_for_block: nil, uploading_media_type: nil)
-     |> put_flash(:error, dgettext("errors", "Error saving media data."))}
-  end
-
-  @doc false
-  defp upload_error_to_string(:too_large), do: gettext("File is too large")
-
-  defp upload_error_to_string(:not_accepted),
-    do: gettext("You have selected an unacceptable file type")
-
-  defp upload_error_to_string(:external_client_failure),
-    do: gettext("Upload failed. Check your internet connection or cloud storage settings.")
-
-  defp upload_error_to_string(_), do: gettext("An unknown error occurred")
 
   defp create_and_assign_block(socket, attrs, error_msg \\ gettext("Failed to create block")) do
     case Content.create_block(attrs) do

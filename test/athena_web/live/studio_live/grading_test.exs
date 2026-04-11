@@ -32,12 +32,11 @@ defmodule AthenaWeb.StudioLive.GradingTest do
 
       {:ok, _lv, html} = live(conn, ~p"/studio/grading")
 
-      assert html =~ "Assignments"
+      assert html =~ "Grading Center"
       assert html =~ "johndoe"
-      assert html =~ "quiz_exam"
-      assert html =~ "Needs review"
+      assert html =~ "quiz exam"
+      assert html =~ "Needs Review"
       assert html =~ "Grade"
-      assert html =~ "hero-pencil-square"
       refute html =~ "janedoe"
     end
 
@@ -51,6 +50,7 @@ defmodule AthenaWeb.StudioLive.GradingTest do
       {:ok, _lv, html} = live(conn, ~p"/studio/grading")
 
       assert html =~ "Unknown"
+      assert html =~ "Deleted Block"
     end
   end
 
@@ -68,20 +68,19 @@ defmodule AthenaWeb.StudioLive.GradingTest do
 
       {:ok, lv, _html} = live(conn, ~p"/studio/grading")
 
+      # Имитируем клик по табу "Graded"
       html =
         lv
-        |> form("form[phx-change='update_filter']", %{"status" => "graded"})
-        |> render_change()
+        |> element("a", "Graded")
+        |> render_click()
 
       assert html =~ "smart_student"
-      assert html =~ "95 / 100"
+      assert html =~ "95"
       assert html =~ "Graded"
-
       assert html =~ "View"
-      assert html =~ "hero-eye"
     end
 
-    test "should clear filter and show all submissions when empty status is passed", %{conn: conn} do
+    test "should clear filter and show all submissions when 'all' status is passed", %{conn: conn} do
       student = insert(:account, login: "any_student")
       block = insert(:block, type: :text)
 
@@ -89,10 +88,11 @@ defmodule AthenaWeb.StudioLive.GradingTest do
 
       {:ok, lv, _html} = live(conn, ~p"/studio/grading")
 
+      # Имитируем клик по табу "All"
       html =
         lv
-        |> form("form[phx-change='update_filter']", %{"status" => ""})
-        |> render_change()
+        |> element("a", "All")
+        |> render_click()
 
       assert html =~ "any_student"
       assert html =~ "Pending"

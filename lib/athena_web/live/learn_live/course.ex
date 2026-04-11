@@ -10,7 +10,6 @@ defmodule AthenaWeb.LearnLive.Course do
 
   alias Athena.Content
   alias Athena.Learning
-  alias Athena.Learning.Progress
 
   @doc """
   Initializes the LiveView, verifying user access, subscribing to real-time content updates,
@@ -29,7 +28,7 @@ defmodule AthenaWeb.LearnLive.Course do
 
       full_tree = Content.get_course_tree(course_id, user)
       linear_sections = Content.list_linear_lessons(course_id, user)
-      accessible_ids = Progress.accessible_section_ids(user.id, course_id, linear_sections)
+      accessible_ids = Learning.accessible_section_ids(user.id, course_id, linear_sections)
       waterline_id = List.last(accessible_ids)
 
       {:ok,
@@ -78,7 +77,7 @@ defmodule AthenaWeb.LearnLive.Course do
 
     full_tree = Content.get_course_tree(course_id, user)
     linear_sections = Content.list_linear_lessons(course_id, user)
-    accessible_ids = Progress.accessible_section_ids(user.id, course_id, linear_sections)
+    accessible_ids = Learning.accessible_section_ids(user.id, course_id, linear_sections)
     waterline_id = List.last(accessible_ids)
 
     {current_nodes, breadcrumbs} =
