@@ -67,4 +67,10 @@ defmodule Athena.Learning.Submissions do
     |> Repo.all()
     |> Map.new(&{&1.block_id, &1})
   end
+
+  @doc """
+  Gets a single submission by its ID.
+  Raises `Ecto.NoResultsError` if the Submission does not exist.
+  """
+  def get_submission!(id), do: Repo.get!(Submission, id)
 end

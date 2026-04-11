@@ -13,7 +13,7 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
-    submission = Athena.Repo.get!(Learning.Submission, id)
+    submission = Learning.get_submission!(id)
 
     {:ok, account} = Identity.get_account(submission.account_id)
     {:ok, block} = Content.get_block(submission.block_id)

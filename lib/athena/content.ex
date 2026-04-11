@@ -36,6 +36,7 @@ defmodule Athena.Content do
     do: Sections.reorder_section(section, new_index) |> notify_subscribers()
 
   defdelegate list_blocks_by_section(section_id, user_or_mode \\ :all), to: Blocks
+  defdelegate list_blocks_by_section_ids(ids), to: Blocks
   defdelegate get_block(id), to: Blocks
   defdelegate prepare_media_upload(course_id, filename), to: Blocks
   defdelegate get_blocks_map(ids), to: Blocks

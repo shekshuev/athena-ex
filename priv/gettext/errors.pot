@@ -155,16 +155,6 @@ msgstr ""
 msgid "You don't have permission to access this page."
 msgstr ""
 
-#: lib/athena_web/live/studio_live/builder.ex:1132
-#, elixir-autogen, elixir-format
-msgid "Could not generate upload URL"
-msgstr ""
-
-#: lib/athena_web/live/studio_live/builder.ex:1278
-#, elixir-autogen, elixir-format
-msgid "Error saving media data."
-msgstr ""
-
 #: lib/athena/content/competition_rule.ex:34
 #, elixir-autogen, elixir-format
 msgid "can't be blank for auto-grade"

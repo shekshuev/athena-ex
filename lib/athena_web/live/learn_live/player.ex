@@ -533,16 +533,16 @@ defmodule AthenaWeb.LearnLive.Player do
     ~H"""
     <div class="space-y-1">
       <div :for={section <- @sections}>
-        <%= if section.children == [] do %>
-          <.link
-            navigate={~p"/learn/courses/#{@course_id}/play/#{section.id}"}
-            class={[
-              "w-full justify-start px-3 py-2.5 rounded-lg flex items-center gap-3 text-sm transition-all group font-medium",
-              @active_section_id == section.id && "bg-primary/10 text-primary",
-              @active_section_id != section.id && "hover:bg-base-200 text-base-content/70"
-            ]}
-            style={"padding-left: #{(@level * 1.5) + 0.75}rem;"}
-          >
+        <.link
+          navigate={~p"/learn/courses/#{@course_id}/play/#{section.id}"}
+          class={[
+            "w-full justify-start px-3 py-2.5 rounded-lg flex items-center gap-3 transition-all group",
+            @active_section_id == section.id && "bg-primary/10 text-primary",
+            @active_section_id != section.id && "hover:bg-base-200 text-base-content/70"
+          ]}
+          style={"padding-left: #{(@level * 1.5) + 0.75}rem;"}
+        >
+          <%= if section.children == [] do %>
             <.icon
               name="hero-document-text"
               class={[
@@ -551,17 +551,20 @@ defmodule AthenaWeb.LearnLive.Player do
                 @active_section_id != section.id && "text-base-content/30 group-hover:text-primary/70"
               ]}
             />
-            <span class="truncate">{section.title}</span>
-          </.link>
-        <% else %>
-          <div
-            class="w-full flex items-center gap-2 text-xs text-base-content/40 uppercase tracking-widest font-black mt-4 mb-2"
-            style={"padding-left: #{(@level * 1.5) + 0.75}rem;"}
-          >
-            <.icon name="hero-folder" class="size-4 shrink-0" />
-            <span class="truncate">{section.title}</span>
-          </div>
-        <% end %>
+            <span class="text-sm font-medium truncate">{section.title}</span>
+          <% else %>
+            <.icon
+              name="hero-folder"
+              class={[
+                "size-4 shrink-0 transition-colors",
+                @active_section_id == section.id && "text-primary",
+                @active_section_id != section.id && "text-base-content/40 group-hover:text-primary/70"
+              ]}
+            />
+            <span class="text-xs uppercase tracking-widest font-black truncate">{section.title}</span>
+          <% end %>
+        </.link>
+
         <.course_map_tree
           :if={section.children != []}
           sections={section.children}
@@ -601,10 +604,7 @@ defmodule AthenaWeb.LearnLive.Player do
     all_sections = Content.list_linear_lessons(course_id, :all)
     all_section_ids = Enum.map(all_sections, & &1.id)
 
-    import Ecto.Query
-
-    all_blocks =
-      Athena.Repo.all(from b in Athena.Content.Block, where: b.section_id in ^all_section_ids)
+    all_blocks = Content.list_blocks_by_section_ids(all_section_ids)
 
     all_rules =
       (all_sections ++ all_blocks)
@@ -630,6 +630,7 @@ defmodule AthenaWeb.LearnLive.Player do
       target_unix ->
         raw_diff_ms = (target_unix - now_unix) * 1000 + 1000
         safe_diff_ms = min(raw_diff_ms, 86_400_000)
+
         Process.send_after(self(), :refresh_content, safe_diff_ms)
         socket
     end

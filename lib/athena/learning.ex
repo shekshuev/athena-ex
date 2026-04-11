@@ -43,6 +43,7 @@ defmodule Athena.Learning do
   defdelegate create_submission(attrs), to: Submissions
   defdelegate update_submission(submission, attrs), to: Submissions
   defdelegate get_latest_submissions(account_id, block_ids), to: Submissions
+  defdelegate get_submission!(id), to: Submissions
 
   defdelegate mark_completed(account_id, block_id), to: Progress
   defdelegate completed_block_ids(account_id, section_id), to: Progress

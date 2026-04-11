@@ -204,4 +204,17 @@ defmodule Athena.Learning.SubmissionsTest do
       assert updated.feedback == "Good job!"
     end
   end
+
+  describe "get_submission!/1" do
+    test "returns the submission with given id" do
+      submission = insert(:submission)
+      assert Submissions.get_submission!(submission.id).id == submission.id
+    end
+
+    test "raises Ecto.NoResultsError if submission does not exist" do
+      assert_raise Ecto.NoResultsError, fn ->
+        Submissions.get_submission!(Ecto.UUID.generate())
+      end
+    end
+  end
 end
