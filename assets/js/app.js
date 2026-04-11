@@ -134,6 +134,41 @@ const getSuggestionItems = ({ query }) => {
     .slice(0, 10);
 };
 
+Hooks.AntiCheat = {
+  mounted() {
+    this.lastTriggered = 0;
+
+    this.triggerCheat = (reason) => {
+      const now = Date.now();
+      if (now - this.lastTriggered < 2000) return;
+
+      this.lastTriggered = now;
+      this.pushEvent("cheat_detected", { reason: reason });
+    };
+
+    this.handleBlur = () => {
+      this.triggerCheat("window_blur");
+    };
+
+    this.handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        this.triggerCheat("tab_hidden");
+      }
+    };
+
+    window.addEventListener("blur", this.handleBlur);
+    document.addEventListener("visibilitychange", this.handleVisibilityChange);
+  },
+
+  destroyed() {
+    window.removeEventListener("blur", this.handleBlur);
+    document.removeEventListener(
+      "visibilitychange",
+      this.handleVisibilityChange,
+    );
+  },
+};
+
 Hooks.TiptapEditor = {
   mounted() {
     const hook = this;

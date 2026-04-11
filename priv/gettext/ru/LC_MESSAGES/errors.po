@@ -157,15 +157,7 @@ msgstr "пароли не совпадают"
 msgid "You don't have permission to access this page."
 msgstr "У вас нет прав для доступа к этой странице"
 
-#: lib/athena_web/live/studio_live/builder.ex:1074
-#, elixir-autogen, elixir-format
-msgid "Could not generate upload URL"
-msgstr ""
-
-#: lib/athena_web/live/studio_live/builder.ex:1219
-#, elixir-autogen, elixir-format
-msgid "Error saving media data."
-msgstr ""#: lib/athena/content/competition_rule.ex:34
+#: lib/athena/content/competition_rule.ex:34
 #, elixir-autogen, elixir-format
 msgid "can't be blank for auto-grade"
 msgstr "обязательно для автопроверки"
@@ -194,3 +186,33 @@ msgstr "должно быть позже времени открытия"
 #, elixir-autogen, elixir-format
 msgid "must have either account_id or cohort_id"
 msgstr "необходимо указать либо account_id, либо cohort_id"
+
+#: lib/athena/learning/submission_content.ex:70
+#, elixir-autogen, elixir-format
+msgid "at least one file is required"
+msgstr "требуется хотя бы один файл"
+
+#: lib/athena/learning/submission_content.ex:45
+#, elixir-autogen, elixir-format
+msgid "can't be blank for text answer"
+msgstr "обязательно для текстового ответа"
+
+#: lib/athena/learning/submission_content.ex:56
+#, elixir-autogen, elixir-format
+msgid "code cannot be empty"
+msgstr "код не может быть пустым"
+
+#: lib/athena/learning/submission_content.ex:103
+#, elixir-autogen, elixir-format
+msgid "exam answers cannot be empty"
+msgstr "ответы на экзамен не могут быть пустыми"
+
+#: lib/athena/learning/submission_content.ex:59
+#, elixir-autogen, elixir-format
+msgid "language is required for code"
+msgstr "для кода необходимо указать язык"
+
+#: lib/athena/learning/submission_content.ex:87
+#, elixir-autogen, elixir-format
+msgid "please provide an answer or select a choice"
+msgstr "пожалуйста, введите ответ или выберите вариант"

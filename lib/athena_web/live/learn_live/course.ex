@@ -10,7 +10,6 @@ defmodule AthenaWeb.LearnLive.Course do
 
   alias Athena.Content
   alias Athena.Learning
-  alias Athena.Learning.Progress
 
   @doc """
   Initializes the LiveView, verifying user access, subscribing to real-time content updates,
@@ -29,7 +28,7 @@ defmodule AthenaWeb.LearnLive.Course do
 
       full_tree = Content.get_course_tree(course_id, user)
       linear_sections = Content.list_linear_lessons(course_id, user)
-      accessible_ids = Progress.accessible_section_ids(user.id, course_id, linear_sections)
+      accessible_ids = Learning.accessible_section_ids(user.id, course_id, linear_sections)
       waterline_id = List.last(accessible_ids)
 
       {:ok,
@@ -78,7 +77,7 @@ defmodule AthenaWeb.LearnLive.Course do
 
     full_tree = Content.get_course_tree(course_id, user)
     linear_sections = Content.list_linear_lessons(course_id, user)
-    accessible_ids = Progress.accessible_section_ids(user.id, course_id, linear_sections)
+    accessible_ids = Learning.accessible_section_ids(user.id, course_id, linear_sections)
     waterline_id = List.last(accessible_ids)
 
     {current_nodes, breadcrumbs} =
@@ -160,7 +159,7 @@ defmodule AthenaWeb.LearnLive.Course do
                 is_accessible && "hover:border-base-content/40",
                 not is_accessible && "opacity-40 pointer-events-none grayscale"
               ]}>
-                <div class="flex items-center gap-6 w-full">
+                <div class="flex items-center gap-6 w-full min-w-0">
                   <.icon
                     name={if node.children != [], do: "hero-folder", else: "hero-document-text"}
                     class={[
@@ -170,35 +169,33 @@ defmodule AthenaWeb.LearnLive.Course do
                     ]}
                   />
 
-                  <div class="flex-1">
-                    <%= if node.children != [] do %>
-                      <.link
-                        patch={~p"/learn/courses/#{@course.id}?parent_id=#{node.id}"}
-                        class="block text-lg font-bold text-base-content group-hover:text-primary transition-colors"
-                      >
-                        {node.title}
-                      </.link>
-                    <% else %>
-                      <.link
-                        navigate={~p"/learn/courses/#{@course.id}/play/#{node.id}"}
-                        class="block text-lg font-bold text-base-content group-hover:text-primary transition-colors"
-                      >
-                        {node.title}
-                      </.link>
-                    <% end %>
+                  <div class="flex-1 truncate">
+                    <.link
+                      navigate={~p"/learn/courses/#{@course.id}/play/#{node.id}"}
+                      class="block text-lg font-bold text-base-content group-hover:text-primary transition-colors truncate"
+                    >
+                      {node.title}
+                    </.link>
                   </div>
                 </div>
 
-                <.icon
-                  :if={not is_accessible}
-                  name="hero-lock-closed"
-                  class="size-5 text-base-content/30 shrink-0"
-                />
-                <.icon
-                  :if={node.children != []}
-                  name="hero-arrow-right"
-                  class="size-5 text-base-content/20 group-hover:text-base-content transition-colors shrink-0"
-                />
+                <div class="flex items-center gap-4 shrink-0 ml-4">
+                  <.icon
+                    :if={not is_accessible}
+                    name="hero-lock-closed"
+                    class="size-5 text-base-content/30"
+                  />
+
+                  <%= if node.children != [] do %>
+                    <.link
+                      patch={~p"/learn/courses/#{@course.id}?parent_id=#{node.id}"}
+                      class="p-2 -mr-2 rounded-lg hover:bg-base-200 text-base-content/30 hover:text-primary transition-all"
+                      title={gettext("Open Folder")}
+                    >
+                      <.icon name="hero-folder-open" class="size-6" />
+                    </.link>
+                  <% end %>
+                </div>
               </div>
             <% end %>
           <% end %>

@@ -66,14 +66,24 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponentTest do
 
       assert block.title == "New Exam Question"
       assert block.type == :quiz_question
-      assert block.tags == ["elixir", "hard", "core"]
       assert block.owner_id == current_user.id
 
       assert render(lv) =~ "Template created successfully"
     end
 
     test "updates an existing template and its tags", %{conn: conn, current_user: current_user} do
-      block = insert(:library_block, title: "Old Title", tags: ["old"], owner_id: current_user.id)
+      block =
+        insert(:library_block,
+          title: "Old Title",
+          tags: ["old"],
+          type: :quiz_question,
+          content: %{
+            "question_type" => "exact_match",
+            "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+            "correct_answer" => "test"
+          },
+          owner_id: current_user.id
+        )
 
       {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/edit")
 

@@ -1,30 +1,26 @@
 defmodule AthenaWeb.StudioLive.LibraryFormComponent do
   @moduledoc """
   A LiveComponent for creating and editing library block metadata.
-
-  Handles the parsing of comma-separated tags from the UI into the 
-  `{:array, :string}` format required by the database.
+  Handles the parsing of comma-separated tags.
   """
   use AthenaWeb, :live_component
 
   alias Athena.Content
   alias Athena.Content.LibraryBlock
 
-  @doc """
-  Initializes the component state.
-  Converts the array of tags into a comma-separated string for the HTML input.
-  """
-  @spec update(map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def update(%{library_block: block} = assigns, socket) do
     changeset = LibraryBlock.changeset(block, %{})
-
     tags_string = Enum.join(block.tags || [], ", ")
 
     type_options = [
-      {gettext("Text"), :text},
-      {gettext("Code"), :code},
-      {gettext("Quiz Question"), :quiz_question}
+      {gettext("Text Block"), :text},
+      {gettext("Code Sandbox"), :code},
+      {gettext("Quiz Question"), :quiz_question},
+      {gettext("Quiz Exam"), :quiz_exam},
+      {gettext("Image"), :image},
+      {gettext("Video"), :video},
+      {gettext("Files & Materials"), :attachment}
     ]
 
     {:ok,
@@ -35,12 +31,10 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
      |> assign(:type_options, type_options)}
   end
 
-  @doc """
-  Handles UI validation events.
-  """
   @impl true
   def handle_event("validate", %{"library_block" => params} = form_data, socket) do
     params = put_tags_array(params, form_data["tags_string"])
+    params = if socket.assigns.action == :new, do: put_default_content(params), else: params
 
     changeset =
       socket.assigns.library_block
@@ -52,12 +46,12 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
 
   def handle_event("save", %{"library_block" => params} = form_data, socket) do
     params = put_tags_array(params, form_data["tags_string"])
+    params = if socket.assigns.action == :new, do: put_default_content(params), else: params
 
     params =
       if socket.assigns.action == :new do
         params
         |> Map.put("owner_id", socket.assigns.current_user.id)
-        |> Map.put_new("content", %{})
       else
         params
       end
@@ -107,6 +101,53 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
 
   defp notify_parent(msg), do: send(self(), {__MODULE__, msg})
 
+  defp put_default_content(%{"type" => "text"} = params) do
+    Map.put_new(params, "content", %{"type" => "doc", "content" => [%{"type" => "paragraph"}]})
+  end
+
+  defp put_default_content(%{"type" => "code"} = params) do
+    Map.put_new(params, "content", %{
+      "code" => "IO.puts(:hello)",
+      "language" => "elixir",
+      "execution_mode" => "run"
+    })
+  end
+
+  defp put_default_content(%{"type" => "quiz_question"} = params) do
+    Map.put_new(params, "content", %{
+      "question_type" => "open",
+      "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+      "options" => []
+    })
+  end
+
+  defp put_default_content(%{"type" => "quiz_exam"} = params) do
+    Map.put_new(params, "content", %{
+      "count" => 10,
+      "time_limit" => nil,
+      "mandatory_tags" => [],
+      "include_tags" => [],
+      "exclude_tags" => []
+    })
+  end
+
+  defp put_default_content(%{"type" => "image"} = params) do
+    Map.put_new(params, "content", %{"url" => nil, "alt" => ""})
+  end
+
+  defp put_default_content(%{"type" => "video"} = params) do
+    Map.put_new(params, "content", %{"url" => nil, "poster_url" => nil, "controls" => true})
+  end
+
+  defp put_default_content(%{"type" => "attachment"} = params) do
+    Map.put_new(params, "content", %{
+      "description" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+      "files" => []
+    })
+  end
+
+  defp put_default_content(params), do: Map.put_new(params, "content", %{})
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -123,15 +164,7 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
           <div class="divider text-xs font-bold uppercase text-base-content/50">
             {gettext("Template Metadata")}
           </div>
-
-          <.input
-            field={@form[:title]}
-            type="text"
-            label={gettext("Title")}
-            placeholder={gettext("e.g. Standard Python Quiz")}
-            required
-          />
-
+          <.input field={@form[:title]} type="text" label={gettext("Title")} required />
           <.input
             field={@form[:type]}
             type="select"
@@ -151,14 +184,10 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
               id="tags_string"
               value={@tags_string}
               class="input input-bordered w-full"
-              placeholder={gettext("elixir, hard, quiz")}
+              placeholder="elixir, hard, quiz"
             />
-            <p class="mt-1 text-xs opacity-60">
-              {gettext("Used for filtering and dynamic quiz generation.")}
-            </p>
           </div>
         </div>
-
         <div class="shrink-0 p-6 border-t border-base-200 bg-base-100 flex justify-end gap-3">
           <.link patch={@patch} class="btn btn-ghost">{gettext("Cancel")}</.link>
           <button type="submit" class="btn btn-primary" phx-disable-with={gettext("Saving...")}>
