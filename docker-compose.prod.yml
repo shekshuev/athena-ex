@@ -5,7 +5,7 @@ services:
     # build:
     #   context: .
     #   dockerfile: Dockerfile
-    image: ghcr.io/shekshuev/athena:latest
+    image: ghcr.io/shekshuev/athena-ex:latest
     container_name: athena_web
     restart: always
     env_file:
