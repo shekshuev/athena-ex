@@ -43,9 +43,6 @@ defmodule Athena.Release do
 
       {:error, :not_found} ->
         create_default_admin_role()
-
-      _ ->
-        create_default_admin_role()
     end
   end
 
