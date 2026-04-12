@@ -2,9 +2,10 @@ version: "3.8"
 
 services:
   athena_web:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    image: ghcr.io/shekshuev/athena:latest
     container_name: athena_web
     restart: always
     env_file:
