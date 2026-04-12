@@ -69,6 +69,15 @@ For production, Athena uses a separate `docker-compose.prod.yml` which relies en
 2. Build your Elixir Docker image.
 3. Run `docker-compose -f docker-compose.prod.yml up -d`.
 
+## Production First Run
+
+After the containers are up, create your first admin:
+
+```bash
+# Create admin
+docker exec athena_web /app/bin/athena eval "Athena.Release.create_admin(\"admin\", \"Admin123!\")"
+```
+
 ## Manual User Creation (IEx)
 
 To create your first admin user manually, open the Elixir interactive shell (`iex -S mix`) and run the following commands:

@@ -1,0 +1,8 @@
+#!/bin/bash
+set -e
+
+# Накатываем миграции
+/app/bin/migrate
+
+# Запускаем сервак
+exec /app/bin/server

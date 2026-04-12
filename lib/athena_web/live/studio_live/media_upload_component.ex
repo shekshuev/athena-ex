@@ -38,8 +38,11 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
     context_id = socket.assigns[:course_id] || "library"
 
     case Content.prepare_media_upload(context_id, entry.client_name) do
-      {:ok, meta} -> {:ok, meta, socket}
-      {:error, _} -> {:error, gettext("Could not generate upload URL")}
+      {:ok, meta} ->
+        {:ok, meta, socket}
+
+      {:error, _} ->
+        {:error, gettext("Could not generate upload URL")}
     end
   end
 

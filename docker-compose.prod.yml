@@ -2,14 +2,15 @@ version: "3.8"
 
 services:
   athena_web:
-    # TODO: add dockerfile
-    image: athena_app:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: athena_web
     restart: always
     env_file:
       - .env
     ports:
-      - "80:4000"
+      - "${WEB_PORT_EXTERNAL:-80}:4000"
     depends_on:
       - postgres
       - minio
@@ -36,8 +37,27 @@ services:
       - .env
     volumes:
       - minio_prod_data:/data
+    ports:
+      - "${MINIO_PORT_EXTERNAL:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT_EXTERNAL:-9001}:9001"
     networks:
       - athena-network
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    env_file:
+      - .env
+    networks:
+      - athena-network
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set myminio http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD); do echo 'Waiting for MinIO...'; sleep 1; done;
+      /usr/bin/mc mb myminio/$$MINIO_BUCKET || true;
+      /usr/bin/mc anonymous set public myminio/$$MINIO_BUCKET;
+      exit 0;
+      "
 
 networks:
   athena-network:
