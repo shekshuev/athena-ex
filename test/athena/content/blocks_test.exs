@@ -235,4 +235,34 @@ defmodule Athena.Content.BlocksTest do
                Blocks.attach_media_to_block(invalid_block, user_id, meta, file_info)
     end
   end
+
+  describe "get_blocks_map/1" do
+    test "returns a map of blocks keyed by their IDs", %{section: s} do
+      b1 = insert(:block, section: s)
+      b2 = insert(:block, section: s)
+      b3 = insert(:block, section: s)
+
+      result = Blocks.get_blocks_map([b1.id, b2.id])
+
+      assert map_size(result) == 2
+      assert result[b1.id].id == b1.id
+      assert result[b2.id].id == b2.id
+      refute Map.has_key?(result, b3.id)
+    end
+
+    test "returns an empty map for an empty list of ids" do
+      assert Blocks.get_blocks_map([]) == %{}
+    end
+
+    test "ignores non-existent ids", %{section: s} do
+      b1 = insert(:block, section: s)
+      fake_id = Ecto.UUID.generate()
+
+      result = Blocks.get_blocks_map([b1.id, fake_id])
+
+      assert map_size(result) == 1
+      assert result[b1.id].id == b1.id
+      refute Map.has_key?(result, fake_id)
+    end
+  end
 end

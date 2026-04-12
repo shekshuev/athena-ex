@@ -62,6 +62,7 @@ defmodule AthenaWeb.Router do
         live "/courses/:id", Course, :index
         live "/courses/:id/play", Player, :play
         live "/courses/:id/play/:section_id", Player, :play
+        live "/courses/:id/exam/:block_id", Exam
       end
 
       scope "/studio", StudioLive do
@@ -70,10 +71,12 @@ defmodule AthenaWeb.Router do
         live "/courses/:id/edit", Courses, :edit
 
         live "/grading", Grading, :index
+        live "/grading/:id", GradingDetail
 
         live "/library", Library, :index
         live "/library/new", Library, :new
         live "/library/:id/edit", Library, :edit
+        live "/library/:id/editor", LibraryEditor
 
         live "/courses/:id/builder", Builder, :index
       end

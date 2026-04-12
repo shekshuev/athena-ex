@@ -78,7 +78,10 @@ if config_env() == :prod do
       port: String.to_integer(System.get_env("MINIO_PORT") || "443")
     ]
 
-  config :athena, Athena.Media, bucket: System.get_env("MINIO_BUCKET")
+  config :athena, Athena.Media,
+    bucket: System.get_env("MINIO_BUCKET"),
+    public_host: System.get_env("MINIO_PUBLIC_HOST"),
+    public_port: System.get_env("MINIO_PORT_EXTERNAL")
 
   if config_env() != :test do
     media_cron = System.get_env("MEDIA_CLEANUP_CRON") || "0 * * * *"

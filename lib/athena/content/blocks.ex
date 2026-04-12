@@ -32,6 +32,17 @@ defmodule Athena.Content.Blocks do
   end
 
   @doc """
+  Retrieves all blocks for multiple sections.
+  Used for bulk operations like calculating course-wide unlock schedules.
+  """
+  @spec list_blocks_by_section_ids([String.t()]) :: [Block.t()]
+  def list_blocks_by_section_ids(section_ids) do
+    Block
+    |> where([b], b.section_id in ^section_ids)
+    |> Repo.all()
+  end
+
+  @doc """
   Retrieves a single block by its ID.
   """
   @spec get_block(String.t()) :: {:ok, Block.t()} | {:error, :not_found}
@@ -178,6 +189,16 @@ defmodule Athena.Content.Blocks do
       {:error, _failed_operation, failed_value, _changes_so_far} ->
         {:error, failed_value}
     end
+  end
+
+  @doc """
+  Returns a map of blocks by their IDs
+  """
+  def get_blocks_map(ids) do
+    Block
+    |> where([b], b.id in ^ids)
+    |> Repo.all()
+    |> Map.new(&{&1.id, &1})
   end
 
   @doc false

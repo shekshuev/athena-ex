@@ -1,10 +1,7 @@
 defmodule AthenaWeb.StudioLive.Library do
   @moduledoc """
   LiveView for managing reusable content templates (Library Blocks).
-
-  Displays a paginated and searchable list of templates using Streams.
-  Handles soft/hard deletion and integrates with `LibraryFormComponent`
-  for creating and editing template metadata via a slide-over.
+  Displays a visual grid gallery of templates using streams and universal content blocks.
   """
   use AthenaWeb, :live_view
 
@@ -12,13 +9,10 @@ defmodule AthenaWeb.StudioLive.Library do
   alias Athena.Content.LibraryBlock
   alias Athena.Identity
   alias AthenaWeb.StudioLive.LibraryFormComponent
+  import AthenaWeb.BlockComponents
 
   on_mount {AthenaWeb.Hooks.Permission, "library.read"}
 
-  @doc """
-  Initializes the LiveView, setting up the library blocks stream.
-  """
-  @spec mount(map(), map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
@@ -27,11 +21,6 @@ defmodule AthenaWeb.StudioLive.Library do
      |> stream(:library_blocks, [])}
   end
 
-  @doc """
-  Handles URL parameters for pagination, search, and live actions.
-  """
-  @spec handle_params(map(), String.t(), Phoenix.LiveView.Socket.t()) ::
-          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_params(params, _url, socket) do
     search = Map.get(params, "search", "")
@@ -89,19 +78,9 @@ defmodule AthenaWeb.StudioLive.Library do
     end
   end
 
-  @doc """
-  Handles UI events such as searching and block deletion confirmations.
-  """
-  @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
-          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_event("search", %{"search" => search}, socket) do
-    params = %{
-      "search" => search,
-      "page" => 1,
-      "page_size" => socket.assigns.meta.page_size
-    }
-
+    params = %{"search" => search, "page" => 1, "page_size" => socket.assigns.meta.page_size}
     {:noreply, push_patch(socket, to: ~p"/studio/library?#{params}")}
   end
 
@@ -154,7 +133,7 @@ defmodule AthenaWeb.StudioLive.Library do
         <.button
           :if={Identity.can?(@current_user, "library.create")}
           patch={~p"/studio/library/new"}
-          class="btn btn-primary"
+          class="btn btn-primary shadow-lg shadow-primary/20"
         >
           <.icon name="hero-plus" class="size-5" />
           {gettext("Create Template")}
@@ -180,61 +159,85 @@ defmodule AthenaWeb.StudioLive.Library do
         </.form>
       </div>
 
-      <.table id="library-blocks" rows={@streams.library_blocks}>
-        <:col :let={{_id, block}} label={gettext("Title")}>
-          <span class="font-bold">{block.title}</span>
-        </:col>
-        <:col :let={{_id, block}} label={gettext("Type")}>
-          <div class="badge badge-outline badge-sm uppercase font-bold">
-            {Atom.to_string(block.type)}
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 mt-8">
+        <div
+          :for={{dom_id, block} <- @streams.library_blocks}
+          id={dom_id}
+          class="card bg-base-100 border border-base-200 shadow-sm hover:shadow-xl hover:border-primary/40 transition-all duration-300 overflow-hidden group flex flex-col"
+        >
+          <div class="h-48 bg-linear-to-br from-base-200 to-base-300 relative overflow-hidden flex items-center justify-center pointer-events-none select-none">
+            <div class="origin-top-left w-[140%] scale-[0.70] p-6 opacity-60 group-hover:opacity-100 transition-opacity duration-300">
+              <.content_block block={block} mode={:play} answers={%{}} />
+            </div>
+            <div class="absolute bottom-0 left-0 right-0 h-24 bg-linear-to-t from-base-100 to-transparent z-10">
+            </div>
           </div>
-        </:col>
-        <:col :let={{_id, block}} label={gettext("Tags")}>
-          <div class="flex flex-wrap gap-1">
-            <span :for={tag <- block.tags || []} class="badge badge-neutral badge-sm">
-              {tag}
-            </span>
-            <span :if={block.tags == []} class="text-xs opacity-50">—</span>
+
+          <div class="card-body p-6 grow gap-4">
+            <div>
+              <div class="flex justify-between items-start gap-4">
+                <h2
+                  class="card-title text-xl font-display font-bold group-hover:text-primary transition-colors line-clamp-2"
+                  title={block.title}
+                >
+                  {block.title}
+                </h2>
+                <span class="badge badge-sm font-bold shadow-sm border-0 bg-base-200 text-base-content/70 uppercase tracking-widest text-[10px] shrink-0 mt-1">
+                  {Atom.to_string(block.type) |> String.replace("_", " ")}
+                </span>
+              </div>
+
+              <div class="flex flex-wrap gap-1 mt-3">
+                <span :for={tag <- block.tags || []} class="badge badge-xs badge-neutral">{tag}</span>
+                <span :if={block.tags == []} class="text-xs opacity-50 italic">
+                  {gettext("No tags")}
+                </span>
+              </div>
+            </div>
+
+            <div class="mt-auto pt-6 flex items-center justify-between border-t border-base-200/50">
+              <div class="text-xs text-base-content/50 font-mono">
+                {Calendar.strftime(block.inserted_at, "%d.%m.%Y")}
+              </div>
+
+              <div class="flex items-center gap-2">
+                <.button
+                  :if={Identity.can?(@current_user, "library.update")}
+                  patch={~p"/studio/library/#{block.id}/edit"}
+                  class="btn btn-ghost btn-sm btn-square text-base-content/70"
+                  title={gettext("Edit Metadata")}
+                >
+                  <.icon name="hero-pencil-square" class="size-4" />
+                </.button>
+
+                <.button
+                  :if={Identity.can?(@current_user, "library.delete")}
+                  type="button"
+                  phx-click="delete_click"
+                  phx-value-id={block.id}
+                  class="btn btn-ghost btn-sm btn-square text-error hover:bg-error/10"
+                  title={gettext("Delete")}
+                >
+                  <.icon name="hero-trash" class="size-4" />
+                </.button>
+
+                <.link
+                  navigate={~p"/studio/library/#{block.id}/editor"}
+                  class="btn btn-primary btn-sm group-hover:pr-3 transition-all ml-1"
+                >
+                  {gettext("Edit")}
+                  <.icon
+                    name="hero-arrow-right"
+                    class="size-4 opacity-0 -ml-4 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300"
+                  />
+                </.link>
+              </div>
+            </div>
           </div>
-        </:col>
-        <:col :let={{_id, block}} label={gettext("Created At")}>
-          <span class="text-sm opacity-60">{Calendar.strftime(block.inserted_at, "%d.%m.%Y")}</span>
-        </:col>
-        <:action :let={{_id, block}}>
-          <div class="flex justify-end gap-2">
-            <.button
-              navigate="#"
-              class="btn btn-primary btn-xs btn-square btn-soft"
-              title={gettext("Open Editor")}
-              disabled
-            >
-              <.icon name="hero-document-text" class="size-4" />
-            </.button>
+        </div>
+      </div>
 
-            <.button
-              :if={Identity.can?(@current_user, "library.update")}
-              patch={~p"/studio/library/#{block.id}/edit"}
-              class="btn btn-ghost btn-xs btn-square"
-              title={gettext("Edit Metadata")}
-            >
-              <.icon name="hero-pencil-square" class="size-4" />
-            </.button>
-
-            <.button
-              :if={Identity.can?(@current_user, "library.delete")}
-              type="button"
-              phx-click="delete_click"
-              phx-value-id={block.id}
-              class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
-              title={gettext("Delete")}
-            >
-              <.icon name="hero-trash" class="size-4" />
-            </.button>
-          </div>
-        </:action>
-      </.table>
-
-      <div class="flex justify-end">
+      <div class="flex justify-end mt-8">
         <.pagination
           meta={@meta}
           path_fn={fn p -> ~p"/studio/library?#{%{"page" => p, "search" => @search}}" end}

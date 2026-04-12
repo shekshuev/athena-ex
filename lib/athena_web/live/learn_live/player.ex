@@ -14,7 +14,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
   alias Athena.Content
   alias Athena.Learning
-  alias Athena.Learning.Progress
+  import AthenaWeb.BlockComponents
 
   @doc """
   Initializes the player, checks course access, and validates that the student
@@ -32,7 +32,7 @@ defmodule AthenaWeb.LearnLive.Player do
       end
 
       linear_lessons = Content.list_linear_lessons(course_id, user)
-      accessible_ids = Progress.accessible_section_ids(user.id, course_id, linear_lessons)
+      accessible_ids = Learning.accessible_section_ids(user.id, course_id, linear_lessons)
 
       first_lesson_id = linear_lessons |> List.first() |> Map.get(:id)
       section_id = params["section_id"] || first_lesson_id
@@ -57,7 +57,7 @@ defmodule AthenaWeb.LearnLive.Player do
     section = Content.get_section(section_id) |> elem(1)
 
     blocks = Content.list_blocks_by_section(section_id, user) |> Enum.sort_by(& &1.order)
-    completed_ids = Progress.completed_block_ids(user.id, section_id)
+    completed_ids = Learning.completed_block_ids(user.id, section_id)
     tree = Content.get_course_tree(course.id, user)
 
     current_index = Enum.find_index(linear_lessons, fn s -> s.id == section_id end)
@@ -65,6 +65,8 @@ defmodule AthenaWeb.LearnLive.Player do
     prev_section = if current_index > 0, do: Enum.at(linear_lessons, current_index - 1), else: nil
     next_section = Enum.at(linear_lessons, current_index + 1)
     next_accessible? = next_section != nil and next_section.id in accessible_ids
+
+    submissions = Learning.get_latest_submissions(user.id, Enum.map(blocks, & &1.id))
 
     socket =
       socket
@@ -79,6 +81,7 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
       |> assign(:course_map_open, false)
       |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
+      |> assign(:submissions, submissions)
 
     {:ok, schedule_next_unlock(socket, course.id)}
   end
@@ -92,13 +95,13 @@ defmodule AthenaWeb.LearnLive.Player do
   @impl true
   def handle_event("complete_gate", %{"block-id" => block_id}, socket) do
     user = socket.assigns.current_user
-    {:ok, _} = Progress.mark_completed(user.id, block_id)
+    {:ok, _} = Learning.mark_completed(user.id, block_id)
     new_completed_ids = [block_id | socket.assigns.completed_ids]
 
     linear_lessons = socket.assigns.linear_lessons
 
     accessible_ids =
-      Progress.accessible_section_ids(user.id, socket.assigns.course.id, linear_lessons)
+      Learning.accessible_section_ids(user.id, socket.assigns.course.id, linear_lessons)
 
     current_index = Enum.find_index(linear_lessons, fn s -> s.id == socket.assigns.section.id end)
     next_section = Enum.at(linear_lessons, current_index + 1)
@@ -117,6 +120,94 @@ defmodule AthenaWeb.LearnLive.Player do
   def handle_event("close_course_map", _, socket),
     do: {:noreply, assign(socket, course_map_open: false)}
 
+  @impl true
+  def handle_event("start_exam", %{"block_id" => block_id}, socket) do
+    user = socket.assigns.current_user
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
+    if block && block.type == :quiz_exam do
+      questions = Content.generate_exam_questions(block.content)
+
+      sub_attrs = %{
+        account_id: user.id,
+        block_id: block.id,
+        status: :pending,
+        content: %{
+          type: :quiz_exam,
+          started_at: DateTime.utc_now(),
+          questions: questions,
+          answers: %{},
+          cheat_count: 0
+        }
+      }
+
+      case Learning.create_submission(sub_attrs) do
+        {:ok, _submission} ->
+          {:noreply,
+           push_navigate(socket,
+             to: ~p"/learn/courses/#{socket.assigns.course.id}/exam/#{block.id}"
+           )}
+
+        {:error, _} ->
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             gettext("Failed to start the exam. Not enough questions in library.")
+           )}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("continue_exam", %{"block_id" => block_id}, socket) do
+    {:noreply,
+     push_navigate(socket, to: ~p"/learn/courses/#{socket.assigns.course.id}/exam/#{block_id}")}
+  end
+
+  @impl true
+  def handle_event("submit_quiz", %{"block_id" => block_id} = params, socket) do
+    case Enum.find(socket.assigns.blocks, &(&1.id == block_id)) do
+      nil ->
+        {:noreply, socket}
+
+      block ->
+        handle_quiz_submission(socket, block, params["answer"])
+    end
+  end
+
+  @doc false
+  defp handle_quiz_submission(socket, block, answer) do
+    sub_attrs = %{
+      account_id: socket.assigns.current_user.id,
+      block_id: block.id,
+      status: :pending,
+      content: build_submission_content(block, answer)
+    }
+
+    case Learning.create_submission(sub_attrs) do
+      {:ok, submission} ->
+        eval_result = Learning.evaluate_sync(submission)
+        {:ok, final_sub} = Learning.update_submission(submission, eval_result)
+
+        submissions = Map.put(socket.assigns.submissions || %{}, block.id, final_sub)
+        socket = assign(socket, submissions: submissions)
+
+        {:noreply, process_gate_after_submission(socket, block, final_sub)}
+
+      {:error, changeset} ->
+        error_msg =
+          changeset.errors
+          |> Keyword.values()
+          |> Enum.map_join(", ", fn {msg, _} -> msg end)
+
+        {:noreply, put_flash(socket, :error, error_msg)}
+    end
+  end
+
+  @doc false
   defp calc_visible_blocks(blocks, completed_ids) do
     Enum.reduce_while(blocks, [], fn block, acc ->
       is_completed = block.id in completed_ids
@@ -127,6 +218,63 @@ defmodule AthenaWeb.LearnLive.Player do
         {:cont, acc ++ [block]}
       end
     end)
+  end
+
+  @doc false
+  defp build_submission_content(block, answer) do
+    case block.content["question_type"] do
+      "exact_match" -> %{type: :quiz_question, text_answer: answer || ""}
+      "open" -> %{type: :quiz_question, text_answer: answer || ""}
+      "single" -> %{type: :quiz_question, selected_choices: if(answer, do: [answer], else: [])}
+      "multiple" -> %{type: :quiz_question, selected_choices: List.wrap(answer)}
+      _ -> %{type: :quiz_question}
+    end
+  end
+
+  @doc false
+  defp process_gate_after_submission(socket, block, submission) do
+    cond do
+      block.id in socket.assigns.completed_ids ->
+        socket
+
+      gate_passed?(block.completion_rule, submission) ->
+        unlock_next_content(socket, block.id)
+
+      true ->
+        socket
+    end
+  end
+
+  @doc false
+  defp gate_passed?(%{type: :submit}, _submission), do: true
+
+  defp gate_passed?(%{type: :pass_auto_grade, min_score: min_score}, submission) do
+    submission.score >= (min_score || 0)
+  end
+
+  defp gate_passed?(_rule, _submission), do: false
+
+  @doc false
+  defp unlock_next_content(socket, block_id) do
+    user = socket.assigns.current_user
+    {:ok, _} = Learning.mark_completed(user.id, block_id)
+
+    new_completed_ids = [block_id | socket.assigns.completed_ids]
+    linear_lessons = socket.assigns.linear_lessons
+
+    accessible_ids =
+      Learning.accessible_section_ids(user.id, socket.assigns.course.id, linear_lessons)
+
+    current_index =
+      Enum.find_index(linear_lessons, fn s -> s.id == socket.assigns.section.id end)
+
+    next_section = Enum.at(linear_lessons, current_index + 1)
+    next_accessible? = next_section != nil and next_section.id in accessible_ids
+
+    socket
+    |> assign(:completed_ids, new_completed_ids)
+    |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
+    |> assign(:visible_blocks, calc_visible_blocks(socket.assigns.blocks, new_completed_ids))
   end
 
   @doc """
@@ -143,13 +291,13 @@ defmodule AthenaWeb.LearnLive.Player do
     current_section_id = socket.assigns.section.id
 
     linear_lessons = Content.list_linear_lessons(course_id, user)
-    accessible_ids = Progress.accessible_section_ids(user.id, course_id, linear_lessons)
+    accessible_ids = Learning.accessible_section_ids(user.id, course_id, linear_lessons)
 
     if current_section_id in accessible_ids do
       blocks =
         Content.list_blocks_by_section(current_section_id, user) |> Enum.sort_by(& &1.order)
 
-      completed_ids = Progress.completed_block_ids(user.id, current_section_id)
+      completed_ids = Learning.completed_block_ids(user.id, current_section_id)
       tree = Content.get_course_tree(course_id, user)
 
       current_index = Enum.find_index(linear_lessons, fn s -> s.id == current_section_id end)
@@ -233,11 +381,99 @@ defmodule AthenaWeb.LearnLive.Player do
 
       <div class="space-y-10">
         <%= for block <- @visible_blocks do %>
+          <% submission = Map.get(@submissions || %{}, block.id) %>
+          <% is_submitted = submission && submission.status in [:graded, :needs_review] %>
+          <% mode = if is_submitted, do: :review, else: :play %>
+
           <div
             id={"block-wrapper-#{block.id}"}
             class="animate-in slide-in-from-bottom-4 fade-in duration-500 fill-mode-both"
           >
-            <.render_block_content block={block} />
+            <%= case block.type do %>
+              <% :quiz_question -> %>
+                <form phx-submit="submit_quiz" id={"quiz-form-#{block.id}"}>
+                  <input type="hidden" name="block_id" value={block.id} />
+
+                  <.content_block block={block} mode={mode} submission={submission} />
+
+                  <div
+                    :if={submission && block.content["general_explanation"] not in [nil, ""]}
+                    class="mt-4 mb-4 p-4 bg-info/10 text-info-content rounded-xl text-sm border border-info/20"
+                  >
+                    <strong>{gettext("Explanation:")}</strong> {block.content["general_explanation"]}
+                  </div>
+
+                  <div class="mt-6 flex items-center justify-between">
+                    <button
+                      type="submit"
+                      class="btn btn-primary shadow-lg shadow-primary/20"
+                      disabled={is_submitted}
+                    >
+                      {if submission, do: gettext("Submitted"), else: gettext("Submit Answer")}
+                    </button>
+
+                    <%= if submission do %>
+                      <div
+                        :if={submission.status == :graded}
+                        class={[
+                          "font-bold flex items-center gap-1 text-lg",
+                          if(submission.score == 100, do: "text-success", else: "text-error")
+                        ]}
+                      >
+                        <%= if submission.score == 100 do %>
+                          <.icon name="hero-check-circle-solid" class="size-6" /> {gettext("Correct!")}
+                        <% else %>
+                          <.icon name="hero-x-circle-solid" class="size-6" /> {gettext("Incorrect.")}
+                        <% end %>
+                      </div>
+
+                      <div
+                        :if={submission.status == :needs_review}
+                        class="font-bold flex items-center gap-1 text-info text-lg"
+                      >
+                        <.icon name="hero-clock" class="size-6" /> {gettext("Pending Review")}
+                      </div>
+                    <% end %>
+                  </div>
+                </form>
+              <% :quiz_exam -> %>
+                <% exam_mode = if submission, do: :review, else: :play %>
+                <div class="relative">
+                  <.content_block block={block} mode={exam_mode} submission={submission} />
+
+                  <%= if submission do %>
+                    <div class="mt-6 flex justify-center">
+                      <%= cond do %>
+                        <% submission.status == :graded && (submission.content["cheat_count"] || 0) >= (block.content["allowed_blur_attempts"] || 3) -> %>
+                          <div class="inline-flex items-center gap-2 text-xl font-black text-error bg-error/10 px-6 py-3 rounded-2xl">
+                            <.icon name="hero-x-circle-solid" class="size-6" />
+                            {gettext("Exam Failed (Violations)")}
+                          </div>
+                        <% submission.status in [:graded, :needs_review] -> %>
+                          <div class="inline-flex items-center gap-2 text-xl font-black text-success bg-success/10 px-6 py-3 rounded-2xl">
+                            <.icon name="hero-check-circle-solid" class="size-6" />
+                            {gettext("Exam Completed")}
+                            <span class="ml-2 text-success/50">|</span>
+                            <span class="ml-2">{submission.score} / 100</span>
+                          </div>
+                        <% submission.status == :pending -> %>
+                          <button
+                            phx-click="continue_exam"
+                            phx-value-block_id={block.id}
+                            class="btn btn-primary btn-lg px-12 shadow-lg shadow-primary/20"
+                          >
+                            {gettext("Continue Exam")}
+                            <.icon name="hero-arrow-right" class="size-5 ml-2" />
+                          </button>
+                        <% true -> %>
+                      <% end %>
+                    </div>
+                  <% end %>
+                </div>
+              <% _ -> %>
+                <.content_block block={block} mode={:play} />
+            <% end %>
+
             <div :if={gate?(block)} class="mt-8">
               <.render_gate block={block} is_completed={block.id in @completed_ids} />
             </div>
@@ -258,7 +494,7 @@ defmodule AthenaWeb.LearnLive.Player do
           <%= if @next_section_id do %>
             <.link
               navigate={~p"/learn/courses/#{@course.id}/play/#{@next_section_id}"}
-              class="btn btn-primary btn-lg px-12 mt-6"
+              class="btn btn-primary btn-lg px-12 mt-6 shadow-lg shadow-primary/20"
             >
               {gettext("Next Lesson")} <.icon name="hero-arrow-right" class="size-5 ml-2" />
             </.link>
@@ -297,16 +533,16 @@ defmodule AthenaWeb.LearnLive.Player do
     ~H"""
     <div class="space-y-1">
       <div :for={section <- @sections}>
-        <%= if section.children == [] do %>
-          <.link
-            navigate={~p"/learn/courses/#{@course_id}/play/#{section.id}"}
-            class={[
-              "w-full justify-start px-3 py-2.5 rounded-lg flex items-center gap-3 text-sm transition-all group font-medium",
-              @active_section_id == section.id && "bg-primary/10 text-primary",
-              @active_section_id != section.id && "hover:bg-base-200 text-base-content/70"
-            ]}
-            style={"padding-left: #{(@level * 1.5) + 0.75}rem;"}
-          >
+        <.link
+          navigate={~p"/learn/courses/#{@course_id}/play/#{section.id}"}
+          class={[
+            "w-full justify-start px-3 py-2.5 rounded-lg flex items-center gap-3 transition-all group",
+            @active_section_id == section.id && "bg-primary/10 text-primary",
+            @active_section_id != section.id && "hover:bg-base-200 text-base-content/70"
+          ]}
+          style={"padding-left: #{(@level * 1.5) + 0.75}rem;"}
+        >
+          <%= if section.children == [] do %>
             <.icon
               name="hero-document-text"
               class={[
@@ -315,17 +551,20 @@ defmodule AthenaWeb.LearnLive.Player do
                 @active_section_id != section.id && "text-base-content/30 group-hover:text-primary/70"
               ]}
             />
-            <span class="truncate">{section.title}</span>
-          </.link>
-        <% else %>
-          <div
-            class="w-full flex items-center gap-2 text-xs text-base-content/40 uppercase tracking-widest font-black mt-4 mb-2"
-            style={"padding-left: #{(@level * 1.5) + 0.75}rem;"}
-          >
-            <.icon name="hero-folder" class="size-4 shrink-0" />
-            <span class="truncate">{section.title}</span>
-          </div>
-        <% end %>
+            <span class="text-sm font-medium truncate">{section.title}</span>
+          <% else %>
+            <.icon
+              name="hero-folder"
+              class={[
+                "size-4 shrink-0 transition-colors",
+                @active_section_id == section.id && "text-primary",
+                @active_section_id != section.id && "text-base-content/40 group-hover:text-primary/70"
+              ]}
+            />
+            <span class="text-xs uppercase tracking-widest font-black truncate">{section.title}</span>
+          <% end %>
+        </.link>
+
         <.course_map_tree
           :if={section.children != []}
           sections={section.children}
@@ -338,119 +577,11 @@ defmodule AthenaWeb.LearnLive.Player do
     """
   end
 
-  defp render_block_content(%{block: %{type: :text}} = assigns) do
-    ~H"""
-    <div
-      id={"player-tiptap-#{@block.id}-#{DateTime.to_unix(@block.updated_at)}"}
-      phx-hook="TiptapEditor"
-      data-id={@block.id}
-      data-readonly="true"
-      phx-update="ignore"
-      data-content={Jason.encode!(@block.content)}
-      class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed"
-    >
-    </div>
-    """
-  end
-
-  defp render_block_content(%{block: %{type: :image}} = assigns) do
-    ~H"""
-    <%= if @block.content["url"] do %>
-      <figure class="m-0 my-8">
-        <img
-          src={@block.content["url"]}
-          alt={@block.content["alt"]}
-          class="rounded-xl w-full object-cover border border-base-200 shadow-sm"
-        />
-      </figure>
-    <% end %>
-    """
-  end
-
-  defp render_block_content(%{block: %{type: :video}} = assigns) do
-    ~H"""
-    <%= if @block.content["url"] do %>
-      <div class="my-8">
-        <video
-          src={@block.content["url"]}
-          poster={@block.content["poster_url"]}
-          controls={@block.content["controls"] not in [false, "false"]}
-          class="rounded-xl w-full bg-black aspect-video shadow-md"
-        />
-      </div>
-    <% end %>
-    """
-  end
-
-  defp render_block_content(%{block: %{type: :attachment}} = assigns) do
-    ~H"""
-    <div class="my-8 p-6 bg-base-200/50 rounded-xl border border-base-300">
-      <div
-        :if={@block.content["description"]}
-        id={"player-attachment-tiptap-#{@block.id}-#{DateTime.to_unix(@block.updated_at)}"}
-        phx-hook="TiptapEditor"
-        data-id={"desc-#{@block.id}"}
-        data-readonly="true"
-        phx-update="ignore"
-        data-content={Jason.encode!(@block.content["description"])}
-        class="prose prose-sm max-w-none text-base-content/70 mb-4"
-      >
-      </div>
-      <div class="space-y-3 mt-4">
-        <a
-          :for={file <- @block.content["files"] || []}
-          href={file["url"]}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="flex items-center gap-4 p-4 bg-base-100 rounded-lg border border-base-200 shadow-sm hover:border-primary/40 hover:shadow-md transition-all group"
-        >
-          <div class="p-3 bg-primary/10 rounded-lg text-primary shrink-0 group-hover:scale-110 transition-transform">
-            <.icon name="hero-document-arrow-down" class="size-6" />
-          </div>
-          <div class="flex-1 min-w-0">
-            <div class="font-bold text-base-content truncate group-hover:text-primary transition-colors">
-              {file["name"]}
-            </div>
-            <div class="text-xs text-base-content/50 mt-0.5">{format_bytes(file["size"])}</div>
-          </div>
-          <.icon
-            name="hero-arrow-down-tray"
-            class="size-5 text-base-content/30 group-hover:text-primary shrink-0"
-          />
-        </a>
-      </div>
-    </div>
-    """
-  end
-
-  defp render_block_content(%{block: %{type: :code}} = assigns) do
-    ~H"""
-    <div class="my-8 overflow-hidden rounded-xl border border-base-300 bg-base-300/20">
-      <div class="bg-base-300 px-4 py-2 flex items-center gap-2">
-        <div class="size-3 rounded-full bg-error"></div>
-        <div class="size-3 rounded-full bg-warning"></div>
-        <div class="size-3 rounded-full bg-success"></div>
-        <span class="ml-2 text-xs font-mono text-base-content/50">editor.ex</span>
-      </div>
-      <pre class="p-4 text-sm font-mono overflow-x-auto text-base-content/80">{@block.content["code"]}</pre>
-    </div>
-    """
-  end
-
-  defp render_block_content(assigns),
-    do: ~H"""
-    <div class="p-4 bg-base-200 rounded-lg text-sm text-base-content/50 italic">
-      [{gettext("Content type:")} {@block.type}]
-    </div>
-    """
-
   defp render_gate(%{block: %{completion_rule: %{type: :button}}} = assigns) do
     ~H"""
-    <div class="py-2 border-t border-base-100">
+    <div class="py-2 border-t border-base-200">
       <%= if @is_completed do %>
-        <div class="flex items-center gap-2 text-success font-bold text-sm">
-          <.icon name="hero-check-circle-solid" class="size-5" /> {gettext("Completed")}
-        </div>
+        <div></div>
       <% else %>
         <button
           phx-click="complete_gate"
@@ -464,63 +595,7 @@ defmodule AthenaWeb.LearnLive.Player do
     """
   end
 
-  defp render_gate(%{block: %{completion_rule: %{type: :submit}}} = assigns) do
-    ~H"""
-    <div class="p-6 bg-warning/10 border border-warning/30 rounded-xl">
-      <div class="font-bold text-warning mb-2">{gettext("Task Submission Required")}</div>
-      <p class="text-sm mb-4 text-warning/80">
-        {gettext(
-          "This block requires you to submit an answer. Submissions module is under development."
-        )}
-      </p>
-      <button
-        :if={not @is_completed}
-        phx-click="complete_gate"
-        phx-value-block-id={@block.id}
-        class="btn btn-warning btn-sm"
-      >
-        {gettext("Simulate Pass")}
-      </button>
-      <div :if={@is_completed} class="text-success font-bold text-sm flex items-center gap-1">
-        <.icon name="hero-check-circle" class="size-4" /> Submitted
-      </div>
-    </div>
-    """
-  end
-
-  defp render_gate(%{block: %{completion_rule: %{type: :pass_auto_grade}}} = assigns) do
-    ~H"""
-    <div class="p-6 bg-info/10 border border-info/30 rounded-xl">
-      <div class="font-bold text-info mb-2">{gettext("Auto-Graded Task")}</div>
-      <p class="text-sm mb-4 text-info/80">
-        {gettext("Minimum score required: %{score}", score: @block.completion_rule.min_score || 0)}
-      </p>
-      <button
-        :if={not @is_completed}
-        phx-click="complete_gate"
-        phx-value-block-id={@block.id}
-        class="btn btn-info btn-sm"
-      >
-        {gettext("Simulate Pass")}
-      </button>
-      <div :if={@is_completed} class="text-success font-bold text-sm flex items-center gap-1">
-        <.icon name="hero-check-circle" class="size-4" /> Passed
-      </div>
-    </div>
-    """
-  end
-
   defp render_gate(assigns), do: ~H""
-
-  @doc false
-  defp format_bytes(bytes) do
-    cond do
-      is_nil(bytes) -> "0 B"
-      bytes >= 1_048_576 -> "#{Float.round(bytes / 1_048_576, 1)} MB"
-      bytes >= 1024 -> "#{Float.round(bytes / 1024, 1)} KB"
-      true -> "#{bytes} B"
-    end
-  end
 
   @doc false
   defp schedule_next_unlock(socket, course_id) do
@@ -529,10 +604,7 @@ defmodule AthenaWeb.LearnLive.Player do
     all_sections = Content.list_linear_lessons(course_id, :all)
     all_section_ids = Enum.map(all_sections, & &1.id)
 
-    import Ecto.Query
-
-    all_blocks =
-      Athena.Repo.all(from b in Athena.Content.Block, where: b.section_id in ^all_section_ids)
+    all_blocks = Content.list_blocks_by_section_ids(all_section_ids)
 
     all_rules =
       (all_sections ++ all_blocks)
@@ -558,6 +630,7 @@ defmodule AthenaWeb.LearnLive.Player do
       target_unix ->
         raw_diff_ms = (target_unix - now_unix) * 1000 + 1000
         safe_diff_ms = min(raw_diff_ms, 86_400_000)
+
         Process.send_after(self(), :refresh_content, safe_diff_ms)
         socket
     end
