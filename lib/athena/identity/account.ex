@@ -35,6 +35,8 @@ defmodule Athena.Identity.Account do
     # Virtual field for password validation, not persisted to the database
     field :password, :string, virtual: true
     field :must_change_password, :boolean, default: false
+    field :failed_login_attempts, :integer, default: 0
+    field :last_failed_at, :utc_datetime
 
     belongs_to :role, Athena.Identity.Role
     has_one :profile, Athena.Identity.Profile, foreign_key: :owner_id
@@ -49,7 +51,16 @@ defmodule Athena.Identity.Account do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(account, attrs) do
     account
-    |> cast(attrs, [:login, :password, :role_id, :status, :deleted_at, :must_change_password])
+    |> cast(attrs, [
+      :login,
+      :password,
+      :role_id,
+      :status,
+      :deleted_at,
+      :must_change_password,
+      :failed_login_attempts,
+      :last_failed_at
+    ])
     |> validate_required([:login, :role_id])
     |> validate_password_required()
     |> validate_length(:login, min: 3, max: 50)

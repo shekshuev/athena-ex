@@ -201,25 +201,88 @@ defmodule Athena.Identity.Accounts do
   Uses `Argon2.verify_pass/2` to check the hash. It also safely handles 
   non-existent users via `Argon2.no_user_verify/0` to prevent timing attacks.
 
+  ## Security & Brute-force Protection
+    * Accounts with `:blocked` or `:temporary_blocked` statuses are immediately rejected.
+    * Failed login attempts are tracked. Reaching 3 consecutive failed attempts
+      will lock the account (`:temporary_blocked`) and schedule an Oban job to
+      unblock it after 30 minutes.
+    * Stale failed attempts (older than 60 minutes) are automatically cleared
+      upon the next login attempt.
+    * A successful login resets the failed attempts counter.
+
   ## Returns
-    * `{:ok, %Account{}}` if credentials are valid.
-    * `{:error, :invalid_credentials}` if authentication fails.
+    * `{:ok, %Account{}}` if credentials are valid and the account is active.
+    * `{:error, :invalid_credentials}` if authentication fails (wrong password or non-existent user).
+    * `{:error, :account_blocked}` if the account is explicitly blocked or temporarily locked.
   """
   @spec authenticate(String.t(), String.t()) ::
-          {:ok, Account.t()} | {:error, :invalid_credentials}
+          {:ok, Account.t()} | {:error, :invalid_credentials} | {:error, :account_blocked}
   def authenticate(login, password) do
     account = Repo.get_by(Account, login: login)
 
-    cond do
-      account && Argon2.verify_pass(password, account.password_hash) ->
-        {:ok, account}
+    if account do
+      account = maybe_clear_stale_attempts(account)
+      valid_pass? = Argon2.verify_pass(password, account.password_hash)
 
-      account ->
-        {:error, :invalid_credentials}
+      cond do
+        account.status in [:blocked, :temporary_blocked] ->
+          {:error, :account_blocked}
 
-      true ->
-        Argon2.no_user_verify()
-        {:error, :invalid_credentials}
+        valid_pass? ->
+          reset_failed_attempts(account)
+          {:ok, account}
+
+        true ->
+          handle_failed_attempt(account)
+          {:error, :invalid_credentials}
+      end
+    else
+      Argon2.no_user_verify()
+      {:error, :invalid_credentials}
+    end
+  end
+
+  @doc false
+  defp maybe_clear_stale_attempts(
+         %Account{failed_login_attempts: attempts, last_failed_at: last_failed} = account
+       )
+       when attempts > 0 and not is_nil(last_failed) do
+    if DateTime.diff(DateTime.utc_now(:second), last_failed, :minute) > 60 do
+      {:ok, acc} = update_account(account, %{failed_login_attempts: 0, last_failed_at: nil})
+      acc
+    else
+      account
+    end
+  end
+
+  defp maybe_clear_stale_attempts(account), do: account
+
+  defp reset_failed_attempts(%Account{failed_login_attempts: attempts} = account)
+       when attempts > 0 do
+    update_account(account, %{failed_login_attempts: 0, last_failed_at: nil})
+  end
+
+  defp reset_failed_attempts(_account), do: :ok
+
+  defp handle_failed_attempt(account) do
+    new_attempts = account.failed_login_attempts + 1
+
+    if new_attempts >= 3 do
+      {:ok, blocked_acc} =
+        update_account(account, %{
+          status: :temporary_blocked,
+          failed_login_attempts: new_attempts,
+          last_failed_at: DateTime.utc_now(:second)
+        })
+
+      %{account_id: blocked_acc.id}
+      |> Athena.Workers.UnblockAccount.new(schedule_in: 30 * 60)
+      |> Oban.insert()
+    else
+      update_account(account, %{
+        failed_login_attempts: new_attempts,
+        last_failed_at: DateTime.utc_now(:second)
+      })
     end
   end
 
