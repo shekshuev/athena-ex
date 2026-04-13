@@ -262,4 +262,23 @@ defmodule Athena.Identity.Accounts do
     |> limit(^limit)
     |> Repo.all()
   end
+
+  @doc """
+  Forces a password change and clears the `must_change_password` flag.
+  """
+  @spec force_change_password(Account.t(), map()) ::
+          {:ok, Account.t()} | {:error, Ecto.Changeset.t()}
+  def force_change_password(%Account{} = account, attrs) do
+    account
+    |> Account.force_password_changeset(attrs)
+    |> Repo.update()
+    |> case do
+      {:ok, updated_account} ->
+        Cachex.del(:account_cache, updated_account.id)
+        {:ok, updated_account}
+
+      error ->
+        error
+    end
+  end
 end

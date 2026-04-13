@@ -26,7 +26,7 @@ defmodule AthenaWeb.AdminLive.UserFormComponentTest do
       assert html =~ "can&#39;t be blank"
     end
 
-    test "creates a new user with account and profile", %{conn: conn} do
+    test "creates a new user with account, profile and password change flag", %{conn: conn} do
       role = insert(:role)
 
       {:ok, lv, _html} = live(conn, ~p"/admin/users/new")
@@ -37,6 +37,7 @@ defmodule AthenaWeb.AdminLive.UserFormComponentTest do
           "login" => "new_manager",
           "password" => "StrongPass123!",
           "password_confirmation" => "StrongPass123!",
+          "must_change_password" => "true",
           "role_id" => role.id,
           "status" => "active",
           "first_name" => "Ivan",
@@ -55,12 +56,14 @@ defmodule AthenaWeb.AdminLive.UserFormComponentTest do
       assert account.profile.first_name == "Ivan"
       assert account.profile.last_name == "Ivanov"
 
+      assert account.must_change_password == true
+
       assert render(lv) =~ "User created successfully"
     end
 
-    test "updates an existing user", %{conn: conn} do
+    test "updates an existing user and toggles password change flag", %{conn: conn} do
       role = insert(:role)
-      account = insert(:account, login: "old_login")
+      account = insert(:account, login: "old_login", must_change_password: true)
       insert(:profile, owner: account, first_name: "OldName", last_name: "OldLastName")
 
       {:ok, lv, _html} = live(conn, ~p"/admin/users/#{account.id}/edit")
@@ -72,7 +75,8 @@ defmodule AthenaWeb.AdminLive.UserFormComponentTest do
           "role_id" => role.id,
           "first_name" => "NewName",
           "last_name" => "NewLastName",
-          "status" => "blocked"
+          "status" => "blocked",
+          "must_change_password" => "false"
         }
       })
       |> render_submit()
@@ -86,6 +90,8 @@ defmodule AthenaWeb.AdminLive.UserFormComponentTest do
       assert updated_account.status == :blocked
       assert updated_account.profile.first_name == "NewName"
       assert updated_account.profile.last_name == "NewLastName"
+
+      assert updated_account.must_change_password == false
     end
   end
 end

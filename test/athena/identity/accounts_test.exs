@@ -248,4 +248,38 @@ defmodule Athena.Identity.AccountsTest do
       assert results == []
     end
   end
+
+  describe "force_change_password/2" do
+    test "successfully changes password, resets must_change_password flag and clears cache" do
+      account = insert(:account, must_change_password: true)
+      old_hash = account.password_hash
+
+      Cachex.put(:account_cache, account.id, account)
+
+      attrs = %{"password" => "NewStrongPass1!"}
+
+      assert {:ok, updated_account} = Accounts.force_change_password(account, attrs)
+      assert updated_account.must_change_password == false
+      assert updated_account.password_hash != old_hash
+      assert {:ok, nil} = Cachex.get(:account_cache, account.id)
+    end
+
+    test "returns error changeset when password does not meet requirements" do
+      account = insert(:account, must_change_password: true)
+      old_hash = account.password_hash
+
+      attrs = %{"password" => "123"}
+
+      assert {:error, changeset} = Accounts.force_change_password(account, attrs)
+
+      assert Enum.any?(
+               errors_on(changeset).password,
+               &String.starts_with?(&1, "must be at least 8")
+             )
+
+      db_account = Athena.Repo.get(Account, account.id)
+      assert db_account.must_change_password == true
+      assert db_account.password_hash == old_hash
+    end
+  end
 end

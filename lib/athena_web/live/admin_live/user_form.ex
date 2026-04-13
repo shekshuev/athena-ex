@@ -21,6 +21,7 @@ defmodule AthenaWeb.AdminLive.UserForm do
     field :password, :string
     field :password_confirmation, :string
     field :role_id, :binary_id
+    field :must_change_password, :boolean, default: true
 
     field :status, Ecto.Enum,
       values: [:active, :blocked, :temporary_blocked],
@@ -45,6 +46,7 @@ defmodule AthenaWeb.AdminLive.UserForm do
       :password,
       :password_confirmation,
       :role_id,
+      :must_change_password,
       :status,
       :first_name,
       :last_name,
@@ -73,6 +75,7 @@ defmodule AthenaWeb.AdminLive.UserForm do
       id: account.id,
       login: account.login,
       role_id: account.role_id,
+      must_change_password: account.must_change_password,
       status: account.status,
       first_name: Map.get(profile, :first_name),
       last_name: Map.get(profile, :last_name),
@@ -90,7 +93,7 @@ defmodule AthenaWeb.AdminLive.UserForm do
 
     account_params =
       data
-      |> Map.take([:login, :password, :role_id, :status])
+      |> Map.take([:login, :password, :role_id, :status, :must_change_password])
       |> Enum.reject(fn {_, v} -> is_nil(v) end)
       |> Map.new(fn {k, v} -> {Atom.to_string(k), v} end)
 

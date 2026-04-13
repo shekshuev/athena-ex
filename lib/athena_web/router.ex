@@ -43,11 +43,23 @@ defmodule AthenaWeb.Router do
     end
   end
 
+  live_session :require_password_change,
+    on_mount: [
+      {AthenaWeb.Hooks.Auth, :default},
+      {AthenaWeb.Hooks.Auth, :require_authenticated_user}
+    ] do
+    scope "/", AthenaWeb do
+      pipe_through :browser
+      live "/force-password-change", AuthLive.ForcePasswordChange
+    end
+  end
+
   live_session :authenticated,
     layout: {AthenaWeb.Layouts, :dashboard},
     on_mount: [
       {AthenaWeb.Hooks.Auth, :default},
-      {AthenaWeb.Hooks.Auth, :require_authenticated_user}
+      {AthenaWeb.Hooks.Auth, :require_authenticated_user},
+      {AthenaWeb.Hooks.Auth, :ensure_password_changed}
     ] do
     scope "/", AthenaWeb do
       pipe_through :browser

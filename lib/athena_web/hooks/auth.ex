@@ -52,6 +52,14 @@ defmodule AthenaWeb.Hooks.Auth do
     end
   end
 
+  def on_mount(:ensure_password_changed, _params, _session, socket) do
+    if socket.assigns.current_user && socket.assigns.current_user.must_change_password do
+      {:halt, Phoenix.LiveView.redirect(socket, to: "/force-password-change")}
+    else
+      {:cont, socket}
+    end
+  end
+
   defp maybe_connect_auth_events(socket, account) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Athena.PubSub, "role_updates:#{account.role_id}")
