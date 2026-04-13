@@ -20,6 +20,14 @@ defmodule AthenaWeb.SessionController do
         |> put_flash(:info, gettext("Successfully logged in!"))
         |> redirect(to: "/dashboard")
 
+      {:error, :account_blocked} ->
+        conn
+        |> put_flash(
+          :error,
+          gettext("Your account is blocked. Try again later or contact admin.")
+        )
+        |> redirect(to: "/auth/login")
+
       {:error, :invalid_credentials} ->
         conn
         |> put_flash(:error, gettext("Authentication failed."))

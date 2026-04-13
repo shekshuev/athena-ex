@@ -15,6 +15,7 @@ defmodule Athena.DataCase do
   """
 
   use ExUnit.CaseTemplate
+  use Oban.Testing, repo: Athena.Repo
 
   using do
     quote do

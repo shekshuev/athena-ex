@@ -153,6 +153,14 @@ defmodule AthenaWeb.AdminLive.UserFormComponent do
             />
           </div>
 
+          <div class="mt-2">
+            <.input
+              field={@form[:must_change_password]}
+              type="checkbox"
+              label={gettext("Require user to change password on next login")}
+            />
+          </div>
+
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <.input
               field={@form[:role_id]}

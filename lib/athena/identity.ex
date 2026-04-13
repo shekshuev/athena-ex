@@ -16,6 +16,7 @@ defmodule Athena.Identity do
   defdelegate password_regex(), to: Account
   defdelegate get_accounts_map(ids), to: Accounts
   defdelegate search_accounts_by_login(query, limit), to: Accounts
+  defdelegate force_change_password(account, attrs), to: Accounts
 
   defdelegate list_all_roles(), to: Roles
   defdelegate get_role(id), to: Roles

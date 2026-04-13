@@ -92,20 +92,71 @@ defmodule Athena.Identity.AccountsTest do
   end
 
   describe "authenticate/2" do
-    test "should return account on success auth" do
-      account = insert(:account, login: "admin")
+    test "should return account and reset attempts on success auth" do
+      account =
+        insert(:account,
+          login: "admin",
+          failed_login_attempts: 2,
+          last_failed_at: DateTime.utc_now(:second)
+        )
 
       assert {:ok, auth_account} = Accounts.authenticate("admin", "Password123!")
       assert auth_account.id == account.id
+
+      updated_account = Athena.Repo.get!(Account, account.id)
+      assert updated_account.failed_login_attempts == 0
+      assert updated_account.last_failed_at == nil
     end
 
-    test "should return error on invalid password" do
-      insert(:account, login: "admin")
+    test "should return error on invalid password and increment attempts" do
+      account = insert(:account, login: "admin", failed_login_attempts: 0)
 
       assert {:error, :invalid_credentials} = Accounts.authenticate("admin", "WrongPass")
+
+      updated_account = Athena.Repo.get!(Account, account.id)
+      assert updated_account.failed_login_attempts == 1
+      assert updated_account.last_failed_at != nil
     end
 
-    test "should return error when account doesn't exists" do
+    test "should block account temporarily on 3rd failed attempt" do
+      account = insert(:account, login: "target", failed_login_attempts: 2)
+
+      assert {:error, :invalid_credentials} = Accounts.authenticate("target", "WrongPass")
+
+      updated_account = Athena.Repo.get!(Account, account.id)
+      assert updated_account.failed_login_attempts == 3
+      assert updated_account.status == :temporary_blocked
+      assert_enqueued(worker: Athena.Workers.UnblockAccount, args: %{account_id: account.id})
+    end
+
+    test "should clear stale failed attempts (> 60 mins) before processing" do
+      stale_time = DateTime.add(DateTime.utc_now(:second), -65, :minute)
+
+      account =
+        insert(:account,
+          login: "stale_user",
+          failed_login_attempts: 2,
+          last_failed_at: stale_time
+        )
+
+      assert {:error, :invalid_credentials} = Accounts.authenticate("stale_user", "WrongPass")
+
+      updated_account = Athena.Repo.get!(Account, account.id)
+      assert updated_account.failed_login_attempts == 1
+      assert updated_account.status == :active
+    end
+
+    test "should return error when account is permanently blocked" do
+      insert(:account, login: "bad_guy", status: :blocked)
+      assert {:error, :account_blocked} = Accounts.authenticate("bad_guy", "Password123!")
+    end
+
+    test "should return error when account is temporarily blocked (even with correct password)" do
+      insert(:account, login: "temp_guy", status: :temporary_blocked)
+      assert {:error, :account_blocked} = Accounts.authenticate("temp_guy", "Password123!")
+    end
+
+    test "should return error when account doesn't exist" do
       assert {:error, :invalid_credentials} = Accounts.authenticate("ghost", "Password123!")
     end
   end
@@ -246,6 +297,40 @@ defmodule Athena.Identity.AccountsTest do
       results = Accounts.search_accounts_by_login("unknown")
 
       assert results == []
+    end
+  end
+
+  describe "force_change_password/2" do
+    test "successfully changes password, resets must_change_password flag and clears cache" do
+      account = insert(:account, must_change_password: true)
+      old_hash = account.password_hash
+
+      Cachex.put(:account_cache, account.id, account)
+
+      attrs = %{"password" => "NewStrongPass1!"}
+
+      assert {:ok, updated_account} = Accounts.force_change_password(account, attrs)
+      assert updated_account.must_change_password == false
+      assert updated_account.password_hash != old_hash
+      assert {:ok, nil} = Cachex.get(:account_cache, account.id)
+    end
+
+    test "returns error changeset when password does not meet requirements" do
+      account = insert(:account, must_change_password: true)
+      old_hash = account.password_hash
+
+      attrs = %{"password" => "123"}
+
+      assert {:error, changeset} = Accounts.force_change_password(account, attrs)
+
+      assert Enum.any?(
+               errors_on(changeset).password,
+               &String.starts_with?(&1, "must be at least 8")
+             )
+
+      db_account = Athena.Repo.get(Account, account.id)
+      assert db_account.must_change_password == true
+      assert db_account.password_hash == old_hash
     end
   end
 end

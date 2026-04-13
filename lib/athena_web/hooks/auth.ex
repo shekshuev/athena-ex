@@ -28,7 +28,7 @@ defmodule AthenaWeb.Hooks.Auth do
 
       account_id ->
         case Athena.Identity.get_account(account_id, preload: [:role]) do
-          {:ok, account} ->
+          {:ok, %{status: :active} = account} ->
             maybe_connect_auth_events(socket, account)
 
             socket =
@@ -38,7 +38,7 @@ defmodule AthenaWeb.Hooks.Auth do
 
             {:cont, socket}
 
-          {:error, :not_found} ->
+          _ ->
             {:cont, assign(socket, :current_user, nil)}
         end
     end
@@ -52,6 +52,14 @@ defmodule AthenaWeb.Hooks.Auth do
     end
   end
 
+  def on_mount(:ensure_password_changed, _params, _session, socket) do
+    if socket.assigns.current_user && socket.assigns.current_user.must_change_password do
+      {:halt, Phoenix.LiveView.redirect(socket, to: "/force-password-change")}
+    else
+      {:cont, socket}
+    end
+  end
+
   defp maybe_connect_auth_events(socket, account) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Athena.PubSub, "role_updates:#{account.role_id}")
@@ -61,7 +69,7 @@ defmodule AthenaWeb.Hooks.Auth do
 
   defp reload_user_on_event(event, socket) when event in [:role_updated, :account_updated] do
     case Athena.Identity.get_account(socket.assigns.current_user.id, preload: [:role]) do
-      {:ok, fresh_account} ->
+      {:ok, %{status: :active} = fresh_account} ->
         socket = assign(socket, :current_user, fresh_account)
 
         required_perm = socket.assigns[:required_permission]
@@ -82,8 +90,11 @@ defmodule AthenaWeb.Hooks.Auth do
           {:halt, socket}
         end
 
+      {:ok, _} ->
+        {:halt, push_event(socket, "force_logout", %{})}
+
       {:error, :not_found} ->
-        {:halt, redirect(socket, to: "/auth/log_out")}
+        {:halt, push_event(socket, "force_logout", %{})}
     end
   end
 

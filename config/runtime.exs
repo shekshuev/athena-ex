@@ -42,6 +42,16 @@ if config_env() == :prod do
     socket_options: maybe_ipv6,
     types: Athena.PostgresTypes
 
+  if System.get_env("FORCE_SSL") == "true" do
+    config :athena, AthenaWeb.Endpoint,
+      force_ssl: [
+        rewrite_on: [:x_forwarded_proto],
+        exclude: [
+          hosts: ["localhost", "127.0.0.1"]
+        ]
+      ]
+  end
+
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
   # want to use a different value for prod and you most likely don't want

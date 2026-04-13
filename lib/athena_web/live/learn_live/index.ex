@@ -44,7 +44,7 @@ defmodule AthenaWeb.LearnLive.Index do
 
       <div
         :if={@enrollments == []}
-        class="text-center py-24 px-6 border-2 border-dashed border-base-300 rounded-3xl bg-base-200/30 mt-8"
+        class="text-center py-24 px-6 rounded-3xl mt-8"
       >
         <.icon name="hero-book-open" class="size-20 text-base-content/20 mb-6 mx-auto" />
         <h3 class="text-2xl font-display font-bold text-base-content">{gettext("No courses yet")}</h3>
