@@ -8,7 +8,7 @@ defmodule Athena.Content.Blocks do
 
   import Ecto.Query
   alias Athena.Repo
-  alias Athena.Content.Block
+  alias Athena.Content.{Block, Course, Section}
 
   @doc """
   Retrieves all blocks for a specific section, ordered by their `order` index.
@@ -43,11 +43,32 @@ defmodule Athena.Content.Blocks do
   end
 
   @doc """
-  Retrieves a single block by its ID.
+  Retrieves a single block by its ID without ACL (internal/student use).
   """
   @spec get_block(String.t()) :: {:ok, Block.t()} | {:error, :not_found}
   def get_block(id) do
     case Repo.get(Block, id) do
+      nil -> {:error, :not_found}
+      block -> {:ok, block}
+    end
+  end
+
+  @doc """
+  Retrieves a single block by its ID, scoped by user ACL permissions on the parent course.
+  """
+  @spec get_block(map(), String.t()) :: {:ok, Block.t()} | {:error, :not_found}
+  def get_block(user, id) do
+    accessible_courses =
+      Course
+      |> where([c], is_nil(c.deleted_at))
+      |> Athena.Identity.scope_query(user, "courses.update")
+
+    Block
+    |> join(:inner, [b], s in Section, on: b.section_id == s.id)
+    |> join(:inner, [b, s], c in subquery(accessible_courses), on: s.course_id == c.id)
+    |> where([b], b.id == ^id)
+    |> Repo.one()
+    |> case do
       nil -> {:error, :not_found}
       block -> {:ok, block}
     end

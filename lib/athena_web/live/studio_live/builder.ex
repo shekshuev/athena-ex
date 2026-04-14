@@ -329,30 +329,19 @@ defmodule AthenaWeb.StudioLive.Builder do
   end
 
   def handle_event("add_quiz_exam_block", _, socket) do
-    if section_id = socket.assigns.active_section_id do
-      attrs = %{
-        "type" => "quiz_exam",
-        "section_id" => section_id,
-        "content" => %{
-          "count" => 10,
-          "time_limit" => nil,
-          "mandatory_tags" => [],
-          "include_tags" => [],
-          "exclude_tags" => []
-        }
+    attrs = %{
+      "type" => "quiz_exam",
+      "section_id" => socket.assigns.active_section_id,
+      "content" => %{
+        "count" => 10,
+        "time_limit" => nil,
+        "mandatory_tags" => [],
+        "include_tags" => [],
+        "exclude_tags" => []
       }
+    }
 
-      case Content.create_block(attrs) do
-        {:ok, new_block} ->
-          blocks = Content.list_blocks_by_section(section_id)
-          {:noreply, assign(socket, blocks: blocks, active_block_id: new_block.id)}
-
-        {:error, _changeset} ->
-          {:noreply, put_flash(socket, :error, gettext("Failed to create quiz exam block"))}
-      end
-    else
-      {:noreply, socket}
-    end
+    create_and_assign_block(socket, attrs, gettext("Failed to create quiz exam block"))
   end
 
   def handle_event("add_image_block", _, socket) do
@@ -642,7 +631,7 @@ defmodule AthenaWeb.StudioLive.Builder do
       "section_id" => socket.assigns.active_section_id
     }
 
-    case Content.create_block(attrs) do
+    case Content.create_block(Map.put(attrs, "order", length(socket.assigns.blocks))) do
       {:ok, block} ->
         updated_blocks = socket.assigns.blocks ++ [block]
 
@@ -1064,7 +1053,15 @@ defmodule AthenaWeb.StudioLive.Builder do
   end
 
   defp create_and_assign_block(socket, attrs, error_msg \\ gettext("Failed to create block")) do
-    case Content.create_block(attrs) do
+    order = length(socket.assigns.blocks)
+
+    full_attrs =
+      Map.merge(attrs, %{
+        "order" => order,
+        "visibility" => :inherit
+      })
+
+    case Content.create_block(full_attrs) do
       {:ok, block} ->
         updated_blocks = socket.assigns.blocks ++ [block]
         {:noreply, assign(socket, blocks: updated_blocks, active_block_id: block.id)}

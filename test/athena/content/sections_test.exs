@@ -19,11 +19,11 @@ defmodule Athena.Content.SectionsTest do
 
   describe "create_section/1" do
     setup do
-      %{course: insert(:course), owner_id: Ecto.UUID.generate()}
+      %{course: insert(:course)}
     end
 
-    test "should create root section with atom keys", %{course: c, owner_id: o} do
-      attrs = %{"title" => "Root Atom", "course_id" => c.id, "owner_id" => o, "order" => 10}
+    test "should create root section with atom keys", %{course: c} do
+      attrs = %{"title" => "Root Atom", "course_id" => c.id, "order" => 10}
 
       assert {:ok, %Section{} = section} = Sections.create_section(attrs)
       assert section.title == "Root Atom"
@@ -33,23 +33,22 @@ defmodule Athena.Content.SectionsTest do
       assert Enum.join(section.path.labels, ".") == expected_path
     end
 
-    test "should create root section with string keys", %{course: c, owner_id: o} do
-      attrs = %{"title" => "Root String", "course_id" => c.id, "owner_id" => o}
+    test "should create root section with string keys", %{course: c} do
+      attrs = %{"title" => "Root String", "course_id" => c.id}
 
       assert {:ok, %Section{} = section} = Sections.create_section(attrs)
       assert section.title == "Root String"
       assert section.id != nil
     end
 
-    test "should create child section and save path correctly", %{course: c, owner_id: o} do
+    test "should create child section and save path correctly", %{course: c} do
       {:ok, parent} =
-        Sections.create_section(%{"title" => "Parent", "course_id" => c.id, "owner_id" => o})
+        Sections.create_section(%{"title" => "Parent", "course_id" => c.id})
 
       attrs = %{
         "title" => "Child",
         "course_id" => c.id,
-        "parent_id" => parent.id,
-        "owner_id" => o
+        "parent_id" => parent.id
       }
 
       assert {:ok, %Section{} = child} = Sections.create_section(attrs)
@@ -59,22 +58,20 @@ defmodule Athena.Content.SectionsTest do
       assert child.parent_id == parent.id
     end
 
-    test "should create deep nestings", %{course: c, owner_id: o} do
-      {:ok, p} = Sections.create_section(%{"title" => "P", "course_id" => c.id, "owner_id" => o})
+    test "should create deep nestings", %{course: c} do
+      {:ok, p} = Sections.create_section(%{"title" => "P", "course_id" => c.id})
 
       {:ok, c1} =
         Sections.create_section(%{
           "title" => "C",
           "course_id" => c.id,
-          "parent_id" => p.id,
-          "owner_id" => o
+          "parent_id" => p.id
         })
 
       attrs = %{
         "title" => "Grandchild",
         "course_id" => c.id,
-        "parent_id" => c1.id,
-        "owner_id" => o
+        "parent_id" => c1.id
       }
 
       assert {:ok, grandchild} = Sections.create_section(attrs)
@@ -85,9 +82,9 @@ defmodule Athena.Content.SectionsTest do
       assert String.ends_with?(path, Section.uuid_to_ltree(grandchild.id))
     end
 
-    test "should create section with custom ID", %{course: c, owner_id: o} do
+    test "should create section with custom ID", %{course: c} do
       my_id = Ecto.UUID.generate()
-      attrs = %{"id" => my_id, "title" => "Custom ID", "course_id" => c.id, "owner_id" => o}
+      attrs = %{"id" => my_id, "title" => "Custom ID", "course_id" => c.id}
 
       assert {:ok, section} = Sections.create_section(attrs)
       assert section.id == my_id
@@ -97,7 +94,6 @@ defmodule Athena.Content.SectionsTest do
     test "should not create section without required params", %{course: c} do
       assert {:error, changeset} = Sections.create_section(%{"course_id" => c.id})
       assert "can't be blank" in errors_on(changeset).title
-      assert "can't be blank" in errors_on(changeset).owner_id
     end
   end
 
@@ -117,36 +113,31 @@ defmodule Athena.Content.SectionsTest do
 
     test "should update ltree path of section and its descendants when parent_id changes" do
       course = insert(:course)
-      owner_id = Ecto.UUID.generate()
 
       {:ok, root1} =
         Sections.create_section(%{
           "title" => "Root1",
-          "course_id" => course.id,
-          "owner_id" => owner_id
+          "course_id" => course.id
         })
 
       {:ok, root2} =
         Sections.create_section(%{
           "title" => "Root2",
-          "course_id" => course.id,
-          "owner_id" => owner_id
+          "course_id" => course.id
         })
 
       {:ok, child} =
         Sections.create_section(%{
           "title" => "Child",
           "course_id" => course.id,
-          "parent_id" => root1.id,
-          "owner_id" => owner_id
+          "parent_id" => root1.id
         })
 
       {:ok, grandchild} =
         Sections.create_section(%{
           "title" => "Grandchild",
           "course_id" => course.id,
-          "parent_id" => child.id,
-          "owner_id" => owner_id
+          "parent_id" => child.id
         })
 
       assert {:ok, updated_child} = Sections.update_section(child, %{"parent_id" => root2.id})
@@ -172,15 +163,14 @@ defmodule Athena.Content.SectionsTest do
 
   describe "get_course_tree/1" do
     setup do
-      %{course: insert(:course), owner_id: Ecto.UUID.generate()}
+      %{course: insert(:course)}
     end
 
-    test "should build correct tree", %{course: c, owner_id: o} do
+    test "should build correct tree", %{course: c} do
       {:ok, m1} =
         Sections.create_section(%{
           "title" => "M1",
           "course_id" => c.id,
-          "owner_id" => o,
           "order" => 1
         })
 
@@ -188,7 +178,6 @@ defmodule Athena.Content.SectionsTest do
         Sections.create_section(%{
           "title" => "M2",
           "course_id" => c.id,
-          "owner_id" => o,
           "order" => 2
         })
 
@@ -196,16 +185,14 @@ defmodule Athena.Content.SectionsTest do
         Sections.create_section(%{
           "title" => "L1",
           "course_id" => c.id,
-          "parent_id" => m1.id,
-          "owner_id" => o
+          "parent_id" => m1.id
         })
 
       {:ok, sub} =
         Sections.create_section(%{
           "title" => "Sub",
           "course_id" => c.id,
-          "parent_id" => l1.id,
-          "owner_id" => o
+          "parent_id" => l1.id
         })
 
       tree = Sections.get_course_tree(c.id)
@@ -223,12 +210,11 @@ defmodule Athena.Content.SectionsTest do
       assert hd(child_l1.children).id == sub.id
     end
 
-    test "should keep sort order", %{course: c, owner_id: o} do
+    test "should keep sort order", %{course: c} do
       {:ok, s2} =
         Sections.create_section(%{
           "title" => "Second",
           "course_id" => c.id,
-          "owner_id" => o,
           "order" => 20
         })
 
@@ -236,7 +222,6 @@ defmodule Athena.Content.SectionsTest do
         Sections.create_section(%{
           "title" => "First",
           "course_id" => c.id,
-          "owner_id" => o,
           "order" => 10
         })
 
@@ -247,12 +232,11 @@ defmodule Athena.Content.SectionsTest do
       assert root2.id == s2.id
     end
 
-    test "should sort by creation date if order is the same", %{course: c, owner_id: o} do
+    test "should sort by creation date if order is the same", %{course: c} do
       {:ok, s1} =
         Sections.create_section(%{
           "title" => "First",
           "course_id" => c.id,
-          "owner_id" => o,
           "order" => 1
         })
 
@@ -260,7 +244,6 @@ defmodule Athena.Content.SectionsTest do
         Sections.create_section(%{
           "title" => "Second",
           "course_id" => c.id,
-          "owner_id" => o,
           "order" => 1
         })
 
@@ -276,12 +259,11 @@ defmodule Athena.Content.SectionsTest do
       assert Sections.get_course_tree(course.id) == []
     end
 
-    test "should filter tree based on user policies", %{course: c, owner_id: o} do
+    test "should filter tree based on user policies", %{course: c} do
       {:ok, s_public} =
         Sections.create_section(%{
           "title" => "Public",
           "course_id" => c.id,
-          "owner_id" => o,
           "visibility" => :public
         })
 
@@ -289,7 +271,6 @@ defmodule Athena.Content.SectionsTest do
         Sections.create_section(%{
           "title" => "Hidden",
           "course_id" => c.id,
-          "owner_id" => o,
           "visibility" => :hidden
         })
 
@@ -310,15 +291,14 @@ defmodule Athena.Content.SectionsTest do
 
   describe "reorder_section/2" do
     setup do
-      %{course: insert(:course), owner_id: Ecto.UUID.generate()}
+      %{course: insert(:course)}
     end
 
-    test "should reorder siblings and update their order fields", %{course: c, owner_id: o} do
+    test "should reorder siblings and update their order fields", %{course: c} do
       {:ok, s1} =
         Sections.create_section(%{
           "title" => "S1",
           "course_id" => c.id,
-          "owner_id" => o,
           "order" => 0
         })
 
@@ -326,7 +306,6 @@ defmodule Athena.Content.SectionsTest do
         Sections.create_section(%{
           "title" => "S2",
           "course_id" => c.id,
-          "owner_id" => o,
           "order" => 1
         })
 
@@ -334,7 +313,6 @@ defmodule Athena.Content.SectionsTest do
         Sections.create_section(%{
           "title" => "S3",
           "course_id" => c.id,
-          "owner_id" => o,
           "order" => 2
         })
 
@@ -347,6 +325,38 @@ defmodule Athena.Content.SectionsTest do
 
       assert new_s1.order == 1
       assert new_s2.order == 2
+    end
+  end
+
+  describe "get_section/2 (With ACL)" do
+    setup do
+      role =
+        insert(:role,
+          permissions: ["courses.update"],
+          policies: %{"courses.update" => ["own_only"]}
+        )
+
+      instructor = insert(:account, role: role)
+      other_instructor = insert(:account, role: role)
+      %{instructor: instructor, other_instructor: other_instructor}
+    end
+
+    test "returns section if instructor owns the parent course", %{instructor: instructor} do
+      course = insert(:course, owner_id: instructor.id)
+      section = insert(:section, course: course)
+
+      assert {:ok, fetched} = Sections.get_section(instructor, section.id)
+      assert fetched.id == section.id
+    end
+
+    test "returns not_found if instructor does not own the parent course", %{
+      instructor: instructor,
+      other_instructor: other_instructor
+    } do
+      course = insert(:course, owner_id: other_instructor.id)
+      section = insert(:section, course: course)
+
+      assert {:error, :not_found} = Sections.get_section(instructor, section.id)
     end
   end
 end

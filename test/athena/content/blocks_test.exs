@@ -265,4 +265,38 @@ defmodule Athena.Content.BlocksTest do
       refute Map.has_key?(result, fake_id)
     end
   end
+
+  describe "get_block/2 (With ACL)" do
+    setup do
+      role =
+        insert(:role,
+          permissions: ["courses.update"],
+          policies: %{"courses.update" => ["own_only"]}
+        )
+
+      instructor = insert(:account, role: role)
+      other_instructor = insert(:account, role: role)
+      %{instructor: instructor, other_instructor: other_instructor}
+    end
+
+    test "returns block if instructor owns the parent course", %{instructor: instructor} do
+      course = insert(:course, owner_id: instructor.id)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section)
+
+      assert {:ok, fetched} = Blocks.get_block(instructor, block.id)
+      assert fetched.id == block.id
+    end
+
+    test "returns not_found if instructor does not own the parent course", %{
+      instructor: instructor,
+      other_instructor: other_instructor
+    } do
+      course = insert(:course, owner_id: other_instructor.id)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section)
+
+      assert {:error, :not_found} = Blocks.get_block(instructor, block.id)
+    end
+  end
 end

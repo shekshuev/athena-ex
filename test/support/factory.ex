@@ -68,8 +68,7 @@ defmodule Athena.Factory do
       title: sequence(:title, &"Section #{&1}"),
       order: 0,
       path: %EctoLtree.LabelTree{labels: [Section.uuid_to_ltree(Ecto.UUID.generate())]},
-      course: build(:course),
-      owner_id: Ecto.UUID.generate()
+      course: build(:course)
     }
   end
 
