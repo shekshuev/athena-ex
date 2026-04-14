@@ -45,7 +45,7 @@ defmodule AthenaWeb.TeachingLive.Instructors do
         params
       end
 
-    case Learning.list_instructors(flop_params) do
+    case Learning.list_instructors(socket.assigns.current_user, flop_params) do
       {:ok, {instructors, meta}} ->
         socket =
           socket
@@ -76,7 +76,7 @@ defmodule AthenaWeb.TeachingLive.Instructors do
 
   defp apply_action(socket, :edit, %{"id" => id}) do
     if Identity.can?(socket.assigns.current_user, "instructors.update") do
-      instructor = Learning.get_instructor!(id)
+      {:ok, instructor} = Learning.get_instructor(socket.assigns.current_user, id)
       assign(socket, page_title: gettext("Edit Instructor"), instructor: instructor)
     else
       socket
@@ -103,7 +103,7 @@ defmodule AthenaWeb.TeachingLive.Instructors do
 
   def handle_event("delete_click", %{"id" => id}, socket) do
     if Identity.can?(socket.assigns.current_user, "instructors.delete") do
-      instructor = Learning.get_instructor!(id)
+      {:ok, instructor} = Learning.get_instructor(socket.assigns.current_user, id)
       {:noreply, assign(socket, instructor_to_delete: instructor)}
     else
       {:noreply,
@@ -138,7 +138,7 @@ defmodule AthenaWeb.TeachingLive.Instructors do
           {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_info({InstructorFormComponent, {:saved, instructor}}, socket) do
-    reloaded = Learning.get_instructor!(instructor.id)
+    {:ok, reloaded} = Learning.get_instructor(socket.assigns.current_user, instructor.id)
     {:noreply, stream_insert(socket, :instructors, reloaded)}
   end
 

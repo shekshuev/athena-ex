@@ -6,54 +6,113 @@ defmodule Athena.Learning.CohortsTest do
   alias Athena.Learning.CohortMembership
   import Athena.Factory
 
-  describe "list_cohorts/1" do
-    test "returns a paginated list of cohorts" do
+  setup do
+    admin_role = insert(:role, permissions: ["admin", "cohorts.read"])
+    admin = insert(:account, role: admin_role)
+
+    inst_role =
+      insert(:role, permissions: ["cohorts.read"], policies: %{"cohorts.read" => ["own_only"]})
+
+    inst1_account = insert(:account, role: inst_role)
+    inst1_profile = insert(:instructor, owner_id: inst1_account.id)
+
+    inst2_account = insert(:account, role: inst_role)
+    inst2_profile = insert(:instructor, owner_id: inst2_account.id)
+
+    %{
+      admin: admin,
+      inst1_account: inst1_account,
+      inst1_profile: inst1_profile,
+      inst2_account: inst2_account,
+      inst2_profile: inst2_profile
+    }
+  end
+
+  describe "list_cohorts/2 (With ACL)" do
+    test "returns a paginated list of all cohorts for admin", %{admin: admin} do
       insert_list(3, :cohort)
 
-      {:ok, {cohorts, meta}} = Cohorts.list_cohorts(%{page: 1, page_size: 2})
+      {:ok, {cohorts, meta}} = Cohorts.list_cohorts(admin, %{page: 1, page_size: 2})
 
       assert length(cohorts) == 2
       assert meta.total_count == 3
     end
 
-    test "preloads and enriches instructors" do
-      cohort = insert(:cohort)
+    test "applies own_only policy so instructor sees only their cohorts", %{
+      inst1_account: inst1_account,
+      inst1_profile: inst1_profile,
+      inst2_profile: inst2_profile
+    } do
+      {:ok, my_cohort} =
+        Cohorts.create_cohort(%{"name" => "My Cohort", "instructor_ids" => [inst1_profile.id]})
 
-      account = insert(:account, login: "test_instructor")
-      instructor = insert(:instructor, owner_id: account.id)
+      {:ok, _other_cohort} =
+        Cohorts.create_cohort(%{"name" => "Other Cohort", "instructor_ids" => [inst2_profile.id]})
 
-      Cohorts.update_cohort(cohort, %{"instructor_ids" => [instructor.id]})
+      {:ok, {fetched_cohorts, meta}} = Cohorts.list_cohorts(inst1_account, %{})
 
-      {:ok, {fetched_cohorts, _meta}} = Cohorts.list_cohorts(%{})
+      assert length(fetched_cohorts) == 1
+      assert hd(fetched_cohorts).id == my_cohort.id
+      assert meta.total_count == 1
+    end
+
+    test "preloads and enriches instructors", %{
+      admin: admin,
+      inst1_account: account,
+      inst1_profile: profile
+    } do
+      Cohorts.create_cohort(%{"name" => "Bootcamp", "instructor_ids" => [profile.id]})
+
+      {:ok, {fetched_cohorts, _meta}} = Cohorts.list_cohorts(admin, %{})
 
       fetched_cohort = hd(fetched_cohorts)
       assert length(fetched_cohort.instructors) == 1
       fetched_instructor = hd(fetched_cohort.instructors)
 
-      assert fetched_instructor.id == instructor.id
-      assert fetched_instructor.account.login == "test_instructor"
+      assert fetched_instructor.id == profile.id
+      assert fetched_instructor.account.login == account.login
     end
   end
 
-  describe "get_cohort!/1" do
-    test "returns the cohort with enriched instructors if it exists" do
-      cohort = insert(:cohort)
+  describe "get_cohort/2 (With ACL)" do
+    test "returns the cohort with enriched instructors for admin", %{
+      admin: admin,
+      inst1_account: account,
+      inst1_profile: profile
+    } do
+      {:ok, cohort} =
+        Cohorts.create_cohort(%{"name" => "Elixir 101", "instructor_ids" => [profile.id]})
 
-      account = insert(:account, login: "master_yoda")
-      instructor = insert(:instructor, owner_id: account.id)
-      Cohorts.update_cohort(cohort, %{"instructor_ids" => [instructor.id]})
-
-      fetched_cohort = Cohorts.get_cohort!(cohort.id)
+      assert {:ok, fetched_cohort} = Cohorts.get_cohort(admin, cohort.id)
       assert fetched_cohort.id == cohort.id
 
       fetched_instructor = hd(fetched_cohort.instructors)
-      assert fetched_instructor.account.login == "master_yoda"
+      assert fetched_instructor.account.login == account.login
     end
 
-    test "raises error if cohort does not exist" do
-      assert_raise Ecto.NoResultsError, fn ->
-        Cohorts.get_cohort!(Ecto.UUID.generate())
-      end
+    test "returns cohort if instructor is assigned to it", %{
+      inst1_account: account,
+      inst1_profile: profile
+    } do
+      {:ok, cohort} =
+        Cohorts.create_cohort(%{"name" => "My Group", "instructor_ids" => [profile.id]})
+
+      assert {:ok, fetched_cohort} = Cohorts.get_cohort(account, cohort.id)
+      assert fetched_cohort.id == cohort.id
+    end
+
+    test "returns not_found if instructor is not assigned to it (own_only)", %{
+      inst1_account: account,
+      inst2_profile: other_profile
+    } do
+      {:ok, cohort} =
+        Cohorts.create_cohort(%{"name" => "Other Group", "instructor_ids" => [other_profile.id]})
+
+      assert {:error, :not_found} = Cohorts.get_cohort(account, cohort.id)
+    end
+
+    test "returns not_found if cohort does not exist", %{admin: admin} do
+      assert {:error, :not_found} = Cohorts.get_cohort(admin, Ecto.UUID.generate())
     end
   end
 
@@ -107,13 +166,11 @@ defmodule Athena.Learning.CohortsTest do
   end
 
   describe "delete_cohort/1" do
-    test "deletes the cohort" do
+    test "deletes the cohort", %{admin: admin} do
       cohort = insert(:cohort)
       assert {:ok, _deleted} = Cohorts.delete_cohort(cohort)
 
-      assert_raise Ecto.NoResultsError, fn ->
-        Cohorts.get_cohort!(cohort.id)
-      end
+      assert {:error, :not_found} = Cohorts.get_cohort(admin, cohort.id)
     end
   end
 

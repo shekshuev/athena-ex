@@ -34,9 +34,7 @@ defmodule AthenaWeb.StudioLive.Library do
         params
       end
 
-    current_user_id = socket.assigns.current_user.id
-
-    case Content.list_library_blocks(flop_params, current_user_id) do
+    case Content.list_library_blocks(socket.assigns.current_user, flop_params) do
       {:ok, {blocks, meta}} ->
         socket =
           socket
@@ -67,7 +65,7 @@ defmodule AthenaWeb.StudioLive.Library do
 
   defp apply_action(socket, :edit, %{"id" => id}) do
     if Identity.can?(socket.assigns.current_user, "library.update") do
-      case Content.get_library_block(id) do
+      case Content.get_library_block(socket.assigns.current_user, id) do
         {:ok, block} -> assign(socket, page_title: gettext("Edit Template"), library_block: block)
         _ -> push_patch(socket, to: ~p"/studio/library")
       end
@@ -86,7 +84,7 @@ defmodule AthenaWeb.StudioLive.Library do
 
   def handle_event("delete_click", %{"id" => id}, socket) do
     if Identity.can?(socket.assigns.current_user, "library.delete") do
-      {:ok, block} = Content.get_library_block(id)
+      {:ok, block} = Content.get_library_block(socket.assigns.current_user, id)
       {:noreply, assign(socket, block_to_delete: block)}
     else
       {:noreply,

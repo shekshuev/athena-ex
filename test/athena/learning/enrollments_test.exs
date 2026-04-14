@@ -5,6 +5,34 @@ defmodule Athena.Learning.EnrollmentsTest do
   alias Athena.Learning.Enrollment
   import Athena.Factory
 
+  setup do
+    admin_role = insert(:role, permissions: ["admin", "enrollments.read", "courses.read"])
+    admin = insert(:account, role: admin_role)
+
+    inst_role =
+      insert(:role,
+        permissions: ["enrollments.read", "courses.read"],
+        policies: %{
+          "enrollments.read" => ["own_only"],
+          "courses.read" => ["own_only"]
+        }
+      )
+
+    instructor = insert(:account, role: inst_role)
+    inst_profile = insert(:instructor, owner_id: instructor.id)
+
+    other_instructor = insert(:account, role: inst_role)
+    other_inst_profile = insert(:instructor, owner_id: other_instructor.id)
+
+    %{
+      admin: admin,
+      instructor: instructor,
+      inst_profile: inst_profile,
+      other_instructor: other_instructor,
+      other_inst_profile: other_inst_profile
+    }
+  end
+
   describe "enroll_cohort/3" do
     test "creates an active enrollment by default" do
       cohort = insert(:cohort)
@@ -37,8 +65,8 @@ defmodule Athena.Learning.EnrollmentsTest do
     end
   end
 
-  describe "list_cohort_enrollments/2" do
-    test "returns paginated list of enrollments for a cohort" do
+  describe "list_cohort_enrollments/3 (With ACL)" do
+    test "admin sees all enrollments", %{admin: admin} do
       cohort = insert(:cohort)
       course1 = insert(:course)
       course2 = insert(:course)
@@ -50,7 +78,7 @@ defmodule Athena.Learning.EnrollmentsTest do
       other_course = insert(:course)
       Enrollments.enroll_cohort(other_cohort.id, other_course.id)
 
-      {:ok, {enrollments, meta}} = Enrollments.list_cohort_enrollments(cohort.id, %{})
+      {:ok, {enrollments, meta}} = Enrollments.list_cohort_enrollments(admin, cohort.id, %{})
 
       assert meta.total_count == 2
       assert length(enrollments) == 2
@@ -61,13 +89,60 @@ defmodule Athena.Learning.EnrollmentsTest do
       refute other_course.id in fetched_course_ids
     end
 
-    test "enriches enrollments with course data from Content context" do
+    test "instructor sees enrollment if they are assigned to the cohort", %{
+      instructor: instructor,
+      inst_profile: inst_profile
+    } do
+      course = insert(:course)
+      cohort = insert(:cohort)
+
+      Athena.Learning.Cohorts.update_cohort(cohort, %{"instructor_ids" => [inst_profile.id]})
+      Enrollments.enroll_cohort(cohort.id, course.id)
+
+      {:ok, {enrollments, _meta}} =
+        Enrollments.list_cohort_enrollments(instructor, cohort.id, %{})
+
+      assert length(enrollments) == 1
+    end
+
+    test "instructor sees enrollment if they own the course (even if cohort is not theirs)", %{
+      instructor: instructor
+    } do
+      course = insert(:course, owner_id: instructor.id)
+      cohort = insert(:cohort)
+      Enrollments.enroll_cohort(cohort.id, course.id)
+
+      {:ok, {enrollments, _meta}} =
+        Enrollments.list_cohort_enrollments(instructor, cohort.id, %{})
+
+      assert length(enrollments) == 1
+    end
+
+    test "instructor does NOT see enrollment if they own neither the course nor the cohort", %{
+      instructor: instructor,
+      other_instructor: other_instructor,
+      other_inst_profile: other_inst_profile
+    } do
+      course = insert(:course, owner_id: other_instructor.id)
+      cohort = insert(:cohort)
+
+      Athena.Learning.Cohorts.update_cohort(cohort, %{"instructor_ids" => [other_inst_profile.id]})
+
+      Enrollments.enroll_cohort(cohort.id, course.id)
+
+      {:ok, {enrollments, _meta}} =
+        Enrollments.list_cohort_enrollments(instructor, cohort.id, %{})
+
+      assert enrollments == []
+    end
+
+    test "enriches enrollments with course data from Content context", %{admin: admin} do
       cohort = insert(:cohort)
       course = insert(:course, title: "Elixir Magic")
 
       Enrollments.enroll_cohort(cohort.id, course.id)
 
-      {:ok, {enrollments, _meta}} = Enrollments.list_cohort_enrollments(cohort.id, %{})
+      {:ok, {enrollments, _meta}} = Enrollments.list_cohort_enrollments(admin, cohort.id, %{})
 
       enrollment = hd(enrollments)
       assert enrollment.course.id == course.id

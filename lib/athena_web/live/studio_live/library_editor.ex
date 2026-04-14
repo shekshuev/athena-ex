@@ -13,7 +13,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
-    case Content.get_library_block(id) do
+    case Content.get_library_block(socket.assigns.current_user, id) do
       {:ok, block} ->
         form = to_form(LibraryBlock.changeset(block, %{}))
 

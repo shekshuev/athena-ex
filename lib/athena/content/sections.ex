@@ -9,14 +9,34 @@ defmodule Athena.Content.Sections do
 
   import Ecto.Query
   alias Athena.Repo
-  alias Athena.Content.Section
+  alias Athena.Content.{Course, Section}
 
   @doc """
-  Retrieves a single section by its ID.
+  Retrieves a single section by its ID without ACL (internal use).
   """
   @spec get_section(String.t()) :: {:ok, Section.t()} | {:error, :not_found}
   def get_section(id) do
     case Repo.get(Section, id) do
+      nil -> {:error, :not_found}
+      section -> {:ok, section}
+    end
+  end
+
+  @doc """
+  Retrieves a single section by its ID, scoped by user ACL permissions on the parent course.
+  """
+  @spec get_section(map(), String.t()) :: {:ok, Section.t()} | {:error, :not_found}
+  def get_section(user, id) do
+    accessible_courses =
+      Course
+      |> where([c], is_nil(c.deleted_at))
+      |> Athena.Identity.scope_query(user, "courses.update")
+
+    Section
+    |> join(:inner, [s], c in subquery(accessible_courses), on: s.course_id == c.id)
+    |> where([s], s.id == ^id)
+    |> Repo.one()
+    |> case do
       nil -> {:error, :not_found}
       section -> {:ok, section}
     end

@@ -9,10 +9,12 @@ defmodule Athena.Content do
   alias Athena.Content.{Courses, Sections, Blocks, Library}
   alias Athena.Content.{Course, Section, Block}
 
-  defdelegate list_courses(params \\ %{}), to: Courses
+  defdelegate list_courses(user, params \\ %{}), to: Courses
   defdelegate get_course(id), to: Courses
+  defdelegate get_course(user, id), to: Courses
   defdelegate get_courses_map(ids), to: Courses
   defdelegate search_courses_by_title(query, limit \\ 10), to: Courses
+  defdelegate list_accessible_course_ids(user), to: Courses
 
   def create_course(attrs), do: Courses.create_course(attrs) |> notify_subscribers()
 
@@ -21,6 +23,7 @@ defmodule Athena.Content do
 
   def soft_delete_course(course), do: Courses.soft_delete_course(course) |> notify_subscribers()
 
+  defdelegate get_section(user, id), to: Sections
   defdelegate get_section(id), to: Sections
   defdelegate get_course_tree(course_id, user_or_mode \\ :all), to: Sections
   defdelegate list_linear_lessons(course_id, user_or_mode \\ :all), to: Sections
@@ -37,6 +40,7 @@ defmodule Athena.Content do
 
   defdelegate list_blocks_by_section(section_id, user_or_mode \\ :all), to: Blocks
   defdelegate list_blocks_by_section_ids(ids), to: Blocks
+  defdelegate get_block(user, id), to: Blocks
   defdelegate get_block(id), to: Blocks
   defdelegate prepare_media_upload(course_id, filename), to: Blocks
   defdelegate get_blocks_map(ids), to: Blocks
@@ -53,7 +57,8 @@ defmodule Athena.Content do
     Blocks.attach_media_to_block(block, user_id, meta, file_info) |> notify_subscribers()
   end
 
-  defdelegate list_library_blocks(params, owner_id), to: Library
+  defdelegate list_library_blocks(user, params), to: Library
+  defdelegate get_library_block(user, id), to: Library
   defdelegate get_library_block(id), to: Library
   defdelegate create_library_block(attrs), to: Library
   defdelegate update_library_block(block, attrs), to: Library

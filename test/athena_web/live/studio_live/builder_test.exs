@@ -520,7 +520,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
 
       assert render(lv) =~ "Saved to library!"
 
-      {:ok, {lib_blocks, _}} = Content.list_library_blocks(%{}, admin.id)
+      {:ok, {lib_blocks, _}} = Content.list_library_blocks(admin, %{})
       assert length(lib_blocks) == 1
       assert hd(lib_blocks).title == "My Reusable Text"
       assert hd(lib_blocks).tags == ["cool", "text"]

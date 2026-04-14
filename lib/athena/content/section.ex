@@ -17,7 +17,7 @@ defmodule Athena.Content.Section do
 
   @derive {
     Flop.Schema,
-    filterable: [:title, :course_id, :parent_id, :owner_id],
+    filterable: [:title, :course_id, :parent_id],
     sortable: [:title, :order, :inserted_at],
     default_limit: 50,
     default_order: %{
@@ -31,8 +31,6 @@ defmodule Athena.Content.Section do
     field :order, :integer, default: 0
 
     field :path, EctoLtree.LabelTree
-
-    field :owner_id, :binary_id
 
     field :visibility, Ecto.Enum,
       values: [:public, :enrolled, :restricted, :hidden],
@@ -53,9 +51,9 @@ defmodule Athena.Content.Section do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(section, attrs) do
     section
-    |> cast(attrs, [:id, :title, :order, :path, :course_id, :parent_id, :owner_id, :visibility])
+    |> cast(attrs, [:id, :title, :order, :path, :course_id, :parent_id, :visibility])
     |> cast_embed(:access_rules, with: &Athena.Content.AccessRules.changeset/2)
-    |> validate_required([:id, :title, :path, :course_id, :owner_id, :visibility])
+    |> validate_required([:id, :title, :path, :course_id, :visibility])
     |> validate_length(:title, min: 1, max: 255)
     |> foreign_key_constraint(:course_id)
     |> foreign_key_constraint(:parent_id)

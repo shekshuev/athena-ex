@@ -6,7 +6,16 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponentTest do
   alias Athena.Learning
 
   setup %{conn: conn} do
-    role = insert(:role, permissions: ["cohorts.read", "enrollments.create"])
+    role =
+      insert(:role,
+        permissions: [
+          "cohorts.read",
+          "enrollments.read",
+          "enrollments.create",
+          "courses.read"
+        ]
+      )
+
     account = insert(:account, role: role)
 
     conn = init_test_session(conn, %{"account_id" => account.id})
@@ -27,7 +36,10 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponentTest do
       assert html =~ "Please select a course."
     end
 
-    test "searches and assigns a course to the cohort via autocomplete", %{conn: conn} do
+    test "searches and assigns a course to the cohort via autocomplete", %{
+      conn: conn,
+      current_user: current_user
+    } do
       cohort = insert(:cohort)
       course = insert(:course, title: "Elixir Advanced Concepts")
 
@@ -47,7 +59,7 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponentTest do
 
       assert_patch(lv, ~p"/teaching/cohorts/#{cohort.id}")
 
-      {:ok, {enrollments, _meta}} = Learning.list_cohort_enrollments(cohort.id)
+      {:ok, {enrollments, _meta}} = Learning.list_cohort_enrollments(current_user, cohort.id, %{})
       assert length(enrollments) == 1
       assert hd(enrollments).course_id == course.id
 

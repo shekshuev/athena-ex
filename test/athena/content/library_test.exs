@@ -5,35 +5,59 @@ defmodule Athena.Content.LibraryTest do
   alias Athena.Content.LibraryBlock
   import Athena.Factory
 
-  describe "list_library_blocks/2" do
-    test "should list only blocks belonging to the specified owner" do
-      owner1 = Ecto.UUID.generate()
-      owner2 = Ecto.UUID.generate()
+  setup do
+    role =
+      insert(:role,
+        permissions: ["library.read", "library.update", "library.delete"],
+        policies: %{"library.read" => ["own_only"], "library.update" => ["own_only"]}
+      )
 
-      insert(:library_block, owner_id: owner1)
-      insert(:library_block, owner_id: owner1)
-      insert(:library_block, owner_id: owner2)
+    admin_role = insert(:role, permissions: ["admin", "library.read"])
 
-      assert {:ok, {blocks, meta}} = Library.list_library_blocks(%{}, owner1)
+    owner1 = insert(:account, role: role)
+    owner2 = insert(:account, role: role)
+    admin = insert(:account, role: admin_role)
+
+    %{owner1: owner1, owner2: owner2, admin: admin}
+  end
+
+  describe "list_library_blocks/2 (With ACL)" do
+    test "should list only blocks belonging to the specified owner (own_only)", %{
+      owner1: owner1,
+      owner2: owner2
+    } do
+      insert(:library_block, owner_id: owner1.id)
+      insert(:library_block, owner_id: owner1.id)
+      insert(:library_block, owner_id: owner2.id)
+
+      assert {:ok, {blocks, meta}} = Library.list_library_blocks(owner1, %{})
 
       assert length(blocks) == 2
       assert meta.total_count == 2
-      assert Enum.all?(blocks, fn b -> b.owner_id == owner1 end)
+      assert Enum.all?(blocks, fn b -> b.owner_id == owner1.id end)
     end
 
-    test "should apply pagination parameters" do
-      owner = Ecto.UUID.generate()
-      insert_list(3, :library_block, owner_id: owner)
+    test "should apply pagination parameters", %{owner1: owner1} do
+      insert_list(3, :library_block, owner_id: owner1.id)
 
       assert {:ok, {blocks, meta}} =
-               Library.list_library_blocks(%{"page" => 1, "page_size" => 2}, owner)
+               Library.list_library_blocks(owner1, %{"page" => 1, "page_size" => 2})
 
       assert length(blocks) == 2
       assert meta.total_count == 3
     end
+
+    test "admin sees all blocks", %{admin: admin, owner1: owner1, owner2: owner2} do
+      insert(:library_block, owner_id: owner1.id)
+      insert(:library_block, owner_id: owner2.id)
+
+      assert {:ok, {blocks, meta}} = Library.list_library_blocks(admin, %{})
+      assert length(blocks) == 2
+      assert meta.total_count == 2
+    end
   end
 
-  describe "get_library_block/1" do
+  describe "get_library_block/1 (Without ACL - Internal)" do
     test "should return a single library block by ID" do
       block = insert(:library_block)
 
@@ -43,6 +67,31 @@ defmodule Athena.Content.LibraryTest do
 
     test "should return not_found error when block does not exist" do
       assert {:error, :not_found} = Library.get_library_block(Ecto.UUID.generate())
+    end
+  end
+
+  describe "get_library_block/2 (With ACL - Studio)" do
+    test "should return block if user owns it", %{owner1: owner1} do
+      block = insert(:library_block, owner_id: owner1.id)
+
+      assert {:ok, fetched} = Library.get_library_block(owner1, block.id)
+      assert fetched.id == block.id
+    end
+
+    test "should return not_found if user does not own it (own_only policy applied)", %{
+      owner1: owner1,
+      owner2: owner2
+    } do
+      block = insert(:library_block, owner_id: owner2.id)
+
+      assert {:error, :not_found} = Library.get_library_block(owner1, block.id)
+    end
+
+    test "should return block for admin regardless of owner", %{admin: admin, owner1: owner1} do
+      block = insert(:library_block, owner_id: owner1.id)
+
+      assert {:ok, fetched} = Library.get_library_block(admin, block.id)
+      assert fetched.id == block.id
     end
   end
 

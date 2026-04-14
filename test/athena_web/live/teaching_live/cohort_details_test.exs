@@ -11,8 +11,10 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
         permissions: [
           "cohorts.read",
           "cohorts.update",
+          "enrollments.read",
           "enrollments.create",
-          "enrollments.delete"
+          "enrollments.delete",
+          "courses.read"
         ]
       )
 

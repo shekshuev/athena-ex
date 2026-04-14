@@ -27,7 +27,10 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponentTest do
       assert html =~ "can&#39;t be blank"
     end
 
-    test "creates a new cohort and assigns instructors via autocomplete", %{conn: conn} do
+    test "creates a new cohort and assigns instructors via autocomplete", %{
+      conn: conn,
+      current_user: current_user
+    } do
       account = insert(:account, login: "john_doe")
       instructor = insert(:instructor, owner_id: account.id, title: "Elixir Master")
 
@@ -52,7 +55,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponentTest do
 
       assert_patch(lv, ~p"/teaching/cohorts")
 
-      {:ok, {cohorts, _meta}} = Learning.list_cohorts(%{})
+      {:ok, {cohorts, _meta}} = Learning.list_cohorts(current_user, %{})
       assert length(cohorts) == 1
       cohort = hd(cohorts)
 
@@ -65,7 +68,10 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponentTest do
       assert render(lv) =~ "Cohort created successfully"
     end
 
-    test "updates an existing cohort and adds a new instructor", %{conn: conn} do
+    test "updates an existing cohort and adds a new instructor", %{
+      conn: conn,
+      current_user: current_user
+    } do
       cohort = insert(:cohort, name: "Old Cohort Name")
 
       account = insert(:account, login: "jane_smith")
@@ -91,7 +97,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponentTest do
 
       assert_patch(lv, ~p"/teaching/cohorts")
 
-      updated_cohort = Learning.get_cohort!(cohort.id)
+      {:ok, updated_cohort} = Learning.get_cohort(current_user, cohort.id)
 
       assert updated_cohort.name == "Updated Cohort Name"
       assert length(updated_cohort.instructors) == 1

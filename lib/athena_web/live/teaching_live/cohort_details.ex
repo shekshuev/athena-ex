@@ -21,17 +21,24 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   @spec mount(map(), map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def mount(%{"id" => id}, _session, socket) do
-    cohort = Learning.get_cohort!(id)
+    user = socket.assigns.current_user
 
-    {:ok, {enrollments, _meta}} = Learning.list_cohort_enrollments(id, %{"page_size" => 50})
+    case Learning.get_cohort(user, id) do
+      {:ok, cohort} ->
+        {:ok, {enrollments, _meta}} =
+          Learning.list_cohort_enrollments(user, id, %{"page_size" => 50})
 
-    {:ok,
-     socket
-     |> assign(:cohort, cohort)
-     |> assign(:membership_to_delete, nil)
-     |> assign(:enrollment_to_delete, nil)
-     |> stream(:memberships, [])
-     |> stream(:enrollments, enrollments)}
+        {:ok,
+         socket
+         |> assign(:cohort, cohort)
+         |> assign(:membership_to_delete, nil)
+         |> assign(:enrollment_to_delete, nil)
+         |> stream(:memberships, [])
+         |> stream(:enrollments, enrollments)}
+
+      {:error, :not_found} ->
+        {:ok, push_navigate(socket, to: ~p"/teaching/cohorts")}
+    end
   end
 
   @doc """

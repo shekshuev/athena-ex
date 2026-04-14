@@ -7,19 +7,32 @@ defmodule Athena.Content.Library do
   alias Athena.Repo
   alias Athena.Content.LibraryBlock
 
-  @doc "Lists library blocks with Flop pagination and filtering."
-  @spec list_library_blocks(map(), String.t()) ::
+  @doc "Lists library blocks with Flop pagination and filtering, scoped by ACL."
+  @spec list_library_blocks(map(), map()) ::
           {:ok, {[LibraryBlock.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
-  def list_library_blocks(params \\ %{}, owner_id) do
-    base_query = where(LibraryBlock, [lb], lb.owner_id == ^owner_id)
-
-    Flop.validate_and_run(base_query, params, for: LibraryBlock)
+  def list_library_blocks(user, params \\ %{}) do
+    from(lb in LibraryBlock)
+    |> Athena.Identity.scope_query(user, "library.read")
+    |> Flop.validate_and_run(params, for: LibraryBlock)
   end
 
-  @doc "Retrieves a single library block."
+  @doc "Retrieves a single library block without ACL (internal use)."
   @spec get_library_block(String.t()) :: {:ok, LibraryBlock.t()} | {:error, :not_found}
   def get_library_block(id) do
     case Repo.get(LibraryBlock, id) do
+      nil -> {:error, :not_found}
+      block -> {:ok, block}
+    end
+  end
+
+  @doc "Retrieves a single library block, scoped by ACL."
+  @spec get_library_block(map(), String.t()) :: {:ok, LibraryBlock.t()} | {:error, :not_found}
+  def get_library_block(user, id) do
+    LibraryBlock
+    |> where([lb], lb.id == ^id)
+    |> Athena.Identity.scope_query(user, "library.read")
+    |> Repo.one()
+    |> case do
       nil -> {:error, :not_found}
       block -> {:ok, block}
     end

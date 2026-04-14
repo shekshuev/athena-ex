@@ -24,4 +24,5 @@ defmodule Athena.Identity do
 
   defdelegate can?(user, permission, resource \\ nil), to: Acl
   defdelegate can_any?(user, permissions), to: Acl
+  defdelegate scope_query(query, user, permission), to: Acl
 end
