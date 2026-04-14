@@ -58,7 +58,7 @@ defmodule AthenaWeb.StudioLive.CourseFormComponentTest do
 
       assert_patch(lv, ~p"/studio/courses")
 
-      {:ok, {courses, _meta}} = Content.list_courses(%{})
+      {:ok, {courses, _meta}} = Content.list_courses(current_user, %{})
       assert length(courses) == 1
       course = hd(courses)
 
@@ -86,7 +86,7 @@ defmodule AthenaWeb.StudioLive.CourseFormComponentTest do
 
       assert_patch(lv, ~p"/studio/courses")
 
-      {:ok, updated_course} = Content.get_course(course.id)
+      {:ok, updated_course} = Content.get_course(current_user, course.id)
 
       assert updated_course.title == "Updated Course Title"
       assert updated_course.status == :published

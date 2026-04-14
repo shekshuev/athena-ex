@@ -5,28 +5,56 @@ defmodule Athena.Content.CoursesTest do
   alias Athena.Content.Course
   import Athena.Factory
 
-  describe "list_courses/1" do
-    test "returns a paginated list of active courses" do
+  setup do
+    admin_role = insert(:role, permissions: ["admin", "courses.read"])
+    admin = insert(:account, role: admin_role)
+
+    instructor_role =
+      insert(:role, permissions: ["courses.read"], policies: %{"courses.read" => ["own_only"]})
+
+    instructor = insert(:account, role: instructor_role)
+
+    other_instructor = insert(:account, role: instructor_role)
+
+    %{admin: admin, instructor: instructor, other_instructor: other_instructor}
+  end
+
+  describe "list_courses/2 (With ACL)" do
+    test "returns a paginated list of all active courses for admin", %{admin: admin} do
       insert_list(3, :course)
 
-      {:ok, {courses, meta}} = Courses.list_courses(%{page: 1, page_size: 2})
+      {:ok, {courses, meta}} = Courses.list_courses(admin, %{page: 1, page_size: 2})
 
       assert length(courses) == 2
       assert meta.total_count == 3
     end
 
-    test "excludes soft-deleted courses from the list" do
+    test "excludes soft-deleted courses from the list", %{admin: admin} do
       active_course = insert(:course)
       insert(:course, deleted_at: DateTime.utc_now())
 
-      {:ok, {courses, _meta}} = Courses.list_courses(%{})
+      {:ok, {courses, _meta}} = Courses.list_courses(admin, %{})
 
       assert length(courses) == 1
       assert hd(courses).id == active_course.id
     end
+
+    test "applies own_only policy and returns only instructor's courses", %{
+      instructor: instructor,
+      other_instructor: other_instructor
+    } do
+      my_course = insert(:course, owner_id: instructor.id)
+      _other_course = insert(:course, owner_id: other_instructor.id)
+
+      {:ok, {courses, meta}} = Courses.list_courses(instructor, %{})
+
+      assert length(courses) == 1
+      assert hd(courses).id == my_course.id
+      assert meta.total_count == 1
+    end
   end
 
-  describe "get_course/1" do
+  describe "get_course/1 (Without ACL - Internal/Student)" do
     test "returns the course if it exists and is not deleted" do
       course = insert(:course)
 
@@ -42,6 +70,28 @@ defmodule Athena.Content.CoursesTest do
 
     test "returns error if course does not exist" do
       assert {:error, :not_found} = Courses.get_course(Ecto.UUID.generate())
+    end
+  end
+
+  describe "get_course/2 (With ACL - Studio)" do
+    test "returns course if user has admin permissions", %{admin: admin} do
+      course = insert(:course)
+      assert {:ok, fetched_course} = Courses.get_course(admin, course.id)
+      assert fetched_course.id == course.id
+    end
+
+    test "returns course if instructor owns it", %{instructor: instructor} do
+      course = insert(:course, owner_id: instructor.id)
+      assert {:ok, fetched_course} = Courses.get_course(instructor, course.id)
+      assert fetched_course.id == course.id
+    end
+
+    test "returns not_found error if instructor does not own the course", %{
+      instructor: instructor,
+      other_instructor: other_instructor
+    } do
+      course = insert(:course, owner_id: other_instructor.id)
+      assert {:error, :not_found} = Courses.get_course(instructor, course.id)
     end
   end
 
