@@ -6,9 +6,19 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
   alias Athena.Content
 
   setup %{conn: conn} do
-    role = insert(:role, permissions: ["library.update"])
+    role =
+      insert(:role,
+        permissions: ["library.read", "library.update", "library.delete"],
+        policies: %{
+          "library.read" => ["own_only"],
+          "library.update" => ["own_only"],
+          "library.delete" => ["own_only"]
+        }
+      )
+
     admin = insert(:account, role: role)
     conn = init_test_session(conn, %{"account_id" => admin.id})
+
     %{conn: conn, admin: admin}
   end
 
@@ -37,6 +47,17 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       end
     end
 
+    test "redirects and shows error if user tries to edit someone else's template", %{conn: conn} do
+      other_user = insert(:account)
+
+      block = insert(:library_block, owner_id: other_user.id)
+
+      assert {:error, redirect} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      assert {:live_redirect,
+              %{to: "/studio/library", flash: %{"error" => "Template not found."}}} = redirect
+    end
+
     test "renders editor successfully with template title", %{conn: conn, admin: admin} do
       block = insert(:library_block, title: "My Awesome Template", owner_id: admin.id)
 
@@ -54,7 +75,6 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
 
       {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
 
-      # Шлем хук напрямую, чтобы избежать проблем с DOM-синхронизацией
       render_hook(lv, "update_meta", %{
         "library_block" => %{"title" => "Super New Title"},
         "tags_string" => "elixir, phoenix, awesome"

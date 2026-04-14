@@ -244,6 +244,8 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       Athena.Content.update_section(s1, %{"visibility" => "hidden"})
 
+      Process.sleep(150)
+
       assert_redirect(lv, "/learn/courses/#{course.id}")
     end
   end

@@ -6,7 +6,15 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponentTest do
   alias Athena.Content
 
   setup %{conn: conn} do
-    role = insert(:role, permissions: ["library.read", "library.create", "library.update"])
+    role =
+      insert(:role,
+        permissions: ["library.read", "library.create", "library.update"],
+        policies: %{
+          "library.read" => ["own_only"],
+          "library.update" => ["own_only"]
+        }
+      )
+
     account = insert(:account, role: role)
 
     conn = init_test_session(conn, %{"account_id" => account.id})
@@ -60,7 +68,7 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponentTest do
 
       assert_patch(lv, ~p"/studio/library")
 
-      {:ok, {blocks, _meta}} = Content.list_library_blocks(%{}, current_user.id)
+      {:ok, {blocks, _meta}} = Content.list_library_blocks(current_user, %{})
       assert length(blocks) == 1
       block = hd(blocks)
 
@@ -98,7 +106,7 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponentTest do
 
       assert_patch(lv, ~p"/studio/library")
 
-      {:ok, updated_block} = Content.get_library_block(block.id)
+      {:ok, updated_block} = Content.get_library_block(current_user, block.id)
 
       assert updated_block.title == "Updated Title"
       assert updated_block.tags == ["new", "tag"]

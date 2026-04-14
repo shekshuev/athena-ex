@@ -609,7 +609,7 @@ defmodule AthenaWeb.StudioLive.Builder do
   end
 
   def handle_event("open_library_picker", _, socket) do
-    {:ok, {blocks, _meta}} = Content.list_library_blocks(%{}, socket.assigns.current_user.id)
+    {:ok, {blocks, _meta}} = Content.list_library_blocks(socket.assigns.current_user, %{})
 
     {:noreply,
      assign(socket, library_picker_open: true, library_blocks: blocks, library_search: "")}
@@ -628,7 +628,7 @@ defmodule AthenaWeb.StudioLive.Builder do
         else: %{}
 
     {:ok, {blocks, _meta}} =
-      Content.list_library_blocks(flop_params, socket.assigns.current_user.id)
+      Content.list_library_blocks(socket.assigns.current_user, flop_params)
 
     {:noreply, assign(socket, library_blocks: blocks, library_search: search)}
   end

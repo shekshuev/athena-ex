@@ -54,7 +54,8 @@ defmodule Athena.Content do
     Blocks.attach_media_to_block(block, user_id, meta, file_info) |> notify_subscribers()
   end
 
-  defdelegate list_library_blocks(params, owner_id), to: Library
+  defdelegate list_library_blocks(user, params), to: Library
+  defdelegate get_library_block(user, id), to: Library
   defdelegate get_library_block(id), to: Library
   defdelegate create_library_block(attrs), to: Library
   defdelegate update_library_block(block, attrs), to: Library
