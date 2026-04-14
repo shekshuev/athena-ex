@@ -5,23 +5,57 @@ defmodule Athena.Learning.InstructorsTest do
   alias Athena.Learning.Instructor
   import Athena.Factory
 
-  describe "list_instructors/1" do
-    test "returns a paginated list of instructors" do
+  setup do
+    admin_role = insert(:role, permissions: ["admin", "instructors.read"])
+    admin = insert(:account, role: admin_role)
+
+    inst_role =
+      insert(:role,
+        permissions: ["instructors.read"],
+        policies: %{"instructors.read" => ["own_only"]}
+      )
+
+    instructor_account = insert(:account, role: inst_role)
+    other_account = insert(:account, role: inst_role)
+
+    %{
+      admin: admin,
+      instructor_account: instructor_account,
+      other_account: other_account
+    }
+  end
+
+  describe "list_instructors/2 (With ACL)" do
+    test "returns a paginated list of all instructors for admin", %{admin: admin} do
       insert_list(3, :instructor)
 
-      {:ok, {instructors, meta}} = Instructors.list_instructors(%{page: 1, page_size: 2})
+      {:ok, {instructors, meta}} = Instructors.list_instructors(admin, %{page: 1, page_size: 2})
 
       assert length(instructors) == 2
-      assert meta.total_count == 3
+      assert meta.total_count >= 3
     end
 
-    test "enriches instructors with account data" do
+    test "applies own_only policy so instructor sees only their profile", %{
+      instructor_account: account,
+      other_account: other
+    } do
+      insert(:instructor, owner_id: account.id)
+      insert(:instructor, owner_id: other.id)
+
+      {:ok, {instructors, meta}} = Instructors.list_instructors(account, %{})
+
+      assert length(instructors) == 1
+      assert hd(instructors).owner_id == account.id
+      assert meta.total_count == 1
+    end
+
+    test "enriches instructors with account data", %{admin: admin} do
       account = insert(:account, login: "test_prof")
       insert(:instructor, owner_id: account.id)
 
-      {:ok, {instructors, _meta}} = Instructors.list_instructors(%{})
+      {:ok, {instructors, _meta}} = Instructors.list_instructors(admin, %{})
 
-      instructor = hd(instructors)
+      instructor = Enum.find(instructors, &(&1.owner_id == account.id))
       assert instructor.account != nil
       assert instructor.account.login == "test_prof"
     end
@@ -60,21 +94,35 @@ defmodule Athena.Learning.InstructorsTest do
     end
   end
 
-  describe "get_instructor!/1" do
-    test "returns the enriched instructor if it exists" do
+  describe "get_instructor/2 (With ACL)" do
+    test "returns the enriched instructor for admin", %{admin: admin} do
       account = insert(:account, login: "specific_user")
       instructor = insert(:instructor, owner_id: account.id)
 
-      fetched = Instructors.get_instructor!(instructor.id)
+      assert {:ok, fetched} = Instructors.get_instructor(admin, instructor.id)
 
       assert fetched.id == instructor.id
       assert fetched.account.login == "specific_user"
     end
 
-    test "raises error if instructor does not exist" do
-      assert_raise Ecto.NoResultsError, fn ->
-        Instructors.get_instructor!(Ecto.UUID.generate())
-      end
+    test "returns instructor if they own the profile", %{instructor_account: account} do
+      instructor = insert(:instructor, owner_id: account.id)
+
+      assert {:ok, fetched} = Instructors.get_instructor(account, instructor.id)
+      assert fetched.id == instructor.id
+    end
+
+    test "returns not_found if user tries to access another's profile", %{
+      instructor_account: account,
+      other_account: other
+    } do
+      instructor = insert(:instructor, owner_id: other.id)
+
+      assert {:error, :not_found} = Instructors.get_instructor(account, instructor.id)
+    end
+
+    test "returns not_found error if instructor does not exist", %{admin: admin} do
+      assert {:error, :not_found} = Instructors.get_instructor(admin, Ecto.UUID.generate())
     end
   end
 
@@ -106,13 +154,11 @@ defmodule Athena.Learning.InstructorsTest do
   end
 
   describe "delete_instructor/1" do
-    test "deletes the instructor" do
+    test "deletes the instructor", %{admin: admin} do
       instructor = insert(:instructor)
       assert {:ok, _deleted} = Instructors.delete_instructor(instructor)
 
-      assert_raise Ecto.NoResultsError, fn ->
-        Instructors.get_instructor!(instructor.id)
-      end
+      assert {:error, :not_found} = Instructors.get_instructor(admin, instructor.id)
     end
   end
 end

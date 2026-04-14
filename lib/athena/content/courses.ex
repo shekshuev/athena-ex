@@ -24,6 +24,19 @@ defmodule Athena.Content.Courses do
   end
 
   @doc """
+  Retrieves a list of course IDs accessible to the user.
+  Useful for cross-context authorization (e.g., in Learning context).
+  """
+  @spec list_accessible_course_ids(map()) :: [String.t()]
+  def list_accessible_course_ids(user) do
+    Course
+    |> where([c], is_nil(c.deleted_at))
+    |> Identity.scope_query(user, "courses.read")
+    |> select([c], c.id)
+    |> Repo.all()
+  end
+
+  @doc """
   Retrieves a single course by its ID, scoped by user permissions.
   """
   @spec get_course(map(), String.t()) :: {:ok, Course.t()} | {:error, :not_found}

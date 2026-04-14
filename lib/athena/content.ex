@@ -14,6 +14,7 @@ defmodule Athena.Content do
   defdelegate get_course(user, id), to: Courses
   defdelegate get_courses_map(ids), to: Courses
   defdelegate search_courses_by_title(query, limit \\ 10), to: Courses
+  defdelegate list_accessible_course_ids(user), to: Courses
 
   def create_course(attrs), do: Courses.create_course(attrs) |> notify_subscribers()
 

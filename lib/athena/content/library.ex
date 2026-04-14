@@ -11,7 +11,7 @@ defmodule Athena.Content.Library do
   @spec list_library_blocks(map(), map()) ::
           {:ok, {[LibraryBlock.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_library_blocks(user, params \\ %{}) do
-    LibraryBlock
+    from(lb in LibraryBlock)
     |> Athena.Identity.scope_query(user, "library.read")
     |> Flop.validate_and_run(params, for: LibraryBlock)
   end

@@ -45,7 +45,7 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
         params
       end
 
-    case Learning.list_cohorts(flop_params) do
+    case Learning.list_cohorts(socket.assigns.current_user, flop_params) do
       {:ok, {cohorts, meta}} ->
         socket =
           socket
@@ -76,7 +76,7 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
 
   defp apply_action(socket, :edit, %{"id" => id}) do
     if Identity.can?(socket.assigns.current_user, "cohorts.update") do
-      cohort = Learning.get_cohort!(id)
+      {:ok, cohort} = Learning.get_cohort(socket.assigns.current_user, id)
       assign(socket, page_title: gettext("Edit Cohort"), cohort: cohort)
     else
       socket
@@ -98,7 +98,7 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
 
   def handle_event("delete_click", %{"id" => id}, socket) do
     if Identity.can?(socket.assigns.current_user, "cohorts.delete") do
-      cohort = Learning.get_cohort!(id)
+      {:ok, cohort} = Learning.get_cohort(socket.assigns.current_user, id)
       {:noreply, assign(socket, cohort_to_delete: cohort)}
     else
       {:noreply,
@@ -133,7 +133,7 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
           {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_info({CohortFormComponent, {:saved, cohort}}, socket) do
-    reloaded = Learning.get_cohort!(cohort.id)
+    {:ok, reloaded} = Learning.get_cohort(socket.assigns.current_user, cohort.id)
     {:noreply, stream_insert(socket, :cohorts, reloaded)}
   end
 

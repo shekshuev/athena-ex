@@ -29,7 +29,10 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponentTest do
       assert html =~ "can&#39;t be blank"
     end
 
-    test "creates a new instructor and links account via autocomplete", %{conn: conn} do
+    test "creates a new instructor and links account via autocomplete", %{
+      conn: conn,
+      current_user: current_user
+    } do
       account_to_link = insert(:account, login: "future_instructor")
 
       {:ok, lv, _html} = live(conn, ~p"/teaching/instructors/new")
@@ -55,7 +58,7 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponentTest do
 
       assert render(lv) =~ "Instructor created successfully"
 
-      {:ok, {instructors, _meta}} = Learning.list_instructors(%{})
+      {:ok, {instructors, _meta}} = Learning.list_instructors(current_user, %{})
       assert length(instructors) == 1
       instructor = hd(instructors)
 
@@ -64,7 +67,10 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponentTest do
       assert instructor.owner_id == account_to_link.id
     end
 
-    test "updates an existing instructor's title and bio", %{conn: conn} do
+    test "updates an existing instructor's title and bio", %{
+      conn: conn,
+      current_user: current_user
+    } do
       instructor = insert(:instructor, title: "Old Title", bio: "Old Bio")
 
       {:ok, lv, _html} = live(conn, ~p"/teaching/instructors/#{instructor.id}/edit")
@@ -82,7 +88,7 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponentTest do
 
       assert render(lv) =~ "Instructor updated successfully"
 
-      updated_instructor = Learning.get_instructor!(instructor.id)
+      {:ok, updated_instructor} = Learning.get_instructor(current_user, instructor.id)
 
       assert updated_instructor.title == "Updated Title"
       assert updated_instructor.bio == "Updated Bio"

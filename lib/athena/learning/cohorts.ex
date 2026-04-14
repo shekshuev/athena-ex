@@ -9,20 +9,18 @@ defmodule Athena.Learning.Cohorts do
 
   import Ecto.Query
   alias Athena.Repo
-  alias Athena.Learning.{Cohort, Instructor, CohortMembership, Instructors}
+  alias Athena.Learning.{Cohort, Instructor, CohortMembership, Instructors, CohortInstructor}
   alias Athena.Identity
 
   @doc """
-  Retrieves a paginated list of cohorts.
-
-  Preloads associated instructors and enriches them with Identity context data.
-
-  ## Parameters
-    * `params` - A map containing Flop parameters for pagination and filtering.
+  Retrieves a paginated list of cohorts, scoped by user permissions.
   """
-  @spec list_cohorts(map()) :: {:ok, {[Cohort.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
-  def list_cohorts(params \\ %{}) do
-    case Flop.validate_and_run(Cohort, params, for: Cohort) do
+  @spec list_cohorts(map(), map()) ::
+          {:ok, {[Cohort.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
+  def list_cohorts(user, params \\ %{}) do
+    base_query = scope_cohorts(Cohort, user, "cohorts.read")
+
+    case Flop.validate_and_run(base_query, params, for: Cohort) do
       {:ok, {cohorts, meta}} ->
         cohorts = Repo.preload(cohorts, :instructors)
         {:ok, {enrich_cohorts(cohorts), meta}}
@@ -32,18 +30,45 @@ defmodule Athena.Learning.Cohorts do
     end
   end
 
-  @doc """
-  Retrieves a single cohort by its ID.
+  @doc false
+  defp scope_cohorts(query, user, permission) do
+    cond do
+      "admin" in user.role.permissions ->
+        query
 
-  Preloads associated instructors and enriches them.
-  Raises `Ecto.NoResultsError` if the cohort does not exist.
+      permission in user.role.permissions ->
+        policies = Map.get(user.role.policies || %{}, permission, [])
+
+        if "own_only" in policies do
+          my_cohort_ids =
+            from ci in CohortInstructor,
+              join: i in Instructor,
+              on: ci.instructor_id == i.id,
+              where: i.owner_id == ^user.id,
+              select: ci.cohort_id
+
+          where(query, [c], c.id in subquery(my_cohort_ids))
+        else
+          query
+        end
+
+      true ->
+        where(query, [c], false)
+    end
+  end
+
+  @doc """
+  Retrieves a single cohort safely.
   """
-  @spec get_cohort!(String.t()) :: Cohort.t()
-  def get_cohort!(id) do
+  def get_cohort(user, id) do
     Cohort
-    |> Repo.get!(id)
-    |> Repo.preload(:instructors)
-    |> enrich_cohorts()
+    |> where([c], c.id == ^id)
+    |> scope_cohorts(user, "cohorts.read")
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      cohort -> {:ok, enrich_cohorts(Repo.preload(cohort, :instructors))}
+    end
   end
 
   @doc """

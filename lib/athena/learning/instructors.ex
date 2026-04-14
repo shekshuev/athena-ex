@@ -12,18 +12,16 @@ defmodule Athena.Learning.Instructors do
   alias Athena.Identity
 
   @doc """
-  Retrieves a paginated list of instructors.
-
-  Enriches the resulting instructors with `Account` data to display 
-  login/email in the UI without direct database joins across contexts.
-
-  ## Parameters
-    * `params` - A map containing Flop parameters for pagination and filtering.
+  Retrieves a paginated list of instructors, scoped by user permissions.
   """
-  @spec list_instructors(map()) ::
+  @spec list_instructors(map(), map()) ::
           {:ok, {[Instructor.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
-  def list_instructors(params \\ %{}) do
-    case Flop.validate_and_run(Instructor, params, for: Instructor) do
+  def list_instructors(user, params \\ %{}) do
+    base_query =
+      from(i in Instructor)
+      |> Athena.Identity.scope_query(user, "instructors.read")
+
+    case Flop.validate_and_run(base_query, params, for: Instructor) do
       {:ok, {instructors, meta}} ->
         {:ok, {enrich_with_accounts(instructors), meta}}
 
@@ -69,15 +67,17 @@ defmodule Athena.Learning.Instructors do
   end
 
   @doc """
-  Retrieves a single instructor by its ID.
-
-  Enriches the result with `Account` data.
-  Raises `Ecto.NoResultsError` if the instructor does not exist.
+  Retrieves a single instructor, scoped by ACL.
   """
-  @spec get_instructor!(String.t()) :: Instructor.t()
-  def get_instructor!(id) do
-    Repo.get!(Instructor, id)
-    |> enrich_with_accounts()
+  def get_instructor(user, id) do
+    Instructor
+    |> where([i], i.id == ^id)
+    |> Athena.Identity.scope_query(user, "instructors.read")
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      instructor -> {:ok, enrich_with_accounts(instructor)}
+    end
   end
 
   @doc """
