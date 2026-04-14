@@ -39,6 +39,7 @@ defmodule Athena.Learning do
   defdelegate list_student_enrollments(account_id), to: Enrollments
   defdelegate has_access?(account_id, course_id), to: Enrollments
 
+  defdelegate list_submissions(params \\ %{}), to: Submissions
   defdelegate get_submission(account_id, block_id), to: Submissions
   defdelegate create_submission(attrs), to: Submissions
   defdelegate update_submission(submission, attrs), to: Submissions

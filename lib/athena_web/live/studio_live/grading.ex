@@ -5,7 +5,7 @@ defmodule AthenaWeb.StudioLive.Grading do
   """
   use AthenaWeb, :live_view
 
-  alias Athena.Learning.Submissions
+  alias Athena.Learning
   alias Athena.Identity
   alias Athena.Content
 
@@ -34,7 +34,7 @@ defmodule AthenaWeb.StudioLive.Grading do
         params
       end
 
-    case Submissions.list_submissions(flop_params) do
+    case Learning.list_submissions(flop_params) do
       {:ok, {submissions, meta}} ->
         account_ids = Enum.map(submissions, & &1.account_id) |> Enum.uniq()
         block_ids = Enum.map(submissions, & &1.block_id) |> Enum.uniq()

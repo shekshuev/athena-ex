@@ -45,7 +45,7 @@ defmodule AthenaWeb.StudioLive.Courses do
         params
       end
 
-    case Content.list_courses(flop_params) do
+    case Content.list_courses(socket.assigns.current_user, flop_params) do
       {:ok, {courses, meta}} ->
         socket =
           socket
@@ -76,7 +76,7 @@ defmodule AthenaWeb.StudioLive.Courses do
 
   defp apply_action(socket, :edit, %{"id" => id}) do
     if Identity.can?(socket.assigns.current_user, "courses.update") do
-      case Content.get_course(id) do
+      case Content.get_course(socket.assigns.current_user, id) do
         {:ok, course} -> assign(socket, page_title: gettext("Edit Course"), course: course)
         _ -> push_patch(socket, to: ~p"/studio/courses")
       end
@@ -105,7 +105,7 @@ defmodule AthenaWeb.StudioLive.Courses do
 
   def handle_event("delete_click", %{"id" => id}, socket) do
     if Identity.can?(socket.assigns.current_user, "courses.delete") do
-      {:ok, course} = Content.get_course(id)
+      {:ok, course} = Content.get_course(socket.assigns.current_user, id)
       {:noreply, assign(socket, course_to_delete: course)}
     else
       {:noreply,

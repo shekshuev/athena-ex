@@ -9,26 +9,38 @@ defmodule Athena.Content.Courses do
   import Ecto.Query
   alias Athena.Repo
   alias Athena.Content.Course
+  alias Athena.Identity
 
   @doc """
-  Retrieves a paginated list of active (non-deleted) courses.
-
-  ## Parameters
-    * `params` - A map containing Flop parameters.
+  Retrieves a paginated list of active (non-deleted) courses, scoped by user permissions.
   """
-  @spec list_courses(map()) :: {:ok, {[Course.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
-  def list_courses(params \\ %{}) do
+  @spec list_courses(map(), map()) ::
+          {:ok, {[Course.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
+  def list_courses(user, params \\ %{}) do
     Course
     |> where([c], is_nil(c.deleted_at))
+    |> Identity.scope_query(user, "courses.read")
     |> Flop.validate_and_run(params, for: Course)
   end
 
   @doc """
-  Retrieves a single course by its ID.
+  Retrieves a single course by its ID, scoped by user permissions.
+  """
+  @spec get_course(map(), String.t()) :: {:ok, Course.t()} | {:error, :not_found}
+  def get_course(user, id) do
+    Course
+    |> where([c], c.id == ^id and is_nil(c.deleted_at))
+    |> Identity.scope_query(user, "courses.read")
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      course -> {:ok, course}
+    end
+  end
 
-  ## Returns
-    * `{:ok, %Course{}}` if found and not deleted.
-    * `{:error, :not_found}` otherwise.
+  @doc """
+  Retrieves a single course by its ID without ACL policies.
+  Used for students (where Learning.has_access? already validated access) and internal logic.
   """
   @spec get_course(String.t()) :: {:ok, Course.t()} | {:error, :not_found}
   def get_course(id) do

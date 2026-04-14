@@ -31,7 +31,7 @@ defmodule AthenaWeb.StudioLive.Builder do
   @spec mount(map(), map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def mount(%{"id" => course_id}, _session, socket) do
-    case Content.get_course(course_id) do
+    case Content.get_course(socket.assigns.current_user, course_id) do
       {:ok, course} ->
         if connected?(socket), do: :timer.send_interval(1000, self(), :tick)
         sections = Content.get_course_tree(course.id)

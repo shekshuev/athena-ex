@@ -9,8 +9,9 @@ defmodule Athena.Content do
   alias Athena.Content.{Courses, Sections, Blocks, Library}
   alias Athena.Content.{Course, Section, Block}
 
-  defdelegate list_courses(params \\ %{}), to: Courses
+  defdelegate list_courses(user, params \\ %{}), to: Courses
   defdelegate get_course(id), to: Courses
+  defdelegate get_course(user, id), to: Courses
   defdelegate get_courses_map(ids), to: Courses
   defdelegate search_courses_by_title(query, limit \\ 10), to: Courses
 
