@@ -238,7 +238,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       conn: conn,
       course: course
     } do
-      s1 = insert(:section, course: course, visibility: :public)
+      s1 = insert(:section, course: course, visibility: :enrolled)
 
       {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
@@ -496,6 +496,76 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       assert html =~ "Exam Failed (Violations)"
       refute html =~ "Exam Completed"
       refute html =~ "Start Exam"
+    end
+  end
+
+  describe "Cohort Schedule Overrides" do
+    test "cohort override unlocks a globally locked block", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      cohort = insert(:cohort)
+      insert(:cohort_membership, account_id: user.id, cohort_id: cohort.id)
+
+      s1 = insert(:section, course: course)
+      now = DateTime.utc_now()
+      future = DateTime.add(now, 1, :day)
+      past = DateTime.add(now, -1, :day)
+
+      block =
+        insert(:block,
+          section: s1,
+          visibility: :restricted,
+          access_rules: %AccessRules{unlock_at: future},
+          content: %{"text" => "Secret Override Content"}
+        )
+
+      insert(:cohort_schedule,
+        cohort_id: cohort.id,
+        course_id: course.id,
+        resource_type: :block,
+        resource_id: block.id,
+        unlock_at: past
+      )
+
+      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ "Secret Override Content"
+    end
+
+    test "cohort override locks a globally unlocked block", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      cohort = insert(:cohort)
+      insert(:cohort_membership, account_id: user.id, cohort_id: cohort.id)
+
+      s1 = insert(:section, course: course)
+      now = DateTime.utc_now()
+      past = DateTime.add(now, -1, :day)
+      future = DateTime.add(now, 1, :day)
+
+      block =
+        insert(:block,
+          section: s1,
+          visibility: :restricted,
+          access_rules: %AccessRules{unlock_at: past},
+          content: %{"text" => "Should Be Hidden"}
+        )
+
+      insert(:cohort_schedule,
+        cohort_id: cohort.id,
+        course_id: course.id,
+        resource_type: :block,
+        resource_id: block.id,
+        unlock_at: future
+      )
+
+      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      refute html =~ "Should Be Hidden"
     end
   end
 end

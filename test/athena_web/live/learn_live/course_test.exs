@@ -15,7 +15,7 @@ defmodule AthenaWeb.LearnLive.CourseTest do
       course = insert(:course, title: "Secret Course", description: "A test course description")
 
       insert(:enrollment, account_id: user.id, course_id: course.id)
-      insert(:section, course: course, title: "Module 1: Basics", visibility: :public)
+      insert(:section, course: course, title: "Module 1: Basics", visibility: :enrolled)
 
       {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}")
 

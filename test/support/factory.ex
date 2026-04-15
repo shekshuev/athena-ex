@@ -7,7 +7,16 @@ defmodule Athena.Factory do
   alias Athena.Identity.{Account, Role, Profile}
   alias Athena.Media.{File, Quota}
   alias Athena.Content.{Course, Section, Block, LibraryBlock}
-  alias Athena.Learning.{Cohort, Instructor, Enrollment, Submission, SubmissionContent}
+
+  alias Athena.Learning.{
+    Cohort,
+    Instructor,
+    Enrollment,
+    Submission,
+    SubmissionContent,
+    CohortSchedule,
+    CohortMembership
+  }
 
   def role_factory do
     %Role{
@@ -122,6 +131,24 @@ defmodule Athena.Factory do
       },
       status: :pending,
       score: 0
+    }
+  end
+
+  def cohort_membership_factory do
+    %CohortMembership{
+      account_id: Ecto.UUID.generate(),
+      cohort_id: Ecto.UUID.generate()
+    }
+  end
+
+  def cohort_schedule_factory do
+    %CohortSchedule{
+      cohort_id: Ecto.UUID.generate(),
+      course_id: Ecto.UUID.generate(),
+      resource_type: :block,
+      resource_id: Ecto.UUID.generate(),
+      unlock_at: nil,
+      lock_at: nil
     }
   end
 end

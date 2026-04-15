@@ -28,7 +28,7 @@ defmodule Athena.Content.BlocksTest do
     end
 
     test "should filter blocks based on user policies", %{section: s} do
-      b_public = insert(:block, section: s, visibility: :public, order: 1000)
+      b_public = insert(:block, section: s, visibility: :enrolled, order: 1000)
       _b_hidden = insert(:block, section: s, visibility: :hidden, order: 2000)
 
       assert length(Blocks.list_blocks_by_section(s.id, :all)) == 2

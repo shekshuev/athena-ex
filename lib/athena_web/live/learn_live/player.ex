@@ -31,14 +31,23 @@ defmodule AthenaWeb.LearnLive.Player do
         Phoenix.PubSub.subscribe(Athena.PubSub, "course_content:#{course_id}")
       end
 
+      overrides = Learning.get_student_overrides(user.id, course_id)
       linear_lessons = Content.list_linear_lessons(course_id, user)
-      accessible_ids = Learning.accessible_section_ids(user.id, course_id, linear_lessons)
+      accessible_ids = Learning.accessible_section_ids(user, course_id, linear_lessons, overrides)
 
       first_lesson_id = linear_lessons |> List.first() |> Map.get(:id)
       section_id = params["section_id"] || first_lesson_id
 
       if section_id in accessible_ids do
-        setup_player_state(socket, course, section_id, linear_lessons, accessible_ids, user)
+        setup_player_state(
+          socket,
+          course,
+          section_id,
+          linear_lessons,
+          accessible_ids,
+          user,
+          overrides
+        )
       else
         {:ok,
          socket
@@ -53,10 +62,22 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp setup_player_state(socket, course, section_id, linear_lessons, accessible_ids, user) do
+  defp setup_player_state(
+         socket,
+         course,
+         section_id,
+         linear_lessons,
+         accessible_ids,
+         user,
+         overrides
+       ) do
     section = Content.get_section(section_id) |> elem(1)
 
-    blocks = Content.list_blocks_by_section(section_id, user) |> Enum.sort_by(& &1.order)
+    blocks =
+      Content.list_blocks_by_section(section_id, :all)
+      |> Enum.filter(&Content.Policy.can_view?(user, &1, overrides))
+      |> Enum.sort_by(& &1.order)
+
     completed_ids = Learning.completed_block_ids(user.id, section_id)
     tree = Content.get_course_tree(course.id, user)
 
@@ -82,6 +103,7 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:course_map_open, false)
       |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
       |> assign(:submissions, submissions)
+      |> assign(:overrides, overrides)
 
     {:ok, schedule_next_unlock(socket, course.id)}
   end
@@ -101,7 +123,12 @@ defmodule AthenaWeb.LearnLive.Player do
     linear_lessons = socket.assigns.linear_lessons
 
     accessible_ids =
-      Learning.accessible_section_ids(user.id, socket.assigns.course.id, linear_lessons)
+      Learning.accessible_section_ids(
+        user,
+        socket.assigns.course.id,
+        linear_lessons,
+        socket.assigns.overrides
+      )
 
     current_index = Enum.find_index(linear_lessons, fn s -> s.id == socket.assigns.section.id end)
     next_section = Enum.at(linear_lessons, current_index + 1)
@@ -263,7 +290,12 @@ defmodule AthenaWeb.LearnLive.Player do
     linear_lessons = socket.assigns.linear_lessons
 
     accessible_ids =
-      Learning.accessible_section_ids(user.id, socket.assigns.course.id, linear_lessons)
+      Learning.accessible_section_ids(
+        user,
+        socket.assigns.course.id,
+        linear_lessons,
+        socket.assigns.overrides
+      )
 
     current_index =
       Enum.find_index(linear_lessons, fn s -> s.id == socket.assigns.section.id end)
@@ -290,12 +322,15 @@ defmodule AthenaWeb.LearnLive.Player do
     course_id = socket.assigns.course.id
     current_section_id = socket.assigns.section.id
 
+    overrides = Learning.get_student_overrides(user.id, course_id)
     linear_lessons = Content.list_linear_lessons(course_id, user)
-    accessible_ids = Learning.accessible_section_ids(user.id, course_id, linear_lessons)
+    accessible_ids = Learning.accessible_section_ids(user, course_id, linear_lessons, overrides)
 
     if current_section_id in accessible_ids do
       blocks =
-        Content.list_blocks_by_section(current_section_id, user) |> Enum.sort_by(& &1.order)
+        Content.list_blocks_by_section(current_section_id, :all)
+        |> Enum.filter(&Content.Policy.can_view?(user, &1, overrides))
+        |> Enum.sort_by(& &1.order)
 
       completed_ids = Learning.completed_block_ids(user.id, current_section_id)
       tree = Content.get_course_tree(course_id, user)
@@ -312,6 +347,7 @@ defmodule AthenaWeb.LearnLive.Player do
        |> assign(:completed_ids, completed_ids)
        |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
        |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
+       |> assign(:overrides, overrides)
        |> schedule_next_unlock(course_id)}
     else
       {:noreply,
@@ -606,15 +642,24 @@ defmodule AthenaWeb.LearnLive.Player do
 
     all_blocks = Content.list_blocks_by_section_ids(all_section_ids)
 
-    all_rules =
+    global_rules =
       (all_sections ++ all_blocks)
       |> Enum.map(& &1.access_rules)
       |> Enum.reject(&is_nil/1)
 
-    all_times =
-      all_rules
+    global_times =
+      global_rules
       |> Enum.flat_map(&[&1.unlock_at, &1.lock_at])
       |> Enum.reject(&is_nil/1)
+
+    overrides = socket.assigns[:overrides] || []
+
+    override_times =
+      overrides
+      |> Enum.flat_map(&[&1.unlock_at, &1.lock_at])
+      |> Enum.reject(&is_nil/1)
+
+    all_times = global_times ++ override_times
 
     future_unix_times =
       all_times

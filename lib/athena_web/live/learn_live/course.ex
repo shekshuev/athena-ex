@@ -26,9 +26,13 @@ defmodule AthenaWeb.LearnLive.Course do
         Phoenix.PubSub.subscribe(Athena.PubSub, "course_content:#{course_id}")
       end
 
+      overrides = Learning.get_student_overrides(user.id, course_id)
       full_tree = Content.get_course_tree(course_id, user)
       linear_sections = Content.list_linear_lessons(course_id, user)
-      accessible_ids = Learning.accessible_section_ids(user.id, course_id, linear_sections)
+
+      accessible_ids =
+        Learning.accessible_section_ids(user, course_id, linear_sections, overrides)
+
       waterline_id = List.last(accessible_ids)
 
       {:ok,
@@ -75,9 +79,10 @@ defmodule AthenaWeb.LearnLive.Course do
     user = socket.assigns.current_user
     course_id = socket.assigns.course.id
 
+    overrides = Learning.get_student_overrides(user.id, course_id)
     full_tree = Content.get_course_tree(course_id, user)
     linear_sections = Content.list_linear_lessons(course_id, user)
-    accessible_ids = Learning.accessible_section_ids(user.id, course_id, linear_sections)
+    accessible_ids = Learning.accessible_section_ids(user, course_id, linear_sections, overrides)
     waterline_id = List.last(accessible_ids)
 
     {current_nodes, breadcrumbs} =

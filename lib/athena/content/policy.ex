@@ -1,56 +1,60 @@
 defmodule Athena.Content.Policy do
   @moduledoc """
   Centralized policy engine for determining content access.
-
-  Evaluates whether a user can view a specific content item (such as a Section or Block)
-  based on the item's visibility status, and any dynamic access rules (like time boundaries 
-  or specific role requirements).
+  Evaluates visibility status, global access rules, and cohort-specific overrides.
   """
 
   alias Athena.Identity.Account
-  alias Athena.Content.AccessRules
+  alias Athena.Content.{Block, Section}
 
   @doc """
   Determines if the given user is authorized to view the item.
-
-  - Passing `:all` bypasses all checks (used exclusively in Studio/Builder).
-  - Passing an `Account` strictly evaluates student-facing rules. This allows 
-    admins to experience the course exactly as a student would in the Player.
+  Accepts an optional list of `CohortSchedule` overrides fetched from the Learning context.
   """
-  @spec can_view?(Account.t() | :all | nil, map()) :: boolean()
-  def can_view?(:all, _item), do: true
+  @spec can_view?(Account.t() | :all | nil, map(), list()) :: boolean()
+  def can_view?(user_or_mode, item, overrides \\ [])
 
-  def can_view?(user, item) do
-    evaluate_visibility(user, item)
+  def can_view?(:all, _item, _overrides), do: true
+
+  def can_view?(user, item, overrides) do
+    evaluate_visibility(user, item, overrides)
   end
 
   @doc false
-  defp evaluate_visibility(user, %Athena.Content.Block{visibility: :inherit} = block) do
-    section = Athena.Repo.get(Athena.Content.Section, block.section_id)
-    evaluate_visibility(user, section)
+  defp evaluate_visibility(user, %Block{visibility: :inherit} = block, overrides) do
+    section = Athena.Repo.get(Section, block.section_id)
+    evaluate_visibility(user, section, overrides)
   end
 
   @doc false
-  defp evaluate_visibility(user, %{visibility: visibility, access_rules: rules}) do
-    case visibility do
+  defp evaluate_visibility(_user, item, overrides) do
+    case item.visibility do
       :hidden -> false
-      :public -> true
-      :enrolled -> enrolled?(user)
-      :restricted -> check_rules(user, rules)
+      :enrolled -> true
+      :restricted -> check_rules(item, overrides)
     end
   end
 
   @doc false
-  defp check_rules(_user, nil), do: true
+  defp check_rules(item, overrides) do
+    resource_type =
+      case item do
+        %Block{} -> :block
+        %Section{} -> :section
+        _ -> nil
+      end
 
-  @doc false
-  defp check_rules(user, %AccessRules{} = rules) do
-    with true <- check_time(rules.unlock_at, rules.lock_at),
-         true <- check_role(user, rules.allowed_roles) do
-      true
-    else
-      _ -> false
-    end
+    override =
+      Enum.find(overrides, fn o ->
+        o.resource_type == resource_type and o.resource_id == item.id
+      end)
+
+    rules = Map.get(item, :access_rules)
+
+    unlock_at = if override, do: override.unlock_at, else: rules && rules.unlock_at
+    lock_at = if override, do: override.lock_at, else: rules && rules.lock_at
+
+    check_time(unlock_at, lock_at)
   end
 
   @doc false
@@ -92,19 +96,4 @@ defmodule Athena.Content.Policy do
   end
 
   defp parse_to_unix(_), do: nil
-
-  @doc false
-  defp check_role(_user, []), do: true
-
-  @doc false
-  defp check_role(user, allowed_roles) when is_list(allowed_roles) do
-    if user and user.role do
-      user.role.name in allowed_roles
-    else
-      false
-    end
-  end
-
-  @doc false
-  defp enrolled?(_user), do: true
 end

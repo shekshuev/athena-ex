@@ -11,7 +11,15 @@ defmodule Athena.Learning do
   - `Evaluator`: Auto-grading and synchronous evaluation of student submissions.
   """
 
-  alias Athena.Learning.{Instructors, Cohorts, Enrollments, Submissions, Progress, Evaluator}
+  alias Athena.Learning.{
+    Instructors,
+    Cohorts,
+    Enrollments,
+    Submissions,
+    Progress,
+    Evaluator,
+    Schedules
+  }
 
   defdelegate list_instructors(user, params \\ %{}), to: Instructors
   defdelegate search_instructors(search_query, limit \\ 10), to: Instructors
@@ -48,7 +56,9 @@ defmodule Athena.Learning do
 
   defdelegate mark_completed(account_id, block_id), to: Progress
   defdelegate completed_block_ids(account_id, section_id), to: Progress
-  defdelegate accessible_section_ids(account_id, course_id, linear_sections), to: Progress
+  defdelegate accessible_section_ids(user, course_id, linear_sections, overrides), to: Progress
 
   defdelegate evaluate_sync(submission), to: Evaluator
+
+  defdelegate get_student_overrides(account_id, course_id), to: Schedules
 end
