@@ -1,6 +1,6 @@
 defmodule Athena.Learning.Schedules do
   @moduledoc """
-  Business logic for managing cohort-specific content schedules.
+  Business logic for managing cohort-specific content schedules (Overrides).
   """
   import Ecto.Query
   alias Athena.Repo
@@ -8,7 +8,7 @@ defmodule Athena.Learning.Schedules do
 
   @doc """
   Retrieves all schedule overrides for a specific student in a specific course.
-  This prevents N+1 queries by fetching all rules upfront for the Policy engine.
+  Used by the Player and Policy engine.
   """
   @spec get_student_overrides(String.t(), String.t()) :: [CohortSchedule.t()]
   def get_student_overrides(account_id, course_id) do
@@ -21,5 +21,53 @@ defmodule Athena.Learning.Schedules do
       from cs in CohortSchedule,
         where: cs.course_id == ^course_id and cs.cohort_id in subquery(cohort_ids_query)
     )
+  end
+
+  @doc """
+  Retrieves all overrides for a specific cohort and course.
+  Used by the Instructor UI to show badges in the course tree.
+  """
+  @spec list_cohort_course_overrides(String.t(), String.t()) :: [CohortSchedule.t()]
+  def list_cohort_course_overrides(cohort_id, course_id) do
+    Repo.all(
+      from cs in CohortSchedule,
+        where: cs.cohort_id == ^cohort_id and cs.course_id == ^course_id
+    )
+  end
+
+  @doc """
+  Creates or updates an override for a specific resource.
+  Uses PostgreSQL UPSERT (on_conflict) for atomic updates.
+  """
+  @spec set_override(map()) :: {:ok, CohortSchedule.t()} | {:error, Ecto.Changeset.t()}
+  def set_override(attrs) do
+    %CohortSchedule{}
+    |> CohortSchedule.changeset(attrs)
+    |> Repo.insert(
+      on_conflict: [
+        set: [
+          unlock_at: Map.get(attrs, "unlock_at") || Map.get(attrs, :unlock_at),
+          lock_at: Map.get(attrs, "lock_at") || Map.get(attrs, :lock_at),
+          updated_at: DateTime.utc_now()
+        ]
+      ],
+      conflict_target: [:cohort_id, :resource_id, :resource_type]
+    )
+  end
+
+  @doc """
+  Removes an override, falling back to the global AccessRules.
+  """
+  @spec clear_override(String.t(), atom() | String.t(), String.t()) :: {integer(), nil | [term()]}
+  def clear_override(cohort_id, resource_type, resource_id) do
+    res_type_str = to_string(resource_type)
+
+    from(cs in CohortSchedule,
+      where:
+        cs.cohort_id == ^cohort_id and
+          cs.resource_type == ^res_type_str and
+          cs.resource_id == ^resource_id
+    )
+    |> Repo.delete_all()
   end
 end
