@@ -54,6 +54,32 @@ defmodule Athena.Content.CoursesTest do
     end
   end
 
+  describe "list_accessible_course_ids/1" do
+    test "returns all active course IDs for admin", %{admin: admin} do
+      course1 = insert(:course)
+      course2 = insert(:course)
+      insert(:course, deleted_at: DateTime.utc_now())
+
+      ids = Courses.list_accessible_course_ids(admin)
+
+      assert length(ids) >= 2
+      assert course1.id in ids
+      assert course2.id in ids
+    end
+
+    test "returns only owned course IDs for instructor", %{
+      instructor: instructor,
+      other_instructor: other_instructor
+    } do
+      my_course = insert(:course, owner_id: instructor.id)
+      _other_course = insert(:course, owner_id: other_instructor.id)
+
+      ids = Courses.list_accessible_course_ids(instructor)
+
+      assert ids == [my_course.id]
+    end
+  end
+
   describe "get_course/1 (Without ACL - Internal/Student)" do
     test "returns the course if it exists and is not deleted" do
       course = insert(:course)

@@ -196,9 +196,9 @@ defmodule Athena.Learning.EnrollmentsTest do
   end
 
   describe "list_student_enrollments/1" do
-    test "returns direct enrollments for the student" do
+    test "returns direct enrollments for the student (published only)" do
       student = insert(:account)
-      course = insert(:course)
+      course = insert(:course, status: :published)
 
       %Enrollment{}
       |> Enrollment.changeset(%{account_id: student.id, course_id: course.id, status: :active})
@@ -210,10 +210,10 @@ defmodule Athena.Learning.EnrollmentsTest do
       assert hd(enrollments).course.id == course.id
     end
 
-    test "returns cohort-based enrollments for the student" do
+    test "returns cohort-based enrollments for the student (published only)" do
       student = insert(:account)
       cohort = insert(:cohort)
-      course = insert(:course)
+      course = insert(:course, status: :published)
 
       Athena.Learning.Cohorts.add_student_to_cohort(cohort.id, student.id)
       Enrollments.enroll_cohort(cohort.id, course.id)
@@ -224,10 +224,46 @@ defmodule Athena.Learning.EnrollmentsTest do
       assert hd(enrollments).course.id == course.id
     end
 
+    test "excludes enrollments for draft and archived courses" do
+      student = insert(:account)
+      draft_course = insert(:course, status: :draft)
+      archived_course = insert(:course, status: :archived)
+      published_course = insert(:course, status: :published)
+
+      %Enrollment{}
+      |> Enrollment.changeset(%{
+        account_id: student.id,
+        course_id: draft_course.id,
+        status: :active
+      })
+      |> Athena.Repo.insert!()
+
+      %Enrollment{}
+      |> Enrollment.changeset(%{
+        account_id: student.id,
+        course_id: archived_course.id,
+        status: :active
+      })
+      |> Athena.Repo.insert!()
+
+      %Enrollment{}
+      |> Enrollment.changeset(%{
+        account_id: student.id,
+        course_id: published_course.id,
+        status: :active
+      })
+      |> Athena.Repo.insert!()
+
+      enrollments = Enrollments.list_student_enrollments(student.id)
+
+      assert length(enrollments) == 1
+      assert hd(enrollments).course.id == published_course.id
+    end
+
     test "filters out duplicates if enrolled both directly and via cohort" do
       student = insert(:account)
       cohort = insert(:cohort)
-      course = insert(:course)
+      course = insert(:course, status: :published)
 
       Athena.Learning.Cohorts.add_student_to_cohort(cohort.id, student.id)
       Enrollments.enroll_cohort(cohort.id, course.id)
@@ -243,8 +279,8 @@ defmodule Athena.Learning.EnrollmentsTest do
 
     test "excludes dropped enrollments and soft-deleted courses" do
       student = insert(:account)
-      active_course = insert(:course)
-      deleted_course = insert(:course, deleted_at: DateTime.utc_now())
+      active_course = insert(:course, status: :published)
+      deleted_course = insert(:course, status: :published, deleted_at: DateTime.utc_now())
 
       %Enrollment{}
       |> Enrollment.changeset(%{
@@ -269,9 +305,9 @@ defmodule Athena.Learning.EnrollmentsTest do
   end
 
   describe "has_access?/2" do
-    test "returns true if student is enrolled directly" do
+    test "returns true if student is enrolled directly and course is published" do
       student = insert(:account)
-      course = insert(:course)
+      course = insert(:course, status: :published)
 
       %Enrollment{}
       |> Enrollment.changeset(%{account_id: student.id, course_id: course.id, status: :active})
@@ -280,10 +316,10 @@ defmodule Athena.Learning.EnrollmentsTest do
       assert Enrollments.has_access?(student.id, course.id)
     end
 
-    test "returns true if student is enrolled via cohort" do
+    test "returns true if student is enrolled via cohort and course is published" do
       student = insert(:account)
       cohort = insert(:cohort)
-      course = insert(:course)
+      course = insert(:course, status: :published)
 
       Athena.Learning.Cohorts.add_student_to_cohort(cohort.id, student.id)
       Enrollments.enroll_cohort(cohort.id, course.id)
@@ -291,16 +327,41 @@ defmodule Athena.Learning.EnrollmentsTest do
       assert Enrollments.has_access?(student.id, course.id)
     end
 
+    test "returns false if student is enrolled but course is NOT published" do
+      student = insert(:account)
+      draft_course = insert(:course, status: :draft)
+      archived_course = insert(:course, status: :archived)
+
+      %Enrollment{}
+      |> Enrollment.changeset(%{
+        account_id: student.id,
+        course_id: draft_course.id,
+        status: :active
+      })
+      |> Athena.Repo.insert!()
+
+      %Enrollment{}
+      |> Enrollment.changeset(%{
+        account_id: student.id,
+        course_id: archived_course.id,
+        status: :active
+      })
+      |> Athena.Repo.insert!()
+
+      refute Enrollments.has_access?(student.id, draft_course.id)
+      refute Enrollments.has_access?(student.id, archived_course.id)
+    end
+
     test "returns false if student is not enrolled at all" do
       student = insert(:account)
-      course = insert(:course)
+      course = insert(:course, status: :published)
 
       refute Enrollments.has_access?(student.id, course.id)
     end
 
     test "returns false if enrollment status is dropped" do
       student = insert(:account)
-      course = insert(:course)
+      course = insert(:course, status: :published)
 
       %Enrollment{}
       |> Enrollment.changeset(%{account_id: student.id, course_id: course.id, status: :dropped})
