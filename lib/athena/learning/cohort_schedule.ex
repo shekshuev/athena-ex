@@ -16,9 +16,9 @@ defmodule Athena.Learning.CohortSchedule do
     belongs_to :cohort, Athena.Learning.Cohort
 
     field :course_id, :binary_id
-    field :resource_type, Ecto.Enum, values: ~w(block section)a
+    field :resource_type, Ecto.Enum, values: [:block, :section]
     field :resource_id, :binary_id
-
+    field :visibility, Ecto.Enum, values: [nil, :enrolled, :restricted, :hidden]
     field :unlock_at, :utc_datetime
     field :lock_at, :utc_datetime
 
@@ -28,7 +28,15 @@ defmodule Athena.Learning.CohortSchedule do
   @doc false
   def changeset(schedule, attrs) do
     schedule
-    |> cast(attrs, [:cohort_id, :course_id, :resource_type, :resource_id, :unlock_at, :lock_at])
+    |> cast(attrs, [
+      :cohort_id,
+      :course_id,
+      :resource_type,
+      :resource_id,
+      :unlock_at,
+      :lock_at,
+      :visibility
+    ])
     |> validate_required([:cohort_id, :course_id, :resource_type, :resource_id])
     |> unique_constraint([:cohort_id, :resource_id, :resource_type],
       name: :cohort_resource_unique_index

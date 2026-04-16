@@ -21,22 +21,7 @@ defmodule Athena.Content.Policy do
   end
 
   @doc false
-  defp evaluate_visibility(user, %Block{visibility: :inherit} = block, overrides) do
-    section = Athena.Repo.get(Section, block.section_id)
-    evaluate_visibility(user, section, overrides)
-  end
-
-  @doc false
-  defp evaluate_visibility(_user, item, overrides) do
-    case item.visibility do
-      :hidden -> false
-      :enrolled -> true
-      :restricted -> check_rules(item, overrides)
-    end
-  end
-
-  @doc false
-  defp check_rules(item, overrides) do
+  defp evaluate_visibility(user, item, overrides) do
     resource_type =
       case item do
         %Block{} -> :block
@@ -49,6 +34,26 @@ defmodule Athena.Content.Policy do
         o.resource_type == resource_type and o.resource_id == item.id
       end)
 
+    effective_visibility = (override && override.visibility) || item.visibility
+
+    case effective_visibility do
+      :hidden ->
+        false
+
+      :enrolled ->
+        true
+
+      :restricted ->
+        check_rules(item, override)
+
+      :inherit ->
+        section = Athena.Repo.get(Section, item.section_id)
+        evaluate_visibility(user, section, overrides)
+    end
+  end
+
+  @doc false
+  defp check_rules(item, override) do
     rules = Map.get(item, :access_rules)
 
     unlock_at = if override, do: override.unlock_at, else: rules && rules.unlock_at

@@ -39,7 +39,6 @@ defmodule Athena.Learning.Schedules do
   Creates or updates an override for a specific resource.
   Uses PostgreSQL UPSERT (on_conflict) for atomic updates.
   """
-  @spec set_override(map()) :: {:ok, CohortSchedule.t()} | {:error, Ecto.Changeset.t()}
   def set_override(attrs) do
     %CohortSchedule{}
     |> CohortSchedule.changeset(attrs)
@@ -48,6 +47,7 @@ defmodule Athena.Learning.Schedules do
         set: [
           unlock_at: Map.get(attrs, "unlock_at") || Map.get(attrs, :unlock_at),
           lock_at: Map.get(attrs, "lock_at") || Map.get(attrs, :lock_at),
+          visibility: Map.get(attrs, "visibility") || Map.get(attrs, :visibility),
           updated_at: DateTime.utc_now()
         ]
       ],
