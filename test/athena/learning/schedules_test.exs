@@ -19,7 +19,7 @@ defmodule Athena.Learning.SchedulesTest do
       insert(:cohort_schedule, cohort_id: cohort.id, course_id: other_course.id)
       insert(:cohort_schedule, cohort_id: other_cohort.id, course_id: course.id)
 
-      overrides = Schedules.get_student_overrides(student.id, course.id)
+      overrides = Schedules.get_student_overrides(student.id, course.id, cohort.id)
 
       assert length(overrides) == 1
       assert hd(overrides).id == valid_schedule.id

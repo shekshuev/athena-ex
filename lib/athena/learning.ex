@@ -60,7 +60,7 @@ defmodule Athena.Learning do
 
   defdelegate evaluate_sync(submission), to: Evaluator
 
-  defdelegate get_student_overrides(account_id, course_id), to: Schedules
+  defdelegate get_student_overrides(account_id, course_id, cohort_id), to: Schedules
   defdelegate list_cohort_course_overrides(cohort_id, course_id), to: Schedules
   defdelegate set_override(attrs), to: Schedules
   defdelegate clear_override(cohort_id, resource_type, resource_id), to: Schedules

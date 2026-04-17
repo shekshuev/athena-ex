@@ -129,7 +129,7 @@ defmodule Athena.Learning.Enrollments do
     Enrollment
     |> where([e], e.account_id == ^account_id or e.cohort_id in subquery(cohort_ids_query))
     |> where([e], e.status != :dropped)
-    |> distinct([e], e.course_id)
+    |> preload(:cohort)
     |> Repo.all()
     |> enrich_enrollments()
     |> Enum.reject(fn e -> is_nil(e.course) or e.course.status != :published end)

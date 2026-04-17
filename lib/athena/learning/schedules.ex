@@ -10,11 +10,14 @@ defmodule Athena.Learning.Schedules do
   Retrieves all schedule overrides for a specific student in a specific course.
   Used by the Player and Policy engine.
   """
-  @spec get_student_overrides(String.t(), String.t()) :: [CohortSchedule.t()]
-  def get_student_overrides(account_id, course_id) do
+  @spec get_student_overrides(String.t(), String.t(), String.t() | nil) :: [CohortSchedule.t()]
+
+  def get_student_overrides(_account_id, _course_id, nil), do: []
+
+  def get_student_overrides(account_id, course_id, cohort_id) do
     cohort_ids_query =
       from cm in CohortMembership,
-        where: cm.account_id == ^account_id,
+        where: cm.account_id == ^account_id and cm.cohort_id == ^cohort_id,
         select: cm.cohort_id
 
     Repo.all(

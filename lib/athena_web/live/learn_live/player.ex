@@ -24,6 +24,7 @@ defmodule AthenaWeb.LearnLive.Player do
   @impl true
   def mount(%{"id" => course_id} = params, _session, socket) do
     user = socket.assigns.current_user
+    cohort_id = params["cohort_id"]
 
     with true <- Learning.has_access?(user.id, course_id),
          {:ok, course} <- Content.get_course(course_id) do
@@ -31,7 +32,7 @@ defmodule AthenaWeb.LearnLive.Player do
         Phoenix.PubSub.subscribe(Athena.PubSub, "course_content:#{course_id}")
       end
 
-      overrides = Learning.get_student_overrides(user.id, course_id)
+      overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
       linear_lessons = Content.list_linear_lessons(course_id, user)
       accessible_ids = Learning.accessible_section_ids(user, course_id, linear_lessons, overrides)
 
@@ -46,7 +47,8 @@ defmodule AthenaWeb.LearnLive.Player do
           linear_lessons,
           accessible_ids,
           user,
-          overrides
+          overrides,
+          cohort_id
         )
       else
         {:ok,
@@ -69,7 +71,8 @@ defmodule AthenaWeb.LearnLive.Player do
          linear_lessons,
          accessible_ids,
          user,
-         overrides
+         overrides,
+         cohort_id
        ) do
     section = Content.get_section(section_id) |> elem(1)
 
@@ -93,6 +96,7 @@ defmodule AthenaWeb.LearnLive.Player do
       socket
       |> assign(:page_title, section.title)
       |> assign(:course, course)
+      |> assign(:cohort_id, cohort_id)
       |> assign(:tree, tree)
       |> assign(:linear_lessons, linear_lessons)
       |> assign(:section, section)
@@ -320,9 +324,10 @@ defmodule AthenaWeb.LearnLive.Player do
   def handle_info(:refresh_content, socket) do
     user = socket.assigns.current_user
     course_id = socket.assigns.course.id
+    cohort_id = socket.assigns.cohort_id
     current_section_id = socket.assigns.section.id
 
-    overrides = Learning.get_student_overrides(user.id, course_id)
+    overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
     linear_lessons = Content.list_linear_lessons(course_id, user)
     accessible_ids = Learning.accessible_section_ids(user, course_id, linear_lessons, overrides)
 
@@ -342,6 +347,7 @@ defmodule AthenaWeb.LearnLive.Player do
       {:noreply,
        socket
        |> assign(:tree, tree)
+       |> assign(:cohort_id, cohort_id)
        |> assign(:linear_lessons, linear_lessons)
        |> assign(:blocks, blocks)
        |> assign(:completed_ids, completed_ids)

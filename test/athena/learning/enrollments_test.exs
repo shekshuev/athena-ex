@@ -260,23 +260,6 @@ defmodule Athena.Learning.EnrollmentsTest do
       assert hd(enrollments).course.id == published_course.id
     end
 
-    test "filters out duplicates if enrolled both directly and via cohort" do
-      student = insert(:account)
-      cohort = insert(:cohort)
-      course = insert(:course, status: :published)
-
-      Athena.Learning.Cohorts.add_student_to_cohort(cohort.id, student.id)
-      Enrollments.enroll_cohort(cohort.id, course.id)
-
-      %Enrollment{}
-      |> Enrollment.changeset(%{account_id: student.id, course_id: course.id, status: :active})
-      |> Athena.Repo.insert!()
-
-      enrollments = Enrollments.list_student_enrollments(student.id)
-
-      assert length(enrollments) == 1
-    end
-
     test "excludes dropped enrollments and soft-deleted courses" do
       student = insert(:account)
       active_course = insert(:course, status: :published)

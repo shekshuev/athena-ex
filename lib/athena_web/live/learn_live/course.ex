@@ -19,6 +19,7 @@ defmodule AthenaWeb.LearnLive.Course do
   @impl true
   def mount(%{"id" => course_id} = params, _session, socket) do
     user = socket.assigns.current_user
+    cohort_id = params["cohort_id"]
 
     with true <- Learning.has_access?(user.id, course_id),
          {:ok, course} <- Content.get_course(course_id) do
@@ -26,7 +27,7 @@ defmodule AthenaWeb.LearnLive.Course do
         Phoenix.PubSub.subscribe(Athena.PubSub, "course_content:#{course_id}")
       end
 
-      overrides = Learning.get_student_overrides(user.id, course_id)
+      overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
       full_tree = Content.get_course_tree(course_id, user)
       linear_sections = Content.list_linear_lessons(course_id, user)
 
@@ -39,6 +40,7 @@ defmodule AthenaWeb.LearnLive.Course do
        socket
        |> assign(:page_title, course.title)
        |> assign(:course, course)
+       |> assign(:cohort_id, cohort_id)
        |> assign(:full_tree, full_tree)
        |> assign(:accessible_ids, accessible_ids)
        |> assign(:waterline_id, waterline_id)
@@ -79,7 +81,7 @@ defmodule AthenaWeb.LearnLive.Course do
     user = socket.assigns.current_user
     course_id = socket.assigns.course.id
 
-    overrides = Learning.get_student_overrides(user.id, course_id)
+    overrides = Learning.get_student_overrides(user.id, course_id, socket.assigns.cohort_id)
     full_tree = Content.get_course_tree(course_id, user)
     linear_sections = Content.list_linear_lessons(course_id, user)
     accessible_ids = Learning.accessible_section_ids(user, course_id, linear_sections, overrides)
@@ -122,7 +124,9 @@ defmodule AthenaWeb.LearnLive.Course do
 
         <%= if @waterline_id do %>
           <.link
-            navigate={~p"/learn/courses/#{@course.id}/play/#{@waterline_id}"}
+            navigate={
+              ~p"/learn/courses/#{@course.id}/play/#{@waterline_id}?#{[cohort_id: @cohort_id]}"
+            }
             class="btn btn-primary px-10"
           >
             {gettext("Continue Learning")}
@@ -142,7 +146,7 @@ defmodule AthenaWeb.LearnLive.Course do
           <%= for crumb <- @breadcrumbs do %>
             <.icon name="hero-chevron-right" class="size-4 text-base-content/30 shrink-0 mx-1" />
             <.link
-              patch={~p"/learn/courses/#{@course.id}?parent_id=#{crumb.id}"}
+              patch={~p"/learn/courses/#{@course.id}?#{[parent_id: crumb.id, cohort_id: @cohort_id]}"}
               class="hover:text-primary whitespace-nowrap transition-colors"
             >
               {crumb.title}
@@ -176,7 +180,9 @@ defmodule AthenaWeb.LearnLive.Course do
 
                   <div class="flex-1 truncate">
                     <.link
-                      navigate={~p"/learn/courses/#{@course.id}/play/#{node.id}"}
+                      navigate={
+                        ~p"/learn/courses/#{@course.id}/play/#{node.id}?#{[cohort_id: @cohort_id]}"
+                      }
                       class="block text-lg font-bold text-base-content group-hover:text-primary transition-colors truncate"
                     >
                       {node.title}
@@ -193,7 +199,9 @@ defmodule AthenaWeb.LearnLive.Course do
 
                   <%= if node.children != [] do %>
                     <.link
-                      patch={~p"/learn/courses/#{@course.id}?parent_id=#{node.id}"}
+                      patch={
+                        ~p"/learn/courses/#{@course.id}?#{[parent_id: node.id, cohort_id: @cohort_id]}"
+                      }
                       class="p-2 -mr-2 rounded-lg hover:bg-base-200 text-base-content/30 hover:text-primary transition-all"
                       title={gettext("Open Folder")}
                     >

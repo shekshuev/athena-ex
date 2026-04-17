@@ -38,7 +38,7 @@ defmodule AthenaWeb.LearnLive.IndexTest do
       assert html =~ "Direct Intro to Elixir"
       assert html =~ "Cohort Advanced OTP"
 
-      assert html =~ "Academic Cohort"
+      assert html =~ cohort.name
       assert html =~ "Self-paced"
 
       assert html =~ "/learn/courses/#{course_direct.id}"
@@ -54,6 +54,31 @@ defmodule AthenaWeb.LearnLive.IndexTest do
 
       assert html =~ "No courses yet"
       refute html =~ "Ghost Course"
+    end
+
+    test "displays multiple cards for the same course if enrolled via different cohorts", %{
+      conn: conn,
+      student: student
+    } do
+      course = insert(:course, title: "Database Systems")
+
+      cohort_radio = insert(:cohort, name: "Radio Squad")
+      cohort_cyber = insert(:cohort, name: "Cyber Squad")
+
+      Cohorts.add_student_to_cohort(cohort_radio.id, student.id)
+      Cohorts.add_student_to_cohort(cohort_cyber.id, student.id)
+
+      Enrollments.enroll_cohort(cohort_radio.id, course.id)
+      Enrollments.enroll_cohort(cohort_cyber.id, course.id)
+
+      {:ok, _lv, html} = live(conn, ~p"/learn")
+
+      assert html =~ "Database Systems"
+      assert html =~ "Radio Squad"
+      assert html =~ "Cyber Squad"
+
+      assert html =~ ~s(/learn/courses/#{course.id}?cohort_id=#{cohort_radio.id})
+      assert html =~ ~s(/learn/courses/#{course.id}?cohort_id=#{cohort_cyber.id})
     end
   end
 end

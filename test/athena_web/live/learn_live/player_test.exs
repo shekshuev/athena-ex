@@ -529,7 +529,8 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         unlock_at: past
       )
 
-      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+      {:ok, _lv, html} =
+        live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}?cohort_id=#{cohort.id}")
 
       assert html =~ "Secret Override Content"
     end
@@ -563,9 +564,51 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         unlock_at: future
       )
 
-      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+      {:ok, _lv, html} =
+        live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}?cohort_id=#{cohort.id}")
 
       refute html =~ "Should Be Hidden"
+    end
+
+    test "ignores overrides from other cohorts to prevent context bleeding", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      cohort1 = insert(:cohort)
+      cohort2 = insert(:cohort)
+      insert(:cohort_membership, account_id: user.id, cohort_id: cohort1.id)
+      insert(:cohort_membership, account_id: user.id, cohort_id: cohort2.id)
+
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block,
+          section: s1,
+          visibility: :enrolled,
+          content: %{"text" => "Visible Content"}
+        )
+
+      insert(:cohort_schedule,
+        cohort_id: cohort1.id,
+        course_id: course.id,
+        resource_type: :block,
+        resource_id: block.id,
+        visibility: :hidden
+      )
+
+      {:ok, _lv, html_c1} =
+        live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}?cohort_id=#{cohort1.id}")
+
+      refute html_c1 =~ "Visible Content"
+
+      {:ok, _lv, html_c2} =
+        live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}?cohort_id=#{cohort2.id}")
+
+      assert html_c2 =~ "Visible Content"
+
+      {:ok, _lv, html_self} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+      assert html_self =~ "Visible Content"
     end
   end
 end
