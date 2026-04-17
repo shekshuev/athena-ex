@@ -24,7 +24,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
   end
 
   describe "CohortDetails page (Index)" do
-    test "should render cohort details, memberships, and enrollments", %{conn: conn} do
+    test "should render cohort details, memberships, enrollments and access button", %{conn: conn} do
       cohort = insert(:cohort, name: "Spring Bootcamp")
 
       student = insert(:account, login: "test_student")
@@ -38,6 +38,9 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
       assert html =~ "Spring Bootcamp"
       assert html =~ "test_student"
       assert html =~ "React Native"
+
+      assert html =~ "Access"
+      assert html =~ "/teaching/cohorts/#{cohort.id}/access/#{course.id}"
     end
   end
 

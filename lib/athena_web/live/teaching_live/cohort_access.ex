@@ -28,6 +28,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
        |> assign(:active_section, nil)
        |> assign(:blocks, [])
        |> assign(:active_block, nil)
+       |> assign(:form_visibility, nil)
        |> assign(:page_title, gettext("Access: %{course}", course: course.title))}
     else
       _ ->
@@ -53,6 +54,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
        socket
        |> assign(:active_section, section)
        |> assign(:blocks, blocks)
+       |> assign(:form_visibility, nil)
        |> assign(:active_block, active_block)}
     else
       {:noreply, socket}
@@ -65,8 +67,18 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
         %{"resource_type" => type, "resource_id" => id} = params,
         socket
       ) do
-    unlock_at = if params["unlock_at"] in [nil, ""], do: nil, else: params["unlock_at"]
-    lock_at = if params["lock_at"] in [nil, ""], do: nil, else: params["lock_at"]
+    visibility =
+      if params["visibility"] in [nil, ""], do: nil, else: String.to_atom(params["visibility"])
+
+    unlock_at =
+      if visibility != :restricted or params["unlock_at"] in [nil, ""],
+        do: nil,
+        else: params["unlock_at"]
+
+    lock_at =
+      if visibility != :restricted or params["lock_at"] in [nil, ""],
+        do: nil,
+        else: params["lock_at"]
 
     visibility =
       if params["visibility"] in [nil, ""], do: nil, else: String.to_atom(params["visibility"])
@@ -92,6 +104,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
         {:noreply,
          socket
          |> assign(:overrides, overrides)
+         |> assign(:form_visibility, nil)
          |> put_flash(:info, gettext("Access override saved successfully."))}
 
       {:error, changeset} ->
@@ -100,6 +113,11 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
 
         {:noreply, put_flash(socket, :error, error_msg)}
     end
+  end
+
+  @impl true
+  def handle_event("change_visibility", params, socket) do
+    {:noreply, assign(socket, :form_visibility, params["visibility"] || "")}
   end
 
   @impl true
@@ -118,8 +136,8 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="flex h-[calc(100vh-4rem)] -mt-4 -mx-4 sm:-mx-6 lg:-mx-8 border-t border-base-200">
-      <div class="w-80 flex-shrink-0 border-r border-base-200 flex flex-col bg-base-100 overflow-y-auto">
+    <div class="flex h-[calc(100vh)] lg:h-screen -m-4 sm:-m-6 lg:-m-8 bg-base-100 overflow-hidden">
+      <div class="w-80 shrink-0 border-r border-base-200 flex flex-col bg-base-100 overflow-y-auto">
         <div class="p-4 border-b border-base-200 bg-base-50 shrink-0">
           <.link
             navigate={~p"/teaching/cohorts/#{@cohort.id}"}
@@ -145,7 +163,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
         </div>
       </div>
 
-      <div class="flex-1 overflow-y-auto bg-base-50/50 p-8 relative">
+      <div class="flex-1 overflow-y-auto bg-base-200 p-8 relative">
         <%= if @active_block do %>
           <div class="max-w-4xl mx-auto">
             <.link
@@ -163,6 +181,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
 
             <.override_form
               resource_type="block"
+              form_visibility={@form_visibility}
               resource_id={@active_block.id}
               override={get_override(@overrides, :block, @active_block.id)}
               global_rules={@active_block.access_rules}
@@ -175,6 +194,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
 
               <.override_form
                 resource_type="section"
+                form_visibility={@form_visibility}
                 resource_id={@active_section.id}
                 override={get_override(@overrides, :section, @active_section.id)}
                 global_rules={@active_section.access_rules}
@@ -190,9 +210,9 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
                   <%= for block <- @blocks do %>
                     <% block_override = get_override(@overrides, :block, block.id) %>
                     <div class={"transition-all relative #{if block_override, do: "bg-primary/5 border-l-2 border-primary pl-4 py-2 -ml-4", else: ""}"}>
-                      <div class="opacity-80 pointer-events-none max-h-40 overflow-hidden relative">
+                      <div class="opacity-80 pointer-events-none max-h-40 overflow-hidden relative p-1 -m-1">
                         <.content_block block={block} mode={:edit} />
-                        <div class="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-base-50/80 to-transparent">
+                        <div class="absolute bottom-0 left-0 right-0 h-16 bg-linear-to-t from-base-50/80 to-transparent p-1">
                         </div>
                       </div>
 
@@ -214,7 +234,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
                           patch={
                             ~p"/teaching/cohorts/#{@cohort.id}/access/#{@course.id}?section_id=#{@active_section.id}&block_id=#{block.id}"
                           }
-                          class="btn btn-primary btn-sm rounded-sm shadow-sm"
+                          class="btn btn-ghost btn-xs text-primary"
                         >
                           <.icon name="hero-cog-8-tooth" class="size-4" />
                           {gettext("Configure")}
@@ -233,6 +253,12 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
   end
 
   defp override_form(assigns) do
+    current_vis =
+      assigns.form_visibility ||
+        if assigns.override, do: to_string(assigns.override.visibility), else: ""
+
+    assigns = assign(assigns, :current_vis, current_vis)
+
     ~H"""
     <div class="bg-base-100 border border-base-200 rounded-sm shadow-sm p-6">
       <div class="flex items-start justify-between mb-6">
@@ -251,7 +277,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
         </div>
       </div>
 
-      <form phx-submit="save_override">
+      <form phx-submit="save_override" phx-change="change_visibility">
         <input type="hidden" name="resource_type" value={@resource_type} />
         <input type="hidden" name="resource_id" value={@resource_id} />
 
@@ -267,7 +293,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
                   name="visibility"
                   value={val}
                   class="peer hidden"
-                  checked={if(@override, do: to_string(@override.visibility), else: "") == val}
+                  checked={@current_vis == val}
                 />
                 <div class="border rounded-sm p-2 text-center text-xs transition-all bg-base-100 border-base-200 hover:border-primary/50 peer-checked:bg-primary/10 peer-checked:border-primary peer-checked:text-primary peer-checked:font-bold">
                   {label}
@@ -309,28 +335,30 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
               {gettext("Cohort Exception")}
             </h4>
             <div class="space-y-4">
-              <div>
-                <label class="block text-xs font-bold text-base-content/70 mb-1">
-                  {gettext("Unlock Time")}
-                </label>
-                <input
-                  type="datetime-local"
-                  name="unlock_at"
-                  value={if @override, do: format_dt_input(@override.unlock_at), else: ""}
-                  class="input input-bordered input-sm rounded-sm w-full font-mono"
-                />
-              </div>
+              <div class={["space-y-4 mb-4", @current_vis != "restricted" && "hidden"]}>
+                <div>
+                  <label class="block text-xs font-bold text-base-content/70 mb-1">
+                    {gettext("Unlock Time")}
+                  </label>
+                  <input
+                    type="datetime-local"
+                    name="unlock_at"
+                    value={if @override, do: format_dt_input(@override.unlock_at), else: ""}
+                    class="input input-bordered input-sm rounded-sm w-full font-mono"
+                  />
+                </div>
 
-              <div>
-                <label class="block text-xs font-bold text-base-content/70 mb-1">
-                  {gettext("Lock Time")}
-                </label>
-                <input
-                  type="datetime-local"
-                  name="lock_at"
-                  value={if @override, do: format_dt_input(@override.lock_at), else: ""}
-                  class="input input-bordered input-sm rounded-sm w-full font-mono"
-                />
+                <div>
+                  <label class="block text-xs font-bold text-base-content/70 mb-1">
+                    {gettext("Lock Time")}
+                  </label>
+                  <input
+                    type="datetime-local"
+                    name="lock_at"
+                    value={if @override, do: format_dt_input(@override.lock_at), else: ""}
+                    class="input input-bordered input-sm rounded-sm w-full font-mono"
+                  />
+                </div>
               </div>
 
               <div class="pt-2 flex gap-2">

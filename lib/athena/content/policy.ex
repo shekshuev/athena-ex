@@ -22,34 +22,33 @@ defmodule Athena.Content.Policy do
 
   @doc false
   defp evaluate_visibility(user, item, overrides) do
-    resource_type =
-      case item do
-        %Block{} -> :block
-        %Section{} -> :section
-        _ -> nil
-      end
-
-    override =
-      Enum.find(overrides, fn o ->
-        o.resource_type == resource_type and o.resource_id == item.id
-      end)
-
+    override = find_override(item, overrides)
     effective_visibility = (override && override.visibility) || item.visibility
 
-    case effective_visibility do
-      :hidden ->
-        false
+    handle_visibility(effective_visibility, user, item, override, overrides)
+  end
 
-      :enrolled ->
-        true
+  defp find_override(%Block{id: id}, overrides) do
+    Enum.find(overrides, &(&1.resource_type == :block and &1.resource_id == id))
+  end
 
-      :restricted ->
-        check_rules(item, override)
+  defp find_override(%Section{id: id}, overrides) do
+    Enum.find(overrides, &(&1.resource_type == :section and &1.resource_id == id))
+  end
 
-      :inherit ->
-        section = Athena.Repo.get(Section, item.section_id)
-        evaluate_visibility(user, section, overrides)
-    end
+  defp find_override(_, _overrides), do: nil
+
+  defp handle_visibility(:hidden, _user, _item, _override, _overrides), do: false
+
+  defp handle_visibility(:enrolled, _user, _item, _override, _overrides), do: true
+
+  defp handle_visibility(:restricted, _user, item, override, _overrides) do
+    check_rules(item, override)
+  end
+
+  defp handle_visibility(:inherit, user, item, _override, overrides) do
+    section = Athena.Repo.get(Section, item.section_id)
+    evaluate_visibility(user, section, overrides)
   end
 
   @doc false
