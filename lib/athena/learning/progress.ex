@@ -5,7 +5,7 @@ defmodule Athena.Learning.Progress do
   import Ecto.Query
   alias Athena.Repo
   alias Athena.Learning.BlockProgress
-  alias Athena.Content.Block
+  alias Athena.Content
 
   @doc """
   Marks an interactive block as completed.
@@ -29,14 +29,22 @@ defmodule Athena.Learning.Progress do
   """
   @spec completed_block_ids(String.t(), String.t()) :: [String.t()]
   def completed_block_ids(account_id, section_id) do
-    from(bp in BlockProgress,
-      join: b in Block,
-      on: bp.block_id == b.id,
-      where:
-        bp.account_id == ^account_id and b.section_id == ^section_id and bp.status == :completed,
-      select: bp.block_id
-    )
-    |> Repo.all()
+    section_id
+    |> Content.list_blocks_by_section()
+    |> Enum.map(& &1.id)
+    |> case do
+      [] ->
+        []
+
+      block_ids ->
+        Repo.all(
+          from bp in BlockProgress,
+            where:
+              bp.account_id == ^account_id and bp.status == :completed and
+                bp.block_id in ^block_ids,
+            select: bp.block_id
+        )
+    end
   end
 
   @doc """
@@ -44,30 +52,34 @@ defmodule Athena.Learning.Progress do
   Implements Retrograde Locking: if an old section has an uncompleted gate, 
   everything after it becomes locked.
   """
-  @spec accessible_section_ids(String.t(), String.t(), [Athena.Content.Section.t()]) :: [
+  @spec accessible_section_ids(map(), String.t(), [Athena.Content.Section.t()], list()) :: [
           String.t()
         ]
-  def accessible_section_ids(account_id, course_id, linear_sections) do
+  def accessible_section_ids(user, _course_id, linear_sections, overrides \\ []) do
     gate_blocks =
-      from(b in Block,
-        join: s in Athena.Content.Section,
-        on: b.section_id == s.id,
-        where: s.course_id == ^course_id and fragment("?->>'type' != 'none'", b.completion_rule),
-        select: %{id: b.id, section_id: b.section_id}
-      )
-      |> Repo.all()
+      linear_sections
+      |> Enum.map(& &1.id)
+      |> Content.list_blocks_by_section_ids()
+      |> Enum.filter(fn b ->
+        b.completion_rule && b.completion_rule.type != :none
+      end)
 
     completed_ids =
-      from(bp in BlockProgress,
-        join: b in Block,
-        on: bp.block_id == b.id,
-        join: s in Athena.Content.Section,
-        on: b.section_id == s.id,
-        where:
-          s.course_id == ^course_id and bp.account_id == ^account_id and bp.status == :completed,
-        select: bp.block_id
-      )
-      |> Repo.all()
+      gate_blocks
+      |> Enum.map(& &1.id)
+      |> case do
+        [] ->
+          []
+
+        gate_block_ids ->
+          Repo.all(
+            from bp in BlockProgress,
+              where:
+                bp.account_id == ^user.id and bp.status == :completed and
+                  bp.block_id in ^gate_block_ids,
+              select: bp.block_id
+          )
+      end
 
     uncompleted_gates_by_section =
       gate_blocks
@@ -76,12 +88,18 @@ defmodule Athena.Learning.Progress do
 
     {accessible, _locked} =
       Enum.reduce_while(linear_sections, {[], false}, fn section, {acc, _} ->
+        can_view? = Content.Policy.can_view?(user, section, overrides)
         has_uncompleted_gates? = Map.has_key?(uncompleted_gates_by_section, section.id)
 
-        if has_uncompleted_gates? do
-          {:halt, {acc ++ [section.id], true}}
-        else
-          {:cont, {acc ++ [section.id], false}}
+        cond do
+          not can_view? ->
+            {:halt, {acc, true}}
+
+          has_uncompleted_gates? ->
+            {:halt, {acc ++ [section.id], true}}
+
+          true ->
+            {:cont, {acc ++ [section.id], false}}
         end
       end)
 

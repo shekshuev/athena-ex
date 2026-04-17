@@ -43,7 +43,7 @@ defmodule AthenaWeb.BlockComponents do
         <% :quiz_exam -> %>
           <.render_quiz_exam block={@block} mode={@mode} submission={@submission} />
         <% _ -> %>
-          <div class="p-4 text-warning italic border border-warning/20 bg-warning/5 rounded-xl">
+          <div class="p-4 text-warning italic border border-warning/20 bg-warning/5 rounded-sm">
             {gettext("Unknown block type: %{type}", type: @block.type)}
           </div>
       <% end %>
@@ -52,11 +52,11 @@ defmodule AthenaWeb.BlockComponents do
   end
 
   defp wrapper_classes(:edit, true),
-    do: "p-5 rounded-2xl ring-2 ring-primary bg-base-100 transition-all shadow-sm"
+    do: "p-5 rounded-sm ring-2 ring-primary bg-base-100 transition-all shadow-sm"
 
   defp wrapper_classes(:edit, false),
     do:
-      "p-5 rounded-2xl ring-1 ring-base-300 hover:ring-primary/50 bg-base-100 transition-all cursor-pointer opacity-80 hover:opacity-100"
+      "p-5 rounded-sm ring-1 ring-base-300 hover:ring-primary/50 bg-base-100 transition-all cursor-pointer opacity-80 hover:opacity-100"
 
   defp wrapper_classes(:play, _), do: "mb-10 last:mb-0 w-full"
   defp wrapper_classes(:review, _), do: "mb-10 last:mb-0 w-full"
@@ -83,11 +83,11 @@ defmodule AthenaWeb.BlockComponents do
         <img
           src={@block.content["url"]}
           alt={@block.content["alt"]}
-          class="rounded-xl w-full object-cover border border-base-200 shadow-sm"
+          class="rounded-sm w-full object-cover border border-base-200 shadow-sm"
         />
       </figure>
     <% else %>
-      <div class="p-8 border-2 border-dashed border-base-300 rounded-xl text-center text-base-content/40 bg-base-200/50">
+      <div class="p-8 border-2 border-dashed border-base-300 rounded-sm text-center text-base-content/40 bg-base-200/50">
         <.icon name="hero-photo" class="size-8 mb-2 opacity-50" />
         <div>{gettext("Image not uploaded yet")}</div>
       </div>
@@ -102,10 +102,10 @@ defmodule AthenaWeb.BlockComponents do
         src={@block.content["url"]}
         poster={@block.content["poster_url"]}
         controls={@block.content["controls"] not in [false, "false"]}
-        class="rounded-xl w-full bg-black aspect-video shadow-md"
+        class="rounded-sm w-full bg-black aspect-video shadow-md"
       />
     <% else %>
-      <div class="p-10 border-2 border-dashed border-base-300 rounded-xl text-center text-base-content/40 bg-base-200/50">
+      <div class="p-10 border-2 border-dashed border-base-300 rounded-sm text-center text-base-content/40 bg-base-200/50">
         <.icon name="hero-video-camera" class="size-8 mb-2 opacity-50" />
         <div>{gettext("Video not uploaded yet")}</div>
       </div>
@@ -115,7 +115,7 @@ defmodule AthenaWeb.BlockComponents do
 
   defp render_attachment(assigns) do
     ~H"""
-    <div class="p-6 bg-base-200/50 rounded-xl border border-base-300">
+    <div class="p-6 bg-base-200/50 rounded-sm border border-base-300">
       <div
         :if={@block.content["description"]}
         id={"tiptap-desc-#{@mode}-#{@block.id}"}
@@ -133,9 +133,9 @@ defmodule AthenaWeb.BlockComponents do
           href={file["url"]}
           target="_blank"
           rel="noopener noreferrer"
-          class="flex items-center gap-4 p-4 bg-base-100 rounded-lg border border-base-200 shadow-sm hover:border-primary/40 hover:shadow-md transition-all group"
+          class="flex items-center gap-4 p-4 bg-base-100 rounded-sm border border-base-200 shadow-sm hover:border-primary/40 hover:shadow-md transition-all group"
         >
-          <div class="p-3 bg-primary/10 rounded-lg text-primary shrink-0 group-hover:scale-110 transition-transform">
+          <div class="p-3 bg-primary/10 rounded-sm text-primary shrink-0 group-hover:scale-110 transition-transform">
             <.icon name="hero-document-arrow-down" class="size-6" />
           </div>
           <div class="flex-1 min-w-0">
@@ -151,7 +151,7 @@ defmodule AthenaWeb.BlockComponents do
 
   defp render_code(assigns) do
     ~H"""
-    <div class="overflow-hidden rounded-xl border border-base-300 bg-base-300/20">
+    <div class="overflow-hidden rounded-sm border border-base-300 bg-base-300/20">
       <div class="bg-base-300 px-4 py-2 flex items-center justify-between">
         <div class="flex items-center gap-2">
           <div class="size-3 rounded-full bg-error"></div>
@@ -225,7 +225,7 @@ defmodule AthenaWeb.BlockComponents do
 
   defp render_quiz_exam(assigns) do
     ~H"""
-    <div class="p-8 bg-base-100 rounded-3xl border border-base-200 shadow-sm text-center relative overflow-hidden">
+    <div class="p-8 bg-base-100 rounded-sm border border-base-200 shadow-sm text-center relative overflow-hidden">
       <div class="absolute top-0 left-0 w-full h-1 bg-primary"></div>
       <div class="size-16 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-4">
         <.icon name="hero-academic-cap-solid" class="size-8" />
@@ -300,7 +300,7 @@ defmodule AthenaWeb.BlockComponents do
         <% is_correct = opt["is_correct"] in [true, "true"] %>
 
         <label class={[
-          "flex items-start gap-4 p-4 rounded-xl border transition-all",
+          "flex items-start gap-4 p-4 rounded-sm border transition-all",
           @mode == :play &&
             "hover:bg-base-200/50 cursor-pointer has-checked:bg-primary/5 has-checked:border-primary",
           @mode == :review && is_selected && is_correct && "bg-success/10 border-success/30",
@@ -357,7 +357,7 @@ defmodule AthenaWeb.BlockComponents do
     ~H"""
     <div>
       <%= if @block.type == :quiz_question do %>
-        <div class="mt-2 p-6 bg-base-100 ring-1 ring-base-300 rounded-xl shadow-lg border-t-4 border-t-primary animate-in slide-in-from-top-2 duration-200">
+        <div class="mt-2 p-6 bg-base-100 ring-1 ring-base-300 rounded-sm shadow-lg border-t-4 border-t-primary animate-in slide-in-from-top-2 duration-200">
           <div class="text-xs font-bold uppercase tracking-widest text-primary mb-4 border-b border-base-200 pb-2">
             {gettext("Answer Editor")}
           </div>
@@ -413,7 +413,7 @@ defmodule AthenaWeb.BlockComponents do
                           />
                         <% end %>
                       </div>
-                      <div class="flex-1 bg-base-100/50 p-2 rounded-lg border border-base-200/50 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary space-y-2">
+                      <div class="flex-1 bg-base-100/50 p-2 rounded-sm border border-base-200/50 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary space-y-2">
                         <input type="hidden" name={"options[#{index}][id]"} value={opt["id"]} />
                         <input
                           type="text"
@@ -457,7 +457,7 @@ defmodule AthenaWeb.BlockComponents do
                   <.icon name="hero-plus" class="size-4 mr-1" /> {gettext("Add Option")}
                 </button>
               <% "open" -> %>
-                <div class="text-sm text-base-content/50 italic bg-base-200/50 p-4 rounded-lg border border-dashed border-base-300">
+                <div class="text-sm text-base-content/50 italic bg-base-200/50 p-4 rounded-sm border border-dashed border-base-300">
                   {gettext("Student will see a text area to write their open answer.")}
                 </div>
               <% _ -> %>
@@ -467,14 +467,14 @@ defmodule AthenaWeb.BlockComponents do
       <% end %>
 
       <%= if @block.type == :attachment do %>
-        <div class="mt-2 p-4 bg-base-100 ring-1 ring-base-300 rounded-xl shadow-lg animate-in slide-in-from-top-2 duration-200">
+        <div class="mt-2 p-4 bg-base-100 ring-1 ring-base-300 rounded-sm shadow-lg animate-in slide-in-from-top-2 duration-200">
           <div class="text-xs font-bold uppercase tracking-widest text-primary mb-3">
             {gettext("Manage Files")}
           </div>
           <div class="space-y-2">
             <div
               :for={file <- @block.content["files"] || []}
-              class="flex items-center justify-between p-2 bg-base-200/50 border border-base-300 rounded-lg"
+              class="flex items-center justify-between p-2 bg-base-200/50 border border-base-300 rounded-sm"
             >
               <div class="flex items-center gap-2 min-w-0">
                 <.icon name="hero-document" class="size-4 text-base-content/50 shrink-0" />

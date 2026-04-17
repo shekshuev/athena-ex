@@ -68,7 +68,7 @@ defmodule AthenaWeb.LearnLive.Index do
                   )
                 ]}>
                   {if enrollment.cohort_id,
-                    do: gettext("Academic Cohort"),
+                    do: enrollment.cohort.name,
                     else: gettext("Self-paced")}
                 </span>
               </div>
@@ -99,8 +99,10 @@ defmodule AthenaWeb.LearnLive.Index do
                   </span>
                 </div>
 
-                <a
-                  href={"/learn/courses/#{enrollment.course.id}"}
+                <.link
+                  navigate={
+                    ~p"/learn/courses/#{enrollment.course.id}?#{[cohort_id: enrollment.cohort_id]}"
+                  }
                   class="btn btn-primary btn-sm group-hover:pr-3 transition-all"
                 >
                   {gettext("Enter")}
@@ -108,7 +110,7 @@ defmodule AthenaWeb.LearnLive.Index do
                     name="hero-arrow-right"
                     class="size-4 opacity-0 -ml-4 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300"
                   />
-                </a>
+                </.link>
               </div>
             </div>
           </div>

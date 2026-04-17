@@ -124,19 +124,19 @@ msgstr ""
 msgid "is required"
 msgstr ""
 
-#: lib/athena/identity/account.ex:58
+#: lib/athena/identity/account.ex:69
 #: lib/athena_web/live/auth_live/login.ex:47
 #, elixir-autogen, elixir-format
 msgid "can only contain letters, numbers, dots, dashes, and underscores"
 msgstr ""
 
-#: lib/athena/identity/account.ex:73
+#: lib/athena/identity/account.ex:84
 #, elixir-autogen, elixir-format
 msgid "does not exist"
 msgstr ""
 
-#: lib/athena/identity/account.ex:65
-#: lib/athena/identity/account.ex:84
+#: lib/athena/identity/account.ex:76
+#: lib/athena/identity/account.ex:95
 #: lib/athena_web/live/auth_live/force_password_change.ex:35
 #: lib/athena_web/live/auth_live/login.ex:54
 #, elixir-autogen, elixir-format
@@ -169,7 +169,8 @@ msgstr ""
 msgid "can't be blank for button type"
 msgstr ""
 
-#: lib/athena/content/access_rules.ex:39
+#: lib/athena/content/access_rules.ex:37
+#: lib/athena/learning/cohort_schedule.ex:61
 #, elixir-autogen, elixir-format
 msgid "cannot be exactly the same as unlock time"
 msgstr ""
@@ -179,7 +180,8 @@ msgstr ""
 msgid "cannot have both account_id and cohort_id"
 msgstr ""
 
-#: lib/athena/content/access_rules.ex:33
+#: lib/athena/content/access_rules.ex:31
+#: lib/athena/learning/cohort_schedule.ex:55
 #, elixir-autogen, elixir-format
 msgid "must be after the unlock time"
 msgstr ""

@@ -33,7 +33,7 @@ defmodule Athena.Content.Section do
     field :path, EctoLtree.LabelTree
 
     field :visibility, Ecto.Enum,
-      values: [:public, :enrolled, :restricted, :hidden],
+      values: ~w(enrolled restricted hidden)a,
       default: :enrolled
 
     embeds_one :access_rules, Athena.Content.AccessRules, on_replace: :update

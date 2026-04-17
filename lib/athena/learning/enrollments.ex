@@ -116,8 +116,8 @@ defmodule Athena.Learning.Enrollments do
 
   @doc """
   Retrieves all active course enrollments for a specific student.
-  Includes both direct enrollments (by account_id) and cohort-based enrollments.
-  Filters out duplicates and soft-deleted courses.
+  Includes both direct enrollments and cohort-based enrollments.
+  ONLY RETURNS PUBLISHED COURSES.
   """
   @spec list_student_enrollments(String.t()) :: [Enrollment.t()]
   def list_student_enrollments(account_id) do
@@ -129,28 +129,35 @@ defmodule Athena.Learning.Enrollments do
     Enrollment
     |> where([e], e.account_id == ^account_id or e.cohort_id in subquery(cohort_ids_query))
     |> where([e], e.status != :dropped)
-    |> distinct([e], e.course_id)
+    |> preload(:cohort)
     |> Repo.all()
     |> enrich_enrollments()
-    |> Enum.reject(&is_nil(&1.course))
+    |> Enum.reject(fn e -> is_nil(e.course) or e.course.status != :published end)
   end
 
   @doc """
   Fast check if a student has active access to a course 
   (either directly or via any of their cohorts).
+  ONLY GRANTS ACCESS IF THE COURSE IS PUBLISHED.
   """
   @spec has_access?(String.t(), String.t()) :: boolean()
   def has_access?(account_id, course_id) do
-    cohort_ids_query =
-      from cm in CohortMembership,
-        where: cm.account_id == ^account_id,
-        select: cm.cohort_id
+    case Content.get_course(course_id) do
+      {:ok, %{status: :published}} ->
+        cohort_ids_query =
+          from cm in CohortMembership,
+            where: cm.account_id == ^account_id,
+            select: cm.cohort_id
 
-    Enrollment
-    |> where([e], e.course_id == ^course_id)
-    |> where([e], e.account_id == ^account_id or e.cohort_id in subquery(cohort_ids_query))
-    |> where([e], e.status != :dropped)
-    |> Repo.exists?()
+        Enrollment
+        |> where([e], e.course_id == ^course_id)
+        |> where([e], e.account_id == ^account_id or e.cohort_id in subquery(cohort_ids_query))
+        |> where([e], e.status != :dropped)
+        |> Repo.exists?()
+
+      _ ->
+        false
+    end
   end
 
   @doc false

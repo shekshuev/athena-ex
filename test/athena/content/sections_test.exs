@@ -264,7 +264,7 @@ defmodule Athena.Content.SectionsTest do
         Sections.create_section(%{
           "title" => "Public",
           "course_id" => c.id,
-          "visibility" => :public
+          "visibility" => :enrolled
         })
 
       {:ok, _s_hidden} =

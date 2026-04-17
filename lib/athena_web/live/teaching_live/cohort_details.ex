@@ -242,9 +242,17 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
             </span>
           </:col>
           <:action :let={{_id, enrollment}}>
-            <div class="flex justify-end">
-              <.button
-                :if={Identity.can?(@current_user, "enrollments.delete")}
+            <div class="flex items-center gap-2 justify-end">
+              <.link
+                navigate={~p"/teaching/cohorts/#{@cohort.id}/access/#{enrollment.course.id}"}
+                class="btn btn-ghost btn-xs text-primary hover:bg-primary/10"
+                title={gettext("Access Settings")}
+              >
+                <.icon name="hero-key" class="size-4" />
+                <span class="hidden sm:inline">{gettext("Access")}</span>
+              </.link>
+
+              <button
                 type="button"
                 phx-click="delete_enrollment_click"
                 phx-value-id={enrollment.id}
@@ -252,7 +260,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
                 title={gettext("Remove Assignment")}
               >
                 <.icon name="hero-x-mark" class="size-4" />
-              </.button>
+              </button>
             </div>
           </:action>
         </.table>

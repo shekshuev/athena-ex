@@ -34,7 +34,7 @@ defmodule Athena.Content.Block do
     field :order, :integer, default: 0
 
     field :visibility, Ecto.Enum,
-      values: ~w(public enrolled restricted hidden inherit)a,
+      values: ~w(enrolled restricted hidden inherit)a,
       default: :enrolled
 
     embeds_one :access_rules, AccessRules, on_replace: :update

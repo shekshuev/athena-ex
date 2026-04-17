@@ -100,6 +100,7 @@ defmodule AthenaWeb.Router do
         live "/cohorts/:id/add_student", CohortDetails, :add_student
         live "/cohorts/:id/enroll_course", CohortDetails, :enroll_course
         live "/cohorts/:id/edit", Cohorts, :edit
+        live "/cohorts/:id/access/:course_id", CohortAccess, :index
 
         live "/instructors", Instructors, :index
         live "/instructors/new", Instructors, :new
