@@ -72,6 +72,12 @@ defmodule Athena.Learning.Cohorts do
   end
 
   @doc """
+  Gets a single cohort by its ID.
+  Raises `Ecto.NoResultsError` if the Cohort does not exist.
+  """
+  def get_cohort!(id), do: Repo.get!(Cohort, id)
+
+  @doc """
   Creates a new cohort.
 
   Optionally accepts a list of instructor IDs in `instructor_ids` to assign them immediately.

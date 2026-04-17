@@ -95,5 +95,22 @@ defmodule AthenaWeb.LearnLive.CourseTest do
 
       assert render(lv) =~ "Live Added Module"
     end
+
+    test "shows leaderboard button only for competition courses", %{conn: conn, user: user} do
+      comp_course = insert(:course, title: "Team CTF", type: :competition)
+      insert(:enrollment, account_id: user.id, course_id: comp_course.id)
+
+      {:ok, _lv_comp, html_comp} = live(conn, ~p"/learn/courses/#{comp_course.id}")
+
+      assert html_comp =~ "Leaderboard"
+      assert html_comp =~ ~s(/learn/courses/#{comp_course.id}/leaderboard)
+
+      std_course = insert(:course, title: "Standard Elixir", type: :standard)
+      insert(:enrollment, account_id: user.id, course_id: std_course.id)
+
+      {:ok, _lv_std, html_std} = live(conn, ~p"/learn/courses/#{std_course.id}")
+
+      refute html_std =~ "Leaderboard"
+    end
   end
 end

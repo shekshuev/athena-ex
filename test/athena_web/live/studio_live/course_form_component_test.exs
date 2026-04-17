@@ -51,7 +51,8 @@ defmodule AthenaWeb.StudioLive.CourseFormComponentTest do
         "course" => %{
           "title" => "Phoenix LiveView Mastery",
           "description" => "Learn how to build interactive apps.",
-          "status" => "draft"
+          "status" => "draft",
+          "type" => "competition"
         }
       })
       |> render_submit()
@@ -65,13 +66,15 @@ defmodule AthenaWeb.StudioLive.CourseFormComponentTest do
       assert course.title == "Phoenix LiveView Mastery"
       assert course.description == "Learn how to build interactive apps."
       assert course.status == :draft
+      assert course.type == :competition
       assert course.owner_id == current_user.id
 
       assert render(lv) =~ "Course created successfully"
     end
 
     test "updates an existing course", %{conn: conn, current_user: current_user} do
-      course = insert(:course, title: "Old Course Title", owner_id: current_user.id)
+      course =
+        insert(:course, title: "Old Course Title", owner_id: current_user.id, type: :standard)
 
       {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/edit")
 
@@ -79,7 +82,8 @@ defmodule AthenaWeb.StudioLive.CourseFormComponentTest do
       |> form("#course-form", %{
         "course" => %{
           "title" => "Updated Course Title",
-          "status" => "published"
+          "status" => "published",
+          "type" => "standard"
         }
       })
       |> render_submit()
@@ -90,6 +94,7 @@ defmodule AthenaWeb.StudioLive.CourseFormComponentTest do
 
       assert updated_course.title == "Updated Course Title"
       assert updated_course.status == :published
+      assert updated_course.type == :standard
       assert render(lv) =~ "Course updated successfully"
     end
   end

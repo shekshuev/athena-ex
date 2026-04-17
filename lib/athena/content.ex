@@ -6,7 +6,7 @@ defmodule Athena.Content do
   mutating operations to broadcast real-time updates via PubSub.
   """
 
-  alias Athena.Content.{Courses, Sections, Blocks, Library}
+  alias Athena.Content.{Courses, Sections, Blocks, Library, Policy}
   alias Athena.Content.{Course, Section, Block}
 
   defdelegate list_courses(user, params \\ %{}), to: Courses
@@ -64,6 +64,8 @@ defmodule Athena.Content do
   defdelegate update_library_block(block, attrs), to: Library
   defdelegate delete_library_block(block), to: Library
   defdelegate generate_exam_questions(params), to: Library
+
+  defdelegate can_view?(user_or_mode, item, overrides), to: Policy
 
   @doc "Manually trigger a content refresh event for a specific course."
   def broadcast_course_update(course_id) do

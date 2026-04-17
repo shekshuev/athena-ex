@@ -63,6 +63,25 @@ defmodule Athena.Learning.EnrollmentsTest do
       assert {:error, changeset} = Enrollments.enroll_cohort(cohort.id, course.id)
       assert "has already been taken" in errors_on(changeset).course_id
     end
+
+    test "enforces type matching between cohorts and courses" do
+      team_cohort = insert(:cohort, type: :team)
+      academic_cohort = insert(:cohort, type: :academic)
+
+      standard_course = insert(:course, type: :standard)
+      competition_course = insert(:course, type: :competition)
+
+      assert {:ok, _} = Enrollments.enroll_cohort(team_cohort.id, competition_course.id)
+      assert {:ok, _} = Enrollments.enroll_cohort(academic_cohort.id, standard_course.id)
+
+      assert {:error, error_msg} = Enrollments.enroll_cohort(team_cohort.id, standard_course.id)
+      assert error_msg == "Cannot assign a Competition Team to a Standard Course."
+
+      assert {:error, error_msg} =
+               Enrollments.enroll_cohort(academic_cohort.id, competition_course.id)
+
+      assert error_msg == "Cannot assign an Academic Group to a Competition."
+    end
   end
 
   describe "list_cohort_enrollments/3 (With ACL)" do

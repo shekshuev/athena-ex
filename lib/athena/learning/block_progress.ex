@@ -19,6 +19,7 @@ defmodule Athena.Learning.BlockProgress do
       default: :completed
 
     field :score, :integer
+    field :cohort_id, :binary_id
     field :payload, :map, default: %{}
     field :feedback, :map, default: %{}
 
@@ -34,9 +35,10 @@ defmodule Athena.Learning.BlockProgress do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(progress, attrs) do
     progress
-    |> cast(attrs, [:status, :score, :payload, :feedback, :account_id, :block_id])
+    |> cast(attrs, [:status, :score, :payload, :feedback, :account_id, :block_id, :cohort_id])
     |> validate_required([:status, :account_id, :block_id])
     |> validate_number(:score, greater_than_or_equal_to: 0, less_than_or_equal_to: 100)
-    |> unique_constraint([:account_id, :block_id])
+    |> unique_constraint([:cohort_id, :block_id], name: :block_progresses_cohort_block_index)
+    |> unique_constraint([:account_id, :block_id], name: :block_progresses_account_block_index)
   end
 end

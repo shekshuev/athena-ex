@@ -38,6 +38,7 @@ defmodule Athena.Learning do
   defdelegate get_cohort_membership!(id), to: Cohorts
   defdelegate add_student_to_cohort(cohort_id, account_id), to: Cohorts
   defdelegate remove_student_from_cohort(membership), to: Cohorts
+  defdelegate get_cohort!(id), to: Cohorts
 
   defdelegate list_cohort_enrollments(user, cohort_id, params \\ %{}), to: Enrollments
   defdelegate get_enrollment!(id), to: Enrollments
@@ -48,15 +49,24 @@ defmodule Athena.Learning do
   defdelegate has_access?(account_id, course_id), to: Enrollments
 
   defdelegate list_submissions(params \\ %{}), to: Submissions
-  defdelegate get_submission(account_id, block_id), to: Submissions
+  defdelegate get_submission(account_id, block_id, cohort_id \\ nil), to: Submissions
   defdelegate create_submission(attrs), to: Submissions
   defdelegate update_submission(submission, attrs), to: Submissions
-  defdelegate get_latest_submissions(account_id, block_ids), to: Submissions
+  defdelegate get_latest_submissions(account_id, block_ids, cohort_id \\ nil), to: Submissions
   defdelegate get_submission!(id), to: Submissions
+  defdelegate get_team_leaderboard(course_id), to: Submissions
 
-  defdelegate mark_completed(account_id, block_id), to: Progress
-  defdelegate completed_block_ids(account_id, section_id), to: Progress
-  defdelegate accessible_section_ids(user, course_id, linear_sections, overrides), to: Progress
+  defdelegate mark_completed(account_id, block_id, cohort_id \\ nil), to: Progress
+  defdelegate completed_block_ids(account_id, section_id, cohort_id \\ nil), to: Progress
+
+  defdelegate accessible_section_ids(
+                user,
+                course_id,
+                linear_sections,
+                overrides,
+                cohort_id \\ nil
+              ),
+              to: Progress
 
   defdelegate evaluate_sync(submission), to: Evaluator
 

@@ -27,6 +27,7 @@ defmodule Athena.Learning.Submission do
 
     field :account_id, :binary_id
     field :block_id, :binary_id
+    field :cohort_id, :binary_id
 
     timestamps(type: :utc_datetime)
   end
@@ -38,6 +39,7 @@ defmodule Athena.Learning.Submission do
           score: integer(),
           feedback: String.t() | nil,
           account_id: binary() | nil,
+          cohort_id: binary() | nil,
           block_id: binary() | nil,
           inserted_at: DateTime.t() | NaiveDateTime.t() | nil,
           updated_at: DateTime.t() | NaiveDateTime.t() | nil
@@ -46,7 +48,7 @@ defmodule Athena.Learning.Submission do
   @doc false
   def changeset(submission, attrs) do
     submission
-    |> cast(attrs, [:content, :status, :score, :feedback, :account_id, :block_id])
+    |> cast(attrs, [:content, :status, :score, :feedback, :account_id, :block_id, :cohort_id])
     |> validate_required([:status, :account_id, :block_id])
     |> validate_number(:score, greater_than_or_equal_to: 0, less_than_or_equal_to: 100)
   end

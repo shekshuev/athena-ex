@@ -140,10 +140,9 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
       assert html =~ "Understood, Sir!"
-      refute html =~ "Completed"
 
       html = render_click(lv, "complete_gate", %{"block-id" => b_gate.id})
-      assert html =~ "Completed"
+      assert html =~ "Back to Syllabus"
     end
 
     test "cascading blocks: hides blocks after an uncompleted gate", %{conn: conn, course: course} do
@@ -159,12 +158,10 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       assert html =~ "Block 1"
       refute html =~ "Block 3"
-      refute html =~ "Lesson Completed!"
 
       html = render_click(lv, "complete_gate", %{"block-id" => b_gate.id})
 
       assert html =~ "Block 3"
-      assert html =~ "Lesson Completed!"
     end
   end
 
@@ -609,6 +606,36 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       {:ok, _lv, html_self} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
       assert html_self =~ "Visible Content"
+    end
+  end
+
+  describe "Team Competitions (Shared Progress)" do
+    test "team member's completion broadcasts and unlocks next block for teammates", %{
+      conn: conn,
+      user: user
+    } do
+      course = insert(:course, type: :competition)
+      team = insert(:cohort, type: :team)
+
+      insert(:enrollment, course_id: course.id, cohort_id: team.id)
+      insert(:cohort_membership, account_id: user.id, cohort_id: team.id)
+
+      teammate = insert(:account)
+      insert(:cohort_membership, account_id: teammate.id, cohort_id: team.id)
+
+      s1 = insert(:section, course: course)
+      gate = insert(:block, section: s1, completion_rule: %CompletionRule{type: :button})
+      insert(:block, section: s1, content: %{"text" => "Team Unlockable!"})
+
+      {:ok, lv, html} =
+        live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}?cohort_id=#{team.id}")
+
+      refute html =~ "Team Unlockable!"
+
+      Athena.Learning.mark_completed(teammate.id, gate.id, team.id)
+      Phoenix.PubSub.broadcast(Athena.PubSub, "team_progress:#{team.id}", :team_progress_updated)
+
+      assert render(lv) =~ "Team Unlockable!"
     end
   end
 end

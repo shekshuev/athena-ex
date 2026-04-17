@@ -25,12 +25,18 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
     cohort_with_ids = %{cohort | instructor_ids: Enum.map(selected_instructors, & &1.id)}
     changeset = Cohort.changeset(cohort_with_ids, %{})
 
+    type_options = [
+      {gettext("Academic Group"), :academic},
+      {gettext("Competition Team"), :team}
+    ]
+
     {:ok,
      socket
      |> assign(assigns)
      |> assign(:search_query, "")
      |> assign(:search_results, [])
      |> assign(:selected_instructors, selected_instructors)
+     |> assign(:type_options, type_options)
      |> assign_form(changeset)}
   end
 
@@ -187,6 +193,14 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
           type="textarea"
           label={gettext("Description (Optional)")}
           rows="3"
+        />
+
+        <.input
+          field={@form[:type]}
+          type="select"
+          label={gettext("Cohort Type")}
+          options={@type_options}
+          required
         />
 
         <div class="form-control w-full relative">
