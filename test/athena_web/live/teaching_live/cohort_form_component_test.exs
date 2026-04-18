@@ -48,7 +48,8 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponentTest do
       |> form("#cohort-form", %{
         "cohort" => %{
           "name" => "Backend Dev Bootcamp",
-          "description" => "Intensive Elixir course"
+          "description" => "Intensive Elixir course",
+          "type" => "team"
         }
       })
       |> render_submit()
@@ -61,6 +62,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponentTest do
 
       assert cohort.name == "Backend Dev Bootcamp"
       assert cohort.description == "Intensive Elixir course"
+      assert cohort.type == :team
 
       assert length(cohort.instructors) == 1
       assert hd(cohort.instructors).id == instructor.id
@@ -72,7 +74,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponentTest do
       conn: conn,
       current_user: current_user
     } do
-      cohort = insert(:cohort, name: "Old Cohort Name")
+      cohort = insert(:cohort, name: "Old Cohort Name", type: :academic)
 
       account = insert(:account, login: "jane_smith")
       new_instructor = insert(:instructor, owner_id: account.id, title: "Ruby Guru")
@@ -90,7 +92,8 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponentTest do
       lv
       |> form("#cohort-form", %{
         "cohort" => %{
-          "name" => "Updated Cohort Name"
+          "name" => "Updated Cohort Name",
+          "type" => "academic"
         }
       })
       |> render_submit()
@@ -100,6 +103,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponentTest do
       {:ok, updated_cohort} = Learning.get_cohort(current_user, cohort.id)
 
       assert updated_cohort.name == "Updated Cohort Name"
+      assert updated_cohort.type == :academic
       assert length(updated_cohort.instructors) == 1
       assert hd(updated_cohort.instructors).id == new_instructor.id
 

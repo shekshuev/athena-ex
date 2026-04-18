@@ -24,32 +24,28 @@ defmodule AthenaWeb.LearnLive.Player do
   @impl true
   def mount(%{"id" => course_id} = params, _session, socket) do
     user = socket.assigns.current_user
-    cohort_id = params["cohort_id"]
+    cohort_id = if params["cohort_id"] == "", do: nil, else: params["cohort_id"]
 
     with true <- Learning.has_access?(user.id, course_id),
          {:ok, course} <- Content.get_course(course_id) do
-      if connected?(socket) do
-        Phoenix.PubSub.subscribe(Athena.PubSub, "course_content:#{course_id}")
-      end
+      cohort = if cohort_id, do: Learning.get_cohort!(cohort_id), else: nil
+
+      team_id = if cohort && cohort.type == :team, do: cohort.id, else: nil
+
+      if connected?(socket), do: subscribe_to_topics(course_id, team_id)
 
       overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
       linear_lessons = Content.list_linear_lessons(course_id, user)
-      accessible_ids = Learning.accessible_section_ids(user, course_id, linear_lessons, overrides)
+
+      accessible_ids =
+        Learning.accessible_section_ids(user, course_id, linear_lessons, overrides, team_id)
 
       first_lesson_id = linear_lessons |> List.first() |> Map.get(:id)
       section_id = params["section_id"] || first_lesson_id
 
       if section_id in accessible_ids do
-        setup_player_state(
-          socket,
-          course,
-          section_id,
-          linear_lessons,
-          accessible_ids,
-          user,
-          overrides,
-          cohort_id
-        )
+        ctx = %{user: user, overrides: overrides, cohort_id: cohort_id, team_id: team_id}
+        setup_player_state(socket, course, section_id, linear_lessons, accessible_ids, ctx)
       else
         {:ok,
          socket
@@ -64,25 +60,22 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp setup_player_state(
-         socket,
-         course,
-         section_id,
-         linear_lessons,
-         accessible_ids,
-         user,
-         overrides,
-         cohort_id
-       ) do
+  defp subscribe_to_topics(course_id, cohort_id) do
+    Phoenix.PubSub.subscribe(Athena.PubSub, "course_content:#{course_id}")
+    if cohort_id, do: Phoenix.PubSub.subscribe(Athena.PubSub, "team_progress:#{cohort_id}")
+  end
+
+  @doc false
+  defp setup_player_state(socket, course, section_id, linear_lessons, accessible_ids, ctx) do
     section = Content.get_section(section_id) |> elem(1)
 
     blocks =
       Content.list_blocks_by_section(section_id, :all)
-      |> Enum.filter(&Content.Policy.can_view?(user, &1, overrides))
+      |> Enum.filter(&Content.can_view?(ctx.user, &1, ctx.overrides))
       |> Enum.sort_by(& &1.order)
 
-    completed_ids = Learning.completed_block_ids(user.id, section_id)
-    tree = Content.get_course_tree(course.id, user)
+    completed_ids = Learning.completed_block_ids(ctx.user.id, section_id, ctx.team_id)
+    tree = Content.get_course_tree(course.id, ctx.user)
 
     current_index = Enum.find_index(linear_lessons, fn s -> s.id == section_id end)
 
@@ -90,13 +83,15 @@ defmodule AthenaWeb.LearnLive.Player do
     next_section = Enum.at(linear_lessons, current_index + 1)
     next_accessible? = next_section != nil and next_section.id in accessible_ids
 
-    submissions = Learning.get_latest_submissions(user.id, Enum.map(blocks, & &1.id))
+    submissions =
+      Learning.get_latest_submissions(ctx.user.id, Enum.map(blocks, & &1.id), ctx.team_id)
 
     socket =
       socket
       |> assign(:page_title, section.title)
       |> assign(:course, course)
-      |> assign(:cohort_id, cohort_id)
+      |> assign(:cohort_id, ctx.cohort_id)
+      |> assign(:team_id, ctx.team_id)
       |> assign(:tree, tree)
       |> assign(:linear_lessons, linear_lessons)
       |> assign(:section, section)
@@ -107,7 +102,7 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:course_map_open, false)
       |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
       |> assign(:submissions, submissions)
-      |> assign(:overrides, overrides)
+      |> assign(:overrides, ctx.overrides)
 
     {:ok, schedule_next_unlock(socket, course.id)}
   end
@@ -121,9 +116,13 @@ defmodule AthenaWeb.LearnLive.Player do
   @impl true
   def handle_event("complete_gate", %{"block-id" => block_id}, socket) do
     user = socket.assigns.current_user
-    {:ok, _} = Learning.mark_completed(user.id, block_id)
-    new_completed_ids = [block_id | socket.assigns.completed_ids]
+    team_id = socket.assigns.team_id
 
+    {:ok, _} = Learning.mark_completed(user.id, block_id, team_id)
+
+    broadcast_team_progress(team_id, socket.assigns.course.id)
+
+    new_completed_ids = [block_id | socket.assigns.completed_ids]
     linear_lessons = socket.assigns.linear_lessons
 
     accessible_ids =
@@ -131,7 +130,8 @@ defmodule AthenaWeb.LearnLive.Player do
         user,
         socket.assigns.course.id,
         linear_lessons,
-        socket.assigns.overrides
+        socket.assigns.overrides,
+        team_id
       )
 
     current_index = Enum.find_index(linear_lessons, fn s -> s.id == socket.assigns.section.id end)
@@ -153,42 +153,12 @@ defmodule AthenaWeb.LearnLive.Player do
 
   @impl true
   def handle_event("start_exam", %{"block_id" => block_id}, socket) do
-    user = socket.assigns.current_user
-    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+    case Enum.find(socket.assigns.blocks, &(&1.id == block_id)) do
+      %{type: :quiz_exam} = block ->
+        start_exam_for_block(socket, block)
 
-    if block && block.type == :quiz_exam do
-      questions = Content.generate_exam_questions(block.content)
-
-      sub_attrs = %{
-        account_id: user.id,
-        block_id: block.id,
-        status: :pending,
-        content: %{
-          type: :quiz_exam,
-          started_at: DateTime.utc_now(),
-          questions: questions,
-          answers: %{},
-          cheat_count: 0
-        }
-      }
-
-      case Learning.create_submission(sub_attrs) do
-        {:ok, _submission} ->
-          {:noreply,
-           push_navigate(socket,
-             to: ~p"/learn/courses/#{socket.assigns.course.id}/exam/#{block.id}"
-           )}
-
-        {:error, _} ->
-          {:noreply,
-           put_flash(
-             socket,
-             :error,
-             gettext("Failed to start the exam. Not enough questions in library.")
-           )}
-      end
-    else
-      {:noreply, socket}
+      _ ->
+        {:noreply, socket}
     end
   end
 
@@ -210,10 +180,57 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
+  defp start_exam_for_block(socket, block) do
+    user = socket.assigns.current_user
+    questions = Content.generate_exam_questions(block.content)
+
+    sub_attrs = %{
+      account_id: user.id,
+      block_id: block.id,
+      status: :pending,
+      cohort_id: socket.assigns.team_id,
+      content: %{
+        type: :quiz_exam,
+        started_at: DateTime.utc_now(),
+        questions: questions,
+        answers: %{},
+        cheat_count: 0
+      }
+    }
+
+    case Learning.create_submission(sub_attrs) do
+      {:ok, _submission} ->
+        broadcast_team_progress(socket.assigns.team_id, socket.assigns.course.id)
+
+        {:noreply,
+         push_navigate(socket,
+           to: ~p"/learn/courses/#{socket.assigns.course.id}/exam/#{block.id}"
+         )}
+
+      {:error, _} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           gettext("Failed to start the exam. Not enough questions in library.")
+         )}
+    end
+  end
+
+  @doc false
+  defp broadcast_team_progress(nil, _course_id), do: :ok
+
+  defp broadcast_team_progress(team_id, course_id) do
+    Phoenix.PubSub.broadcast(Athena.PubSub, "team_progress:#{team_id}", :team_progress_updated)
+    Phoenix.PubSub.broadcast(Athena.PubSub, "leaderboard:#{course_id}", :update_leaderboard)
+  end
+
+  @doc false
   defp handle_quiz_submission(socket, block, answer) do
     sub_attrs = %{
       account_id: socket.assigns.current_user.id,
       block_id: block.id,
+      cohort_id: socket.assigns.team_id,
       status: :pending,
       content: build_submission_content(block, answer)
     }
@@ -222,6 +239,8 @@ defmodule AthenaWeb.LearnLive.Player do
       {:ok, submission} ->
         eval_result = Learning.evaluate_sync(submission)
         {:ok, final_sub} = Learning.update_submission(submission, eval_result)
+
+        broadcast_team_progress(socket.assigns.team_id, socket.assigns.course.id)
 
         submissions = Map.put(socket.assigns.submissions || %{}, block.id, final_sub)
         socket = assign(socket, submissions: submissions)
@@ -288,7 +307,11 @@ defmodule AthenaWeb.LearnLive.Player do
   @doc false
   defp unlock_next_content(socket, block_id) do
     user = socket.assigns.current_user
-    {:ok, _} = Learning.mark_completed(user.id, block_id)
+    team_id = socket.assigns.team_id
+
+    {:ok, _} = Learning.mark_completed(user.id, block_id, team_id)
+
+    broadcast_team_progress(team_id, socket.assigns.course.id)
 
     new_completed_ids = [block_id | socket.assigns.completed_ids]
     linear_lessons = socket.assigns.linear_lessons
@@ -298,7 +321,8 @@ defmodule AthenaWeb.LearnLive.Player do
         user,
         socket.assigns.course.id,
         linear_lessons,
-        socket.assigns.overrides
+        socket.assigns.overrides,
+        team_id
       )
 
     current_index =
@@ -321,23 +345,33 @@ defmodule AthenaWeb.LearnLive.Player do
   @spec handle_info(atom() | tuple(), Phoenix.LiveView.Socket.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
+  def handle_info(:team_progress_updated, socket) do
+    handle_info(:refresh_content, socket)
+  end
+
+  @impl true
   def handle_info(:refresh_content, socket) do
     user = socket.assigns.current_user
     course_id = socket.assigns.course.id
     cohort_id = socket.assigns.cohort_id
+    team_id = socket.assigns.team_id
     current_section_id = socket.assigns.section.id
 
     overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
     linear_lessons = Content.list_linear_lessons(course_id, user)
-    accessible_ids = Learning.accessible_section_ids(user, course_id, linear_lessons, overrides)
+
+    accessible_ids =
+      Learning.accessible_section_ids(user, course_id, linear_lessons, overrides, team_id)
 
     if current_section_id in accessible_ids do
       blocks =
         Content.list_blocks_by_section(current_section_id, :all)
-        |> Enum.filter(&Content.Policy.can_view?(user, &1, overrides))
+        |> Enum.filter(&Content.can_view?(user, &1, overrides))
         |> Enum.sort_by(& &1.order)
 
-      completed_ids = Learning.completed_block_ids(user.id, current_section_id)
+      completed_ids = Learning.completed_block_ids(user.id, current_section_id, team_id)
+      submissions = Learning.get_latest_submissions(user.id, Enum.map(blocks, & &1.id), team_id)
+
       tree = Content.get_course_tree(course_id, user)
 
       current_index = Enum.find_index(linear_lessons, fn s -> s.id == current_section_id end)
@@ -348,9 +382,11 @@ defmodule AthenaWeb.LearnLive.Player do
        socket
        |> assign(:tree, tree)
        |> assign(:cohort_id, cohort_id)
+       |> assign(:team_id, team_id)
        |> assign(:linear_lessons, linear_lessons)
        |> assign(:blocks, blocks)
        |> assign(:completed_ids, completed_ids)
+       |> assign(:submissions, submissions)
        |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
        |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
        |> assign(:overrides, overrides)
@@ -525,33 +561,23 @@ defmodule AthenaWeb.LearnLive.Player do
 
       <div
         :if={all_blocks_completed?(@visible_blocks, @completed_ids)}
-        class="mt-20 pt-10 border-t border-base-300 animate-in fade-in slide-in-from-bottom-8 duration-1000"
+        class="mt-10 pt-5 animate-in fade-in slide-in-from-bottom-8 duration-1000"
       >
-        <div class="bg-base-200/50 rounded-3xl p-10 text-center">
-          <div class="size-16 bg-success/20 text-success rounded-full flex items-center justify-center mx-auto mb-6">
-            <.icon name="hero-check-badge-solid" class="size-10" />
-          </div>
-          <h3 class="text-2xl font-black mb-2">{gettext("Lesson Completed!")}</h3>
-
-          <%= if @next_section_id do %>
-            <.link
-              navigate={~p"/learn/courses/#{@course.id}/play/#{@next_section_id}"}
-              class="btn btn-primary btn-lg px-12 mt-6 shadow-lg shadow-primary/20"
-            >
-              {gettext("Next Lesson")} <.icon name="hero-arrow-right" class="size-5 ml-2" />
-            </.link>
-          <% else %>
-            <p class="text-base-content/60 mt-4 font-bold uppercase tracking-widest">
-              {gettext("Course Completed!")}
-            </p>
-            <.link
-              navigate={~p"/learn/courses/#{@course.id}"}
-              class="btn btn-outline btn-lg px-12 mt-6"
-            >
-              {gettext("Back to Syllabus")}
-            </.link>
-          <% end %>
-        </div>
+        <%= if @next_section_id do %>
+          <.link
+            navigate={~p"/learn/courses/#{@course.id}/play/#{@next_section_id}"}
+            class="btn btn-ghost"
+          >
+            {gettext("Next Lesson")} <.icon name="hero-arrow-right" class="size-5 ml-2" />
+          </.link>
+        <% else %>
+          <.link
+            navigate={~p"/learn/courses/#{@course.id}"}
+            class="btn btn-ghost"
+          >
+            {gettext("Back to Syllabus")}
+          </.link>
+        <% end %>
       </div>
 
       <.modal

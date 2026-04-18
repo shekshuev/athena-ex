@@ -19,7 +19,7 @@ defmodule AthenaWeb.LearnLive.Course do
   @impl true
   def mount(%{"id" => course_id} = params, _session, socket) do
     user = socket.assigns.current_user
-    cohort_id = params["cohort_id"]
+    cohort_id = if params["cohort_id"] == "", do: nil, else: params["cohort_id"]
 
     with true <- Learning.has_access?(user.id, course_id),
          {:ok, course} <- Content.get_course(course_id) do
@@ -107,7 +107,7 @@ defmodule AthenaWeb.LearnLive.Course do
   def render(assigns) do
     ~H"""
     <div class="max-w-4xl mx-auto py-12">
-      <div class="mb-16 border-b border-base-300 pb-10">
+      <div class="pb-10">
         <a
           href="/learn"
           class="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-base-content/40 hover:text-base-content mb-8 transition-colors"
@@ -132,17 +132,20 @@ defmodule AthenaWeb.LearnLive.Course do
             {gettext("Continue Learning")}
           </.link>
         <% end %>
+
+        <%= if @course.type == :competition do %>
+          <.link
+            navigate={~p"/learn/courses/#{@course.id}/leaderboard"}
+            class="btn btn-outline btn-warning"
+          >
+            <.icon name="hero-trophy" class="size-5 mr-2" />
+            {gettext("Leaderboard")}
+          </.link>
+        <% end %>
       </div>
 
       <div>
         <div class="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-base-content/50 mb-6 overflow-x-auto">
-          <.link
-            patch={~p"/learn/courses/#{@course.id}"}
-            class="hover:text-primary whitespace-nowrap transition-colors"
-          >
-            {@course.title}
-          </.link>
-
           <%= for crumb <- @breadcrumbs do %>
             <.icon name="hero-chevron-right" class="size-4 text-base-content/30 shrink-0 mx-1" />
             <.link
@@ -154,7 +157,7 @@ defmodule AthenaWeb.LearnLive.Course do
           <% end %>
         </div>
 
-        <div class="border-t-2 border-base-content">
+        <div>
           <%= if @current_nodes == [] do %>
             <div class="py-8 text-base-content/40 italic font-medium">
               {gettext("This section is empty.")}

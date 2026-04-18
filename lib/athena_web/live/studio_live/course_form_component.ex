@@ -28,11 +28,17 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
       {gettext("Archived"), :archived}
     ]
 
+    type_options = [
+      {gettext("Standard Course"), :standard},
+      {gettext("Competition / Olympiad"), :competition}
+    ]
+
     {:ok,
      socket
      |> assign(assigns)
      |> assign(:form, to_form(changeset))
-     |> assign(:status_options, status_options)}
+     |> assign(:status_options, status_options)
+     |> assign(:type_options, type_options)}
   end
 
   @doc """
@@ -131,6 +137,14 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
             type="select"
             label={gettext("Visibility Status")}
             options={@status_options}
+            required
+          />
+
+          <.input
+            field={@form[:type]}
+            type="select"
+            label={gettext("Course Type")}
+            options={@type_options}
             required
           />
         </div>

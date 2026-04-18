@@ -51,10 +51,19 @@ defmodule Athena.Learning.SubmissionsTest do
     end
   end
 
-  describe "get_submission/2" do
-    test "returns the latest submission for a given account and block" do
+  describe "get_submission/3" do
+    test "returns the latest individual submission for a given account and block (ignores team submissions)" do
       account_id = Ecto.UUID.generate()
       block_id = Ecto.UUID.generate()
+      team = insert(:cohort)
+
+      insert(:submission,
+        account_id: account_id,
+        block_id: block_id,
+        cohort_id: team.id,
+        score: 50,
+        inserted_at: DateTime.utc_now()
+      )
 
       insert(:submission,
         account_id: account_id,
@@ -63,7 +72,7 @@ defmodule Athena.Learning.SubmissionsTest do
         inserted_at: DateTime.add(DateTime.utc_now(), -2, :day)
       )
 
-      latest =
+      latest_individual =
         insert(:submission,
           account_id: account_id,
           block_id: block_id,
@@ -73,8 +82,38 @@ defmodule Athena.Learning.SubmissionsTest do
 
       fetched = Submissions.get_submission(account_id, block_id)
 
-      assert fetched.id == latest.id
+      assert fetched.id == latest_individual.id
       assert fetched.score == 100
+      assert fetched.cohort_id == nil
+    end
+
+    test "returns the latest team submission when cohort_id is provided (ignores individual submissions)" do
+      account_id = Ecto.UUID.generate()
+      teammate_id = Ecto.UUID.generate()
+      block_id = Ecto.UUID.generate()
+      team = insert(:cohort)
+
+      insert(:submission,
+        account_id: account_id,
+        block_id: block_id,
+        score: 10,
+        inserted_at: DateTime.utc_now()
+      )
+
+      team_sub =
+        insert(:submission,
+          account_id: teammate_id,
+          block_id: block_id,
+          cohort_id: team.id,
+          score: 85,
+          inserted_at: DateTime.utc_now()
+        )
+
+      fetched = Submissions.get_submission(account_id, block_id, team.id)
+
+      assert fetched.id == team_sub.id
+      assert fetched.score == 85
+      assert fetched.cohort_id == team.id
     end
 
     test "returns nil if no submission exists" do
@@ -82,10 +121,11 @@ defmodule Athena.Learning.SubmissionsTest do
     end
   end
 
-  describe "get_latest_submissions/2" do
-    test "returns a map of the latest submissions for the given block ids" do
+  describe "get_latest_submissions/3" do
+    test "returns a map of the latest individual submissions for the given block ids" do
       account_id = Ecto.UUID.generate()
       other_account_id = Ecto.UUID.generate()
+      team = insert(:cohort)
 
       block_1_id = Ecto.UUID.generate()
       block_2_id = Ecto.UUID.generate()
@@ -93,14 +133,6 @@ defmodule Athena.Learning.SubmissionsTest do
 
       now = DateTime.utc_now() |> DateTime.truncate(:second)
       yesterday = DateTime.add(now, -1, :day)
-      last_week = DateTime.add(now, -7, :day)
-
-      insert(:submission,
-        account_id: account_id,
-        block_id: block_1_id,
-        score: 10,
-        inserted_at: last_week
-      )
 
       insert(:submission,
         account_id: account_id,
@@ -126,16 +158,17 @@ defmodule Athena.Learning.SubmissionsTest do
         )
 
       insert(:submission,
-        account_id: account_id,
-        block_id: block_2_id,
-        score: 0,
-        inserted_at: last_week
-      )
-
-      insert(:submission,
         account_id: other_account_id,
         block_id: block_1_id,
         score: 99,
+        inserted_at: now
+      )
+
+      insert(:submission,
+        account_id: account_id,
+        block_id: block_2_id,
+        cohort_id: team.id,
+        score: 999,
         inserted_at: now
       )
 
@@ -153,6 +186,36 @@ defmodule Athena.Learning.SubmissionsTest do
       refute Map.has_key?(result, block_3_id)
     end
 
+    test "returns a map of the latest team submissions for the given block ids" do
+      account_id = Ecto.UUID.generate()
+      teammate_id = Ecto.UUID.generate()
+      team = insert(:cohort)
+
+      block_1_id = Ecto.UUID.generate()
+
+      insert(:submission,
+        account_id: account_id,
+        block_id: block_1_id,
+        score: 10,
+        inserted_at: DateTime.utc_now()
+      )
+
+      team_sub =
+        insert(:submission,
+          account_id: teammate_id,
+          block_id: block_1_id,
+          cohort_id: team.id,
+          score: 100,
+          inserted_at: DateTime.utc_now()
+        )
+
+      result = Submissions.get_latest_submissions(account_id, [block_1_id], team.id)
+
+      assert map_size(result) == 1
+      assert result[block_1_id].id == team_sub.id
+      assert result[block_1_id].cohort_id == team.id
+    end
+
     test "returns an empty map if no submissions exist for the given blocks" do
       account_id = Ecto.UUID.generate()
       block_ids = [Ecto.UUID.generate(), Ecto.UUID.generate()]
@@ -162,7 +225,7 @@ defmodule Athena.Learning.SubmissionsTest do
   end
 
   describe "create_submission/1" do
-    test "creates a submission with valid attributes" do
+    test "creates an individual submission with valid attributes" do
       account_id = Ecto.UUID.generate()
       block_id = Ecto.UUID.generate()
 
@@ -176,9 +239,29 @@ defmodule Athena.Learning.SubmissionsTest do
       assert {:ok, %Submission{} = submission} = Submissions.create_submission(attrs)
       assert submission.account_id == account_id
       assert submission.block_id == block_id
+      assert submission.cohort_id == nil
       assert submission.content["flag"] == "athena{1337}"
       assert submission.status == :pending
       assert submission.score == 0
+    end
+
+    test "creates a team submission when cohort_id is provided" do
+      account_id = Ecto.UUID.generate()
+      block_id = Ecto.UUID.generate()
+      team = insert(:cohort)
+
+      attrs = %{
+        "account_id" => account_id,
+        "block_id" => block_id,
+        "cohort_id" => team.id,
+        "content" => %{"flag" => "team_flag{999}"},
+        "status" => "pending"
+      }
+
+      assert {:ok, %Submission{} = submission} = Submissions.create_submission(attrs)
+      assert submission.account_id == account_id
+      assert submission.block_id == block_id
+      assert submission.cohort_id == team.id
     end
 
     test "returns error changeset with missing required attributes" do
@@ -215,6 +298,89 @@ defmodule Athena.Learning.SubmissionsTest do
       assert_raise Ecto.NoResultsError, fn ->
         Submissions.get_submission!(Ecto.UUID.generate())
       end
+    end
+  end
+
+  describe "get_team_leaderboard/1" do
+    test "calculates team scores by summing max score per block and handles ties by time" do
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block1 = insert(:block, section: section)
+      block2 = insert(:block, section: section)
+
+      team1 = insert(:cohort, name: "Team Alpha")
+      team2 = insert(:cohort, name: "Team Beta")
+      team3 = insert(:cohort, name: "Team Gamma")
+
+      insert(:submission,
+        block_id: block1.id,
+        cohort_id: team1.id,
+        score: 50,
+        status: :graded,
+        inserted_at: ~U[2026-01-01 09:00:00Z]
+      )
+
+      insert(:submission,
+        block_id: block1.id,
+        cohort_id: team1.id,
+        score: 100,
+        status: :graded,
+        inserted_at: ~U[2026-01-01 10:00:00Z]
+      )
+
+      insert(:submission,
+        block_id: block2.id,
+        cohort_id: team1.id,
+        score: 50,
+        status: :graded,
+        inserted_at: ~U[2026-01-01 12:00:00Z]
+      )
+
+      insert(:submission,
+        block_id: block1.id,
+        cohort_id: team2.id,
+        score: 100,
+        status: :graded,
+        inserted_at: ~U[2026-01-02 10:00:00Z]
+      )
+
+      insert(:submission,
+        block_id: block2.id,
+        cohort_id: team2.id,
+        score: 50,
+        status: :graded,
+        inserted_at: ~U[2026-01-02 12:00:00Z]
+      )
+
+      insert(:submission, block_id: block1.id, cohort_id: team3.id, score: 80, status: :graded)
+
+      insert(:submission, block_id: block1.id, cohort_id: nil, score: 100, status: :graded)
+
+      other_course_section = insert(:section)
+      other_block = insert(:block, section: other_course_section)
+
+      insert(:submission,
+        block_id: other_block.id,
+        cohort_id: team1.id,
+        score: 100,
+        status: :graded
+      )
+
+      leaderboard = Submissions.get_team_leaderboard(course.id)
+
+      assert length(leaderboard) == 3
+
+      [first, second, third] = leaderboard
+
+      assert first.team_id == team1.id
+      assert first.total_score == 150
+      assert first.team_name == "Team Alpha"
+      assert second.team_id == team2.id
+      assert second.total_score == 150
+      assert second.team_name == "Team Beta"
+      assert third.team_id == team3.id
+      assert third.total_score == 80
+      assert third.team_name == "Team Gamma"
     end
   end
 end

@@ -13,6 +13,8 @@ defmodule Athena.Learning.Enrollments do
   alias Athena.Content
   alias Athena.Identity
 
+  use Gettext, backend: AthenaWeb.Gettext
+
   @doc """
   Retrieves a paginated list of enrollments for a specific cohort, scoped by user.
   """
@@ -82,16 +84,29 @@ defmodule Athena.Learning.Enrollments do
 
   @doc """
   Assigns an entire cohort to a course.
-
-  Defaults to an `:active` status. Enforces unique constraints 
-  (a cohort cannot be enrolled in the same course twice).
+  Enforces type matching: Teams can only join Competitions, Academic groups only Standard courses.
   """
   @spec enroll_cohort(String.t(), String.t(), atom()) ::
-          {:ok, Enrollment.t()} | {:error, Ecto.Changeset.t()}
+          {:ok, Enrollment.t()} | {:error, String.t() | Ecto.Changeset.t()}
   def enroll_cohort(cohort_id, course_id, status \\ :active) do
-    %Enrollment{}
-    |> Enrollment.changeset(%{cohort_id: cohort_id, course_id: course_id, status: status})
-    |> Repo.insert()
+    cohort = Repo.get(Athena.Learning.Cohort, cohort_id)
+    course = Repo.get(Athena.Content.Course, course_id)
+
+    cond do
+      is_nil(cohort) or is_nil(course) ->
+        {:error, gettext("Cohort or Course not found.")}
+
+      cohort.type == :team and course.type != :competition ->
+        {:error, gettext("Cannot assign a Competition Team to a Standard Course.")}
+
+      cohort.type == :academic and course.type != :standard ->
+        {:error, gettext("Cannot assign an Academic Group to a Competition.")}
+
+      true ->
+        %Enrollment{}
+        |> Enrollment.changeset(%{cohort_id: cohort_id, course_id: course_id, status: status})
+        |> Repo.insert()
+    end
   end
 
   @doc """

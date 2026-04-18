@@ -12,7 +12,8 @@ defmodule Athena.Learning.Schedules do
   """
   @spec get_student_overrides(String.t(), String.t(), String.t() | nil) :: [CohortSchedule.t()]
 
-  def get_student_overrides(_account_id, _course_id, nil), do: []
+  def get_student_overrides(_account_id, _course_id, cohort_id) when cohort_id in [nil, ""],
+    do: []
 
   def get_student_overrides(account_id, course_id, cohort_id) do
     cohort_ids_query =
