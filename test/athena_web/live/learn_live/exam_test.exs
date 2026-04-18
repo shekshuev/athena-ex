@@ -275,7 +275,7 @@ defmodule AthenaWeb.LearnLive.ExamTest do
       block = insert(:block, section: section, type: :quiz_exam, content: %{"time_limit" => 10})
       questions = generate_dummy_questions()
 
-      started_at = DateTime.utc_now() |> DateTime.add(-595, :second)
+      started_at = DateTime.utc_now() |> DateTime.add(-599, :second)
 
       insert(:submission,
         account_id: user.id,
@@ -293,6 +293,9 @@ defmodule AthenaWeb.LearnLive.ExamTest do
       {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/exam/#{block.id}")
 
       assert html =~ "animate-pulse"
+
+      Process.sleep(1050)
+
       assert html =~ ~r/00:0[0-5]/
       Enum.each(1..6, fn _ -> send(lv.pid, :tick) end)
       assert_redirect(lv, "/learn/courses/#{course.id}")

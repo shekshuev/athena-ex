@@ -312,8 +312,21 @@ defmodule Athena.Learning.SubmissionsTest do
       team2 = insert(:cohort, name: "Team Beta")
       team3 = insert(:cohort, name: "Team Gamma")
 
-      insert(:submission, block_id: block1.id, cohort_id: team1.id, score: 50, status: :graded)
-      insert(:submission, block_id: block1.id, cohort_id: team1.id, score: 100, status: :graded)
+      insert(:submission,
+        block_id: block1.id,
+        cohort_id: team1.id,
+        score: 50,
+        status: :graded,
+        inserted_at: ~U[2026-01-01 09:00:00Z]
+      )
+
+      insert(:submission,
+        block_id: block1.id,
+        cohort_id: team1.id,
+        score: 100,
+        status: :graded,
+        inserted_at: ~U[2026-01-01 10:00:00Z]
+      )
 
       insert(:submission,
         block_id: block2.id,
@@ -323,7 +336,13 @@ defmodule Athena.Learning.SubmissionsTest do
         inserted_at: ~U[2026-01-01 12:00:00Z]
       )
 
-      insert(:submission, block_id: block1.id, cohort_id: team2.id, score: 100, status: :graded)
+      insert(:submission,
+        block_id: block1.id,
+        cohort_id: team2.id,
+        score: 100,
+        status: :graded,
+        inserted_at: ~U[2026-01-02 10:00:00Z]
+      )
 
       insert(:submission,
         block_id: block2.id,
