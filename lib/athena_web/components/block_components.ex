@@ -63,15 +63,18 @@ defmodule AthenaWeb.BlockComponents do
 
   defp render_text(assigns) do
     ~H"""
-    <div
-      id={"tiptap-#{@mode}-#{@block.id}"}
-      phx-hook="TiptapEditor"
-      data-id={@block.id}
-      data-readonly={to_string(@mode != :edit)}
-      phx-update="ignore"
-      data-content={Jason.encode!(@block.content)}
-      class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed"
-    >
+    <div class="editor-wrapper group relative outline-none" tabindex="-1">
+      <.tiptap_toolbar mode={@mode} />
+      <div
+        id={"tiptap-#{@mode}-#{@block.id}"}
+        phx-hook="TiptapEditor"
+        data-id={@block.id}
+        data-readonly={to_string(@mode != :edit)}
+        phx-update="ignore"
+        data-content={Jason.encode!(@block.content)}
+        class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed"
+      >
+      </div>
     </div>
     """
   end
@@ -116,16 +119,19 @@ defmodule AthenaWeb.BlockComponents do
   defp render_attachment(assigns) do
     ~H"""
     <div class="p-6 bg-base-200/50 rounded-sm border border-base-300">
-      <div
-        :if={@block.content["description"]}
-        id={"tiptap-desc-#{@mode}-#{@block.id}"}
-        phx-hook="TiptapEditor"
-        data-id={@block.id}
-        data-readonly={to_string(@mode != :edit)}
-        phx-update="ignore"
-        data-content={Jason.encode!(@block.content["description"])}
-        class="prose prose-sm max-w-none text-base-content/70 mb-4"
-      >
+      <div class="editor-wrapper group relative outline-none" tabindex="-1">
+        <.tiptap_toolbar mode={@mode} />
+        <div
+          :if={@block.content["description"]}
+          id={"tiptap-desc-#{@mode}-#{@block.id}"}
+          phx-hook="TiptapEditor"
+          data-id={@block.id}
+          data-readonly={to_string(@mode != :edit)}
+          phx-update="ignore"
+          data-content={Jason.encode!(@block.content["description"])}
+          class="prose prose-sm max-w-none text-base-content/70 mb-4"
+        >
+        </div>
       </div>
       <div class="space-y-3">
         <a
@@ -179,15 +185,18 @@ defmodule AthenaWeb.BlockComponents do
 
     ~H"""
     <div class="relative">
-      <div
-        id={"tiptap-quiz-#{@mode}-#{@block.id}"}
-        phx-hook="TiptapEditor"
-        data-id={@block.id}
-        data-readonly={to_string(@mode != :edit)}
-        phx-update="ignore"
-        data-content={Jason.encode!(@block.content["body"] || %{})}
-        class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed mb-6"
-      >
+      <div class="editor-wrapper group relative outline-none" tabindex="-1">
+        <.tiptap_toolbar mode={@mode} />
+        <div
+          id={"tiptap-quiz-#{@mode}-#{@block.id}"}
+          phx-hook="TiptapEditor"
+          data-id={@block.id}
+          data-readonly={to_string(@mode != :edit)}
+          phx-update="ignore"
+          data-content={Jason.encode!(@block.content["body"] || %{})}
+          class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed mb-6"
+        >
+        </div>
       </div>
 
       <div class="pl-4 border-l-4 border-primary/20">
@@ -520,4 +529,254 @@ defmodule AthenaWeb.BlockComponents do
     </div>
     """
   end
+
+  @doc false
+  defp tiptap_toolbar(%{mode: :edit} = assigns) do
+    ~H"""
+    <div class="fixed-toolbar hidden group-focus-within:flex flex-wrap gap-2 bg-base-100 border border-base-300 rounded-sm p-1.5 mb-3 shadow-sm sticky top-2 z-10 items-center">
+      <div class="join border border-base-200 rounded-sm">
+        <select
+          class="join-item select select-bordered select-sm min-h-0 h-8 text-xs font-normal px-2 bg-transparent focus:outline-none"
+          data-action="font-family"
+        >
+          <option value="">{gettext("Font")}</option>
+          <option value="Inter">Inter</option>
+          <option value="Arial">Arial</option>
+          <option value="Courier New">Courier</option>
+          <option value="Times New Roman">Times</option>
+        </select>
+        <select
+          class="join-item select select-bordered select-sm min-h-0 h-8 text-xs font-normal px-2 bg-transparent focus:outline-none border-l-0"
+          data-action="font-size"
+        >
+          <option value="">{gettext("Size")}</option>
+          <option value="12px">12px</option>
+          <option value="14px">14px</option>
+          <option value="16px">16px</option>
+          <option value="18px">18px</option>
+          <option value="24px">24px</option>
+          <option value="32px">32px</option>
+        </select>
+      </div>
+
+      <div class="join border border-base-200 rounded-sm">
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3 text-base"
+          data-action="bold"
+          title={gettext("Bold")}
+        >
+          <b>B</b>
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3 text-base"
+          data-action="italic"
+          title={gettext("Italic")}
+        >
+          <i class="font-serif">I</i>
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3 text-base"
+          data-action="underline"
+          title={gettext("Underline")}
+        >
+          <u>U</u>
+        </button>
+
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-2 text-sm font-serif"
+          data-action="subscript"
+          title={gettext("Subscript")}
+        >
+          X₂
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-2 text-sm font-serif"
+          data-action="superscript"
+          title={gettext("Superscript")}
+        >
+          X²
+        </button>
+
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3 border-l border-base-200"
+          data-action="inline-code"
+          title={gettext("Inline Code")}
+        >
+          <.icon name="hero-code-bracket" class="size-5" />
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
+          data-action="highlight"
+          title={gettext("Highlight")}
+        >
+          🖍️
+        </button>
+
+        <div
+          class="join-item flex items-center px-2 border-l border-base-200"
+          title={gettext("Text Color")}
+        >
+          <.icon name="hero-swatch" class="size-4 mr-1 text-base-content/50" />
+          <input
+            type="color"
+            class="w-6 h-6 p-0 border-0 bg-transparent cursor-pointer rounded-sm"
+            data-action="text-color"
+            value="#000000"
+          />
+        </div>
+        <div
+          class="join-item flex items-center px-2 border-l border-base-200"
+          title={gettext("Background Color")}
+        >
+          <.icon name="hero-paint-brush" class="size-4 mr-1 text-base-content/50" />
+          <input
+            type="color"
+            class="w-6 h-6 p-0 border-0 bg-transparent cursor-pointer rounded-sm"
+            data-action="bg-color"
+            value="#ffffff"
+          />
+        </div>
+      </div>
+
+      <div class="join border border-base-200 rounded-sm">
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3 font-bold text-base"
+          data-action="paragraph"
+          title={gettext("Paragraph")}
+        >
+          ¶
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm font-bold text-base"
+          data-action="h1"
+          title={gettext("Heading 1")}
+        >
+          H1
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm font-bold text-base"
+          data-action="h2"
+          title={gettext("Heading 2")}
+        >
+          H2
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm font-bold text-base"
+          data-action="h3"
+          title={gettext("Heading 3")}
+        >
+          H3
+        </button>
+
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-2 border-l border-base-200"
+          data-action="align-left"
+          title={gettext("Align Left")}
+        >
+          <.icon name="hero-bars-3-bottom-left" class="size-5" />
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-2"
+          data-action="align-center"
+          title={gettext("Align Center")}
+        >
+          <.icon name="hero-bars-3" class="size-5" />
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-2"
+          data-action="align-right"
+          title={gettext("Align Right")}
+        >
+          <.icon name="hero-bars-3-bottom-right" class="size-5" />
+        </button>
+      </div>
+
+      <div class="join border border-base-200 rounded-sm">
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
+          data-action="bullet"
+          title={gettext("Bullet List")}
+        >
+          <.icon name="hero-list-bullet" class="size-5" />
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3 font-bold font-serif text-base"
+          data-action="ordered"
+          title={gettext("Ordered List")}
+        >
+          1.
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3 border-l border-base-200"
+          data-action="quote"
+          title={gettext("Blockquote")}
+        >
+          <.icon name="hero-chat-bubble-bottom-center-text" class="size-5" />
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
+          data-action="code-block"
+          title={gettext("Code Block")}
+        >
+          <.icon name="hero-command-line" class="size-5" />
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3 font-bold"
+          data-action="divider"
+          title={gettext("Divider")}
+        >
+          —
+        </button>
+      </div>
+
+      <div class="join border border-base-200 rounded-sm">
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
+          data-action="link"
+          title={gettext("Link")}
+        >
+          <.icon name="hero-link" class="size-5" />
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
+          data-action="image"
+          title={gettext("Image")}
+        >
+          <.icon name="hero-photo" class="size-5" />
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3 border-l border-base-200"
+          data-action="table"
+          title={gettext("Insert Table")}
+        >
+          <.icon name="hero-table-cells" class="size-5" />
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  defp tiptap_toolbar(assigns), do: ~H""
 end
