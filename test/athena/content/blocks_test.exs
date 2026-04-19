@@ -104,6 +104,52 @@ defmodule Athena.Content.BlocksTest do
       assert block.order == 500
     end
 
+    test "should insert block between two existing blocks using after_id", %{section: s} do
+      b1 = insert(:block, section: s, order: 1000)
+      _b2 = insert(:block, section: s, order: 2000)
+
+      attrs = %{
+        "type" => "text",
+        "content" => %{"text" => "Inserted"},
+        "section_id" => s.id,
+        "after_id" => b1.id
+      }
+
+      assert {:ok, %Block{} = block} = Blocks.create_block(attrs)
+      assert block.order == 1500
+    end
+
+    test "should insert block at the end if after_id is the last block", %{section: s} do
+      _b1 = insert(:block, section: s, order: 1000)
+      b2 = insert(:block, section: s, order: 2000)
+
+      attrs = %{
+        "type" => "text",
+        "content" => %{"text" => "Inserted at end"},
+        "section_id" => s.id,
+        "after_id" => b2.id
+      }
+
+      assert {:ok, %Block{} = block} = Blocks.create_block(attrs)
+      assert block.order == 3024
+    end
+
+    test "should fallback to normal insertion at the end if after_id does not exist", %{
+      section: s
+    } do
+      insert(:block, section: s, order: 1000)
+
+      attrs = %{
+        "type" => "text",
+        "content" => %{"text" => "Inserted"},
+        "section_id" => s.id,
+        "after_id" => Ecto.UUID.generate()
+      }
+
+      assert {:ok, %Block{} = block} = Blocks.create_block(attrs)
+      assert block.order == 2024
+    end
+
     test "should return error on invalid params" do
       attrs = %{"type" => "text"}
 

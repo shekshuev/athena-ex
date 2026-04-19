@@ -240,8 +240,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
     end
   end
 
-  describe "Active State Highlighting" do
-    test "highlights the active block with ring-2 ring-primary" do
+  describe "Active State Highlighting & Controls" do
+    test "highlights the active block and renders controls" do
       block1 = %Block{id: "block-1", type: :text, content: %{}}
       block2 = %Block{id: "block-2", type: :text, content: %{}}
 
@@ -252,8 +252,15 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_block_id: "block-1"
         )
 
-      assert html =~ ~r/id="block-block-1".*?ring-2 ring-primary/s
-      assert html =~ ~r/id="block-block-2".*?ring-1 ring-base-300/s
+      assert html =~ ~r/ring-2 ring-primary bg-base-100/s
+      assert html =~ ~r/ring-1 ring-base-300 hover:ring-primary\/50/s
+
+      assert html =~ "move_block_up"
+      assert html =~ "move_block_down"
+      assert html =~ "hero-chevron-up"
+      assert html =~ "hero-chevron-down"
+
+      assert html =~ ~s(phx-value-after_id="block-1")
     end
   end
 end
