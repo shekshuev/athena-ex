@@ -1,21 +1,23 @@
 import { Editor } from "@tiptap/core";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Color from "@tiptap/extension-color";
+import Details from "@tiptap/extension-details";
+import DetailsContent from "@tiptap/extension-details-content";
+import DetailsSummary from "@tiptap/extension-details-summary";
 import FontFamily from "@tiptap/extension-font-family";
 import Highlight from "@tiptap/extension-highlight";
 import TiptapImage from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
+import Mathematics from "@tiptap/extension-mathematics";
 import Placeholder from "@tiptap/extension-placeholder";
+import Subscript from "@tiptap/extension-subscript";
+import Superscript from "@tiptap/extension-superscript";
 import Table from "@tiptap/extension-table";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import TableRow from "@tiptap/extension-table-row";
 import TextAlign from "@tiptap/extension-text-align";
 import TextStyle from "@tiptap/extension-text-style";
-
-import BubbleMenu from "@tiptap/extension-bubble-menu";
-import Subscript from "@tiptap/extension-subscript";
-import Superscript from "@tiptap/extension-superscript";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 import { common, createLowlight } from "lowlight";
@@ -118,7 +120,13 @@ Hooks.TiptapEditor = {
       TableHeader,
       TableCell,
       Placeholder.configure({
-        placeholder: "Type here...",
+        includeChildren: true,
+        placeholder: ({ node }) => {
+          if (node.type.name === "detailsSummary") {
+            return "Spoiler header...";
+          }
+          return "Type here...";
+        },
         emptyEditorClass: "is-editor-empty",
       }),
       TextStyle,
@@ -126,39 +134,67 @@ Hooks.TiptapEditor = {
       FontFamily,
       Subscript,
       Superscript,
+      Mathematics.configure({
+        shouldRender: (state, pos, node) => {
+          const $pos = state.doc.resolve(pos);
+          return (
+            node.type.name === "text" && $pos.parent.type.name !== "codeBlock"
+          );
+        },
+      }),
+      Details.configure({
+        HTMLAttributes: {
+          class: "tiptap-details",
+        },
+      }),
+      DetailsSummary.configure({
+        HTMLAttributes: {
+          class: "tiptap-details-summary",
+        },
+      }),
+      DetailsContent.configure({
+        HTMLAttributes: {
+          class: "tiptap-details-content",
+        },
+      }),
     ];
 
-    if (!isReadOnly) {
-      this.tableBubbleMenuEl = document.createElement("div");
-      this.tableBubbleMenuEl.innerHTML = `
-        <div class="join bg-base-100 shadow-xl border border-base-300 rounded-sm p-1 flex items-center">
-          <button type="button" class="join-item btn btn-sm btn-ghost rounded-sm px-2 text-success" data-action="add-row" title="Add Row">
-            <svg class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> Row
-          </button>
-          <button type="button" class="join-item btn btn-sm btn-ghost rounded-sm px-2 text-success" data-action="add-col" title="Add Column">
-            <svg class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> Col
-          </button>
-          <button type="button" class="join-item btn btn-sm btn-ghost rounded-sm px-2 border-l border-base-200 text-error" data-action="del-row" title="Delete Row">
-            <svg class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> Row
-          </button>
-          <button type="button" class="join-item btn btn-sm btn-ghost rounded-sm px-2 text-error" data-action="del-col" title="Delete Column">
-            <svg class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> Col
-          </button>
-          <button type="button" class="join-item btn btn-sm btn-ghost rounded-sm px-2 text-error" data-action="del-table" title="Delete Table">
-            <svg class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-          </button>
-        </div>
-      `;
+    const updateToolbarState = (editor) => {
+      const wrapper = hook.el.closest(".editor-wrapper");
+      const toolbar = wrapper ? wrapper.querySelector(".fixed-toolbar") : null;
+      if (!toolbar) return;
 
-      extensions.push(
-        BubbleMenu.configure({
-          pluginKey: "tableBubbleMenu",
-          element: this.tableBubbleMenuEl,
-          shouldShow: ({ editor }) => editor.isActive("table"),
-          tippyOptions: { duration: 100, placement: "bottom" },
-        }),
+      const tableControls = toolbar.querySelectorAll(".tiptap-table-control");
+
+      if (tableControls) {
+        for (const tableControl of tableControls) {
+          if (editor.isActive("table")) {
+            tableControl.classList.remove("hidden");
+          } else {
+            tableControl.classList.add("hidden");
+          }
+        }
+      }
+
+      const fontSelect = toolbar.querySelector('[data-action="font-family"]');
+      if (fontSelect) {
+        const activeFont = editor.getAttributes("textStyle").fontFamily || "";
+        fontSelect.value = activeFont.replace(/['"]/g, "");
+      }
+
+      const colorInput = toolbar.querySelector('[data-action="text-color"]');
+      if (colorInput) {
+        colorInput.value = editor.getAttributes("textStyle").color || "#000000";
+      }
+
+      const highlightInput = toolbar.querySelector(
+        '[data-action="highlight-color"]',
       );
-    }
+      if (highlightInput) {
+        highlightInput.value =
+          editor.getAttributes("highlight").color || "#ffff00";
+      }
+    };
 
     this.editor = new Editor({
       element: this.el,
@@ -172,6 +208,7 @@ Hooks.TiptapEditor = {
       },
       onUpdate: ({ editor }) => {
         if (isReadOnly) return;
+        updateToolbarState(editor);
         clearTimeout(timeout);
         timeout = setTimeout(() => {
           hook.pushEvent("update_content", {
@@ -179,6 +216,12 @@ Hooks.TiptapEditor = {
             content: editor.getJSON(),
           });
         }, 500);
+      },
+      onSelectionUpdate: ({ editor }) => {
+        if (!isReadOnly) updateToolbarState(editor);
+      },
+      onTransaction: ({ editor }) => {
+        if (!isReadOnly) updateToolbarState(editor);
       },
     });
 
@@ -198,7 +241,7 @@ Hooks.TiptapEditor = {
           if (action === "bold") chain.toggleBold().run();
           if (action === "italic") chain.toggleItalic().run();
           if (action === "underline") chain.toggleUnderline().run();
-          if (action === "highlight") chain.toggleHighlight().run();
+          if (action === "unset-highlight") chain.unsetHighlight().run();
           if (action === "inline-code") chain.toggleCode().run();
           if (action === "subscript") chain.toggleSubscript().run();
           if (action === "superscript") chain.toggleSuperscript().run();
@@ -213,6 +256,13 @@ Hooks.TiptapEditor = {
 
           if (action === "quote") chain.toggleBlockquote().run();
           if (action === "code-block") chain.toggleCodeBlock().run();
+          if (action === "details") {
+            if (this.editor.isActive("details")) {
+              chain.unsetDetails().run();
+            } else {
+              chain.setDetails().run();
+            }
+          }
           if (action === "divider") chain.setHorizontalRule().run();
 
           if (action === "align-left") chain.setTextAlign("left").run();
@@ -221,6 +271,11 @@ Hooks.TiptapEditor = {
 
           if (action === "table")
             chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+          if (action === "add-row") chain.addRowAfter().run();
+          if (action === "add-col") chain.addColumnAfter().run();
+          if (action === "del-row") chain.deleteRow().run();
+          if (action === "del-col") chain.deleteColumn().run();
+          if (action === "del-table") chain.deleteTable().run();
 
           if (action === "link") {
             const url = window.prompt("URL:");
@@ -243,6 +298,8 @@ Hooks.TiptapEditor = {
             const chain = this.editor.chain().focus();
 
             if (action === "text-color") chain.setColor(e.target.value).run();
+            if (action === "highlight-color")
+              chain.setHighlight({ color: e.target.value }).run();
           }
         });
 
@@ -256,10 +313,6 @@ Hooks.TiptapEditor = {
               if (value) chain.setFontFamily(value).run();
               else chain.unsetFontFamily().run();
             }
-            if (action === "font-size") {
-              if (value) chain.setFontSize(value).run();
-              else chain.unsetFontSize().run();
-            }
           }
         });
 
@@ -270,25 +323,6 @@ Hooks.TiptapEditor = {
           }
         });
       }
-
-      this.tableBubbleMenuEl.addEventListener("click", (e) => {
-        const btn = e.target.closest("button");
-        if (!btn) return;
-        e.preventDefault();
-        const action = btn.dataset.action;
-
-        const chain = this.editor.chain().focus();
-
-        if (action === "add-row") chain.addRowAfter().run();
-        if (action === "add-col") chain.addColumnAfter().run();
-        if (action === "del-row") chain.deleteRow().run();
-        if (action === "del-col") chain.deleteColumn().run();
-        if (action === "del-table") chain.deleteTable().run();
-      });
-
-      this.tableBubbleMenuEl.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-      });
 
       this.handleInsertMedia = (e) => {
         if (e.detail.block_id === blockId && e.detail.type === "tiptap_image") {

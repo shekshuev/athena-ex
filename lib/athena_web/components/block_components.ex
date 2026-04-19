@@ -534,19 +534,19 @@ defmodule AthenaWeb.BlockComponents do
   defp tiptap_toolbar(%{mode: :edit} = assigns) do
     ~H"""
     <div class="fixed-toolbar hidden group-focus-within:flex flex-wrap gap-2 bg-base-100 border border-base-300 rounded-sm p-1.5 mb-3 shadow-sm sticky top-2 z-10 items-center">
-      <div class="join border border-base-200 rounded-sm">
+      <div class="join flex-wrap">
         <select
-          class="join-item select select-bordered select-sm min-h-0 h-8 text-xs font-normal px-2 bg-transparent focus:outline-none"
+          class="join-item select select-bordered select-sm min-h-0 h-8 w-36 text-xs font-normal px-2 bg-transparent focus:outline-none"
           data-action="font-family"
         >
           <option value="">{gettext("Font")}</option>
-          <option value="Inter">Inter</option>
           <option value="Arial">Arial</option>
           <option value="Courier New">Courier</option>
           <option value="Times New Roman">Times</option>
+          <option value="Georgia">Georgia</option>
         </select>
         <select
-          class="join-item select select-bordered select-sm min-h-0 h-8 text-xs font-normal px-2 bg-transparent focus:outline-none border-l-0"
+          class="join-item select select-bordered select-sm min-h-0 h-8 w-36 text-xs font-normal px-2 bg-transparent focus:outline-none border-l-0"
           data-action="font-size"
         >
           <option value="">{gettext("Size")}</option>
@@ -557,9 +557,7 @@ defmodule AthenaWeb.BlockComponents do
           <option value="24px">24px</option>
           <option value="32px">32px</option>
         </select>
-      </div>
 
-      <div class="join border border-base-200 rounded-sm">
         <button
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3 text-base"
@@ -584,7 +582,6 @@ defmodule AthenaWeb.BlockComponents do
         >
           <u>U</u>
         </button>
-
         <button
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-2 text-sm font-serif"
@@ -601,26 +598,17 @@ defmodule AthenaWeb.BlockComponents do
         >
           X²
         </button>
-
         <button
           type="button"
-          class="join-item btn btn-sm btn-ghost rounded-sm px-3 border-l border-base-200"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
           data-action="inline-code"
           title={gettext("Inline Code")}
         >
           <.icon name="hero-code-bracket" class="size-5" />
         </button>
-        <button
-          type="button"
-          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
-          data-action="highlight"
-          title={gettext("Highlight")}
-        >
-          🖍️
-        </button>
 
         <div
-          class="join-item flex items-center px-2 border-l border-base-200"
+          class="join-item flex items-center px-2"
           title={gettext("Text Color")}
         >
           <.icon name="hero-swatch" class="size-4 mr-1 text-base-content/50" />
@@ -631,21 +619,28 @@ defmodule AthenaWeb.BlockComponents do
             value="#000000"
           />
         </div>
+
         <div
-          class="join-item flex items-center px-2 border-l border-base-200"
-          title={gettext("Background Color")}
+          class="join-item flex items-center px-2"
+          title={gettext("Highlight Color")}
         >
           <.icon name="hero-paint-brush" class="size-4 mr-1 text-base-content/50" />
           <input
             type="color"
             class="w-6 h-6 p-0 border-0 bg-transparent cursor-pointer rounded-sm"
-            data-action="bg-color"
-            value="#ffffff"
+            data-action="highlight-color"
+            value="#ffff00"
           />
         </div>
-      </div>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-2 border-r border-base-200"
+          data-action="unset-highlight"
+          title={gettext("Clear Highlight")}
+        >
+          <.icon name="hero-no-symbol" class="size-4 text-base-content/50" />
+        </button>
 
-      <div class="join border border-base-200 rounded-sm">
         <button
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3 font-bold text-base"
@@ -678,10 +673,9 @@ defmodule AthenaWeb.BlockComponents do
         >
           H3
         </button>
-
         <button
           type="button"
-          class="join-item btn btn-sm btn-ghost rounded-sm px-2 border-l border-base-200"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-2"
           data-action="align-left"
           title={gettext("Align Left")}
         >
@@ -703,9 +697,7 @@ defmodule AthenaWeb.BlockComponents do
         >
           <.icon name="hero-bars-3-bottom-right" class="size-5" />
         </button>
-      </div>
 
-      <div class="join border border-base-200 rounded-sm">
         <button
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3"
@@ -724,7 +716,7 @@ defmodule AthenaWeb.BlockComponents do
         </button>
         <button
           type="button"
-          class="join-item btn btn-sm btn-ghost rounded-sm px-3 border-l border-base-200"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
           data-action="quote"
           title={gettext("Blockquote")}
         >
@@ -746,9 +738,16 @@ defmodule AthenaWeb.BlockComponents do
         >
           —
         </button>
-      </div>
 
-      <div class="join border border-base-200 rounded-sm">
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
+          data-action="details"
+          title={gettext("Spoiler / Details")}
+        >
+          <.icon name="hero-chevron-down" class="size-5" />
+        </button>
+
         <button
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3"
@@ -767,11 +766,51 @@ defmodule AthenaWeb.BlockComponents do
         </button>
         <button
           type="button"
-          class="join-item btn btn-sm btn-ghost rounded-sm px-3 border-l border-base-200"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
           data-action="table"
           title={gettext("Insert Table")}
         >
           <.icon name="hero-table-cells" class="size-5" />
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-2 text-xs font-bold tracking-wider hidden tiptap-table-control"
+          data-action="add-row"
+          title={gettext("Add Row")}
+        >
+          + Row
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-2 text-xs font-bold tracking-wider hidden tiptap-table-control"
+          data-action="add-col"
+          title={gettext("Add Column")}
+        >
+          + Col
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-2 text-xs font-bold tracking-wider hidden tiptap-table-control"
+          data-action="del-row"
+          title={gettext("Delete Row")}
+        >
+          - Row
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-2 text-xs font-bold tracking-wider hidden tiptap-table-control"
+          data-action="del-col"
+          title={gettext("Delete Column")}
+        >
+          - Col
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-2 hidden tiptap-table-control"
+          data-action="del-table"
+          title={gettext("Delete Table")}
+        >
+          <.icon name="hero-trash" class="size-4" />
         </button>
       </div>
     </div>
