@@ -345,4 +345,34 @@ defmodule Athena.Content.BlocksTest do
       assert {:error, :not_found} = Blocks.get_block(instructor, block.id)
     end
   end
+
+  describe "count_blocks_by_course/1" do
+    test "returns a map with section block counts" do
+      course = insert(:course)
+
+      s1 = insert(:section, course: course)
+      s2 = insert(:section, course: course)
+
+      other_course = insert(:course)
+      s3 = insert(:section, course: other_course)
+
+      insert(:block, section: nil, section_id: s1.id)
+      insert(:block, section: nil, section_id: s1.id)
+      insert(:block, section: nil, section_id: s2.id)
+      insert(:block, section: nil, section_id: s3.id)
+
+      counts = Blocks.count_blocks_by_course(course.id)
+
+      assert map_size(counts) == 2
+      assert counts[s1.id] == 2
+      assert counts[s2.id] == 1
+    end
+
+    test "returns an empty map if course has no blocks" do
+      course = insert(:course)
+      _section = insert(:section, course: course)
+
+      assert Blocks.count_blocks_by_course(course.id) == %{}
+    end
+  end
 end

@@ -30,6 +30,7 @@ defmodule AthenaWeb.LearnLive.Course do
       overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
       full_tree = Content.get_course_tree(course_id, user)
       linear_sections = Content.list_linear_lessons(course_id, user)
+      block_counts = Content.count_blocks_by_course(course_id)
 
       accessible_ids =
         Learning.accessible_section_ids(user, course_id, linear_sections, overrides)
@@ -44,6 +45,7 @@ defmodule AthenaWeb.LearnLive.Course do
        |> assign(:full_tree, full_tree)
        |> assign(:accessible_ids, accessible_ids)
        |> assign(:waterline_id, waterline_id)
+       |> assign(:block_counts, block_counts)
        |> assign(:viewing_parent_id, params["parent_id"])}
     else
       _ ->
@@ -84,6 +86,7 @@ defmodule AthenaWeb.LearnLive.Course do
     overrides = Learning.get_student_overrides(user.id, course_id, socket.assigns.cohort_id)
     full_tree = Content.get_course_tree(course_id, user)
     linear_sections = Content.list_linear_lessons(course_id, user)
+    block_counts = Content.count_blocks_by_course(course_id)
     accessible_ids = Learning.accessible_section_ids(user, course_id, linear_sections, overrides)
     waterline_id = List.last(accessible_ids)
 
@@ -96,6 +99,7 @@ defmodule AthenaWeb.LearnLive.Course do
      |> assign(:accessible_ids, accessible_ids)
      |> assign(:waterline_id, waterline_id)
      |> assign(:current_nodes, current_nodes)
+     |> assign(:block_counts, block_counts)
      |> assign(:breadcrumbs, breadcrumbs)}
   end
 
@@ -146,6 +150,13 @@ defmodule AthenaWeb.LearnLive.Course do
 
       <div>
         <div class="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-base-content/50 mb-6 overflow-x-auto">
+          <.link
+            patch={~p"/learn/courses/#{@course.id}?#{[cohort_id: @cohort_id]}"}
+            class="hover:text-primary whitespace-nowrap transition-colors"
+          >
+            {gettext("Course Home")}
+          </.link>
+
           <%= for crumb <- @breadcrumbs do %>
             <.icon name="hero-chevron-right" class="size-4 text-base-content/30 shrink-0 mx-1" />
             <.link
@@ -181,15 +192,36 @@ defmodule AthenaWeb.LearnLive.Course do
                     ]}
                   />
 
+                  <% has_content = Map.get(@block_counts, node.id, 0) > 0 %>
                   <div class="flex-1 truncate">
-                    <.link
-                      navigate={
-                        ~p"/learn/courses/#{@course.id}/play/#{node.id}?#{[cohort_id: @cohort_id]}"
-                      }
-                      class="block text-lg font-bold text-base-content group-hover:text-primary transition-colors truncate"
-                    >
-                      {node.title}
-                    </.link>
+                    <%= if has_content do %>
+                      <.link
+                        navigate={
+                          ~p"/learn/courses/#{@course.id}/play/#{node.id}?#{[cohort_id: @cohort_id]}"
+                        }
+                        class="block text-lg font-bold text-base-content group-hover:text-primary transition-colors truncate"
+                      >
+                        {node.title}
+                      </.link>
+                    <% else %>
+                      <%= if node.children != [] do %>
+                        <.link
+                          patch={
+                            ~p"/learn/courses/#{@course.id}?#{[parent_id: node.id, cohort_id: @cohort_id]}"
+                          }
+                          class="block text-lg font-bold text-base-content/60 group-hover:text-base-content transition-colors truncate"
+                        >
+                          {node.title}
+                        </.link>
+                      <% else %>
+                        <span class="block text-lg font-bold text-base-content/40 truncate">
+                          {node.title}
+                          <span class="text-xs uppercase tracking-widest ml-2 opacity-50">
+                            {gettext("Empty")}
+                          </span>
+                        </span>
+                      <% end %>
+                    <% end %>
                   </div>
                 </div>
 

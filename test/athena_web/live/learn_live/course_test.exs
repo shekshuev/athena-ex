@@ -15,7 +15,10 @@ defmodule AthenaWeb.LearnLive.CourseTest do
       course = insert(:course, title: "Secret Course", description: "A test course description")
 
       insert(:enrollment, account_id: user.id, course_id: course.id)
-      insert(:section, course: course, title: "Module 1: Basics", visibility: :enrolled)
+
+      s1 = insert(:section, course: course, title: "Module 1: Basics", visibility: :enrolled)
+
+      insert(:block, section: nil, section_id: s1.id)
 
       {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}")
 
@@ -68,7 +71,9 @@ defmodule AthenaWeb.LearnLive.CourseTest do
       insert(:enrollment, account_id: user.id, course_id: course.id)
 
       folder = insert(:section, course: course, title: "Chapter 1 (Folder)")
-      insert(:section, course: course, title: "Lesson 1", parent_id: folder.id)
+      child = insert(:section, course: course, title: "Lesson 1", parent_id: folder.id)
+
+      insert(:block, section: nil, section_id: child.id)
 
       {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}")
 
@@ -80,6 +85,8 @@ defmodule AthenaWeb.LearnLive.CourseTest do
       assert html_folder =~ "Lesson 1"
       assert html_folder =~ "hero-chevron-right"
       assert html_folder =~ "Chapter 1 (Folder)"
+
+      assert html_folder =~ "Course Home"
     end
 
     test "handles real-time content refresh via PubSub", %{conn: conn, user: user} do

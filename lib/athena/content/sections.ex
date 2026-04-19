@@ -9,7 +9,7 @@ defmodule Athena.Content.Sections do
 
   import Ecto.Query
   alias Athena.Repo
-  alias Athena.Content.{Course, Section}
+  alias Athena.Content.{Course, Section, Blocks}
 
   @doc """
   Retrieves a single section by its ID without ACL (internal use).
@@ -154,20 +154,27 @@ defmodule Athena.Content.Sections do
 
   @doc """
   Returns a flat list of all sections in a course safely.
-  By flattening the already-filtered tree, we guarantee that if a parent 
-  is hidden/locked, all its children are automatically excluded.
+  Only includes sections that actually have content blocks (blocks_count > 0).
   """
   @spec list_linear_lessons(String.t(), Athena.Identity.Account.t() | nil | :all) :: [Section.t()]
   def list_linear_lessons(course_id, user_or_mode \\ :all) do
+    block_counts = Blocks.count_blocks_by_course(course_id)
+
     course_id
     |> get_course_tree(user_or_mode)
-    |> flatten_tree()
+    |> flatten_and_filter_tree(block_counts)
   end
 
   @doc false
-  defp flatten_tree(nodes) do
+  defp flatten_and_filter_tree(nodes, block_counts) do
     Enum.flat_map(nodes, fn node ->
-      [node | flatten_tree(node.children || [])]
+      count = Map.get(block_counts, node.id, 0)
+
+      if count > 0 do
+        [node | flatten_and_filter_tree(node.children || [], block_counts)]
+      else
+        flatten_and_filter_tree(node.children || [], block_counts)
+      end
     end)
   end
 

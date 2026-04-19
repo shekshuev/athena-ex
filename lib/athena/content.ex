@@ -44,6 +44,7 @@ defmodule Athena.Content do
   defdelegate get_block(id), to: Blocks
   defdelegate prepare_media_upload(course_id, filename), to: Blocks
   defdelegate get_blocks_map(ids), to: Blocks
+  defdelegate count_blocks_by_course(course_id), to: Blocks
 
   def create_block(attrs), do: Blocks.create_block(attrs) |> notify_subscribers()
   def update_block(block, attrs), do: Blocks.update_block(block, attrs) |> notify_subscribers()

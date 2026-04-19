@@ -237,6 +237,19 @@ defmodule Athena.Content.Blocks do
     |> Map.new(&{&1.id, &1})
   end
 
+  @doc """
+  Returns a map of %{section_id => blocks_count} for all sections in a course.
+  """
+  def count_blocks_by_course(course_id) do
+    Block
+    |> join(:inner, [b], s in Section, on: b.section_id == s.id)
+    |> where([b, s], s.course_id == ^course_id)
+    |> group_by([b], b.section_id)
+    |> select([b], {b.section_id, count(b.id)})
+    |> Repo.all()
+    |> Map.new()
+  end
+
   @doc false
   defp calculate_order_after(section_id, after_id) do
     blocks =
