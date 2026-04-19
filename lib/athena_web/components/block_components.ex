@@ -199,7 +199,7 @@ defmodule AthenaWeb.BlockComponents do
         </div>
       </div>
 
-      <div class="pl-4 border-l-4 border-primary/20">
+      <div class="pl-4">
         <%= if @mode == :review do %>
           <div class="text-[10px] font-black uppercase tracking-widest text-base-content/40 mb-3">
             {gettext("Student's Answer:")}
@@ -211,55 +211,34 @@ defmodule AthenaWeb.BlockComponents do
           q_type={@q_type}
           options={@options}
           answer={@answer}
+          submission={@submission}
         />
       </div>
     </div>
     """
   end
 
-  defp extract_quiz_answer(%{mode: :play} = assigns, _q_type) do
-    Map.get(assigns.answers || %{}, assigns.block.id)
+  defp extract_quiz_answer(assigns, q_type) do
+    live_answer = Map.get(assigns.answers || %{}, assigns.block.id)
+
+    if live_answer do
+      live_answer
+    else
+      extract_from_submission(assigns[:submission], q_type)
+    end
   end
 
-  defp extract_quiz_answer(%{mode: :review, submission: %{content: content}}, "exact_match"),
-    do: content["text_answer"]
+  defp extract_from_submission(%{content: content}, q_type)
+       when q_type in ["exact_match", "open"] do
+    Map.get(content, "text_answer") || Map.get(content, :text_answer)
+  end
 
-  defp extract_quiz_answer(%{mode: :review, submission: %{content: content}}, "open"),
-    do: content["text_answer"]
+  defp extract_from_submission(%{content: content}, _q_type) do
+    Map.get(content, "selected_choices") || Map.get(content, :selected_choices)
+  end
 
-  defp extract_quiz_answer(%{mode: :review, submission: %{content: content}}, _q_type),
-    do: content["selected_choices"]
-
-  defp extract_quiz_answer(_assigns, _q_type), do: nil
-
-  defp render_quiz_exam(assigns) do
-    ~H"""
-    <div class="p-8 bg-base-100 rounded-sm border border-base-200 shadow-sm text-center relative overflow-hidden">
-      <div class="absolute top-0 left-0 w-full h-1 bg-primary"></div>
-      <div class="size-16 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-4">
-        <.icon name="hero-academic-cap-solid" class="size-8" />
-      </div>
-      <h3 class="text-2xl font-black mb-2">{gettext("Final Exam")}</h3>
-      <div class="flex items-center justify-center gap-4 text-sm font-bold text-base-content/60 uppercase tracking-widest">
-        <span>{@block.content["count"] || 10} {gettext("Questions")}</span>
-        <span :if={@block.content["time_limit"]}>
-          • {@block.content["time_limit"]} {gettext("Min")}
-        </span>
-      </div>
-
-      <%= if @mode == :play do %>
-        <div class="mt-8">
-          <button
-            phx-click="start_exam"
-            phx-value-block_id={@block.id}
-            class="btn btn-primary px-10 shadow-lg shadow-primary/20"
-          >
-            {gettext("Start Exam")} <.icon name="hero-play-solid" class="size-4 ml-2" />
-          </button>
-        </div>
-      <% end %>
-    </div>
-    """
+  defp extract_from_submission(_submission, _q_type) do
+    nil
   end
 
   defp render_quiz_inputs(%{q_type: "exact_match"} = assigns) do
@@ -309,14 +288,16 @@ defmodule AthenaWeb.BlockComponents do
         <% is_correct = opt["is_correct"] in [true, "true"] %>
 
         <label class={[
-          "flex items-start gap-4 p-4 rounded-sm border transition-all",
+          "flex items-start gap-4 p-4 rounded-sm transition-all",
           @mode == :play &&
             "hover:bg-base-200/50 cursor-pointer has-checked:bg-primary/5 has-checked:border-primary",
-          @mode == :review && is_selected && is_correct && "bg-success/10 border-success/30",
-          @mode == :review && is_selected && not is_correct && "bg-error/10 border-error/30",
+          @mode == :review && is_selected && is_correct &&
+            "bg-success/10 border-success/30",
+          @mode == :review && is_selected && not is_correct &&
+            "bg-error/10 border-error/30",
           @mode == :review && not is_selected && is_correct &&
             "bg-base-100 border-success/30 ring-2 ring-success/20",
-          @mode == :review && not is_selected && not is_correct &&
+          @mode == :review && (not is_selected and not is_correct) &&
             "bg-base-100 border-base-300 opacity-60",
           @mode == :edit && "bg-base-100 border-base-200 opacity-60 pointer-events-none"
         ]}>
@@ -347,9 +328,46 @@ defmodule AthenaWeb.BlockComponents do
               >
                 {gettext("Student's Choice")}
               </div>
+
+              <div
+                :if={opt["explanation"] not in [nil, ""]}
+                class="text-sm mt-2 text-base-content/70 italic border-l-2 border-base-300 pl-3"
+              >
+                {opt["explanation"]}
+              </div>
             <% end %>
           </div>
         </label>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp render_quiz_exam(assigns) do
+    ~H"""
+    <div class="p-8 bg-base-100 rounded-sm border border-base-200 shadow-sm text-center relative overflow-hidden">
+      <div class="absolute top-0 left-0 w-full h-1 bg-primary"></div>
+      <div class="size-16 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-4">
+        <.icon name="hero-academic-cap-solid" class="size-8" />
+      </div>
+      <h3 class="text-2xl font-black mb-2">{gettext("Final Exam")}</h3>
+      <div class="flex items-center justify-center gap-4 text-sm font-bold text-base-content/60 uppercase tracking-widest">
+        <span>{@block.content["count"] || 10} {gettext("Questions")}</span>
+        <span :if={@block.content["time_limit"]}>
+          • {@block.content["time_limit"]} {gettext("Min")}
+        </span>
+      </div>
+
+      <%= if @mode == :play do %>
+        <div class="mt-8">
+          <button
+            phx-click="start_exam"
+            phx-value-block_id={@block.id}
+            class="btn btn-primary px-10 shadow-lg shadow-primary/20"
+          >
+            {gettext("Start Exam")} <.icon name="hero-play-solid" class="size-4 ml-2" />
+          </button>
+        </div>
       <% end %>
     </div>
     """

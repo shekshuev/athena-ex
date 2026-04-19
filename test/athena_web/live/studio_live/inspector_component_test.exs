@@ -312,7 +312,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
 
       assert html =~ "None (Scroll past)"
       assert html =~ "Require Submission"
-      refute html =~ "Pass Auto-Grade"
+      assert html =~ "Pass Auto-Grade"
     end
 
     test "renders default values for fresh quiz exam block", %{block: base_block} do

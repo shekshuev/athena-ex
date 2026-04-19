@@ -29,7 +29,6 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
             id={"block-wrapper-#{block.id}"}
             data-id={block.id}
             class="relative group flex flex-col"
-            phx-click-away={if @active_block_id == block.id, do: "deselect_block"}
           >
             <div class="absolute -left-8 top-0 flex flex-col items-center gap-1 opacity-0 group-hover:opacity-50 hover:opacity-100! transition-opacity sm:flex z-10">
               <.button

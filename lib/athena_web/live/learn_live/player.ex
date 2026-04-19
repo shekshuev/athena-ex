@@ -473,7 +473,7 @@ defmodule AthenaWeb.LearnLive.Player do
         <%= for block <- @visible_blocks do %>
           <% submission = Map.get(@submissions || %{}, block.id) %>
           <% is_submitted = submission && submission.status in [:graded, :needs_review] %>
-          <% mode = if is_submitted, do: :review, else: :play %>
+          <% _mode = if is_submitted, do: :review, else: :play %>
 
           <div
             id={"block-wrapper-#{block.id}"}
@@ -481,13 +481,33 @@ defmodule AthenaWeb.LearnLive.Player do
           >
             <%= case block.type do %>
               <% :quiz_question -> %>
+                <% is_completed = block.id in @completed_ids %>
+
+                <% is_passed = quiz_passed?(block, submission) %>
+
+                <% is_pass_auto_grade =
+                  block.completion_rule && block.completion_rule.type == :pass_auto_grade %>
+
+                <% is_locked =
+                  cond do
+                    is_completed -> true
+                    is_nil(submission) -> false
+                    submission.status == :needs_review -> true
+                    is_pass_auto_grade -> false
+                    true -> true
+                  end %>
+
+                <% mode = if is_locked, do: :review, else: :play %>
+
                 <form phx-submit="submit_quiz" id={"quiz-form-#{block.id}"}>
                   <input type="hidden" name="block_id" value={block.id} />
 
                   <.content_block block={block} mode={mode} submission={submission} />
 
                   <div
-                    :if={submission && block.content["general_explanation"] not in [nil, ""]}
+                    :if={
+                      is_locked && submission && block.content["general_explanation"] not in [nil, ""]
+                    }
                     class="mt-4 mb-4 p-4 bg-info/10 text-info-content rounded-xl text-sm border border-info/20"
                   >
                     <strong>{gettext("Explanation:")}</strong> {block.content["general_explanation"]}
@@ -497,9 +517,13 @@ defmodule AthenaWeb.LearnLive.Player do
                     <button
                       type="submit"
                       class="btn btn-primary shadow-lg shadow-primary/20"
-                      disabled={is_submitted}
+                      disabled={is_locked}
                     >
-                      {if submission, do: gettext("Submitted"), else: gettext("Submit Answer")}
+                      {cond do
+                        is_locked -> gettext("Submitted")
+                        submission != nil -> gettext("Retry Answer")
+                        true -> gettext("Submit Answer")
+                      end}
                     </button>
 
                     <%= if submission do %>
@@ -507,13 +531,16 @@ defmodule AthenaWeb.LearnLive.Player do
                         :if={submission.status == :graded}
                         class={[
                           "font-bold flex items-center gap-1 text-lg",
-                          if(submission.score == 100, do: "text-success", else: "text-error")
+                          if(is_passed, do: "text-success", else: "text-error")
                         ]}
                       >
-                        <%= if submission.score == 100 do %>
+                        <%= if is_passed do %>
                           <.icon name="hero-check-circle-solid" class="size-6" /> {gettext("Correct!")}
                         <% else %>
-                          <.icon name="hero-x-circle-solid" class="size-6" /> {gettext("Incorrect.")}
+                          <.icon name="hero-x-circle-solid" class="size-6" />
+                          {if is_locked,
+                            do: gettext("Incorrect."),
+                            else: gettext("Incorrect. Try again.")}
                         <% end %>
                       </div>
 
@@ -764,4 +791,13 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   defp parse_to_unix(_), do: nil
+
+  @doc false
+  def quiz_passed?(_block, nil), do: false
+
+  def quiz_passed?(%{completion_rule: %{type: :pass_auto_grade, min_score: min_score}}, sub) do
+    sub.score >= (min_score || 0)
+  end
+
+  def quiz_passed?(_block, sub), do: sub.score == 100
 end

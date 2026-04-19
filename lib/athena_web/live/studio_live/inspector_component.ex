@@ -493,7 +493,11 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   end
 
   defp completion_options_for(:quiz_question) do
-    [{gettext("None (Scroll past)"), "none"}, {gettext("Require Submission"), "submit"}]
+    [
+      {gettext("None (Scroll past)"), "none"},
+      {gettext("Require Submission"), "submit"},
+      {gettext("Pass Auto-Grade"), "pass_auto_grade"}
+    ]
   end
 
   defp completion_options_for(:quiz_exam) do
