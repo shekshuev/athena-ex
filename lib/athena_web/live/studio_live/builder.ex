@@ -66,7 +66,8 @@ defmodule AthenaWeb.StudioLive.Builder do
            library_search: "",
            show_media_modal: false,
            active_upload_block_id: nil,
-           upload_type: nil
+           upload_type: nil,
+           library_insert_after_id: nil
          )}
 
       _ ->
@@ -294,27 +295,70 @@ defmodule AthenaWeb.StudioLive.Builder do
     {:noreply, assign(socket, active_block_id: id)}
   end
 
-  def handle_event("add_text_block", _, socket) do
+  def handle_event("deselect_block", _, socket) do
+    {:noreply, assign(socket, active_block_id: nil)}
+  end
+
+  def handle_event("move_block_up", %{"id" => id}, socket) do
+    blocks = socket.assigns.blocks
+
+    case Enum.find_index(blocks, &(&1.id == id)) do
+      nil ->
+        {:noreply, socket}
+
+      0 ->
+        {:noreply, socket}
+
+      index ->
+        block = Enum.at(blocks, index)
+        {:ok, _} = Content.reorder_block(block, index - 1)
+        updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
+        {:noreply, assign(socket, blocks: updated_blocks)}
+    end
+  end
+
+  def handle_event("move_block_down", %{"id" => id}, socket) do
+    blocks = socket.assigns.blocks
+
+    case Enum.find_index(blocks, &(&1.id == id)) do
+      nil ->
+        {:noreply, socket}
+
+      index ->
+        if index == length(blocks) - 1 do
+          {:noreply, socket}
+        else
+          block = Enum.at(blocks, index)
+          {:ok, _} = Content.reorder_block(block, index + 1)
+          updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
+          {:noreply, assign(socket, blocks: updated_blocks)}
+        end
+    end
+  end
+
+  def handle_event("add_text_block", params, socket) do
     attrs = %{
       "type" => "text",
       "content" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
-      "section_id" => socket.assigns.active_section_id
+      "section_id" => socket.assigns.active_section_id,
+      "after_id" => clean_after_id(params["after_id"])
     }
 
     create_and_assign_block(socket, attrs)
   end
 
-  def handle_event("add_code_block", _, socket) do
+  def handle_event("add_code_block", params, socket) do
     attrs = %{
       "type" => "code",
       "content" => %{"code" => "IO.puts(:hello)"},
-      "section_id" => socket.assigns.active_section_id
+      "section_id" => socket.assigns.active_section_id,
+      "after_id" => clean_after_id(params["after_id"])
     }
 
     create_and_assign_block(socket, attrs)
   end
 
-  def handle_event("add_quiz_question_block", _, socket) do
+  def handle_event("add_quiz_question_block", params, socket) do
     attrs = %{
       "type" => "quiz_question",
       "content" => %{
@@ -322,16 +366,18 @@ defmodule AthenaWeb.StudioLive.Builder do
         "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
         "options" => []
       },
-      "section_id" => socket.assigns.active_section_id
+      "section_id" => socket.assigns.active_section_id,
+      "after_id" => clean_after_id(params["after_id"])
     }
 
     create_and_assign_block(socket, attrs, gettext("Failed to create quiz block"))
   end
 
-  def handle_event("add_quiz_exam_block", _, socket) do
+  def handle_event("add_quiz_exam_block", params, socket) do
     attrs = %{
       "type" => "quiz_exam",
       "section_id" => socket.assigns.active_section_id,
+      "after_id" => clean_after_id(params["after_id"]),
       "content" => %{
         "count" => 10,
         "time_limit" => nil,
@@ -344,34 +390,37 @@ defmodule AthenaWeb.StudioLive.Builder do
     create_and_assign_block(socket, attrs, gettext("Failed to create quiz exam block"))
   end
 
-  def handle_event("add_image_block", _, socket) do
+  def handle_event("add_image_block", params, socket) do
     attrs = %{
       "type" => "image",
       "content" => %{"url" => nil, "alt" => "", "caption" => ""},
-      "section_id" => socket.assigns.active_section_id
+      "section_id" => socket.assigns.active_section_id,
+      "after_id" => clean_after_id(params["after_id"])
     }
 
     create_and_assign_block(socket, attrs, gettext("Failed to create image block"))
   end
 
-  def handle_event("add_video_block", _, socket) do
+  def handle_event("add_video_block", params, socket) do
     attrs = %{
       "type" => "video",
       "content" => %{"url" => nil, "poster_url" => nil, "controls" => true},
-      "section_id" => socket.assigns.active_section_id
+      "section_id" => socket.assigns.active_section_id,
+      "after_id" => clean_after_id(params["after_id"])
     }
 
     create_and_assign_block(socket, attrs, gettext("Failed to create video block"))
   end
 
-  def handle_event("add_attachment_block", _, socket) do
+  def handle_event("add_attachment_block", params, socket) do
     attrs = %{
       "type" => "attachment",
       "content" => %{
         "description" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
         "files" => []
       },
-      "section_id" => socket.assigns.active_section_id
+      "section_id" => socket.assigns.active_section_id,
+      "after_id" => clean_after_id(params["after_id"])
     }
 
     create_and_assign_block(socket, attrs, gettext("Failed to create attachment block"))
@@ -597,11 +646,16 @@ defmodule AthenaWeb.StudioLive.Builder do
     {:noreply, cancel_upload(socket, upload_name, ref)}
   end
 
-  def handle_event("open_library_picker", _, socket) do
+  def handle_event("open_library_picker", params, socket) do
     {:ok, {blocks, _meta}} = Content.list_library_blocks(socket.assigns.current_user, %{})
 
     {:noreply,
-     assign(socket, library_picker_open: true, library_blocks: blocks, library_search: "")}
+     assign(socket,
+       library_picker_open: true,
+       library_blocks: blocks,
+       library_search: "",
+       library_insert_after_id: clean_after_id(params["after_id"])
+     )}
   end
 
   def handle_event("close_library_picker", _, socket) do
@@ -628,16 +682,22 @@ defmodule AthenaWeb.StudioLive.Builder do
     attrs = %{
       "type" => Atom.to_string(lib_block.type),
       "content" => lib_block.content,
-      "section_id" => socket.assigns.active_section_id
+      "section_id" => socket.assigns.active_section_id,
+      "after_id" => socket.assigns.library_insert_after_id
     }
 
-    case Content.create_block(Map.put(attrs, "order", length(socket.assigns.blocks))) do
+    case Content.create_block(attrs) do
       {:ok, block} ->
-        updated_blocks = socket.assigns.blocks ++ [block]
+        updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
 
         {:noreply,
          socket
-         |> assign(blocks: updated_blocks, active_block_id: block.id, library_picker_open: false)
+         |> assign(
+           blocks: updated_blocks,
+           active_block_id: block.id,
+           library_picker_open: false,
+           library_insert_after_id: nil
+         )
          |> put_flash(:info, gettext("Block inserted from library!"))}
 
       {:error, _} ->
@@ -1053,23 +1113,21 @@ defmodule AthenaWeb.StudioLive.Builder do
   end
 
   defp create_and_assign_block(socket, attrs, error_msg \\ gettext("Failed to create block")) do
-    order = length(socket.assigns.blocks)
-
-    full_attrs =
-      Map.merge(attrs, %{
-        "order" => order,
-        "visibility" => :inherit
-      })
+    full_attrs = Map.put(attrs, "visibility", :inherit)
 
     case Content.create_block(full_attrs) do
       {:ok, block} ->
-        updated_blocks = socket.assigns.blocks ++ [block]
+        updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
         {:noreply, assign(socket, blocks: updated_blocks, active_block_id: block.id)}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, error_msg)}
     end
   end
+
+  defp clean_after_id(nil), do: nil
+  defp clean_after_id(""), do: nil
+  defp clean_after_id(id), do: id
 
   defp parse_quiz_options(opts, correct_id) do
     opts

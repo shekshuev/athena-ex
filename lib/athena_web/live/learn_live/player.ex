@@ -36,15 +36,24 @@ defmodule AthenaWeb.LearnLive.Player do
 
       overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
       linear_lessons = Content.list_linear_lessons(course_id, user)
+      block_counts = Content.count_blocks_by_course(course_id)
 
       accessible_ids =
         Learning.accessible_section_ids(user, course_id, linear_lessons, overrides, team_id)
 
-      first_lesson_id = linear_lessons |> List.first() |> Map.get(:id)
+      first_lesson = List.first(linear_lessons)
+      first_lesson_id = if first_lesson, do: first_lesson.id, else: nil
       section_id = params["section_id"] || first_lesson_id
 
       if section_id in accessible_ids do
-        ctx = %{user: user, overrides: overrides, cohort_id: cohort_id, team_id: team_id}
+        ctx = %{
+          user: user,
+          overrides: overrides,
+          cohort_id: cohort_id,
+          team_id: team_id,
+          block_counts: block_counts
+        }
+
         setup_player_state(socket, course, section_id, linear_lessons, accessible_ids, ctx)
       else
         {:ok,
@@ -103,6 +112,7 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
       |> assign(:submissions, submissions)
       |> assign(:overrides, ctx.overrides)
+      |> assign(:block_counts, ctx.block_counts)
 
     {:ok, schedule_next_unlock(socket, course.id)}
   end
@@ -359,6 +369,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
     overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
     linear_lessons = Content.list_linear_lessons(course_id, user)
+    block_counts = Content.count_blocks_by_course(course_id)
 
     accessible_ids =
       Learning.accessible_section_ids(user, course_id, linear_lessons, overrides, team_id)
@@ -390,6 +401,7 @@ defmodule AthenaWeb.LearnLive.Player do
        |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
        |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
        |> assign(:overrides, overrides)
+       |> assign(:block_counts, block_counts)
        |> schedule_next_unlock(course_id)}
     else
       {:noreply,
@@ -461,7 +473,7 @@ defmodule AthenaWeb.LearnLive.Player do
         <%= for block <- @visible_blocks do %>
           <% submission = Map.get(@submissions || %{}, block.id) %>
           <% is_submitted = submission && submission.status in [:graded, :needs_review] %>
-          <% mode = if is_submitted, do: :review, else: :play %>
+          <% _mode = if is_submitted, do: :review, else: :play %>
 
           <div
             id={"block-wrapper-#{block.id}"}
@@ -469,13 +481,33 @@ defmodule AthenaWeb.LearnLive.Player do
           >
             <%= case block.type do %>
               <% :quiz_question -> %>
+                <% is_completed = block.id in @completed_ids %>
+
+                <% is_passed = quiz_passed?(block, submission) %>
+
+                <% is_pass_auto_grade =
+                  block.completion_rule && block.completion_rule.type == :pass_auto_grade %>
+
+                <% is_locked =
+                  cond do
+                    is_completed -> true
+                    is_nil(submission) -> false
+                    submission.status == :needs_review -> true
+                    is_pass_auto_grade -> false
+                    true -> true
+                  end %>
+
+                <% mode = if is_locked, do: :review, else: :play %>
+
                 <form phx-submit="submit_quiz" id={"quiz-form-#{block.id}"}>
                   <input type="hidden" name="block_id" value={block.id} />
 
                   <.content_block block={block} mode={mode} submission={submission} />
 
                   <div
-                    :if={submission && block.content["general_explanation"] not in [nil, ""]}
+                    :if={
+                      is_locked && submission && block.content["general_explanation"] not in [nil, ""]
+                    }
                     class="mt-4 mb-4 p-4 bg-info/10 text-info-content rounded-xl text-sm border border-info/20"
                   >
                     <strong>{gettext("Explanation:")}</strong> {block.content["general_explanation"]}
@@ -485,9 +517,13 @@ defmodule AthenaWeb.LearnLive.Player do
                     <button
                       type="submit"
                       class="btn btn-primary shadow-lg shadow-primary/20"
-                      disabled={is_submitted}
+                      disabled={is_locked}
                     >
-                      {if submission, do: gettext("Submitted"), else: gettext("Submit Answer")}
+                      {cond do
+                        is_locked -> gettext("Submitted")
+                        submission != nil -> gettext("Retry Answer")
+                        true -> gettext("Submit Answer")
+                      end}
                     </button>
 
                     <%= if submission do %>
@@ -495,13 +531,16 @@ defmodule AthenaWeb.LearnLive.Player do
                         :if={submission.status == :graded}
                         class={[
                           "font-bold flex items-center gap-1 text-lg",
-                          if(submission.score == 100, do: "text-success", else: "text-error")
+                          if(is_passed, do: "text-success", else: "text-error")
                         ]}
                       >
-                        <%= if submission.score == 100 do %>
+                        <%= if is_passed do %>
                           <.icon name="hero-check-circle-solid" class="size-6" /> {gettext("Correct!")}
                         <% else %>
-                          <.icon name="hero-x-circle-solid" class="size-6" /> {gettext("Incorrect.")}
+                          <.icon name="hero-x-circle-solid" class="size-6" />
+                          {if is_locked,
+                            do: gettext("Incorrect."),
+                            else: gettext("Incorrect. Try again.")}
                         <% end %>
                       </div>
 
@@ -588,7 +627,12 @@ defmodule AthenaWeb.LearnLive.Player do
         on_cancel={JS.push("close_course_map")}
       >
         <div class="max-h-[60vh] overflow-y-auto -mx-6 px-6 py-2">
-          <.course_map_tree sections={@tree} active_section_id={@section.id} course_id={@course.id} />
+          <.course_map_tree
+            sections={@tree}
+            active_section_id={@section.id}
+            course_id={@course.id}
+            block_counts={@block_counts}
+          />
         </div>
       </.modal>
     </div>
@@ -597,20 +641,24 @@ defmodule AthenaWeb.LearnLive.Player do
 
   def course_map_tree(assigns) do
     assigns = assign_new(assigns, :level, fn -> 0 end)
+    assigns = assign_new(assigns, :block_counts, fn -> %{} end)
 
     ~H"""
     <div class="space-y-1">
       <div :for={section <- @sections}>
-        <.link
-          navigate={~p"/learn/courses/#{@course_id}/play/#{section.id}"}
-          class={[
-            "w-full justify-start px-3 py-2.5 rounded-lg flex items-center gap-3 transition-all group",
-            @active_section_id == section.id && "bg-primary/10 text-primary",
-            @active_section_id != section.id && "hover:bg-base-200 text-base-content/70"
-          ]}
-          style={"padding-left: #{(@level * 1.5) + 0.75}rem;"}
-        >
-          <%= if section.children == [] do %>
+        <% has_content = Map.get(@block_counts, section.id, 0) > 0 %>
+        <% is_empty_folder = not has_content and section.children != [] %>
+
+        <%= if has_content do %>
+          <.link
+            navigate={~p"/learn/courses/#{@course_id}/play/#{section.id}"}
+            class={[
+              "w-full justify-start px-3 py-2.5 rounded-lg flex items-center gap-3 transition-all group",
+              @active_section_id == section.id && "bg-primary/10 text-primary",
+              @active_section_id != section.id && "hover:bg-base-200 text-base-content/70"
+            ]}
+            style={"padding-left: #{(@level * 1.5) + 0.75}rem;"}
+          >
             <.icon
               name="hero-document-text"
               class={[
@@ -620,24 +668,35 @@ defmodule AthenaWeb.LearnLive.Player do
               ]}
             />
             <span class="text-sm font-medium truncate">{section.title}</span>
-          <% else %>
+          </.link>
+        <% else %>
+          <div
+            class={[
+              "w-full justify-start px-3 py-2.5 rounded-lg flex items-center gap-3",
+              if(is_empty_folder, do: "text-base-content/70", else: "text-base-content/40")
+            ]}
+            style={"padding-left: #{(@level * 1.5) + 0.75}rem;"}
+          >
             <.icon
               name="hero-folder"
-              class={[
-                "size-4 shrink-0 transition-colors",
-                @active_section_id == section.id && "text-primary",
-                @active_section_id != section.id && "text-base-content/40 group-hover:text-primary/70"
-              ]}
+              class="size-4 shrink-0 text-base-content/30"
             />
             <span class="text-xs uppercase tracking-widest font-black truncate">{section.title}</span>
-          <% end %>
-        </.link>
+            <span
+              :if={not is_empty_folder}
+              class="text-[10px] uppercase tracking-widest ml-1 opacity-50"
+            >
+              {gettext("Empty")}
+            </span>
+          </div>
+        <% end %>
 
         <.course_map_tree
           :if={section.children != []}
           sections={section.children}
           active_section_id={@active_section_id}
           course_id={@course_id}
+          block_counts={@block_counts}
           level={@level + 1}
         />
       </div>
@@ -732,4 +791,13 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   defp parse_to_unix(_), do: nil
+
+  @doc false
+  def quiz_passed?(_block, nil), do: false
+
+  def quiz_passed?(%{completion_rule: %{type: :pass_auto_grade, min_score: min_score}}, sub) do
+    sub.score >= (min_score || 0)
+  end
+
+  def quiz_passed?(_block, sub), do: sub.score == 100
 end

@@ -359,4 +359,54 @@ defmodule Athena.Content.SectionsTest do
       assert {:error, :not_found} = Sections.get_section(instructor, section.id)
     end
   end
+
+  describe "list_linear_lessons/2" do
+    test "returns flat list of sections, skipping those without blocks" do
+      course = insert(:course)
+
+      {:ok, root1} =
+        Sections.create_section(%{"title" => "R1", "course_id" => course.id, "order" => 1})
+
+      {:ok, child1} =
+        Sections.create_section(%{
+          "title" => "C1",
+          "course_id" => course.id,
+          "parent_id" => root1.id,
+          "order" => 1
+        })
+
+      {:ok, root2} =
+        Sections.create_section(%{"title" => "R2", "course_id" => course.id, "order" => 2})
+
+      {:ok, _child2} =
+        Sections.create_section(%{
+          "title" => "C2",
+          "course_id" => course.id,
+          "parent_id" => root2.id,
+          "order" => 1
+        })
+
+      insert(:block, section: nil, section_id: child1.id)
+      insert(:block, section: nil, section_id: root2.id)
+
+      lessons = Sections.list_linear_lessons(course.id)
+      assert length(lessons) == 2
+      assert Enum.map(lessons, & &1.id) == [child1.id, root2.id]
+    end
+
+    test "returns empty list if no sections have blocks" do
+      course = insert(:course)
+
+      {:ok, root1} = Sections.create_section(%{"title" => "R1", "course_id" => course.id})
+
+      {:ok, _child1} =
+        Sections.create_section(%{
+          "title" => "C1",
+          "course_id" => course.id,
+          "parent_id" => root1.id
+        })
+
+      assert Sections.list_linear_lessons(course.id) == []
+    end
+  end
 end

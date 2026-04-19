@@ -104,6 +104,52 @@ defmodule Athena.Content.BlocksTest do
       assert block.order == 500
     end
 
+    test "should insert block between two existing blocks using after_id", %{section: s} do
+      b1 = insert(:block, section: s, order: 1000)
+      _b2 = insert(:block, section: s, order: 2000)
+
+      attrs = %{
+        "type" => "text",
+        "content" => %{"text" => "Inserted"},
+        "section_id" => s.id,
+        "after_id" => b1.id
+      }
+
+      assert {:ok, %Block{} = block} = Blocks.create_block(attrs)
+      assert block.order == 1500
+    end
+
+    test "should insert block at the end if after_id is the last block", %{section: s} do
+      _b1 = insert(:block, section: s, order: 1000)
+      b2 = insert(:block, section: s, order: 2000)
+
+      attrs = %{
+        "type" => "text",
+        "content" => %{"text" => "Inserted at end"},
+        "section_id" => s.id,
+        "after_id" => b2.id
+      }
+
+      assert {:ok, %Block{} = block} = Blocks.create_block(attrs)
+      assert block.order == 3024
+    end
+
+    test "should fallback to normal insertion at the end if after_id does not exist", %{
+      section: s
+    } do
+      insert(:block, section: s, order: 1000)
+
+      attrs = %{
+        "type" => "text",
+        "content" => %{"text" => "Inserted"},
+        "section_id" => s.id,
+        "after_id" => Ecto.UUID.generate()
+      }
+
+      assert {:ok, %Block{} = block} = Blocks.create_block(attrs)
+      assert block.order == 2024
+    end
+
     test "should return error on invalid params" do
       attrs = %{"type" => "text"}
 
@@ -297,6 +343,36 @@ defmodule Athena.Content.BlocksTest do
       block = insert(:block, section: section)
 
       assert {:error, :not_found} = Blocks.get_block(instructor, block.id)
+    end
+  end
+
+  describe "count_blocks_by_course/1" do
+    test "returns a map with section block counts" do
+      course = insert(:course)
+
+      s1 = insert(:section, course: course)
+      s2 = insert(:section, course: course)
+
+      other_course = insert(:course)
+      s3 = insert(:section, course: other_course)
+
+      insert(:block, section: nil, section_id: s1.id)
+      insert(:block, section: nil, section_id: s1.id)
+      insert(:block, section: nil, section_id: s2.id)
+      insert(:block, section: nil, section_id: s3.id)
+
+      counts = Blocks.count_blocks_by_course(course.id)
+
+      assert map_size(counts) == 2
+      assert counts[s1.id] == 2
+      assert counts[s2.id] == 1
+    end
+
+    test "returns an empty map if course has no blocks" do
+      course = insert(:course)
+      _section = insert(:section, course: course)
+
+      assert Blocks.count_blocks_by_course(course.id) == %{}
     end
   end
 end

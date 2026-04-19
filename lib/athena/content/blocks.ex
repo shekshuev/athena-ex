@@ -77,22 +77,37 @@ defmodule Athena.Content.Blocks do
   @doc """
   Creates a new block. 
 
-  If `order` is not provided, it automatically calculates the next order 
+  If `order` is provided, it uses it directly.
+  If `after_id` is provided, it calculates the order to place the new block immediately after it.
+  If neither is provided, it automatically calculates the next order 
   by finding the maximum order in the section and adding 1024.
   """
   @spec create_block(map()) :: {:ok, Block.t()} | {:error, Ecto.Changeset.t()}
   def create_block(attrs) do
     section_id = Map.get(attrs, "section_id")
     order = Map.get(attrs, "order")
+    after_id = Map.get(attrs, "after_id")
 
     final_order =
-      if is_nil(order) and not is_nil(section_id) do
-        calculate_next_order(section_id)
-      else
-        order || 1024
+      cond do
+        not is_nil(order) ->
+          order
+
+        not is_nil(after_id) and not is_nil(section_id) ->
+          calculate_order_after(section_id, after_id)
+
+        not is_nil(section_id) ->
+          calculate_next_order(section_id)
+
+        true ->
+          1024
       end
 
-    merged_attrs = Map.put(attrs, "order", final_order)
+    merged_attrs =
+      attrs
+      |> Map.put("order", final_order)
+      |> Map.delete("after_id")
+      |> Map.delete(:after_id)
 
     %Block{}
     |> Block.changeset(merged_attrs)
@@ -220,6 +235,43 @@ defmodule Athena.Content.Blocks do
     |> where([b], b.id in ^ids)
     |> Repo.all()
     |> Map.new(&{&1.id, &1})
+  end
+
+  @doc """
+  Returns a map of %{section_id => blocks_count} for all sections in a course.
+  """
+  def count_blocks_by_course(course_id) do
+    Block
+    |> join(:inner, [b], s in Section, on: b.section_id == s.id)
+    |> where([b, s], s.course_id == ^course_id)
+    |> group_by([b], b.section_id)
+    |> select([b], {b.section_id, count(b.id)})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  @doc false
+  defp calculate_order_after(section_id, after_id) do
+    blocks =
+      Block
+      |> where([b], b.section_id == ^section_id)
+      |> order_by([b], asc: b.order)
+      |> Repo.all()
+
+    case Enum.find_index(blocks, &(&1.id == after_id)) do
+      nil ->
+        calculate_next_order(section_id)
+
+      index ->
+        prev_block = Enum.at(blocks, index)
+        next_block = Enum.at(blocks, index + 1)
+
+        if is_nil(next_block) do
+          prev_block.order + 1024
+        else
+          div(prev_block.order + next_block.order, 2)
+        end
+    end
   end
 
   @doc false

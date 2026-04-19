@@ -1,25 +1,31 @@
-import { Editor, Extension } from "@tiptap/core";
-import BubbleMenu from "@tiptap/extension-bubble-menu";
+import { Editor } from "@tiptap/core";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
+import Color from "@tiptap/extension-color";
+import Details from "@tiptap/extension-details";
+import DetailsContent from "@tiptap/extension-details-content";
+import DetailsSummary from "@tiptap/extension-details-summary";
+import FontFamily from "@tiptap/extension-font-family";
 import Highlight from "@tiptap/extension-highlight";
 import TiptapImage from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
+import Mathematics from "@tiptap/extension-mathematics";
+import Placeholder from "@tiptap/extension-placeholder";
+import Subscript from "@tiptap/extension-subscript";
+import Superscript from "@tiptap/extension-superscript";
 import Table from "@tiptap/extension-table";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import TableRow from "@tiptap/extension-table-row";
 import TextAlign from "@tiptap/extension-text-align";
+import TextStyle from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
-import Suggestion from "@tiptap/suggestion";
 import { common, createLowlight } from "lowlight";
 import { Socket } from "phoenix";
 import { hooks as colocatedHooks } from "phoenix-colocated/athena";
 import "phoenix_html";
 import { LiveSocket } from "phoenix_live_view";
 import Sortable from "sortablejs";
-import tippy from "tippy.js";
-import "tippy.js/dist/tippy.css";
 import topbar from "../vendor/topbar";
 const lowlight = createLowlight(common);
 
@@ -49,89 +55,6 @@ Hooks.Sortable = {
   destroyed() {
     if (this.sortable) this.sortable.destroy();
   },
-};
-
-const getSuggestionItems = ({ query }) => {
-  const items = [
-    {
-      title: "Paragraph",
-      icon: "¶",
-      command: ({ editor, range }) =>
-        editor.chain().focus().deleteRange(range).setParagraph().run(),
-    },
-    {
-      title: "Heading 1",
-      icon: "H1",
-      command: ({ editor, range }) =>
-        editor
-          .chain()
-          .focus()
-          .deleteRange(range)
-          .toggleHeading({ level: 1 })
-          .run(),
-    },
-    {
-      title: "Heading 2",
-      icon: "H2",
-      command: ({ editor, range }) =>
-        editor
-          .chain()
-          .focus()
-          .deleteRange(range)
-          .toggleHeading({ level: 2 })
-          .run(),
-    },
-    {
-      title: "Heading 3",
-      icon: "H3",
-      command: ({ editor, range }) =>
-        editor
-          .chain()
-          .focus()
-          .deleteRange(range)
-          .toggleHeading({ level: 3 })
-          .run(),
-    },
-    {
-      title: "Bullet List",
-      icon: "•",
-      command: ({ editor, range }) =>
-        editor.chain().focus().deleteRange(range).toggleBulletList().run(),
-    },
-    {
-      title: "Quote",
-      icon: "”",
-      command: ({ editor, range }) =>
-        editor.chain().focus().deleteRange(range).toggleBlockquote().run(),
-    },
-    {
-      title: "Code Block",
-      icon: "{}",
-      command: ({ editor, range }) =>
-        editor.chain().focus().deleteRange(range).toggleCodeBlock().run(),
-    },
-    {
-      title: "Divider",
-      icon: "—",
-      command: ({ editor, range }) =>
-        editor.chain().focus().deleteRange(range).setHorizontalRule().run(),
-    },
-    { title: "Image", icon: "🖼", type: "media", mediaType: "tiptap_image" },
-    {
-      title: "Table",
-      icon: "▦",
-      command: ({ editor, range }) =>
-        editor
-          .chain()
-          .focus()
-          .deleteRange(range)
-          .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-          .run(),
-    },
-  ];
-  return items
-    .filter((item) => item.title.toLowerCase().startsWith(query.toLowerCase()))
-    .slice(0, 10);
 };
 
 Hooks.AntiCheat = {
@@ -176,9 +99,7 @@ Hooks.TiptapEditor = {
       ? JSON.parse(this.el.dataset.content)
       : "";
     const blockId = this.el.dataset.id;
-
     const isReadOnly = this.el.dataset.readonly === "true";
-
     let timeout;
 
     const extensions = [
@@ -189,168 +110,91 @@ Hooks.TiptapEditor = {
       TiptapImage.configure({
         inline: false,
         HTMLAttributes: {
-          class: "rounded-lg max-h-[500px] shadow-sm my-4 mx-auto",
+          class: "rounded-sm max-h-[500px] shadow-sm my-4 mx-auto",
         },
       }),
-      Highlight.configure({ multicolor: false }),
+      Highlight.configure({ multicolor: true }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       Table.configure({ resizable: !isReadOnly }),
       TableRow,
       TableHeader,
       TableCell,
+      Placeholder.configure({
+        includeChildren: true,
+        placeholder: ({ node }) => {
+          if (node.type.name === "detailsSummary") {
+            return "Spoiler header...";
+          }
+          return "Type here...";
+        },
+        emptyEditorClass: "is-editor-empty",
+      }),
+      TextStyle,
+      Color,
+      FontFamily,
+      Subscript,
+      Superscript,
+      Mathematics.configure({
+        shouldRender: (state, pos, node) => {
+          const $pos = state.doc.resolve(pos);
+          return (
+            node.type.name === "text" && $pos.parent.type.name !== "codeBlock"
+          );
+        },
+      }),
+      Details.configure({
+        HTMLAttributes: {
+          class: "tiptap-details",
+        },
+      }),
+      DetailsSummary.configure({
+        HTMLAttributes: {
+          class: "tiptap-details-summary",
+        },
+      }),
+      DetailsContent.configure({
+        HTMLAttributes: {
+          class: "tiptap-details-content",
+        },
+      }),
     ];
 
-    if (!isReadOnly) {
-      this.bubbleMenuEl = document.createElement("div");
-      this.bubbleMenuEl.innerHTML = `
-        <div class="join bg-base-100 shadow-xl border border-base-300 rounded-md">
-          <button class="join-item btn btn-sm btn-ghost" data-action="bold" title="Bold"><b>B</b></button>
-          <button class="join-item btn btn-sm btn-ghost" data-action="italic" title="Italic"><i>I</i></button>
-          <button class="join-item btn btn-sm btn-ghost" data-action="underline" title="Underline"><u>U</u></button>
-          <button class="join-item btn btn-sm btn-ghost" data-action="highlight" title="Highlight">🖍️</button>
-          <button class="join-item btn btn-sm btn-ghost" data-action="code" title="Code">&lt;&gt;</button>
-          <button class="join-item btn btn-sm btn-ghost" data-action="link" title="Link">🔗</button>
-          <div class="divider divider-horizontal m-0 w-0 p-0"></div>
-          <button class="join-item btn btn-sm btn-ghost" data-action="align-left" title="Align Left">⬅️</button>
-          <button class="join-item btn btn-sm btn-ghost" data-action="align-center" title="Align Center">↔️</button>
-          <button class="join-item btn btn-sm btn-ghost" data-action="align-right" title="Align Right">➡️</button>
-        </div>
-      `;
-      extensions.push(BubbleMenu.configure({ element: this.bubbleMenuEl }));
+    const updateToolbarState = (editor) => {
+      const wrapper = hook.el.closest(".editor-wrapper");
+      const toolbar = wrapper ? wrapper.querySelector(".fixed-toolbar") : null;
+      if (!toolbar) return;
 
-      const SlashMenuPlugin = Extension.create({
-        name: "slashMenu",
-        addOptions() {
-          return {
-            suggestion: {
-              char: "/",
-              items: getSuggestionItems,
-              render: () => {
-                let popup;
-                let selectedIndex = 0;
-                let currentItems = [];
-                let wrapper = document.createElement("div");
-                wrapper.className =
-                  "bg-base-100 shadow-2xl border border-base-300 rounded-lg p-1 w-56 flex flex-col gap-0.5 max-h-80 overflow-y-auto";
+      const tableControls = toolbar.querySelectorAll(".tiptap-table-control");
 
-                const updateSelection = () => {
-                  const buttons = wrapper.querySelectorAll("button");
-                  buttons.forEach((btn, index) => {
-                    if (index === selectedIndex) {
-                      btn.classList.add("bg-base-200");
-                      btn.scrollIntoView({ block: "nearest" });
-                    } else {
-                      btn.classList.remove("bg-base-200");
-                    }
-                  });
-                };
+      if (tableControls) {
+        for (const tableControl of tableControls) {
+          if (editor.isActive("table")) {
+            tableControl.classList.remove("hidden");
+          } else {
+            tableControl.classList.add("hidden");
+          }
+        }
+      }
 
-                const executeItem = (item, range) => {
-                  if (item.type === "media") {
-                    hook.editor.chain().focus().deleteRange(range).run();
-                    hook.pushEvent("request_media_upload", {
-                      block_id: blockId,
-                      media_type: item.mediaType,
-                    });
-                  } else {
-                    item.command({ editor: hook.editor, range });
-                  }
-                  if (popup) popup[0].hide();
-                };
+      const fontSelect = toolbar.querySelector('[data-action="font-family"]');
+      if (fontSelect) {
+        const activeFont = editor.getAttributes("textStyle").fontFamily || "";
+        fontSelect.value = activeFont.replace(/['"]/g, "");
+      }
 
-                const renderHTML = (items) => {
-                  currentItems = items;
-                  wrapper.innerHTML = items
-                    .map(
-                      (item, index) => `
-                    <button class="w-full text-left px-3 py-2 text-sm rounded-md flex items-center gap-2 transition-colors" data-index="${index}">
-                      <span class="w-5 text-center text-base-content/50 font-bold">${item.icon}</span>
-                      ${item.title}
-                    </button>
-                  `,
-                    )
-                    .join("");
+      const colorInput = toolbar.querySelector('[data-action="text-color"]');
+      if (colorInput) {
+        colorInput.value = editor.getAttributes("textStyle").color || "#000000";
+      }
 
-                  wrapper.querySelectorAll("button").forEach((btn) => {
-                    btn.addEventListener("click", (e) => {
-                      e.preventDefault();
-                      executeItem(
-                        currentItems[btn.dataset.index],
-                        popup[0].range,
-                      );
-                    });
-                  });
-                  updateSelection();
-                };
-
-                return {
-                  onStart: (props) => {
-                    selectedIndex = 0;
-                    renderHTML(props.items);
-                    popup = tippy("body", {
-                      getReferenceClientRect: props.clientRect,
-                      appendTo: () => document.body,
-                      content: wrapper,
-                      showOnCreate: true,
-                      interactive: true,
-                      trigger: "manual",
-                      placement: "bottom-start",
-                    });
-                    popup[0].range = props.range;
-                  },
-                  onUpdate: (props) => {
-                    selectedIndex = 0;
-                    renderHTML(props.items);
-                    popup[0].range = props.range;
-                    popup[0].setProps({
-                      getReferenceClientRect: props.clientRect,
-                    });
-                  },
-                  onKeyDown: (props) => {
-                    if (props.event.key === "ArrowUp") {
-                      props.event.preventDefault();
-                      selectedIndex =
-                        (selectedIndex + currentItems.length - 1) %
-                        currentItems.length;
-                      updateSelection();
-                      return true;
-                    }
-                    if (props.event.key === "ArrowDown") {
-                      props.event.preventDefault();
-                      selectedIndex = (selectedIndex + 1) % currentItems.length;
-                      updateSelection();
-                      return true;
-                    }
-                    if (props.event.key === "Enter") {
-                      props.event.preventDefault();
-                      if (currentItems.length > 0) {
-                        executeItem(currentItems[selectedIndex], props.range);
-                      }
-                      return true;
-                    }
-                    if (props.event.key === "Escape") {
-                      props.event.preventDefault();
-                      popup[0].hide();
-                      return true;
-                    }
-                    return false;
-                  },
-                  onExit: () => {
-                    if (popup) popup[0].destroy();
-                  },
-                };
-              },
-            },
-          };
-        },
-        addProseMirrorPlugins() {
-          return [
-            Suggestion({ editor: this.editor, ...this.options.suggestion }),
-          ];
-        },
-      });
-      extensions.push(SlashMenuPlugin);
-    }
+      const highlightInput = toolbar.querySelector(
+        '[data-action="highlight-color"]',
+      );
+      if (highlightInput) {
+        highlightInput.value =
+          editor.getAttributes("highlight").color || "#ffff00";
+      }
+    };
 
     this.editor = new Editor({
       element: this.el,
@@ -364,7 +208,7 @@ Hooks.TiptapEditor = {
       },
       onUpdate: ({ editor }) => {
         if (isReadOnly) return;
-
+        updateToolbarState(editor);
         clearTimeout(timeout);
         timeout = setTimeout(() => {
           hook.pushEvent("update_content", {
@@ -373,33 +217,112 @@ Hooks.TiptapEditor = {
           });
         }, 500);
       },
+      onSelectionUpdate: ({ editor }) => {
+        if (!isReadOnly) updateToolbarState(editor);
+      },
+      onTransaction: ({ editor }) => {
+        if (!isReadOnly) updateToolbarState(editor);
+      },
     });
 
     if (!isReadOnly) {
-      this.bubbleMenuEl.addEventListener("click", (e) => {
-        e.preventDefault();
-        const action = e.target.closest("button")?.dataset.action;
-        if (!action) return;
+      const wrapper = this.el.closest(".editor-wrapper");
+      const toolbar = wrapper ? wrapper.querySelector(".fixed-toolbar") : null;
 
-        if (action === "bold") this.editor.chain().focus().toggleBold().run();
-        if (action === "italic")
-          this.editor.chain().focus().toggleItalic().run();
-        if (action === "underline")
-          this.editor.chain().focus().toggleUnderline().run();
-        if (action === "highlight")
-          this.editor.chain().focus().toggleHighlight().run();
-        if (action === "code") this.editor.chain().focus().toggleCode().run();
-        if (action === "link") {
-          const url = window.prompt("URL:");
-          if (url) this.editor.chain().focus().setLink({ href: url }).run();
-        }
-        if (action === "align-left")
-          this.editor.chain().focus().setTextAlign("left").run();
-        if (action === "align-center")
-          this.editor.chain().focus().setTextAlign("center").run();
-        if (action === "align-right")
-          this.editor.chain().focus().setTextAlign("right").run();
-      });
+      if (toolbar) {
+        toolbar.addEventListener("click", (e) => {
+          const btn = e.target.closest("button");
+          if (!btn) return;
+          e.preventDefault();
+          const action = btn.dataset.action;
+
+          const chain = this.editor.chain().focus();
+
+          if (action === "bold") chain.toggleBold().run();
+          if (action === "italic") chain.toggleItalic().run();
+          if (action === "underline") chain.toggleUnderline().run();
+          if (action === "unset-highlight") chain.unsetHighlight().run();
+          if (action === "inline-code") chain.toggleCode().run();
+          if (action === "subscript") chain.toggleSubscript().run();
+          if (action === "superscript") chain.toggleSuperscript().run();
+
+          if (action === "paragraph") chain.setParagraph().run();
+          if (action === "h1") chain.toggleHeading({ level: 1 }).run();
+          if (action === "h2") chain.toggleHeading({ level: 2 }).run();
+          if (action === "h3") chain.toggleHeading({ level: 3 }).run();
+
+          if (action === "bullet") chain.toggleBulletList().run();
+          if (action === "ordered") chain.toggleOrderedList().run();
+
+          if (action === "quote") chain.toggleBlockquote().run();
+          if (action === "code-block") chain.toggleCodeBlock().run();
+          if (action === "details") {
+            if (this.editor.isActive("details")) {
+              chain.unsetDetails().run();
+            } else {
+              chain.setDetails().run();
+            }
+          }
+          if (action === "divider") chain.setHorizontalRule().run();
+
+          if (action === "align-left") chain.setTextAlign("left").run();
+          if (action === "align-center") chain.setTextAlign("center").run();
+          if (action === "align-right") chain.setTextAlign("right").run();
+
+          if (action === "table")
+            chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+          if (action === "add-row") chain.addRowAfter().run();
+          if (action === "add-col") chain.addColumnAfter().run();
+          if (action === "del-row") chain.deleteRow().run();
+          if (action === "del-col") chain.deleteColumn().run();
+          if (action === "del-table") chain.deleteTable().run();
+
+          if (action === "link") {
+            const url = window.prompt("URL:");
+            if (url) chain.setLink({ href: url }).run();
+          }
+          if (action === "image") {
+            hook.pushEvent("request_media_upload", {
+              block_id: blockId,
+              media_type: "tiptap_image",
+            });
+          }
+        });
+
+        toolbar.addEventListener("input", (e) => {
+          if (
+            e.target.tagName.toLowerCase() === "input" &&
+            e.target.type === "color"
+          ) {
+            const action = e.target.dataset.action;
+            const chain = this.editor.chain().focus();
+
+            if (action === "text-color") chain.setColor(e.target.value).run();
+            if (action === "highlight-color")
+              chain.setHighlight({ color: e.target.value }).run();
+          }
+        });
+
+        toolbar.addEventListener("change", (e) => {
+          if (e.target.tagName.toLowerCase() === "select") {
+            const action = e.target.dataset.action;
+            const value = e.target.value;
+            const chain = this.editor.chain().focus();
+
+            if (action === "font-family") {
+              if (value) chain.setFontFamily(value).run();
+              else chain.unsetFontFamily().run();
+            }
+          }
+        });
+
+        toolbar.addEventListener("mousedown", (e) => {
+          const tag = e.target.tagName.toLowerCase();
+          if (tag !== "input" && tag !== "select" && tag !== "option") {
+            e.preventDefault();
+          }
+        });
+      }
 
       this.handleInsertMedia = (e) => {
         if (e.detail.block_id === blockId && e.detail.type === "tiptap_image") {

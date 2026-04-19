@@ -183,8 +183,15 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       course: course
     } do
       s1 = insert(:section, course: course, order: 1)
-      insert(:block, section: s1, completion_rule: %CompletionRule{type: :button})
+
+      insert(:block,
+        section: nil,
+        section_id: s1.id,
+        completion_rule: %CompletionRule{type: :button}
+      )
+
       s2 = insert(:section, course: course, order: 2)
+      insert(:block, section: nil, section_id: s2.id)
 
       {:error, {:live_redirect, %{to: syllabus_path, flash: flash}}} =
         live(conn, ~p"/learn/courses/#{course.id}/play/#{s2.id}")
@@ -204,10 +211,16 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       future = DateTime.add(now, 1, :day)
       past = DateTime.add(now, -1, :day)
 
-      insert(:block, section: s1, order: 10, content: %{"text" => "Normal Block"})
+      insert(:block,
+        section: nil,
+        section_id: s1.id,
+        order: 10,
+        content: %{"text" => "Normal Block"}
+      )
 
       insert(:block,
-        section: s1,
+        section: nil,
+        section_id: s1.id,
         order: 20,
         visibility: :restricted,
         access_rules: %AccessRules{unlock_at: future},
@@ -215,7 +228,8 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       )
 
       insert(:block,
-        section: s1,
+        section: nil,
+        section_id: s1.id,
         order: 30,
         visibility: :restricted,
         access_rules: %AccessRules{lock_at: past},
@@ -236,6 +250,8 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       course: course
     } do
       s1 = insert(:section, course: course, visibility: :enrolled)
+
+      insert(:block, section: nil, section_id: s1.id)
 
       {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 

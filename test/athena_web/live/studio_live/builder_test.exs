@@ -125,7 +125,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
     end
   end
 
-  describe "Block Management" do
+  describe "Block Management (UI Actions)" do
     setup %{course: course, admin: admin} do
       {:ok, section} =
         Content.create_section(%{
@@ -253,6 +253,72 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       block = hd(blocks)
       assert block.type == :quiz_question
       assert block.content["question_type"] == "open"
+    end
+
+    test "can reorder blocks via move_block_up and move_block_down", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      {:ok, block1} = Content.create_block(%{"type" => "text", "section_id" => section.id})
+      {:ok, block2} = Content.create_block(%{"type" => "text", "section_id" => section.id})
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> element("button[phx-click='move_block_up'][phx-value-id='#{block2.id}']")
+      |> render_click()
+
+      blocks = Content.list_blocks_by_section(section.id)
+      assert Enum.at(blocks, 0).id == block2.id
+      assert Enum.at(blocks, 1).id == block1.id
+
+      lv
+      |> element("button[phx-click='move_block_down'][phx-value-id='#{block2.id}']")
+      |> render_click()
+
+      blocks_after = Content.list_blocks_by_section(section.id)
+      assert Enum.at(blocks_after, 0).id == block1.id
+      assert Enum.at(blocks_after, 1).id == block2.id
+    end
+
+    test "deselects block via click-away", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      {:ok, block} = Content.create_block(%{"type" => "text", "section_id" => section.id})
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']")
+      |> render_click()
+
+      assert render(lv) =~ "Progression Rules"
+      render_hook(lv, "deselect_block")
+      refute render(lv) =~ "Progression Rules"
+    end
+  end
+
+  describe "Quiz & Media Inspectors" do
+    setup %{course: course, admin: admin} do
+      {:ok, section} =
+        Content.create_section(%{
+          "title" => "Complex Blocks",
+          "course_id" => course.id,
+          "owner_id" => admin.id
+        })
+
+      %{section: section}
     end
 
     test "updates quiz block options via canvas form", %{
@@ -443,7 +509,6 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
 
       html = render(lv)
       assert html =~ "Upload Media"
-      # Ищем новый текст для мульти-загрузки
       assert html =~ "Click or drag files here"
     end
 
@@ -464,7 +529,6 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert render(lv) =~ "Upload Media"
 
       lv
-      # Ищем правильный эвент для новой модалки
       |> element("button[phx-click='cancel_media_upload']")
       |> render_click()
 

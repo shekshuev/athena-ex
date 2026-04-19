@@ -317,7 +317,7 @@ defmodule AthenaWeb.BlockComponentsTest do
     end
 
     test "renders read-only results with feedback in :review mode", %{block: block} do
-      sub = %{content: %{"selected_choices" => ["o2"]}}
+      sub = %{score: 0, content: %{"selected_choices" => ["o2"]}}
       assigns = %{block: block, submission: sub}
 
       html =
@@ -354,12 +354,7 @@ defmodule AthenaWeb.BlockComponentsTest do
 
     test "renders in :edit mode with disabled checkboxes", %{block: block} do
       assigns = %{block: block}
-
-      html =
-        rendered_to_string(~H"""
-        <.content_block block={@block} mode={:edit} active={false} />
-        """)
-
+      html = rendered_to_string(~H"<.content_block block={@block} mode={:edit} active={false} />")
       assert html =~ "Pick many"
       assert html =~ "checkbox"
       assert html =~ " disabled"
@@ -370,22 +365,20 @@ defmodule AthenaWeb.BlockComponentsTest do
       assigns = %{block: block, answers: %{block.id => ["o1", "o2"]}}
 
       html =
-        rendered_to_string(~H"""
-        <.content_block block={@block} mode={:play} answers={@answers} />
-        """)
+        rendered_to_string(~H"<.content_block block={@block} mode={:play} answers={@answers} />")
 
       assert html =~ "checkbox"
       refute html =~ " disabled"
     end
 
     test "renders read-only results in :review mode", %{block: block} do
-      sub = %{content: %{"selected_choices" => ["o1"]}}
+      sub = %{score: 50, content: %{"selected_choices" => ["o1"]}}
       assigns = %{block: block, submission: sub}
 
       html =
-        rendered_to_string(~H"""
-        <.content_block block={@block} mode={:review} submission={@submission} />
-        """)
+        rendered_to_string(
+          ~H"<.content_block block={@block} mode={:review} submission={@submission} />"
+        )
 
       assert html =~ " disabled"
       assert html =~ "Correct Option"
@@ -466,12 +459,7 @@ defmodule AthenaWeb.BlockComponentsTest do
 
     test "renders disabled text input in :edit mode", %{block: block} do
       assigns = %{block: block}
-
-      html =
-        rendered_to_string(~H"""
-        <.content_block block={@block} mode={:edit} active={false} />
-        """)
-
+      html = rendered_to_string(~H"<.content_block block={@block} mode={:edit} active={false} />")
       assert html =~ "<input"
       assert html =~ "type=\"text\""
       assert html =~ " disabled"
@@ -481,9 +469,7 @@ defmodule AthenaWeb.BlockComponentsTest do
       assigns = %{block: block, answers: %{block.id => "athena{wrong}"}}
 
       html =
-        rendered_to_string(~H"""
-        <.content_block block={@block} mode={:play} answers={@answers} />
-        """)
+        rendered_to_string(~H"<.content_block block={@block} mode={:play} answers={@answers} />")
 
       assert html =~ "athena{wrong}"
       assert html =~ "type=\"text\""
@@ -493,13 +479,13 @@ defmodule AthenaWeb.BlockComponentsTest do
     test "renders disabled input with student answer and correct flag in :review mode", %{
       block: block
     } do
-      sub = %{content: %{"text_answer" => "athena{try_harder}"}}
+      sub = %{score: 0, content: %{"text_answer" => "athena{try_harder}"}}
       assigns = %{block: block, submission: sub}
 
       html =
-        rendered_to_string(~H"""
-        <.content_block block={@block} mode={:review} submission={@submission} />
-        """)
+        rendered_to_string(
+          ~H"<.content_block block={@block} mode={:review} submission={@submission} />"
+        )
 
       assert html =~ "athena{try_harder}"
       assert html =~ " disabled"
