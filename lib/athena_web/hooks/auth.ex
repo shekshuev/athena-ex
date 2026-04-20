@@ -18,7 +18,7 @@ defmodule AthenaWeb.Hooks.Auth do
   @spec on_mount(atom(), map(), map(), Phoenix.LiveView.Socket.t()) ::
           {:cont, Phoenix.LiveView.Socket.t()} | {:halt, Phoenix.LiveView.Socket.t()}
   def on_mount(:default, _params, session, socket) do
-    default_locale = Application.get_env(:athena, AthenaWeb.Gettext)[:default_locale] || "ru"
+    default_locale = Application.get_env(:athena, :default_locale) || "en"
 
     locale = session["locale"] || default_locale
     Gettext.put_locale(AthenaWeb.Gettext, locale)
