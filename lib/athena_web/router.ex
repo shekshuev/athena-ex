@@ -139,7 +139,7 @@ defmodule AthenaWeb.Router do
   end
 
   defp put_locale(conn, _opts) do
-    default_locale = Application.get_env(:athena, AthenaWeb.Gettext)[:default_locale] || "ru"
+    default_locale = Application.get_env(:athena, :default_locale) || "en"
 
     locale = get_session(conn, :locale) || default_locale
 

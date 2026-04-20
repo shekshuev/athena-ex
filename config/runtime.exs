@@ -23,9 +23,7 @@ end
 config :athena, AthenaWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
-config :athena, AthenaWeb.Gettext,
-  default_locale: System.get_env("DEFAULT_LOCALE") || "en",
-  locales: ~w(ru en)
+config :athena, :default_locale, System.get_env("DEFAULT_LOCALE") || "en"
 
 if config_env() == :prod do
   database_url =
