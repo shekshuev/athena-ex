@@ -481,19 +481,17 @@ defmodule AthenaWeb.LearnLive.Player do
           >
             <%= case block.type do %>
               <% :quiz_question -> %>
-                <% is_completed = block.id in @completed_ids %>
-
-                <% is_passed = quiz_passed?(block, submission) %>
-
                 <% is_pass_auto_grade =
                   block.completion_rule && block.completion_rule.type == :pass_auto_grade %>
+                <% is_passed = quiz_passed?(block, submission) %>
 
                 <% is_locked =
                   cond do
-                    is_completed -> true
                     is_nil(submission) -> false
                     submission.status == :needs_review -> true
+                    is_passed -> true
                     is_pass_auto_grade -> false
+                    block.completion_rule && block.completion_rule.type == :submit -> false
                     true -> true
                   end %>
 
