@@ -100,9 +100,7 @@ defmodule AthenaWeb.LearnLive.Index do
                 </div>
 
                 <.link
-                  navigate={
-                    ~p"/learn/courses/#{enrollment.course.id}?#{[cohort_id: enrollment.cohort_id]}"
-                  }
+                  navigate={~p"/learn/courses/#{enrollment.course.id}"}
                   class="btn btn-primary btn-sm group-hover:pr-3 transition-all"
                 >
                   {gettext("Enter")}
