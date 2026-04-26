@@ -172,6 +172,18 @@ defmodule Athena.Learning.Cohorts do
     Repo.delete(membership)
   end
 
+  @doc """
+  Retrieves a simplified list of cohorts for dropdown menus.
+  Returns `[{"Cohort Name", "cohort_id"}, ...]`.
+  """
+  def get_cohort_options(user) do
+    Cohort
+    |> scope_cohorts(user, "cohorts.read")
+    |> select([c], {c.name, c.id})
+    |> order_by([c], asc: c.name)
+    |> Repo.all()
+  end
+
   @doc false
   defp enrich_memberships_with_accounts(%CohortMembership{} = membership) do
     [enriched] = enrich_memberships_with_accounts([membership])

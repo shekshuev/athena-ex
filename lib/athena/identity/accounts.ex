@@ -344,4 +344,18 @@ defmodule Athena.Identity.Accounts do
         error
     end
   end
+
+  @doc """
+  Retrieves a list of account IDs matching a partial login string.
+  Useful for cross-context filtering (like Flop).
+  """
+  @spec get_account_ids_by_login(String.t()) :: [String.t()]
+  def get_account_ids_by_login(query) do
+    search_term = "%#{query}%"
+
+    Account
+    |> where([a], ilike(a.login, ^search_term))
+    |> select([a], a.id)
+    |> Repo.all()
+  end
 end

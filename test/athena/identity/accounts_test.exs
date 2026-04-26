@@ -333,4 +333,26 @@ defmodule Athena.Identity.AccountsTest do
       assert db_account.password_hash == old_hash
     end
   end
+
+  describe "get_account_ids_by_login/1" do
+    test "returns a list of account ids matching the login query (case-insensitive)" do
+      acc1 = insert(:account, login: "super_student")
+      acc2 = insert(:account, login: "Student_007")
+      _acc3 = insert(:account, login: "teacher")
+
+      ids = Accounts.get_account_ids_by_login("student")
+
+      assert length(ids) == 2
+      assert acc1.id in ids
+      assert acc2.id in ids
+    end
+
+    test "returns an empty list if no accounts match" do
+      insert(:account, login: "test_user")
+
+      ids = Accounts.get_account_ids_by_login("unknown")
+
+      assert ids == []
+    end
+  end
 end
