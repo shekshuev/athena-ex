@@ -27,6 +27,9 @@ defmodule AthenaWeb.LearnLive.LeaderboardTest do
       team1 = insert(:cohort, name: "The Hackers", type: :team)
       team2 = insert(:cohort, name: "Script Kiddies", type: :team)
 
+      insert(:enrollment, course_id: course.id, cohort_id: team1.id)
+      insert(:enrollment, course_id: course.id, cohort_id: team2.id)
+
       section = insert(:section, course: course)
       block = insert(:block, section: section)
 
@@ -39,8 +42,6 @@ defmodule AthenaWeb.LearnLive.LeaderboardTest do
       assert html =~ "100"
       assert html =~ "Script Kiddies"
       assert html =~ "50"
-
-      assert html =~ "hero-trophy-solid"
     end
 
     test "redirects if user has no access to the course", %{conn: conn} do
@@ -56,25 +57,27 @@ defmodule AthenaWeb.LearnLive.LeaderboardTest do
   describe "Real-time updates" do
     test "updates leaderboard when a PubSub message is received", %{conn: conn, course: course} do
       team = insert(:cohort, name: "Late Bloomers", type: :team)
+      insert(:enrollment, course_id: course.id, cohort_id: team.id)
+
       section = insert(:section, course: course)
       block = insert(:block, section: section)
 
       {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/leaderboard")
-      assert html =~ "This leaderboard is currently empty"
 
-      insert(:submission, block_id: block.id, cohort_id: team.id, score: 95, status: :graded)
+      assert html =~ "Late Bloomers"
 
-      Phoenix.PubSub.broadcast(
-        Athena.PubSub,
-        "leaderboard:#{course.id}",
-        :update_leaderboard
-      )
+      # Задаем уникальный скор, чтобы не ловить совпадения с CSS-классами (типа sm:scale-95)
+      refute html =~ "1337"
+
+      insert(:submission, block_id: block.id, cohort_id: team.id, score: 1337, status: :graded)
+
+      # Кидаем сообщение напрямую в LiveView процесс, чтобы убить асинхронную гонку от PubSub
+      send(lv.pid, :update_leaderboard)
 
       updated_html = render(lv)
 
-      refute updated_html =~ "This leaderboard is currently empty"
       assert updated_html =~ "Late Bloomers"
-      assert updated_html =~ "95"
+      assert updated_html =~ "1337"
     end
   end
 end

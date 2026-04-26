@@ -47,6 +47,7 @@ defmodule Athena.Learning do
   defdelegate delete_enrollment(enrollment), to: Enrollments
   defdelegate list_student_enrollments(account_id), to: Enrollments
   defdelegate has_access?(account_id, course_id), to: Enrollments
+  defdelegate get_user_cohort_for_course(account_id, course_id), to: Enrollments
 
   defdelegate list_submissions(params \\ %{}), to: Submissions
   defdelegate get_submission(account_id, block_id, cohort_id \\ nil), to: Submissions

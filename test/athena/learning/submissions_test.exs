@@ -308,9 +308,13 @@ defmodule Athena.Learning.SubmissionsTest do
       block1 = insert(:block, section: section)
       block2 = insert(:block, section: section)
 
-      team1 = insert(:cohort, name: "Team Alpha")
-      team2 = insert(:cohort, name: "Team Beta")
-      team3 = insert(:cohort, name: "Team Gamma")
+      team1 = insert(:cohort, name: "Team Alpha", type: :team)
+      team2 = insert(:cohort, name: "Team Beta", type: :team)
+      team3 = insert(:cohort, name: "Team Gamma", type: :team)
+
+      insert(:enrollment, course_id: course.id, cohort_id: team1.id)
+      insert(:enrollment, course_id: course.id, cohort_id: team2.id)
+      insert(:enrollment, course_id: course.id, cohort_id: team3.id)
 
       insert(:submission,
         block_id: block1.id,
@@ -381,6 +385,39 @@ defmodule Athena.Learning.SubmissionsTest do
       assert third.team_id == team3.id
       assert third.total_score == 80
       assert third.team_name == "Team Gamma"
+    end
+  end
+
+  describe "get_user_cohort_for_course/2" do
+    test "returns the active cohort a user belongs to for a given course" do
+      user = insert(:account)
+      course = insert(:course)
+      cohort = insert(:cohort, type: :team)
+
+      insert(:cohort_membership, account_id: user.id, cohort_id: cohort.id)
+
+      insert(:enrollment, course_id: course.id, cohort_id: cohort.id, status: :active)
+
+      result = Athena.Learning.Enrollments.get_user_cohort_for_course(user.id, course.id)
+      assert result.id == cohort.id
+    end
+
+    test "returns nil if user is not in any cohort for the course" do
+      user = insert(:account)
+      course = insert(:course)
+
+      assert nil == Athena.Learning.Enrollments.get_user_cohort_for_course(user.id, course.id)
+    end
+
+    test "returns nil if the cohort enrollment is dropped" do
+      user = insert(:account)
+      course = insert(:course)
+      cohort = insert(:cohort)
+
+      insert(:cohort_membership, account_id: user.id, cohort_id: cohort.id)
+      insert(:enrollment, course_id: course.id, cohort_id: cohort.id, status: :dropped)
+
+      assert nil == Athena.Learning.Enrollments.get_user_cohort_for_course(user.id, course.id)
     end
   end
 end

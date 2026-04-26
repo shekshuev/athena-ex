@@ -521,6 +521,8 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       cohort = insert(:cohort)
       insert(:cohort_membership, account_id: user.id, cohort_id: cohort.id)
 
+      insert(:enrollment, course_id: course.id, cohort_id: cohort.id)
+
       s1 = insert(:section, course: course)
       now = DateTime.utc_now()
       future = DateTime.add(now, 1, :day)
@@ -542,8 +544,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         unlock_at: past
       )
 
-      {:ok, _lv, html} =
-        live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}?cohort_id=#{cohort.id}")
+      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
       assert html =~ "Secret Override Content"
     end
@@ -555,6 +556,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
     } do
       cohort = insert(:cohort)
       insert(:cohort_membership, account_id: user.id, cohort_id: cohort.id)
+      insert(:enrollment, course_id: course.id, cohort_id: cohort.id)
 
       s1 = insert(:section, course: course)
       now = DateTime.utc_now()
@@ -577,8 +579,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         unlock_at: future
       )
 
-      {:ok, _lv, html} =
-        live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}?cohort_id=#{cohort.id}")
+      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
       refute html =~ "Should Be Hidden"
     end
@@ -592,6 +593,9 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       cohort2 = insert(:cohort)
       insert(:cohort_membership, account_id: user.id, cohort_id: cohort1.id)
       insert(:cohort_membership, account_id: user.id, cohort_id: cohort2.id)
+
+      insert(:enrollment, course_id: course.id, cohort_id: cohort1.id)
+      insert(:enrollment, course_id: course.id, cohort_id: cohort2.id)
 
       s1 = insert(:section, course: course)
 
@@ -610,18 +614,62 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         visibility: :hidden
       )
 
-      {:ok, _lv, html_c1} =
-        live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}?cohort_id=#{cohort1.id}")
+      Athena.Repo.delete_all(Athena.Learning.CohortMembership,
+        account_id: user.id,
+        cohort_id: cohort1.id
+      )
 
-      refute html_c1 =~ "Visible Content"
-
-      {:ok, _lv, html_c2} =
-        live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}?cohort_id=#{cohort2.id}")
-
+      {:ok, _lv, html_c2} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
       assert html_c2 =~ "Visible Content"
+    end
+  end
 
-      {:ok, _lv, html_self} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
-      assert html_self =~ "Visible Content"
+  describe "Submission Context (Individual vs Team)" do
+    test "individual submission sets cohort_id to nil", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block, section: s1, type: :quiz_question, content: %{"question_type" => "open"})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      lv
+      |> form("#quiz-form-#{block.id}", %{"answer" => "Individual work"})
+      |> render_submit()
+
+      sub = Athena.Repo.one!(Athena.Learning.Submission)
+      assert sub.account_id == user.id
+      assert sub.cohort_id == nil
+    end
+
+    test "team submission correctly assigns cohort_id from backend state", %{
+      conn: conn,
+      user: user
+    } do
+      course = insert(:course, type: :competition)
+      team = insert(:cohort, type: :team)
+
+      insert(:enrollment, course_id: course.id, cohort_id: team.id)
+      insert(:cohort_membership, account_id: user.id, cohort_id: team.id)
+
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block, section: s1, type: :quiz_question, content: %{"question_type" => "open"})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      lv
+      |> form("#quiz-form-#{block.id}", %{"answer" => "Team work"})
+      |> render_submit()
+
+      sub = Athena.Repo.one!(Athena.Learning.Submission)
+      assert sub.account_id == user.id
+      assert sub.cohort_id == team.id
     end
   end
 
@@ -643,8 +691,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       gate = insert(:block, section: s1, completion_rule: %CompletionRule{type: :button})
       insert(:block, section: s1, content: %{"text" => "Team Unlockable!"})
 
-      {:ok, lv, html} =
-        live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}?cohort_id=#{team.id}")
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
       refute html =~ "Team Unlockable!"
 
