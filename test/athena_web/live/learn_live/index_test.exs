@@ -77,8 +77,7 @@ defmodule AthenaWeb.LearnLive.IndexTest do
       assert html =~ "Radio Squad"
       assert html =~ "Cyber Squad"
 
-      assert html =~ ~s(/learn/courses/#{course.id}?cohort_id=#{cohort_radio.id})
-      assert html =~ ~s(/learn/courses/#{course.id}?cohort_id=#{cohort_cyber.id})
+      assert html =~ ~s("/learn/courses/#{course.id}")
     end
   end
 end

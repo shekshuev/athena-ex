@@ -128,9 +128,7 @@ defmodule AthenaWeb.LearnLive.Course do
 
         <%= if @waterline_id do %>
           <.link
-            navigate={
-              ~p"/learn/courses/#{@course.id}/play/#{@waterline_id}?#{[cohort_id: @cohort_id]}"
-            }
+            navigate={~p"/learn/courses/#{@course.id}/play/#{@waterline_id}"}
             class="btn btn-primary px-10"
           >
             {gettext("Continue Learning")}
@@ -151,7 +149,7 @@ defmodule AthenaWeb.LearnLive.Course do
       <div>
         <div class="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-base-content/50 mb-6 overflow-x-auto">
           <.link
-            patch={~p"/learn/courses/#{@course.id}?#{[cohort_id: @cohort_id]}"}
+            patch={~p"/learn/courses/#{@course.id}"}
             class="hover:text-primary whitespace-nowrap transition-colors"
           >
             {gettext("Course Home")}
@@ -196,9 +194,7 @@ defmodule AthenaWeb.LearnLive.Course do
                   <div class="flex-1 truncate">
                     <%= if has_content do %>
                       <.link
-                        navigate={
-                          ~p"/learn/courses/#{@course.id}/play/#{node.id}?#{[cohort_id: @cohort_id]}"
-                        }
+                        navigate={~p"/learn/courses/#{@course.id}/play/#{node.id}"}
                         class="block text-lg font-bold text-base-content group-hover:text-primary transition-colors truncate"
                       >
                         {node.title}

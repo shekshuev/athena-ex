@@ -8,9 +8,15 @@ defmodule AthenaWeb.LearnLive.Exam do
   def mount(%{"id" => course_id, "block_id" => block_id}, _session, socket) do
     user = socket.assigns.current_user
 
+    cohort = Learning.get_user_cohort_for_course(user.id, course_id)
+    team_id = if cohort && cohort.type == :team, do: cohort.id, else: nil
+
+    socket = assign(socket, :team_id, team_id)
+
     with true <- Learning.has_access?(user.id, course_id),
          {:ok, _course} <- Content.get_course(course_id),
-         submission when not is_nil(submission) <- Learning.get_submission(user.id, block_id),
+         submission when not is_nil(submission) <-
+           Learning.get_submission(user.id, block_id, team_id),
          :pending <- submission.status,
          {:ok, block} <- Content.get_block(block_id),
          {:ok, socket} <- handle_active_exam(socket, course_id, block, submission) do
@@ -53,6 +59,8 @@ defmodule AthenaWeb.LearnLive.Exam do
     if new_count >= max_cheats do
       {:ok, _failed_sub} =
         Learning.update_submission(updated_sub, %{"status" => "graded", "score" => 0})
+
+      broadcast_team_progress(socket.assigns.team_id, socket.assigns.course_id)
 
       {:noreply,
        socket
@@ -319,6 +327,8 @@ defmodule AthenaWeb.LearnLive.Exam do
   defp submit_and_exit(socket, submission, course_id) do
     {:ok, _} = Learning.update_submission(submission, %{"status" => "needs_review", "score" => 0})
 
+    broadcast_team_progress(socket.assigns.team_id, course_id)
+
     socket
     |> put_flash(:success, gettext("Exam submitted successfully!"))
     |> push_navigate(to: ~p"/learn/courses/#{course_id}")
@@ -398,5 +408,12 @@ defmodule AthenaWeb.LearnLive.Exam do
   defp calc_time_left(limit_sec, started_at) do
     time_passed = DateTime.diff(DateTime.utc_now(), parse_dt(started_at))
     max(limit_sec - time_passed, 0)
+  end
+
+  defp broadcast_team_progress(nil, _course_id), do: :ok
+
+  defp broadcast_team_progress(team_id, course_id) do
+    Phoenix.PubSub.broadcast(Athena.PubSub, "team_progress:#{team_id}", :team_progress_updated)
+    Phoenix.PubSub.broadcast(Athena.PubSub, "leaderboard:#{course_id}", :update_leaderboard)
   end
 end

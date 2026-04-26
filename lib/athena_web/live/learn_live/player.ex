@@ -24,12 +24,12 @@ defmodule AthenaWeb.LearnLive.Player do
   @impl true
   def mount(%{"id" => course_id} = params, _session, socket) do
     user = socket.assigns.current_user
-    cohort_id = if params["cohort_id"] == "", do: nil, else: params["cohort_id"]
 
     with true <- Learning.has_access?(user.id, course_id),
          {:ok, course} <- Content.get_course(course_id) do
-      cohort = if cohort_id, do: Learning.get_cohort!(cohort_id), else: nil
+      cohort = Learning.get_user_cohort_for_course(user.id, course_id)
 
+      cohort_id = if cohort, do: cohort.id, else: nil
       team_id = if cohort && cohort.type == :team, do: cohort.id, else: nil
 
       if connected?(socket), do: subscribe_to_topics(course_id, team_id)

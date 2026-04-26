@@ -8,7 +8,8 @@ defmodule Athena.Learning.Submissions do
 
   import Ecto.Query
   alias Athena.Repo
-  alias Athena.Learning.Submission
+  alias Athena.Learning.{Submission, Enrollment, Cohort}
+  alias Athena.Content.{Block, Section}
 
   @doc """
   Lists submissions with pagination, filtering, and sorting using Flop.
@@ -87,45 +88,71 @@ defmodule Athena.Learning.Submissions do
   """
   def get_submission!(id), do: Repo.get!(Submission, id)
 
-  alias Athena.Content.{Block, Section}
-  alias Athena.Learning.Cohort
-
   @doc """
   Generates a leaderboard for a specific competition course.
   Calculates the sum of the max scores per block for each team.
   Ties are broken by the timestamp of the latest submission.
   """
   def get_team_leaderboard(course_id) do
-    best_scores =
+    best_per_block =
       from s in Submission,
-        where: not is_nil(s.cohort_id) and s.status in [:graded, :needs_review],
-        group_by: [s.cohort_id, s.block_id],
+        join: b in Block,
+        on: s.block_id == b.id,
+        join: sec in Section,
+        on: b.section_id == sec.id,
+        where:
+          not is_nil(s.cohort_id) and sec.course_id == ^course_id and
+            s.status in [:graded, :needs_review],
+        distinct: [s.cohort_id, s.block_id],
+        order_by: [s.cohort_id, s.block_id, desc: s.score, asc: s.inserted_at],
         select: %{
           cohort_id: s.cohort_id,
-          block_id: s.block_id,
-          score: max(s.score),
-          last_activity: max(s.inserted_at)
+          score: s.score,
+          inserted_at: s.inserted_at
+        }
+
+    team_scores =
+      from bpb in subquery(best_per_block),
+        group_by: bpb.cohort_id,
+        select: %{
+          cohort_id: bpb.cohort_id,
+          total_score: sum(bpb.score),
+          last_activity: max(bpb.inserted_at)
+        }
+
+    team_attempts =
+      from s in Submission,
+        join: b in Block,
+        on: s.block_id == b.id,
+        join: sec in Section,
+        on: b.section_id == sec.id,
+        where: not is_nil(s.cohort_id) and sec.course_id == ^course_id,
+        group_by: s.cohort_id,
+        select: %{
+          cohort_id: s.cohort_id,
+          attempts_count: count(s.id)
         }
 
     query =
-      from bs in subquery(best_scores),
-        join: b in Block,
-        on: bs.block_id == b.id,
-        join: sec in Section,
-        on: b.section_id == sec.id,
+      from e in Enrollment,
         join: c in Cohort,
-        on: bs.cohort_id == c.id,
-        where: sec.course_id == ^course_id,
-        group_by: [c.id, c.name],
+        on: e.cohort_id == c.id,
+        left_join: ts in subquery(team_scores),
+        on: ts.cohort_id == c.id,
+        left_join: ta in subquery(team_attempts),
+        on: ta.cohort_id == c.id,
+        where: e.course_id == ^course_id and c.type == :team,
         select: %{
           team_id: c.id,
           team_name: c.name,
-          total_score: type(sum(bs.score), :integer),
-          last_activity: max(bs.last_activity)
+          total_score: type(coalesce(ts.total_score, 0), :integer),
+          last_activity: ts.last_activity,
+          attempts: type(coalesce(ta.attempts_count, 0), :integer)
         },
         order_by: [
-          desc: sum(bs.score),
-          asc: max(bs.last_activity)
+          desc: coalesce(ts.total_score, 0),
+          asc: ts.last_activity,
+          asc: coalesce(ta.attempts_count, 0)
         ]
 
     Repo.all(query)

@@ -223,4 +223,47 @@ defmodule Athena.Learning.CohortsTest do
       end
     end
   end
+
+  describe "get_cohort_options/1 (With ACL)" do
+    test "returns a list of {name, id} tuples ordered by name for admin", %{admin: admin} do
+      cohort2 = insert(:cohort, name: "Zeta Group")
+      cohort1 = insert(:cohort, name: "Alpha Group")
+      cohort3 = insert(:cohort, name: "Beta Group")
+
+      options = Cohorts.get_cohort_options(admin)
+
+      assert length(options) == 3
+      assert Enum.at(options, 0) == {cohort1.name, cohort1.id}
+      assert Enum.at(options, 1) == {cohort3.name, cohort3.id}
+      assert Enum.at(options, 2) == {cohort2.name, cohort2.id}
+    end
+
+    test "respects own_only policy for instructors", %{
+      inst1_account: inst1_account,
+      inst1_profile: inst1_profile,
+      inst2_profile: inst2_profile
+    } do
+      {:ok, my_cohort} =
+        Cohorts.create_cohort(%{"name" => "My Cohort", "instructor_ids" => [inst1_profile.id]})
+
+      {:ok, _other_cohort} =
+        Cohorts.create_cohort(%{"name" => "Other Cohort", "instructor_ids" => [inst2_profile.id]})
+
+      options = Cohorts.get_cohort_options(inst1_account)
+
+      assert length(options) == 1
+      assert hd(options) == {my_cohort.name, my_cohort.id}
+    end
+
+    test "returns empty list if user has no access" do
+      role = insert(:role, permissions: [])
+      user_no_access = insert(:account, role: role)
+
+      insert(:cohort, name: "Hidden Cohort")
+
+      options = Cohorts.get_cohort_options(user_no_access)
+
+      assert options == []
+    end
+  end
 end

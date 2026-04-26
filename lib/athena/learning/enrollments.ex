@@ -198,4 +198,21 @@ defmodule Athena.Learning.Enrollments do
       }
     end)
   end
+
+  @doc """
+  Finds the active cohort a user belongs to for a specific course.
+  """
+  @spec get_user_cohort_for_course(String.t(), String.t()) :: Athena.Learning.Cohort.t() | nil
+  def get_user_cohort_for_course(user_id, course_id) do
+    query =
+      from c in Athena.Learning.Cohort,
+        join: cm in CohortMembership,
+        on: cm.cohort_id == c.id,
+        join: e in Enrollment,
+        on: e.cohort_id == c.id,
+        where: cm.account_id == ^user_id and e.course_id == ^course_id and e.status == :active,
+        limit: 1
+
+    Repo.one(query)
+  end
 end

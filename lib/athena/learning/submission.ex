@@ -10,9 +10,15 @@ defmodule Athena.Learning.Submission do
 
   @derive {
     Flop.Schema,
-    filterable: [:status, :score],
+    filterable: [:status, :score, :account_id, :cohort_id, :inserted_at, :has_cheats],
     sortable: [:inserted_at, :status, :score],
-    default_order: %{order_by: [:inserted_at], order_directions: [:desc]}
+    default_order: %{order_by: [:inserted_at], order_directions: [:desc]},
+    custom_fields: [
+      has_cheats: [
+        filter: {__MODULE__, :filter_has_cheats, []},
+        ecto_type: :boolean
+      ]
+    ]
   }
 
   schema "submissions" do
@@ -51,5 +57,15 @@ defmodule Athena.Learning.Submission do
     |> cast(attrs, [:content, :status, :score, :feedback, :account_id, :block_id, :cohort_id])
     |> validate_required([:status, :account_id, :block_id])
     |> validate_number(:score, greater_than_or_equal_to: 0, less_than_or_equal_to: 100)
+  end
+
+  @doc false
+  def filter_has_cheats(query, %Flop.Filter{value: value}, _opts) do
+    if value in [true, "true"] do
+      import Ecto.Query
+      where(query, [s], fragment("(?.content->>'cheat_count')::int > 0", s))
+    else
+      query
+    end
   end
 end

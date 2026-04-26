@@ -63,7 +63,6 @@ defmodule AthenaWeb.LearnLive.Leaderboard do
               <th class="py-4 px-2 w-16 text-center">#</th>
               <th class="py-4 px-2">{gettext("Team")}</th>
               <th class="py-4 px-2 text-right">{gettext("Score")}</th>
-              <th class="py-4 px-2 text-right">{gettext("Last Activity")}</th>
             </tr>
           </thead>
           <tbody>
@@ -83,20 +82,12 @@ defmodule AthenaWeb.LearnLive.Leaderboard do
                     {index}
                   </td>
                   <td class="py-5 px-2 font-bold text-base-content flex items-center gap-3">
-                    <.icon
-                      :if={index == 1}
-                      name="hero-trophy-solid"
-                      class="size-5 text-primary shrink-0"
-                    />
                     <span class={if index == 1, do: "text-primary", else: ""}>
                       {team.team_name}
                     </span>
                   </td>
                   <td class="py-5 px-2 text-right font-mono font-bold text-primary">
                     {team.total_score}
-                  </td>
-                  <td class="py-5 px-2 text-right text-sm text-base-content/50 font-mono">
-                    {Calendar.strftime(team.last_activity, "%H:%M:%S")}
                   </td>
                 </tr>
               <% end %>

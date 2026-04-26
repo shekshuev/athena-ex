@@ -12,7 +12,9 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
   on_mount {AthenaWeb.Hooks.Permission, "grading.update"}
 
   @impl true
-  def mount(%{"id" => id}, _session, socket) do
+  def mount(%{"id" => id} = params, _session, socket) do
+    return_to = Map.get(params, "return_to", ~p"/studio/grading")
+
     submission = Learning.get_submission!(id)
 
     {:ok, account} = Identity.get_account(submission.account_id)
@@ -27,7 +29,8 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
        submission: submission,
        account: account,
        block: block,
-       form: form
+       form: form,
+       return_to: return_to
      )}
   end
 
@@ -44,7 +47,7 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
         {:noreply,
          socket
          |> put_flash(:success, gettext("Submission graded successfully!"))
-         |> push_navigate(to: ~p"/studio/grading")}
+         |> push_navigate(to: socket.assigns.return_to)}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, gettext("Failed to save grade."))}
@@ -57,7 +60,7 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
     <div class="max-w-7xl mx-auto pb-20">
       <div class="flex items-center gap-4 mb-8 border-b border-base-200 pb-6">
         <.link
-          navigate={~p"/studio/grading"}
+          navigate={@return_to}
           class="btn btn-ghost btn-sm btn-square rounded-md hover:bg-base-200"
         >
           <.icon name="hero-arrow-left" class="size-5" />

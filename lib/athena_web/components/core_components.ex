@@ -243,12 +243,19 @@ defmodule AthenaWeb.CoreComponents do
 
   def input(%{type: "select"} = assigns) do
     ~H"""
-    <fieldset class={["fieldset w-full", @class]}>
-      <legend :if={@label} class="fieldset-legend">{@label}</legend>
+    <div class="form-control mb-2 w-full">
+      <label :if={@label} for={@id} class="label">
+        <span class="label-text font-bold">{@label}</span>
+      </label>
       <select
         id={@id}
         name={@name}
-        class={["select w-full", @errors != [] && "select-error", @multiple && "h-auto py-2"]}
+        class={[
+          "select select-bordered w-full",
+          @errors != [] && "select-error",
+          @class,
+          @multiple && "h-auto py-2"
+        ]}
         multiple={@multiple}
         {@rest}
       >
@@ -258,7 +265,7 @@ defmodule AthenaWeb.CoreComponents do
         {Phoenix.HTML.Form.options_for_select(@options, @value)}
       </select>
       <.error :for={msg <- @errors}>{msg}</.error>
-    </fieldset>
+    </div>
     """
   end
 
