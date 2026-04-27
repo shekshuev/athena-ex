@@ -25,7 +25,7 @@ defmodule Athena.Learning.Submission do
     field :content, :map, default: %{}
 
     field :status, Ecto.Enum,
-      values: [:pending, :processing, :graded, :needs_review],
+      values: [:pending, :processing, :graded, :needs_review, :rejected],
       default: :pending
 
     field :score, :integer, default: 0
@@ -41,7 +41,7 @@ defmodule Athena.Learning.Submission do
   @type t :: %__MODULE__{
           id: binary() | nil,
           content: map(),
-          status: :pending | :processing | :graded | :needs_review,
+          status: :pending | :processing | :graded | :needs_review | :rejected,
           score: integer(),
           feedback: String.t() | nil,
           account_id: binary() | nil,

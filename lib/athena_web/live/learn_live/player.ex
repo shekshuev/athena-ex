@@ -472,7 +472,7 @@ defmodule AthenaWeb.LearnLive.Player do
       <div class="space-y-10">
         <%= for block <- @visible_blocks do %>
           <% submission = Map.get(@submissions || %{}, block.id) %>
-          <% is_submitted = submission && submission.status in [:graded, :needs_review] %>
+          <% is_submitted = submission && submission.status in [:graded, :needs_review, :rejected] %>
           <% _mode = if is_submitted, do: :review, else: :play %>
 
           <div
@@ -488,6 +488,7 @@ defmodule AthenaWeb.LearnLive.Player do
                 <% is_locked =
                   cond do
                     is_nil(submission) -> false
+                    submission.status == :rejected -> true
                     submission.status == :needs_review -> true
                     is_passed -> true
                     is_pass_auto_grade -> false
@@ -509,6 +510,23 @@ defmodule AthenaWeb.LearnLive.Player do
                     class="mt-4 mb-4 p-4 bg-info/10 text-info-content rounded-xl text-sm border border-info/20"
                   >
                     <strong>{gettext("Explanation:")}</strong> {block.content["general_explanation"]}
+                  </div>
+
+                  <div
+                    :if={submission && submission.feedback not in [nil, ""]}
+                    class={[
+                      "mt-4 mb-4 p-5 rounded-xl text-sm border",
+                      submission.status == :rejected &&
+                        "bg-error/10 text-error-content border-error/20",
+                      submission.status != :rejected &&
+                        "bg-warning/10 text-warning-content border-warning/20"
+                    ]}
+                  >
+                    <strong class="flex items-center gap-1 mb-2">
+                      <.icon name="hero-chat-bubble-bottom-center-text" class="size-4" />
+                      {gettext("Instructor Feedback")}
+                    </strong>
+                    <p class="whitespace-pre-wrap leading-relaxed">{submission.feedback}</p>
                   </div>
 
                   <div class="mt-6 flex items-center justify-between">
@@ -540,6 +558,13 @@ defmodule AthenaWeb.LearnLive.Player do
                             do: gettext("Incorrect."),
                             else: gettext("Incorrect. Try again.")}
                         <% end %>
+                      </div>
+
+                      <div
+                        :if={submission.status == :rejected}
+                        class="font-bold flex items-center gap-1 text-error text-lg"
+                      >
+                        <.icon name="hero-x-circle-solid" class="size-6" /> {gettext("Rejected")}
                       </div>
 
                       <div

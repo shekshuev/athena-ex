@@ -122,10 +122,10 @@ defmodule Athena.Learning.SubmissionsTest do
   end
 
   describe "get_latest_submissions/3" do
-    test "returns a map of the latest individual submissions for the given block ids" do
+    test "returns a map of the highest scored individual submissions for the given block ids" do
       account_id = Ecto.UUID.generate()
       other_account_id = Ecto.UUID.generate()
-      team = insert(:cohort)
+      _team = insert(:cohort)
 
       block_1_id = Ecto.UUID.generate()
       block_2_id = Ecto.UUID.generate()
@@ -134,26 +134,26 @@ defmodule Athena.Learning.SubmissionsTest do
       now = DateTime.utc_now() |> DateTime.truncate(:second)
       yesterday = DateTime.add(now, -1, :day)
 
-      insert(:submission,
-        account_id: account_id,
-        block_id: block_1_id,
-        score: 20,
-        inserted_at: yesterday
-      )
-
-      latest_b1 =
+      best_b1 =
         insert(:submission,
           account_id: account_id,
           block_id: block_1_id,
-          score: 50,
-          inserted_at: now
+          score: 100,
+          inserted_at: yesterday
         )
 
-      latest_b2 =
+      insert(:submission,
+        account_id: account_id,
+        block_id: block_1_id,
+        score: 0,
+        inserted_at: now
+      )
+
+      best_b2 =
         insert(:submission,
           account_id: account_id,
           block_id: block_2_id,
-          score: 100,
+          score: 80,
           inserted_at: yesterday
         )
 
@@ -164,24 +164,16 @@ defmodule Athena.Learning.SubmissionsTest do
         inserted_at: now
       )
 
-      insert(:submission,
-        account_id: account_id,
-        block_id: block_2_id,
-        cohort_id: team.id,
-        score: 999,
-        inserted_at: now
-      )
-
       block_ids = [block_1_id, block_2_id, block_3_id]
       result = Submissions.get_latest_submissions(account_id, block_ids)
 
       assert map_size(result) == 2
 
-      assert result[block_1_id].id == latest_b1.id
-      assert result[block_1_id].score == 50
+      assert result[block_1_id].id == best_b1.id
+      assert result[block_1_id].score == 100
 
-      assert result[block_2_id].id == latest_b2.id
-      assert result[block_2_id].score == 100
+      assert result[block_2_id].id == best_b2.id
+      assert result[block_2_id].score == 80
 
       refute Map.has_key?(result, block_3_id)
     end

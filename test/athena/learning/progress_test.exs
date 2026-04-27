@@ -116,5 +116,32 @@ defmodule Athena.Learning.ProgressTest do
       new_accessible = Progress.accessible_section_ids(user, course.id, [s1, s2], [], team.id)
       assert s2.id in new_accessible
     end
+
+    test "ignores hidden blocks even if they have completion rules (gates)", %{user: user} do
+      course = insert(:course)
+      s1 = insert(:section, course: course)
+      s2 = insert(:section, course: course)
+
+      gate_visible = insert(:block, section: s1, completion_rule: %CompletionRule{type: :button})
+
+      _gate_hidden =
+        insert(:block,
+          section: s2,
+          visibility: :hidden,
+          completion_rule: %CompletionRule{type: :submit}
+        )
+
+      s3 = insert(:section, course: course)
+
+      accessible = Progress.accessible_section_ids(user, course.id, [s1, s2, s3])
+      assert s1.id in accessible
+      refute s2.id in accessible
+
+      Progress.mark_completed(user.id, gate_visible.id)
+
+      new_accessible = Progress.accessible_section_ids(user, course.id, [s1, s2, s3])
+      assert s2.id in new_accessible
+      assert s3.id in new_accessible
+    end
   end
 end

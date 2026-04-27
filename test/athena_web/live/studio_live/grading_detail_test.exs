@@ -39,7 +39,6 @@ defmodule AthenaWeb.StudioLive.GradingDetailTest do
 
       assert html =~ "Submission from hacker_boy"
 
-      # В новом UI подчеркивания заменяются на пробелы: "quiz_question" -> "quiz question"
       assert html =~ "quiz question"
       assert html =~ "athena_flag"
       assert html =~ "Correct:"
@@ -103,7 +102,6 @@ defmodule AthenaWeb.StudioLive.GradingDetailTest do
 
       assert html =~ "sneaky_student"
 
-      # "quiz_exam" -> "quiz exam"
       assert html =~ "quiz exam"
 
       assert html =~ "Manual Review"
@@ -148,7 +146,7 @@ defmodule AthenaWeb.StudioLive.GradingDetailTest do
 
       lv
       |> form("#grading-form", %{"score" => "85", "feedback" => "Good essay, bro!"})
-      |> render_submit()
+      |> render_submit(%{"action" => "grade"})
       |> follow_redirect(conn, ~p"/studio/grading")
 
       updated_sub = Athena.Repo.get!(Submission, sub.id)
@@ -156,6 +154,34 @@ defmodule AthenaWeb.StudioLive.GradingDetailTest do
       assert updated_sub.score == 85
       assert updated_sub.feedback == "Good essay, bro!"
       assert updated_sub.status == :graded
+    end
+
+    test "reject action saves feedback, sets score to 0, status to rejected, and redirects", %{
+      conn: conn
+    } do
+      student = insert(:account)
+      block = insert(:block, type: :quiz_question, content: %{"question_type" => "open"})
+
+      sub =
+        insert(:submission,
+          account_id: student.id,
+          block_id: block.id,
+          score: 0,
+          status: :needs_review
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/grading/#{sub.id}")
+
+      lv
+      |> form("#grading-form", %{"score" => "85", "feedback" => "Very bad!"})
+      |> render_submit(%{"action" => "reject"})
+
+      assert_redirect(lv, "/studio/grading")
+
+      updated_sub = Athena.Repo.get!(Athena.Learning.Submission, sub.id)
+      assert updated_sub.status == :rejected
+      assert updated_sub.score == 0
+      assert updated_sub.feedback == "Very bad!"
     end
   end
 
