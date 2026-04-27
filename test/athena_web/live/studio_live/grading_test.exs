@@ -35,7 +35,6 @@ defmodule AthenaWeb.StudioLive.GradingTest do
 
       assert html =~ "Grading Center"
 
-      # Так как дефолт "all", должны быть видны обе работы
       assert html =~ "johndoe"
       assert html =~ "Needs review"
 
@@ -56,6 +55,25 @@ defmodule AthenaWeb.StudioLive.GradingTest do
       assert html =~ "Unknown"
       assert html =~ "Deleted Block"
     end
+
+    test "renders rejected submissions correctly", %{conn: conn} do
+      student = insert(:account, login: "cheater_student")
+      block = insert(:block)
+
+      insert(:submission,
+        account_id: student.id,
+        block_id: block.id,
+        status: :rejected,
+        score: 0
+      )
+
+      {:ok, _lv, html} = live(conn, ~p"/studio/grading")
+
+      assert html =~ "cheater_student"
+      assert html =~ "Rejected"
+      assert html =~ "bg-error/10 text-error"
+      assert html =~ "0"
+    end
   end
 
   describe "Grading page (Filtering)" do
@@ -69,7 +87,6 @@ defmodule AthenaWeb.StudioLive.GradingTest do
 
       {:ok, lv, _html} = live(conn, ~p"/studio/grading")
 
-      # Меняем фильтр статуса через форму
       html = lv |> form("form", %{"status" => "graded"}) |> render_change()
 
       assert html =~ "graded_student"
@@ -163,13 +180,27 @@ defmodule AthenaWeb.StudioLive.GradingTest do
     end
 
     test "reset filters clears all params and redirects back to base url", %{conn: conn} do
-      # Открываем страницу с кучей параметров
       {:ok, lv, _html} = live(conn, ~p"/studio/grading?status=graded&login=foo&has_cheats=true")
 
       lv |> element("button[phx-click='reset_filters']") |> render_click()
 
-      # Должен сработать push_patch на чистый URL
       assert_patch(lv, "/studio/grading")
+    end
+
+    test "filters by rejected status using the select dropdown", %{conn: conn} do
+      student1 = insert(:account, login: "good_boy")
+      student2 = insert(:account, login: "bad_boy")
+      block = insert(:block)
+
+      insert(:submission, account_id: student1.id, block_id: block.id, status: :graded)
+      insert(:submission, account_id: student2.id, block_id: block.id, status: :rejected)
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/grading")
+
+      html = lv |> form("form", %{"status" => "rejected"}) |> render_change()
+
+      assert html =~ "bad_boy"
+      refute html =~ "good_boy"
     end
   end
 

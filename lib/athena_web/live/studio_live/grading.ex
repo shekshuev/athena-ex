@@ -181,7 +181,8 @@ defmodule AthenaWeb.StudioLive.Grading do
             options={[
               {gettext("All Statuses"), "all"},
               {gettext("Needs Review"), "needs_review"},
-              {gettext("Graded"), "graded"}
+              {gettext("Graded"), "graded"},
+              {gettext("Rejected"), "rejected"}
             ]}
             label={gettext("Status")}
           />
@@ -239,6 +240,7 @@ defmodule AthenaWeb.StudioLive.Grading do
             "h-1.5 w-full",
             sub.status == :needs_review && "bg-warning",
             sub.status == :graded && "bg-success",
+            sub.status == :rejected && "bg-error",
             sub.status in [:pending, :processing] && "bg-base-300"
           ]}>
           </div>
@@ -281,10 +283,11 @@ defmodule AthenaWeb.StudioLive.Grading do
                 <div class={[
                   "font-black text-3xl font-mono",
                   sub.status == :needs_review && "text-base-content/20",
-                  sub.status == :graded && "text-base-content"
+                  sub.status == :graded && "text-base-content",
+                  sub.status == :rejected && "text-error"
                 ]}>
-                  <%= if sub.status == :graded do %>
-                    {sub.score} <span class="text-lg text-base-content/40 font-bold">/ 100</span>
+                  <%= if sub.status in [:graded, :rejected] do %>
+                    {sub.score} <span class="text-lg opacity-40 font-bold">/ 100</span>
                   <% else %>
                     —
                   <% end %>
@@ -337,6 +340,7 @@ defmodule AthenaWeb.StudioLive.Grading do
       "badge badge-sm font-bold border-0 tracking-wide shrink-0",
       @status == :graded && "bg-success/10 text-success",
       @status == :needs_review && "bg-warning/10 text-warning",
+      @status == :rejected && "bg-error/10 text-error",
       @status in [:pending, :processing] && "bg-base-200 text-base-content/70"
     ]}>
       {Atom.to_string(@status) |> String.replace("_", " ") |> String.capitalize()}

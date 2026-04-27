@@ -409,6 +409,57 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       assert html =~ "Incorrect."
       assert html =~ "Secret Content"
     end
+
+    test "renders instructor feedback when provided", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block, section: s1, type: :quiz_question, content: %{"question_type" => "open"})
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :graded,
+        score: 80,
+        feedback: "Good essay, but you missed a few commas."
+      )
+
+      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ "Instructor Feedback"
+      assert html =~ "Good essay, but you missed a few commas."
+      refute html =~ "Submit Answer"
+    end
+
+    test "renders rejected status, shows feedback, and locks the form", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block, section: s1, type: :quiz_question, content: %{"question_type" => "open"})
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :rejected,
+        score: 0,
+        feedback: "Copied from ChatGPT. Disqualified."
+      )
+
+      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ "Rejected"
+      assert html =~ "Instructor Feedback"
+      assert html =~ "Copied from ChatGPT. Disqualified."
+      refute html =~ "Submit Answer"
+    end
   end
 
   describe "Quiz Exam Block" do

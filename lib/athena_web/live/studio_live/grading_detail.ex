@@ -35,18 +35,30 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
   end
 
   @impl true
-  def handle_event("save_grade", %{"score" => score, "feedback" => feedback}, socket) do
+  def handle_event(
+        "save_grade",
+        %{"action" => action, "score" => score, "feedback" => feedback},
+        socket
+      ) do
+    status = if action == "reject", do: "rejected", else: "graded"
+    final_score = if action == "reject", do: 0, else: String.to_integer(score)
+
     attrs = %{
-      "score" => String.to_integer(score),
+      "score" => final_score,
       "feedback" => feedback,
-      "status" => "graded"
+      "status" => status
     }
 
     case Learning.update_submission(socket.assigns.submission, attrs) do
       {:ok, _updated_sub} ->
+        msg =
+          if action == "reject",
+            do: gettext("Submission rejected!"),
+            else: gettext("Submission graded successfully!")
+
         {:noreply,
          socket
-         |> put_flash(:success, gettext("Submission graded successfully!"))
+         |> put_flash(:success, msg)
          |> push_navigate(to: socket.assigns.return_to)}
 
       {:error, _} ->
@@ -204,14 +216,27 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
             </.form>
           </div>
 
-          <div class="p-6 border-t border-base-200 bg-base-200/20">
+          <div class="p-6 border-t border-base-200 bg-base-200/20 flex gap-4">
             <button
               form="grading-form"
               type="submit"
-              class="btn btn-primary w-full shadow-sm"
+              name="action"
+              value="reject"
+              class="btn btn-outline btn-error w-1/3 shadow-sm"
+            >
+              <.icon name="hero-x-mark" class="size-5 mr-1" />
+              {gettext("Reject")}
+            </button>
+
+            <button
+              form="grading-form"
+              type="submit"
+              name="action"
+              value="grade"
+              class="btn btn-primary w-2/3 shadow-sm"
             >
               <.icon name="hero-check-circle" class="size-5 mr-2" />
-              {gettext("Save & Mark as Graded")}
+              {gettext("Save & Grade")}
             </button>
           </div>
         </div>
@@ -226,7 +251,8 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
       "badge font-bold border-0 tracking-wide rounded-md",
       @status == :graded && "bg-success/10 text-success",
       @status == :needs_review && "bg-warning/10 text-warning",
-      @status in [:pending, :processing] && "bg-base-200 text-base-content/70"
+      @status in [:pending, :processing] && "bg-base-200 text-base-content/70",
+      @status == :rejected && "bg-error/10 text-error"
     ]}>
       {Atom.to_string(@status) |> String.replace("_", " ") |> String.capitalize()}
     </span>

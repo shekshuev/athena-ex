@@ -92,6 +92,7 @@ defmodule Athena.Learning.Submissions do
   Generates a leaderboard for a specific competition course.
   Calculates the sum of the max scores per block for each team.
   Ties are broken by the timestamp of the latest submission.
+  Teams with any rejected submission are disqualified and moved to the bottom.
   """
   def get_team_leaderboard(course_id) do
     best_per_block =
@@ -130,7 +131,8 @@ defmodule Athena.Learning.Submissions do
         group_by: s.cohort_id,
         select: %{
           cohort_id: s.cohort_id,
-          attempts_count: count(s.id)
+          attempts_count: count(s.id),
+          is_disqualified: fragment("count(case when ? = 'rejected' then 1 end) > 0", s.status)
         }
 
     query =
@@ -147,9 +149,11 @@ defmodule Athena.Learning.Submissions do
           team_name: c.name,
           total_score: type(coalesce(ts.total_score, 0), :integer),
           last_activity: ts.last_activity,
-          attempts: type(coalesce(ta.attempts_count, 0), :integer)
+          attempts: type(coalesce(ta.attempts_count, 0), :integer),
+          is_disqualified: type(coalesce(ta.is_disqualified, false), :boolean)
         },
         order_by: [
+          asc: coalesce(ta.is_disqualified, false),
           desc: coalesce(ts.total_score, 0),
           asc: ts.last_activity,
           asc: coalesce(ta.attempts_count, 0)

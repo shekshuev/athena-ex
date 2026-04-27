@@ -44,6 +44,77 @@ defmodule AthenaWeb.LearnLive.LeaderboardTest do
       assert html =~ "50"
     end
 
+    test "calculates score using the best submission per block", %{conn: conn, course: course} do
+      team = insert(:cohort, name: "Tryhards", type: :team)
+      insert(:enrollment, course_id: course.id, cohort_id: team.id)
+
+      section = insert(:section, course: course)
+      block = insert(:block, section: section)
+
+      insert(:submission,
+        block_id: block.id,
+        cohort_id: team.id,
+        score: 50,
+        status: :graded,
+        inserted_at: ~U[2026-04-01 10:00:00Z]
+      )
+
+      insert(:submission,
+        block_id: block.id,
+        cohort_id: team.id,
+        score: 100,
+        status: :graded,
+        inserted_at: ~U[2026-04-01 11:00:00Z]
+      )
+
+      insert(:submission,
+        block_id: block.id,
+        cohort_id: team.id,
+        score: 0,
+        status: :graded,
+        inserted_at: ~U[2026-04-01 12:00:00Z]
+      )
+
+      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/leaderboard")
+
+      assert html =~ "Tryhards"
+      assert html =~ "100"
+    end
+
+    test "renders disqualified state for teams with a rejected submission", %{
+      conn: conn,
+      course: course
+    } do
+      cheaters = insert(:cohort, name: "Team Rocket", type: :team)
+      insert(:enrollment, course_id: course.id, cohort_id: cheaters.id)
+
+      section = insert(:section, course: course)
+      block1 = insert(:block, section: section)
+      block2 = insert(:block, section: section)
+
+      insert(:submission,
+        block_id: block1.id,
+        cohort_id: cheaters.id,
+        score: 999,
+        status: :graded
+      )
+
+      insert(:submission,
+        block_id: block2.id,
+        cohort_id: cheaters.id,
+        score: 0,
+        status: :rejected
+      )
+
+      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/leaderboard")
+
+      assert html =~ "Team Rocket"
+      assert html =~ "Disqualified"
+      assert html =~ "opacity-50 grayscale bg-error/5"
+
+      refute html =~ "999"
+    end
+
     test "redirects if user has no access to the course", %{conn: conn} do
       other_course = insert(:course)
 
@@ -65,13 +136,10 @@ defmodule AthenaWeb.LearnLive.LeaderboardTest do
       {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/leaderboard")
 
       assert html =~ "Late Bloomers"
-
-      # Задаем уникальный скор, чтобы не ловить совпадения с CSS-классами (типа sm:scale-95)
       refute html =~ "1337"
 
       insert(:submission, block_id: block.id, cohort_id: team.id, score: 1337, status: :graded)
 
-      # Кидаем сообщение напрямую в LiveView процесс, чтобы убить асинхронную гонку от PubSub
       send(lv.pid, :update_leaderboard)
 
       updated_html = render(lv)
