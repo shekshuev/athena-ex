@@ -76,7 +76,7 @@ defmodule Athena.Learning.Progress do
           String.t() | nil
         ) :: [String.t()]
   def accessible_section_ids(user, _course_id, linear_sections, overrides \\ [], cohort_id \\ nil) do
-    gate_blocks = get_gate_blocks(linear_sections)
+    gate_blocks = get_gate_blocks(linear_sections, user, overrides)
     completed_ids = fetch_completed_gate_ids(gate_blocks, user, cohort_id)
 
     uncompleted_gates_by_section =
@@ -92,11 +92,15 @@ defmodule Athena.Learning.Progress do
     accessible
   end
 
-  defp get_gate_blocks(linear_sections) do
+  defp get_gate_blocks(linear_sections, user, overrides) do
     linear_sections
     |> Enum.map(& &1.id)
     |> Content.list_blocks_by_section_ids()
-    |> Enum.filter(&(&1.completion_rule && &1.completion_rule.type != :none))
+    |> Enum.filter(fn block ->
+      block.completion_rule &&
+        block.completion_rule.type != :none &&
+        Content.can_view?(user, block, overrides)
+    end)
   end
 
   defp fetch_completed_gate_ids([], _user, _cohort_id), do: []

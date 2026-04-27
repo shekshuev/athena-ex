@@ -691,4 +691,14 @@ defmodule AthenaWeb.CoreComponents do
     </div>
     """
   end
+
+  @commit_sha (case System.cmd("git", ["rev-parse", "--short", "HEAD"]) do
+                 {sha, 0} -> String.trim(sha)
+                 _ -> "dev"
+               end)
+
+  def app_version do
+    vsn = Application.spec(:athena, :vsn) |> to_string()
+    "v#{vsn} (#{@commit_sha})"
+  end
 end

@@ -61,7 +61,8 @@ defmodule Athena.Learning.Submissions do
   end
 
   @doc """
-  Gets the latest submissions for a list of block ids, scoped by cohort or user.
+  Gets the best/latest submissions for a list of block ids, scoped by cohort or user.
+  Prioritizes the highest score. If scores are equal, takes the latest attempt.
   """
   @spec get_latest_submissions(String.t(), [String.t()], String.t() | nil) :: %{
           String.t() => Submission.t()
@@ -77,7 +78,7 @@ defmodule Athena.Learning.Submissions do
 
     query
     |> distinct([s], s.block_id)
-    |> order_by([s], [s.block_id, desc: s.inserted_at])
+    |> order_by([s], [s.block_id, desc: s.score, desc: s.inserted_at])
     |> Repo.all()
     |> Map.new(&{&1.block_id, &1})
   end
