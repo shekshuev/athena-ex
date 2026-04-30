@@ -123,8 +123,14 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   end
 
   def handle_event("delete_enrollment_click", %{"id" => id}, socket) do
-    if Identity.can?(socket.assigns.current_user, "enrollments.delete") do
-      enrollment = Learning.get_enrollment!(id)
+    enrollment = Learning.get_enrollment!(socket.assigns.current_user, id)
+
+    if Learning.can_manage_enrollment?(
+         socket.assigns.current_user,
+         "enrollments.delete",
+         enrollment,
+         socket.assigns.cohort
+       ) do
       {:noreply, assign(socket, enrollment_to_delete: enrollment)}
     else
       {:noreply, put_flash(socket, :error, gettext("Permission denied."))}
@@ -136,7 +142,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         _,
         %{assigns: %{enrollment_to_delete: enrollment}} = socket
       ) do
-    case Learning.delete_enrollment(enrollment) do
+    case Learning.delete_enrollment(socket.assigns.current_user, enrollment) do
       {:ok, _} ->
         {:noreply,
          socket
@@ -165,7 +171,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   end
 
   def handle_info({EnrollmentFormComponent, {:saved, enrollment}}, socket) do
-    reloaded = Learning.get_enrollment!(enrollment.id)
+    reloaded = Learning.get_enrollment!(socket.assigns.current_user, enrollment.id)
     {:noreply, stream_insert(socket, :enrollments, reloaded)}
   end
 
@@ -253,6 +259,14 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
               </.link>
 
               <button
+                :if={
+                  Learning.can_manage_enrollment?(
+                    @current_user,
+                    "enrollments.delete",
+                    enrollment,
+                    @cohort
+                  )
+                }
                 type="button"
                 phx-click="delete_enrollment_click"
                 phx-value-id={enrollment.id}
@@ -322,6 +336,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           module={MembershipFormComponent}
           id="new-membership"
           cohort_id={@cohort.id}
+          current_user={@current_user}
           patch={~p"/teaching/cohorts/#{@cohort.id}"}
         />
       </.slide_over>
@@ -336,6 +351,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           module={EnrollmentFormComponent}
           id="new-enrollment"
           cohort_id={@cohort.id}
+          current_user={@current_user}
           patch={~p"/teaching/cohorts/#{@cohort.id}"}
         />
       </.slide_over>

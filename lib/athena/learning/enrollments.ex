@@ -9,7 +9,7 @@ defmodule Athena.Learning.Enrollments do
 
   import Ecto.Query
   alias Athena.Repo
-  alias Athena.Learning.{Enrollment, CohortMembership, CohortInstructor, Instructor}
+  alias Athena.Learning.{Enrollment, CohortMembership, CohortInstructor, Instructor, Cohorts}
   alias Athena.Content
   alias Athena.Identity
 
@@ -69,14 +69,12 @@ defmodule Athena.Learning.Enrollments do
   end
 
   @doc """
-  Gets a specific enrollment by ID.
-
-  Preloads the associated `Cohort` and enriches the enrollment with 
-  `Course` and `Account` data. Raises `Ecto.NoResultsError` if not found.
+  Gets a specific enrollment by ID safely based on user scope.
   """
-  @spec get_enrollment!(String.t()) :: Enrollment.t()
-  def get_enrollment!(id) do
+  @spec get_enrollment!(map(), String.t()) :: Enrollment.t()
+  def get_enrollment!(user, id) do
     Enrollment
+    |> scope_enrollments(user, "enrollments.read")
     |> preload(:cohort)
     |> Repo.get!(id)
     |> enrich_enrollments()
@@ -84,18 +82,49 @@ defmodule Athena.Learning.Enrollments do
 
   @doc """
   Assigns an entire cohort to a course.
-  Enforces type matching: Teams can only join Competitions, Academic groups only Standard courses.
+  Enforces type matching and uses context functions to verify ACL on both the Cohort and the Course.
   """
-  @spec enroll_cohort(String.t(), String.t(), atom()) ::
-          {:ok, Enrollment.t()} | {:error, String.t() | Ecto.Changeset.t()}
-  def enroll_cohort(cohort_id, course_id, status \\ :active) do
-    cohort = Repo.get(Athena.Learning.Cohort, cohort_id)
-    course = Repo.get(Athena.Content.Course, course_id)
+  @spec enroll_cohort(map(), String.t(), String.t(), atom()) ::
+          {:ok, Enrollment.t()} | {:error, String.t() | Ecto.Changeset.t() | atom()}
+  def enroll_cohort(user, cohort_id, course_id, status \\ :active) do
+    with {:ok, cohort} <- Cohorts.get_cohort(user, cohort_id),
+         {:ok, course} <- Content.get_course(user, course_id) do
+      if can_create_enrollment?(user, cohort, course) do
+        insert_if_types_match(cohort, course, status)
+      else
+        {:error, :unauthorized}
+      end
+    else
+      {:error, :not_found} ->
+        {:error, gettext("Cohort or Course not found or access denied.")}
 
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  Checks if a user can create an enrollment for a specific cohort and course.
+  For 'own_only' policies, they must own either the cohort or the course.
+  """
+  def can_create_enrollment?(user, cohort, course) do
+    if Identity.can?(user, "enrollments.create") do
+      policies = Map.get(user.role.policies || %{}, "enrollments.create", [])
+
+      if "own_only" in policies do
+        Identity.can?(user, "cohorts.update", cohort) or
+          Identity.can?(user, "courses.update", course)
+      else
+        true
+      end
+    else
+      false
+    end
+  end
+
+  @doc false
+  defp insert_if_types_match(cohort, course, status) do
     cond do
-      is_nil(cohort) or is_nil(course) ->
-        {:error, gettext("Cohort or Course not found.")}
-
       cohort.type == :team and course.type != :competition ->
         {:error, gettext("Cannot assign a Competition Team to a Standard Course.")}
 
@@ -104,29 +133,37 @@ defmodule Athena.Learning.Enrollments do
 
       true ->
         %Enrollment{}
-        |> Enrollment.changeset(%{cohort_id: cohort_id, course_id: course_id, status: status})
+        |> Enrollment.changeset(%{cohort_id: cohort.id, course_id: course.id, status: status})
         |> Repo.insert()
     end
   end
 
   @doc """
-  Updates an enrollment's attributes (e.g., changing status from :active to :dropped).
+  Updates an enrollment's attributes.
   """
-  @spec update_enrollment(Enrollment.t(), map()) ::
-          {:ok, Enrollment.t()} | {:error, Ecto.Changeset.t()}
-  def update_enrollment(%Enrollment{} = enrollment, attrs) do
-    enrollment
-    |> Enrollment.changeset(attrs)
-    |> Repo.update()
+  @spec update_enrollment(map(), Enrollment.t(), map()) ::
+          {:ok, Enrollment.t()} | {:error, Ecto.Changeset.t() | atom()}
+  def update_enrollment(user, %Enrollment{} = enrollment, attrs) do
+    if can_manage_enrollment?(user, "enrollments.update", enrollment) do
+      enrollment
+      |> Enrollment.changeset(attrs)
+      |> Repo.update()
+    else
+      {:error, :unauthorized}
+    end
   end
 
   @doc """
   Revokes access completely by permanently deleting the enrollment record.
   """
-  @spec delete_enrollment(Enrollment.t()) ::
-          {:ok, Enrollment.t()} | {:error, Ecto.Changeset.t()}
-  def delete_enrollment(%Enrollment{} = enrollment) do
-    Repo.delete(enrollment)
+  @spec delete_enrollment(map(), Enrollment.t()) ::
+          {:ok, Enrollment.t()} | {:error, Ecto.Changeset.t() | atom()}
+  def delete_enrollment(user, %Enrollment{} = enrollment) do
+    if can_manage_enrollment?(user, "enrollments.delete", enrollment) do
+      Repo.delete(enrollment)
+    else
+      {:error, :unauthorized}
+    end
   end
 
   @doc """
@@ -151,9 +188,7 @@ defmodule Athena.Learning.Enrollments do
   end
 
   @doc """
-  Fast check if a student has active access to a course 
-  (either directly or via any of their cohorts).
-  ONLY GRANTS ACCESS IF THE COURSE IS PUBLISHED.
+  Fast check if a student has active access to a course.
   """
   @spec has_access?(String.t(), String.t()) :: boolean()
   def has_access?(account_id, course_id) do
@@ -173,6 +208,43 @@ defmodule Athena.Learning.Enrollments do
       _ ->
         false
     end
+  end
+
+  @doc """
+  Checks if a user can manage (update/delete) an enrollment.
+  For 'own_only' policies, the user must own either the associated cohort or the course.
+  Takes an optional preloaded `cohort` to prevent N+1 queries in UI lists.
+  """
+  def can_manage_enrollment?(user, action, %Enrollment{} = enrollment, preloaded_cohort \\ nil) do
+    if Identity.can?(user, action) do
+      policies = Map.get(user.role.policies || %{}, action, [])
+
+      if "own_only" in policies do
+        check_own_only_policy(user, enrollment, preloaded_cohort)
+      else
+        true
+      end
+    else
+      false
+    end
+  end
+
+  defp check_own_only_policy(user, enrollment, preloaded_cohort) do
+    owns_cohort?(user, enrollment, preloaded_cohort) or owns_course?(user, enrollment)
+  end
+
+  defp owns_cohort?(user, enrollment, preloaded_cohort) do
+    cohort =
+      preloaded_cohort || enrollment.cohort ||
+        Repo.get(Athena.Learning.Cohort, enrollment.cohort_id)
+
+    cohort != nil and Identity.can?(user, "cohorts.update", cohort)
+  end
+
+  defp owns_course?(user, enrollment) do
+    course = enrollment.course || Repo.get(Athena.Content.Course, enrollment.course_id)
+
+    course != nil and Identity.can?(user, "courses.update", course)
   end
 
   @doc false
