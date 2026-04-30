@@ -67,39 +67,63 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
         %{"resource_type" => type, "resource_id" => id} = params,
         socket
       ) do
+    if Identity.can?(socket.assigns.current_user, "cohorts.update", socket.assigns.cohort) do
+      attrs = build_override_attrs(params, socket.assigns, type, id)
+      save_override_and_update_socket(socket, attrs)
+    else
+      {:noreply, put_flash(socket, :error, gettext("Permission denied."))}
+    end
+  end
+
+  @impl true
+  def handle_event("change_visibility", params, socket) do
+    {:noreply, assign(socket, :form_visibility, params["visibility"] || "")}
+  end
+
+  @impl true
+  def handle_event("clear_override", %{"resource_type" => type, "resource_id" => id}, socket) do
+    if Identity.can?(socket.assigns.current_user, "cohorts.update", socket.assigns.cohort) do
+      Learning.clear_override(socket.assigns.cohort.id, type, id)
+
+      overrides =
+        Learning.list_cohort_course_overrides(socket.assigns.cohort.id, socket.assigns.course.id)
+
+      {:noreply,
+       socket
+       |> assign(:overrides, overrides)
+       |> put_flash(:info, gettext("Override removed. Inheriting global rules."))}
+    else
+      {:noreply, put_flash(socket, :error, gettext("Permission denied."))}
+    end
+  end
+
+  defp build_override_attrs(params, assigns, type, id) do
     visibility =
       if params["visibility"] in [nil, ""], do: nil, else: String.to_atom(params["visibility"])
+
+    is_restricted = visibility == :restricted
 
     unlock_at =
-      if visibility != :restricted or params["unlock_at"] in [nil, ""],
-        do: nil,
-        else: params["unlock_at"]
+      if not is_restricted or params["unlock_at"] in [nil, ""], do: nil, else: params["unlock_at"]
 
     lock_at =
-      if visibility != :restricted or params["lock_at"] in [nil, ""],
-        do: nil,
-        else: params["lock_at"]
+      if not is_restricted or params["lock_at"] in [nil, ""], do: nil, else: params["lock_at"]
 
-    visibility =
-      if params["visibility"] in [nil, ""], do: nil, else: String.to_atom(params["visibility"])
-
-    attrs = %{
-      cohort_id: socket.assigns.cohort.id,
-      course_id: socket.assigns.course.id,
+    %{
+      cohort_id: assigns.cohort.id,
+      course_id: assigns.course.id,
       resource_type: String.to_atom(type),
       resource_id: id,
       unlock_at: unlock_at,
       lock_at: lock_at,
       visibility: visibility
     }
+  end
 
+  defp save_override_and_update_socket(socket, attrs) do
     case Learning.set_override(attrs) do
       {:ok, _schedule} ->
-        overrides =
-          Learning.list_cohort_course_overrides(
-            socket.assigns.cohort.id,
-            socket.assigns.course.id
-          )
+        overrides = Learning.list_cohort_course_overrides(attrs.cohort_id, attrs.course_id)
 
         {:noreply,
          socket
@@ -113,24 +137,6 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
 
         {:noreply, put_flash(socket, :error, error_msg)}
     end
-  end
-
-  @impl true
-  def handle_event("change_visibility", params, socket) do
-    {:noreply, assign(socket, :form_visibility, params["visibility"] || "")}
-  end
-
-  @impl true
-  def handle_event("clear_override", %{"resource_type" => type, "resource_id" => id}, socket) do
-    Learning.clear_override(socket.assigns.cohort.id, type, id)
-
-    overrides =
-      Learning.list_cohort_course_overrides(socket.assigns.cohort.id, socket.assigns.course.id)
-
-    {:noreply,
-     socket
-     |> assign(:overrides, overrides)
-     |> put_flash(:info, gettext("Override removed. Inheriting global rules."))}
   end
 
   @impl true

@@ -70,7 +70,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   end
 
   defp apply_action(socket, :add_student, _params) do
-    if Identity.can?(socket.assigns.current_user, "cohorts.update") do
+    if Identity.can?(socket.assigns.current_user, "cohorts.update", socket.assigns.cohort) do
       assign(socket, page_title: gettext("Add Student to Cohort"))
     else
       socket
@@ -96,7 +96,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_event("delete_click", %{"id" => id}, socket) do
-    if Identity.can?(socket.assigns.current_user, "cohorts.update") do
+    if Identity.can?(socket.assigns.current_user, "cohorts.update", socket.assigns.cohort) do
       membership = Learning.get_cohort_membership!(id)
       {:noreply, assign(socket, membership_to_delete: membership)}
     else
@@ -270,7 +270,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         <div class="flex justify-between items-center">
           <h2 class="text-xl font-display font-bold">{gettext("Students")}</h2>
           <.button
-            :if={Identity.can?(@current_user, "cohorts.update")}
+            :if={Identity.can?(@current_user, "cohorts.update", @cohort)}
             patch={~p"/teaching/cohorts/#{@cohort.id}/add_student"}
             class="btn btn-primary btn-sm"
           >
@@ -291,7 +291,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           <:action :let={{_id, membership}}>
             <div class="flex justify-end">
               <.button
-                :if={Identity.can?(@current_user, "cohorts.update")}
+                :if={Identity.can?(@current_user, "cohorts.update", @cohort)}
                 type="button"
                 phx-click="delete_click"
                 phx-value-id={membership.id}

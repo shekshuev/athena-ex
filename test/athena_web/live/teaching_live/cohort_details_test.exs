@@ -24,8 +24,11 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
   end
 
   describe "CohortDetails page (Index)" do
-    test "should render cohort details, memberships, enrollments and access button", %{conn: conn} do
-      cohort = insert(:cohort, name: "Spring Bootcamp")
+    test "should render cohort details, memberships, enrollments and access button", %{
+      conn: conn,
+      admin: admin
+    } do
+      cohort = insert(:cohort, name: "Spring Bootcamp", owner_id: admin.id)
 
       student = insert(:account, login: "test_student")
       {:ok, _membership} = Learning.add_student_to_cohort(cohort.id, student.id)
@@ -45,16 +48,16 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
   end
 
   describe "CohortDetails page (Add Actions)" do
-    test "should open the add student slide-over via URL", %{conn: conn} do
-      cohort = insert(:cohort)
+    test "should open the add student slide-over via URL", %{conn: conn, admin: admin} do
+      cohort = insert(:cohort, owner_id: admin.id)
       {:ok, _lv, html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/add_student")
 
       assert html =~ "Add Student to Cohort"
       assert html =~ "Search User by Login"
     end
 
-    test "should open the assign course slide-over via URL", %{conn: conn} do
-      cohort = insert(:cohort)
+    test "should open the assign course slide-over via URL", %{conn: conn, admin: admin} do
+      cohort = insert(:cohort, owner_id: admin.id)
       {:ok, _lv, html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/enroll_course")
 
       assert html =~ "Assign Course to Cohort"
@@ -63,8 +66,8 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
   end
 
   describe "CohortDetails page (Remove Actions)" do
-    test "should delete a membership when confirmed", %{conn: conn} do
-      cohort = insert(:cohort)
+    test "should delete a membership when confirmed", %{conn: conn, admin: admin} do
+      cohort = insert(:cohort, owner_id: admin.id)
       student = insert(:account, login: "doomed_student")
       {:ok, membership} = Learning.add_student_to_cohort(cohort.id, student.id)
 
@@ -80,8 +83,8 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
       refute html =~ "doomed_student"
     end
 
-    test "should delete an enrollment when confirmed", %{conn: conn} do
-      cohort = insert(:cohort)
+    test "should delete an enrollment when confirmed", %{conn: conn, admin: admin} do
+      cohort = insert(:cohort, owner_id: admin.id)
       course = insert(:course, title: "Doomed Course")
       {:ok, enrollment} = Learning.enroll_cohort(cohort.id, course.id)
 
@@ -98,7 +101,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
     end
   end
 
-  describe "Permissions & ACL" do
+  describe "Permissions & ACL (Missing Permissions)" do
     setup %{conn: conn} do
       role = insert(:role, permissions: ["cohorts.read"])
       limited_user = insert(:account, role: role)
@@ -143,6 +146,73 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
       {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}")
 
       html = render_click(lv, "delete_enrollment_click", %{"id" => enrollment.id})
+
+      assert html =~ "Permission denied"
+    end
+  end
+
+  describe "Permissions & ACL (Policies: own_only)" do
+    setup %{conn: conn} do
+      role =
+        insert(:role,
+          permissions: [
+            "cohorts.read",
+            "cohorts.update",
+            "enrollments.read",
+            "enrollments.create",
+            "enrollments.delete",
+            "courses.read"
+          ],
+          policies: %{
+            "cohorts.update" => ["own_only"],
+            "enrollments.create" => ["own_only"],
+            "enrollments.delete" => ["own_only"]
+          }
+        )
+
+      instructor = insert(:account, role: role)
+      conn = init_test_session(conn, %{"account_id" => instructor.id})
+
+      %{conn: conn, instructor: instructor}
+    end
+
+    test "shows action buttons ONLY for owned cohorts", %{conn: conn, instructor: instructor} do
+      my_cohort = insert(:cohort, owner_id: instructor.id)
+      other_cohort = insert(:cohort, owner_id: Ecto.UUID.generate())
+
+      student = insert(:account)
+      {:ok, my_membership} = Learning.add_student_to_cohort(my_cohort.id, student.id)
+      {:ok, other_membership} = Learning.add_student_to_cohort(other_cohort.id, student.id)
+
+      {:ok, _lv, my_html} = live(conn, ~p"/teaching/cohorts/#{my_cohort.id}")
+
+      assert my_html =~ ~p"/teaching/cohorts/#{my_cohort.id}/add_student"
+      assert my_html =~ ~s(phx-value-id="#{my_membership.id}")
+
+      {:ok, _lv, other_html} = live(conn, ~p"/teaching/cohorts/#{other_cohort.id}")
+
+      refute other_html =~ ~p"/teaching/cohorts/#{other_cohort.id}/add_student"
+      refute other_html =~ ~s(phx-value-id="#{other_membership.id}")
+    end
+
+    test "redirects with error if forcing add_student on someone else's cohort", %{conn: conn} do
+      other_cohort = insert(:cohort, owner_id: Ecto.UUID.generate())
+
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               live(conn, ~p"/teaching/cohorts/#{other_cohort.id}/add_student")
+
+      assert to == "/teaching/cohorts/#{other_cohort.id}"
+      assert flash["error"]
+    end
+
+    test "shows error flash if forcing delete membership on someone else's cohort", %{conn: conn} do
+      other_cohort = insert(:cohort, owner_id: Ecto.UUID.generate())
+      student = insert(:account)
+      {:ok, membership} = Learning.add_student_to_cohort(other_cohort.id, student.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{other_cohort.id}")
+
+      html = render_click(lv, "delete_click", %{"id" => membership.id})
 
       assert html =~ "Permission denied"
     end
