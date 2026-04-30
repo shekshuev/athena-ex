@@ -3,8 +3,6 @@ defmodule AthenaWeb.LearnLive.IndexTest do
   import Phoenix.LiveViewTest
 
   import Athena.Factory
-  alias Athena.Learning.Enrollments
-  alias Athena.Learning.Cohorts
 
   setup %{conn: conn} do
     student = insert(:account)
@@ -28,8 +26,9 @@ defmodule AthenaWeb.LearnLive.IndexTest do
       insert(:enrollment, account_id: student.id, course_id: course_direct.id)
 
       cohort = insert(:cohort)
-      Cohorts.add_student_to_cohort(cohort.id, student.id)
-      Enrollments.enroll_cohort(cohort.id, course_cohort.id)
+
+      insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
+      insert(:enrollment, cohort_id: cohort.id, course_id: course_cohort.id)
 
       {:ok, _lv, html} = live(conn, ~p"/learn")
 
@@ -65,11 +64,11 @@ defmodule AthenaWeb.LearnLive.IndexTest do
       cohort_radio = insert(:cohort, name: "Radio Squad")
       cohort_cyber = insert(:cohort, name: "Cyber Squad")
 
-      Cohorts.add_student_to_cohort(cohort_radio.id, student.id)
-      Cohorts.add_student_to_cohort(cohort_cyber.id, student.id)
+      insert(:cohort_membership, account_id: student.id, cohort_id: cohort_radio.id)
+      insert(:cohort_membership, account_id: student.id, cohort_id: cohort_cyber.id)
 
-      Enrollments.enroll_cohort(cohort_radio.id, course.id)
-      Enrollments.enroll_cohort(cohort_cyber.id, course.id)
+      insert(:enrollment, cohort_id: cohort_radio.id, course_id: course.id)
+      insert(:enrollment, cohort_id: cohort_cyber.id, course_id: course.id)
 
       {:ok, _lv, html} = live(conn, ~p"/learn")
 
