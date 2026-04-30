@@ -47,7 +47,7 @@ defmodule Athena.Release do
   end
 
   defp create_default_admin_role do
-    case Roles.create_role(%{"name" => "admin", "permissions" => ["admin"]}) do
+    case Roles.system_create_role(%{"name" => "admin", "permissions" => ["admin"]}) do
       {:ok, role} ->
         role
 

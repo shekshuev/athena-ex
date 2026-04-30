@@ -21,6 +21,8 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponent do
   @spec update(map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def update(%{instructor: instructor} = assigns, socket) do
+    socket = assign(socket, assigns)
+
     changeset = Instructor.changeset(instructor, %{})
 
     selected_account =
@@ -32,7 +34,6 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponent do
 
     {:ok,
      socket
-     |> assign(assigns)
      |> assign(:search_query, "")
      |> assign(:search_results, [])
      |> assign(:selected_account, selected_account)
@@ -53,8 +54,13 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponent do
         "page_size" => 10
       }
 
-      {:ok, {accounts, _}} = Identity.list_accounts(flop_params)
-      {:noreply, assign(socket, search_query: query, search_results: accounts)}
+      case Identity.list_accounts(socket.assigns.current_user, flop_params) do
+        {:ok, {accounts, _}} ->
+          {:noreply, assign(socket, search_query: query, search_results: accounts)}
+
+        _ ->
+          {:noreply, assign(socket, search_query: query, search_results: [])}
+      end
     else
       {:noreply, assign(socket, search_query: query, search_results: [])}
     end
@@ -215,6 +221,7 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponent do
             <div class="relative">
               <input
                 type="text"
+                name="search_accounts"
                 value={@search_query}
                 phx-keyup="search_accounts"
                 phx-target={@myself}

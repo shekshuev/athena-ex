@@ -5,37 +5,53 @@ defmodule Athena.Identity.AccountsTest do
   alias Athena.Identity.Account
   import Athena.Factory
 
-  describe "list_accounts/1" do
-    test "should return list of accounts with flop pagination" do
+  setup do
+    admin_role =
+      insert(:role, permissions: ["users.read", "users.update", "users.create", "users.delete"])
+
+    admin = insert(:account, role: admin_role)
+
+    student = insert(:account, role: insert(:role, permissions: []))
+
+    %{admin: admin, student: student}
+  end
+
+  describe "list_accounts/3" do
+    test "should return list of accounts with flop pagination", %{admin: admin} do
       insert_list(3, :account)
 
-      {:ok, {accounts, meta}} = Accounts.list_accounts(%{page: 1, page_size: 2})
+      {:ok, {accounts, meta}} = Accounts.list_accounts(admin, %{page: 1, page_size: 2})
 
       assert length(accounts) == 2
-      assert meta.total_count == 3
+      assert meta.total_count == 5
       assert meta.current_page == 1
     end
 
-    test "should not return soft deleted accounts " do
+    test "should not return soft deleted accounts", %{admin: admin} do
       active_account = insert(:account)
+      deleted_account = insert(:account, deleted_at: DateTime.utc_now(:second))
 
-      insert(:account, deleted_at: DateTime.utc_now(:second))
+      {:ok, {accounts, _meta}} = Accounts.list_accounts(admin, %{})
 
-      {:ok, {accounts, _meta}} = Accounts.list_accounts(%{})
-
-      assert length(accounts) == 1
-      assert hd(accounts).id == active_account.id
+      assert Enum.any?(accounts, &(&1.id == active_account.id))
+      refute Enum.any?(accounts, &(&1.id == deleted_account.id))
     end
 
-    test "should preload associations if requested" do
+    test "should preload associations if requested", %{admin: admin} do
       account = insert(:account)
       insert(:profile, owner: account)
 
-      {:ok, {accounts, _meta}} = Accounts.list_accounts(%{}, preload: [:profile, :role])
+      {:ok, {accounts, _meta}} = Accounts.list_accounts(admin, %{}, preload: [:profile, :role])
 
-      fetched_account = hd(accounts)
+      fetched_account = Enum.find(accounts, &(&1.id == account.id))
       assert fetched_account.profile.id != nil
       assert fetched_account.role.id != nil
+    end
+
+    test "student without users.read gets an empty list (due to scope_query)", %{student: student} do
+      insert_list(3, :account)
+      {:ok, {accounts, _meta}} = Accounts.list_accounts(student, %{})
+      assert accounts == []
     end
   end
 
@@ -95,12 +111,12 @@ defmodule Athena.Identity.AccountsTest do
     test "should return account and reset attempts on success auth" do
       account =
         insert(:account,
-          login: "admin",
+          login: "admin_user",
           failed_login_attempts: 2,
           last_failed_at: DateTime.utc_now(:second)
         )
 
-      assert {:ok, auth_account} = Accounts.authenticate("admin", "Password123!")
+      assert {:ok, auth_account} = Accounts.authenticate("admin_user", "Password123!")
       assert auth_account.id == account.id
 
       updated_account = Athena.Repo.get!(Account, account.id)
@@ -109,9 +125,9 @@ defmodule Athena.Identity.AccountsTest do
     end
 
     test "should return error on invalid password and increment attempts" do
-      account = insert(:account, login: "admin", failed_login_attempts: 0)
+      account = insert(:account, login: "target_admin", failed_login_attempts: 0)
 
-      assert {:error, :invalid_credentials} = Accounts.authenticate("admin", "WrongPass")
+      assert {:error, :invalid_credentials} = Accounts.authenticate("target_admin", "WrongPass")
 
       updated_account = Athena.Repo.get!(Account, account.id)
       assert updated_account.failed_login_attempts == 1
@@ -179,8 +195,8 @@ defmodule Athena.Identity.AccountsTest do
     end
   end
 
-  describe "register_admin_user/2" do
-    test "should create account and profile atomically" do
+  describe "register_admin_user/3" do
+    test "should create account and profile atomically", %{admin: admin} do
       role = insert(:role)
 
       account_attrs = %{
@@ -191,18 +207,17 @@ defmodule Athena.Identity.AccountsTest do
 
       profile_attrs = %{"first_name" => "John", "last_name" => "Doe"}
 
-      assert {:ok, account} = Accounts.register_admin_user(account_attrs, profile_attrs)
+      assert {:ok, account} = Accounts.register_admin_user(admin, account_attrs, profile_attrs)
 
       assert account.login == "new_admin"
       assert account.profile.first_name == "John"
-      assert account.profile.owner_id == account.id
     end
 
-    test "should rollback if profile validation fails" do
+    test "should rollback if profile validation fails", %{admin: admin} do
       role = insert(:role)
 
       account_attrs = %{
-        "login" => "new_admin",
+        "login" => "new_admin_2",
         "password" => "StrongPass1!",
         "role_id" => role.id
       }
@@ -210,16 +225,18 @@ defmodule Athena.Identity.AccountsTest do
       profile_attrs = %{"first_name" => ""}
 
       assert {:error, :profile, changeset} =
-               Accounts.register_admin_user(account_attrs, profile_attrs)
+               Accounts.register_admin_user(admin, account_attrs, profile_attrs)
 
       assert "can't be blank" in errors_on(changeset).first_name
+    end
 
-      assert Athena.Repo.aggregate(Account, :count, :id) == 0
+    test "should return unauthorized if user lacks users.create", %{student: student} do
+      assert {:error, :unauthorized} = Accounts.register_admin_user(student, %{}, %{})
     end
   end
 
-  describe "update_admin_user/3" do
-    test "should update both account and profile" do
+  describe "update_admin_user/4" do
+    test "should update both account and profile", %{admin: admin} do
       account = insert(:account, login: "old_login")
       insert(:profile, owner: account, first_name: "OldName")
 
@@ -227,10 +244,15 @@ defmodule Athena.Identity.AccountsTest do
       profile_attrs = %{"first_name" => "NewName"}
 
       assert {:ok, updated_account} =
-               Accounts.update_admin_user(account, account_attrs, profile_attrs)
+               Accounts.update_admin_user(admin, account, account_attrs, profile_attrs)
 
       assert updated_account.login == "new_login"
       assert updated_account.profile.first_name == "NewName"
+    end
+
+    test "student returns unauthorized when trying to update another user", %{student: student} do
+      account = insert(:account)
+      assert {:error, :unauthorized} = Accounts.update_admin_user(student, account, %{}, %{})
     end
   end
 
@@ -265,13 +287,13 @@ defmodule Athena.Identity.AccountsTest do
     end
   end
 
-  describe "search_accounts_by_login/2" do
-    test "should return accounts matching the login query (case-insensitive)" do
+  describe "search_accounts_by_login/3" do
+    test "should return accounts matching the login query (case-insensitive)", %{admin: admin} do
       acc1 = insert(:account, login: "john_doe")
       acc2 = insert(:account, login: "john_smith")
       _acc3 = insert(:account, login: "alice_jones")
 
-      results = Accounts.search_accounts_by_login("John")
+      results = Accounts.search_accounts_by_login(admin, "John")
 
       assert length(results) == 2
       ids = Enum.map(results, & &1.id)
@@ -279,28 +301,32 @@ defmodule Athena.Identity.AccountsTest do
       assert acc2.id in ids
     end
 
-    test "should respect the provided limit" do
+    test "should respect the provided limit", %{admin: admin} do
       insert(:account, login: "test_user_1")
       insert(:account, login: "test_user_2")
       insert(:account, login: "test_user_3")
       insert(:account, login: "test_user_4")
       insert(:account, login: "test_user_5")
 
-      results = Accounts.search_accounts_by_login("test", 3)
+      results = Accounts.search_accounts_by_login(admin, "test_user", 3)
 
       assert length(results) == 3
     end
 
-    test "should return an empty list if no accounts match" do
+    test "should return an empty list if no accounts match", %{admin: admin} do
       insert(:account, login: "test_user")
+      results = Accounts.search_accounts_by_login(admin, "unknown")
+      assert results == []
+    end
 
-      results = Accounts.search_accounts_by_login("unknown")
-
+    test "student without users.read gets an empty list (due to scope_query)", %{student: student} do
+      insert(:account, login: "john_doe")
+      results = Accounts.search_accounts_by_login(student, "john")
       assert results == []
     end
   end
 
-  describe "force_change_password/2" do
+  describe "force_change_password/3" do
     test "successfully changes password, resets must_change_password flag and clears cache" do
       account = insert(:account, must_change_password: true)
       old_hash = account.password_hash

@@ -12,7 +12,7 @@ defmodule Athena.Identity.Accounts do
 
   import Ecto.Query
   alias Athena.Repo
-  alias Athena.Identity.Account
+  alias Athena.Identity.{Account, Acl}
 
   @doc """
   Retrieves a paginated list of accounts with optional preloads.
@@ -21,10 +21,13 @@ defmodule Athena.Identity.Accounts do
     * `params` - A map containing Flop parameters.
     * `opts` - Keyword list of options (e.g., `[preload: [:profile, :role]]`).
   """
-  @spec list_accounts(map(), keyword()) ::
+  @spec list_accounts(map(), map(), keyword()) ::
           {:ok, {[Account.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
-  def list_accounts(params \\ %{}, opts \\ []) do
-    base_query = where(Account, [a], is_nil(a.deleted_at))
+  def list_accounts(user, params \\ %{}, opts \\ []) do
+    base_query =
+      Account
+      |> where([a], is_nil(a.deleted_at))
+      |> Acl.scope_query(user, "users.read")
 
     query =
       if preloads = Keyword.get(opts, :preload) do
@@ -39,63 +42,76 @@ defmodule Athena.Identity.Accounts do
   @doc """
   Registers a new user (Account + Profile) atomically in a single transaction.
   """
-  @spec register_admin_user(map(), map()) ::
+  @spec register_admin_user(map(), map(), map()) ::
           {:ok, Account.t()} | {:error, :account | :profile, Ecto.Changeset.t()}
-  def register_admin_user(account_attrs, profile_attrs) do
-    Ecto.Multi.new()
-    |> Ecto.Multi.insert(:account, Account.changeset(%Account{}, account_attrs))
-    |> Ecto.Multi.insert(:profile, fn %{account: account} ->
-      attrs = Map.put(profile_attrs, "owner_id", account.id)
-      Athena.Identity.Profile.changeset(%Athena.Identity.Profile{}, attrs)
-    end)
-    |> Repo.transaction()
-    |> case do
-      {:ok, %{account: account, profile: profile}} ->
-        {:ok, %{account | profile: profile}}
+  def register_admin_user(current_user, account_attrs, profile_attrs) do
+    if Acl.can?(current_user, "users.create") do
+      Ecto.Multi.new()
+      |> Ecto.Multi.insert(:account, Account.changeset(%Account{}, account_attrs))
+      |> Ecto.Multi.insert(:profile, fn %{account: account} ->
+        attrs = Map.put(profile_attrs, "owner_id", account.id)
+        Athena.Identity.Profile.changeset(%Athena.Identity.Profile{}, attrs)
+      end)
+      |> Repo.transaction()
+      |> case do
+        {:ok, %{account: account, profile: profile}} ->
+          {:ok, %{account | profile: profile}}
 
-      {:error, failed_operation, changeset, _changes} ->
-        {:error, failed_operation, changeset}
+        {:error, failed_operation, changeset, _changes} ->
+          {:error, failed_operation, changeset}
+      end
+    else
+      {:error, :unauthorized}
     end
   end
 
   @doc """
   Updates an existing user (Account + Profile) atomically.
   """
-  @spec update_admin_user(Account.t(), map(), map()) ::
+  @spec update_admin_user(map(), Account.t(), map(), map()) ::
           {:ok, Account.t()} | {:error, :account | :profile, Ecto.Changeset.t()}
-  def update_admin_user(%Account{} = account, account_attrs, profile_attrs) do
-    account = Repo.preload(account, :profile)
+  def update_admin_user(current_user, %Account{} = account, account_attrs, profile_attrs) do
+    if Acl.can?(current_user, "users.update", account) do
+      account = Repo.preload(account, :profile)
 
-    Ecto.Multi.new()
-    |> Ecto.Multi.update(:account, Account.changeset(account, account_attrs))
-    |> Ecto.Multi.run(:profile, fn repo, _changes ->
-      if account.profile do
-        account.profile
-        |> Athena.Identity.Profile.changeset(profile_attrs)
-        |> repo.update()
-      else
-        attrs = Map.put(profile_attrs, "owner_id", account.id)
+      Ecto.Multi.new()
+      |> Ecto.Multi.update(:account, Account.changeset(account, account_attrs))
+      |> Ecto.Multi.run(:profile, fn repo, _changes ->
+        upsert_profile(repo, account, profile_attrs)
+      end)
+      |> Repo.transaction()
+      |> case do
+        {:ok, %{account: updated_account, profile: updated_profile}} ->
+          Cachex.del(:account_cache, updated_account.id)
 
-        %Athena.Identity.Profile{}
-        |> Athena.Identity.Profile.changeset(attrs)
-        |> repo.insert()
+          Phoenix.PubSub.broadcast(
+            Athena.PubSub,
+            "account_updates:#{updated_account.id}",
+            :account_updated
+          )
+
+          {:ok, %{updated_account | profile: updated_profile}}
+
+        {:error, failed_operation, changeset, _changes} ->
+          {:error, failed_operation, changeset}
       end
-    end)
-    |> Repo.transaction()
-    |> case do
-      {:ok, %{account: updated_account, profile: updated_profile}} ->
-        Cachex.del(:account_cache, updated_account.id)
+    else
+      {:error, :unauthorized}
+    end
+  end
 
-        Phoenix.PubSub.broadcast(
-          Athena.PubSub,
-          "account_updates:#{updated_account.id}",
-          :account_updated
-        )
+  @doc false
+  defp upsert_profile(repo, account, profile_attrs) do
+    if account.profile do
+      account.profile
+      |> Athena.Identity.Profile.changeset(profile_attrs)
+      |> repo.update()
+    else
+      attrs = Map.put(profile_attrs, "owner_id", account.id)
 
-        {:ok, %{updated_account | profile: updated_profile}}
-
-      {:error, failed_operation, changeset, _changes} ->
-        {:error, failed_operation, changeset}
+      %Athena.Identity.Profile{}
+      |> Athena.Identity.Profile.changeset(attrs)
+      |> repo.insert()
     end
   end
 
@@ -316,12 +332,13 @@ defmodule Athena.Identity.Accounts do
   Searches accounts by login using case-insensitive partial matching (`ilike`).
   Useful for cross-context autocomplete features.
   """
-  @spec search_accounts_by_login(String.t(), integer()) :: [Account.t()]
-  def search_accounts_by_login(query, limit \\ 10) do
+  @spec search_accounts_by_login(map(), String.t(), integer()) :: [Account.t()]
+  def search_accounts_by_login(user, query, limit \\ 10) do
     search_term = "%#{query}%"
 
     Account
     |> where([a], ilike(a.login, ^search_term))
+    |> Athena.Identity.scope_query(user, "users.read")
     |> limit(^limit)
     |> Repo.all()
   end

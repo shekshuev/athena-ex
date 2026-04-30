@@ -7,7 +7,7 @@ defmodule Athena.Identity.Profiles do
   """
 
   alias Athena.Repo
-  alias Athena.Identity.Profile
+  alias Athena.Identity.{Profile, Acl}
 
   @doc """
   Retrieves a profile by its owner ID (Account ID).
@@ -37,16 +37,26 @@ defmodule Athena.Identity.Profiles do
   end
 
   @doc """
-  Updates an existing profile and emits a ProfileUpdatedEvent.
+  Updates an existing profile.
+  Allowed if the user IS the owner, OR if the user has 'users.update' permission.
   """
-  @spec update_profile(Profile.t(), map()) :: {:ok, Profile.t()} | {:error, Ecto.Changeset.t()}
-  def update_profile(%Profile{} = profile, attrs) do
-    Ecto.Multi.new()
-    |> Ecto.Multi.update(:profile, Profile.changeset(profile, attrs))
-    |> Repo.transaction()
-    |> case do
-      {:ok, %{profile: updated_profile}} -> {:ok, updated_profile}
-      {:error, :profile, changeset, _} -> {:error, changeset}
+  @spec update_profile(map(), Profile.t(), map()) ::
+          {:ok, Profile.t()} | {:error, Ecto.Changeset.t() | atom()}
+  def update_profile(user, %Profile{} = profile, attrs) do
+    if can_manage_profile?(user, profile) do
+      Ecto.Multi.new()
+      |> Ecto.Multi.update(:profile, Profile.changeset(profile, attrs))
+      |> Repo.transaction()
+      |> case do
+        {:ok, %{profile: updated_profile}} -> {:ok, updated_profile}
+        {:error, :profile, changeset, _} -> {:error, changeset}
+      end
+    else
+      {:error, :unauthorized}
     end
+  end
+
+  defp can_manage_profile?(user, profile) do
+    user.id == profile.owner_id or Acl.can?(user, "users.update", profile)
   end
 end

@@ -8,7 +8,13 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponentTest do
   setup %{conn: conn} do
     role =
       insert(:role,
-        permissions: ["cohorts.read", "cohorts.create", "cohorts.update", "instructors.read"]
+        permissions: [
+          "cohorts.read",
+          "cohorts.create",
+          "cohorts.update",
+          "instructors.read",
+          "users.read"
+        ]
       )
 
     account = insert(:account, role: role)

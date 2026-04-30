@@ -44,7 +44,9 @@ defmodule AthenaWeb.AdminLive.Users do
         params
       end
 
-    case Identity.list_accounts(flop_params, preload: [:profile, :role]) do
+    case Identity.list_accounts(socket.assigns.current_user, flop_params,
+           preload: [:profile, :role]
+         ) do
       {:ok, {accounts, meta}} ->
         socket =
           socket
@@ -241,6 +243,7 @@ defmodule AthenaWeb.AdminLive.Users do
           id={@account.id || :new}
           action={@live_action}
           account={@account}
+          current_user={@current_user}
           patch={~p"/admin/users"}
         />
       </.slide_over>

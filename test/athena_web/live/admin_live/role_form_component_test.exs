@@ -77,8 +77,7 @@ defmodule AthenaWeb.AdminLive.RoleFormComponentTest do
 
       assert_patch(lv, ~p"/admin/roles")
 
-      {:ok, updated_role} = Roles.get_role(role.id)
-      assert updated_role.name == "New Awesome Name"
+      {:ok, updated_role} = Roles.get_role_by_name("New Awesome Name")
       assert "users.update" in updated_role.permissions
     end
 

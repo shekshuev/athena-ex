@@ -66,7 +66,7 @@ defmodule AthenaWeb.AdminLive.RoleFormComponent do
   end
 
   defp save_role(socket, :edit, role_params) do
-    case Roles.update_role(socket.assigns.role, role_params) do
+    case Roles.update_role(socket.assigns.current_user, socket.assigns.role, role_params) do
       {:ok, role} ->
         notify_parent({:saved, role})
 
@@ -81,7 +81,7 @@ defmodule AthenaWeb.AdminLive.RoleFormComponent do
   end
 
   defp save_role(socket, :new, role_params) do
-    case Roles.create_role(role_params) do
+    case Roles.create_role(socket.assigns.current_user, role_params) do
       {:ok, role} ->
         notify_parent({:saved, role})
 

@@ -46,7 +46,7 @@ defmodule Athena.Learning.Instructors do
         |> Repo.all()
 
       account_ids_from_login =
-        Identity.search_accounts_by_login(search_query, limit) |> Enum.map(& &1.id)
+        Identity.search_accounts_by_login(user, search_query, limit) |> Enum.map(& &1.id)
 
       instructors_by_account =
         if account_ids_from_login == [] do

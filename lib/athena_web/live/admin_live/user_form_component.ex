@@ -19,26 +19,39 @@ defmodule AthenaWeb.AdminLive.UserFormComponent do
   """
   @spec update(map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
-  def update(%{account: account} = assigns, socket) do
-    form_data = if account.id, do: UserForm.from_account(account), else: %UserForm{}
-    changeset = UserForm.changeset(form_data, %{})
+  def update(assigns, socket) do
+    socket = assign(socket, assigns)
 
-    role_options =
-      Identity.list_all_roles()
-      |> Enum.map(&{&1.name, &1.id})
+    socket =
+      if is_nil(socket.assigns[:form]) do
+        account = socket.assigns.account
+        current_user = socket.assigns.current_user
 
-    status_options = [
+        form_data = if account.id, do: UserForm.from_account(account), else: %UserForm{}
+        changeset = UserForm.changeset(form_data, %{})
+
+        role_options =
+          Identity.list_all_roles(current_user)
+          |> Enum.map(&{&1.name, &1.id})
+
+        socket
+        |> assign(:form, to_form(changeset))
+        |> assign(:role_options, role_options)
+        |> assign(:status_options, status_options())
+      else
+        socket
+      end
+
+    {:ok, socket}
+  end
+
+  @doc false
+  defp status_options do
+    [
       {gettext("Active"), :active},
       {gettext("Blocked"), :blocked},
       {gettext("Temporary Blocked"), :temporary_blocked}
     ]
-
-    {:ok,
-     socket
-     |> assign(assigns)
-     |> assign(:form, to_form(changeset))
-     |> assign(:role_options, role_options)
-     |> assign(:status_options, status_options)}
   end
 
   @doc """
@@ -82,7 +95,7 @@ defmodule AthenaWeb.AdminLive.UserFormComponent do
   defp do_save_user(%Ecto.Changeset{valid?: true} = changeset, socket, :new) do
     {account_params, profile_params} = UserForm.to_params(changeset)
 
-    case Identity.register_admin_user(account_params, profile_params) do
+    case Identity.register_admin_user(socket.assigns.current_user, account_params, profile_params) do
       {:ok, account} ->
         notify_parent({:saved, account})
 
@@ -99,7 +112,12 @@ defmodule AthenaWeb.AdminLive.UserFormComponent do
   defp do_save_user(%Ecto.Changeset{valid?: true} = changeset, socket, :edit) do
     {account_params, profile_params} = UserForm.to_params(changeset)
 
-    case Identity.update_admin_user(socket.assigns.account, account_params, profile_params) do
+    case Identity.update_admin_user(
+           socket.assigns.current_user,
+           socket.assigns.account,
+           account_params,
+           profile_params
+         ) do
       {:ok, account} ->
         notify_parent({:saved, account})
 

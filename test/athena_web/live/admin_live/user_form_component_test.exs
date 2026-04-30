@@ -6,10 +6,11 @@ defmodule AthenaWeb.AdminLive.UserFormComponentTest do
   alias Athena.Identity
 
   setup %{conn: conn} do
-    role = insert(:role, permissions: ["admin"])
+    role = insert(:role, permissions: ["admin", "users.read", "users.create", "users.update"])
     admin = insert(:account, role: role)
     conn = init_test_session(conn, %{"account_id" => admin.id})
-    %{conn: conn}
+
+    %{conn: conn, admin: admin}
   end
 
   describe "User Form Component" do
