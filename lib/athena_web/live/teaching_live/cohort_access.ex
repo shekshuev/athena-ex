@@ -67,11 +67,31 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
         %{"resource_type" => type, "resource_id" => id} = params,
         socket
       ) do
-    if Identity.can?(socket.assigns.current_user, "cohorts.update", socket.assigns.cohort) do
-      attrs = build_override_attrs(params, socket.assigns, type, id)
-      save_override_and_update_socket(socket, attrs)
-    else
-      {:noreply, put_flash(socket, :error, gettext("Permission denied."))}
+    attrs = build_override_attrs(params, socket.assigns, type, id)
+
+    case Learning.set_override(
+           socket.assigns.current_user,
+           socket.assigns.cohort,
+           socket.assigns.course,
+           attrs
+         ) do
+      {:ok, _schedule} ->
+        overrides = Learning.list_cohort_course_overrides(attrs.cohort_id, attrs.course_id)
+
+        {:noreply,
+         socket
+         |> assign(:overrides, overrides)
+         |> assign(:form_visibility, nil)
+         |> put_flash(:info, gettext("Access override saved successfully."))}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        error_msg =
+          changeset.errors |> Keyword.values() |> Enum.map_join(", ", fn {msg, _} -> msg end)
+
+        {:noreply, put_flash(socket, :error, error_msg)}
+
+      {:error, :unauthorized} ->
+        {:noreply, put_flash(socket, :error, gettext("Permission denied."))}
     end
   end
 
@@ -82,18 +102,27 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
 
   @impl true
   def handle_event("clear_override", %{"resource_type" => type, "resource_id" => id}, socket) do
-    if Identity.can?(socket.assigns.current_user, "cohorts.update", socket.assigns.cohort) do
-      Learning.clear_override(socket.assigns.cohort.id, type, id)
+    case Learning.clear_override(
+           socket.assigns.current_user,
+           socket.assigns.cohort,
+           socket.assigns.course,
+           type,
+           id
+         ) do
+      {:ok, _} ->
+        overrides =
+          Learning.list_cohort_course_overrides(
+            socket.assigns.cohort.id,
+            socket.assigns.course.id
+          )
 
-      overrides =
-        Learning.list_cohort_course_overrides(socket.assigns.cohort.id, socket.assigns.course.id)
+        {:noreply,
+         socket
+         |> assign(:overrides, overrides)
+         |> put_flash(:info, gettext("Override removed. Inheriting global rules."))}
 
-      {:noreply,
-       socket
-       |> assign(:overrides, overrides)
-       |> put_flash(:info, gettext("Override removed. Inheriting global rules."))}
-    else
-      {:noreply, put_flash(socket, :error, gettext("Permission denied."))}
+      {:error, :unauthorized} ->
+        {:noreply, put_flash(socket, :error, gettext("Permission denied."))}
     end
   end
 
@@ -118,25 +147,6 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
       lock_at: lock_at,
       visibility: visibility
     }
-  end
-
-  defp save_override_and_update_socket(socket, attrs) do
-    case Learning.set_override(attrs) do
-      {:ok, _schedule} ->
-        overrides = Learning.list_cohort_course_overrides(attrs.cohort_id, attrs.course_id)
-
-        {:noreply,
-         socket
-         |> assign(:overrides, overrides)
-         |> assign(:form_visibility, nil)
-         |> put_flash(:info, gettext("Access override saved successfully."))}
-
-      {:error, changeset} ->
-        error_msg =
-          changeset.errors |> Keyword.values() |> Enum.map_join(", ", fn {msg, _} -> msg end)
-
-        {:noreply, put_flash(socket, :error, error_msg)}
-    end
   end
 
   @impl true

@@ -74,6 +74,6 @@ defmodule Athena.Learning do
 
   defdelegate get_student_overrides(account_id, course_id, cohort_id), to: Schedules
   defdelegate list_cohort_course_overrides(cohort_id, course_id), to: Schedules
-  defdelegate set_override(attrs), to: Schedules
-  defdelegate clear_override(cohort_id, resource_type, resource_id), to: Schedules
+  defdelegate set_override(user, cohort, course, attrs), to: Schedules
+  defdelegate clear_override(user, cohort, course, resource_type, resource_id), to: Schedules
 end

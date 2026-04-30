@@ -5,7 +5,26 @@ defmodule Athena.Learning.SchedulesTest do
   alias Athena.Learning.CohortSchedule
   import Athena.Factory
 
-  describe "get_student_overrides/2" do
+  setup do
+    admin_role = insert(:role, permissions: ["enrollments.update"])
+    admin = insert(:account, role: admin_role)
+
+    inst_role =
+      insert(:role,
+        permissions: ["enrollments.update", "cohorts.update", "courses.update"],
+        policies: %{
+          "enrollments.update" => ["own_only"],
+          "cohorts.update" => ["own_only"],
+          "courses.update" => ["own_only"]
+        }
+      )
+
+    instructor = insert(:account, role: inst_role)
+
+    %{admin: admin, instructor: instructor}
+  end
+
+  describe "get_student_overrides/3" do
     test "returns overrides for cohorts the student is a member of in the given course" do
       student = insert(:account)
       cohort = insert(:cohort)
@@ -46,8 +65,8 @@ defmodule Athena.Learning.SchedulesTest do
     end
   end
 
-  describe "set_override/1" do
-    test "creates a new override if it doesn't exist" do
+  describe "set_override/4" do
+    test "creates a new override if it doesn't exist", %{admin: admin} do
       cohort = insert(:cohort)
       course = insert(:course)
       resource_id = Ecto.UUID.generate()
@@ -61,12 +80,14 @@ defmodule Athena.Learning.SchedulesTest do
         unlock_at: now
       }
 
-      assert {:ok, %CohortSchedule{} = schedule} = Schedules.set_override(attrs)
+      assert {:ok, %CohortSchedule{} = schedule} =
+               Schedules.set_override(admin, cohort, course, attrs)
+
       assert schedule.resource_type == :section
       assert schedule.unlock_at == now
     end
 
-    test "updates an existing override via UPSERT (on_conflict)" do
+    test "updates an existing override via UPSERT (on_conflict)", %{admin: admin} do
       cohort = insert(:cohort)
       course = insert(:course)
       resource_id = Ecto.UUID.generate()
@@ -91,13 +112,14 @@ defmodule Athena.Learning.SchedulesTest do
         "lock_at" => nil
       }
 
-      assert {:ok, %CohortSchedule{} = updated} = Schedules.set_override(attrs)
+      assert {:ok, %CohortSchedule{} = updated} =
+               Schedules.set_override(admin, cohort, course, attrs)
 
       assert updated.unlock_at == new_unlock
       assert Athena.Repo.aggregate(CohortSchedule, :count) == 1
     end
 
-    test "returns error changeset on invalid dates" do
+    test "returns error changeset on invalid dates", %{admin: admin} do
       cohort = insert(:cohort)
       course = insert(:course)
       now = DateTime.utc_now()
@@ -112,13 +134,13 @@ defmodule Athena.Learning.SchedulesTest do
         lock_at: past
       }
 
-      assert {:error, changeset} = Schedules.set_override(attrs)
+      assert {:error, changeset} = Schedules.set_override(admin, cohort, course, attrs)
       assert "must be after the unlock time" in errors_on(changeset).lock_at
     end
   end
 
-  describe "clear_override/3" do
-    test "deletes the specific override" do
+  describe "clear_override/5" do
+    test "deletes the specific override", %{admin: admin} do
       cohort = insert(:cohort)
       course = insert(:course)
 
@@ -129,9 +151,11 @@ defmodule Athena.Learning.SchedulesTest do
           resource_type: :block
         )
 
-      assert {1, nil} =
+      assert {:ok, {1, nil}} =
                Schedules.clear_override(
-                 schedule.cohort_id,
+                 admin,
+                 cohort,
+                 course,
                  schedule.resource_type,
                  schedule.resource_id
                )
@@ -139,7 +163,7 @@ defmodule Athena.Learning.SchedulesTest do
       assert Athena.Repo.all(CohortSchedule) == []
     end
 
-    test "does not delete other overrides" do
+    test "does not delete other overrides", %{admin: admin} do
       cohort = insert(:cohort)
       course = insert(:course)
 
@@ -158,9 +182,11 @@ defmodule Athena.Learning.SchedulesTest do
           resource_id: Ecto.UUID.generate()
         )
 
-      assert {1, nil} =
+      assert {:ok, {1, nil}} =
                Schedules.clear_override(
-                 schedule.cohort_id,
+                 admin,
+                 cohort,
+                 course,
                  schedule.resource_type,
                  schedule.resource_id
                )
@@ -168,6 +194,68 @@ defmodule Athena.Learning.SchedulesTest do
       leftovers = Athena.Repo.all(CohortSchedule)
       assert length(leftovers) == 1
       assert hd(leftovers).id == other.id
+    end
+  end
+
+  describe "Permissions & ACL (Policies: own_only)" do
+    setup %{instructor: instructor} do
+      my_cohort = insert(:cohort, owner_id: instructor.id)
+      other_cohort = insert(:cohort, owner_id: Ecto.UUID.generate())
+
+      my_course = insert(:course, owner_id: instructor.id)
+      other_course = insert(:course, owner_id: Ecto.UUID.generate())
+
+      %{
+        my_cohort: my_cohort,
+        other_cohort: other_cohort,
+        my_course: my_course,
+        other_course: other_course
+      }
+    end
+
+    test "allows override if instructor owns the cohort (but not course)", %{
+      instructor: instructor,
+      my_cohort: cohort,
+      other_course: course
+    } do
+      attrs = %{
+        cohort_id: cohort.id,
+        course_id: course.id,
+        resource_type: :section,
+        resource_id: Ecto.UUID.generate()
+      }
+
+      assert {:ok, _} = Schedules.set_override(instructor, cohort, course, attrs)
+    end
+
+    test "allows override if instructor owns the course (but not cohort)", %{
+      instructor: instructor,
+      other_cohort: cohort,
+      my_course: course
+    } do
+      attrs = %{
+        cohort_id: cohort.id,
+        course_id: course.id,
+        resource_type: :section,
+        resource_id: Ecto.UUID.generate()
+      }
+
+      assert {:ok, _} = Schedules.set_override(instructor, cohort, course, attrs)
+    end
+
+    test "returns unauthorized if instructor owns NEITHER cohort nor course", %{
+      instructor: instructor,
+      other_cohort: cohort,
+      other_course: course
+    } do
+      attrs = %{
+        cohort_id: cohort.id,
+        course_id: course.id,
+        resource_type: :section,
+        resource_id: Ecto.UUID.generate()
+      }
+
+      assert {:error, :unauthorized} = Schedules.set_override(instructor, cohort, course, attrs)
     end
   end
 end

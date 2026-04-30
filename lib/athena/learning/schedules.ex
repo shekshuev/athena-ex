@@ -41,37 +41,66 @@ defmodule Athena.Learning.Schedules do
 
   @doc """
   Creates or updates an override for a specific resource.
-  Uses PostgreSQL UPSERT (on_conflict) for atomic updates.
+  Enforces ACL: user must have rights to manage the cohort or the course.
   """
-  def set_override(attrs) do
-    %CohortSchedule{}
-    |> CohortSchedule.changeset(attrs)
-    |> Repo.insert(
-      on_conflict: [
-        set: [
-          unlock_at: Map.get(attrs, "unlock_at") || Map.get(attrs, :unlock_at),
-          lock_at: Map.get(attrs, "lock_at") || Map.get(attrs, :lock_at),
-          visibility: Map.get(attrs, "visibility") || Map.get(attrs, :visibility),
-          updated_at: DateTime.utc_now()
-        ]
-      ],
-      conflict_target: [:cohort_id, :resource_id, :resource_type]
-    )
+  def set_override(user, cohort, course, attrs) do
+    if can_manage_schedule?(user, cohort, course) do
+      %CohortSchedule{}
+      |> CohortSchedule.changeset(attrs)
+      |> Repo.insert(
+        on_conflict: [
+          set: [
+            unlock_at: Map.get(attrs, "unlock_at") || Map.get(attrs, :unlock_at),
+            lock_at: Map.get(attrs, "lock_at") || Map.get(attrs, :lock_at),
+            visibility: Map.get(attrs, "visibility") || Map.get(attrs, :visibility),
+            updated_at: DateTime.utc_now()
+          ]
+        ],
+        conflict_target: [:cohort_id, :resource_id, :resource_type]
+      )
+    else
+      {:error, :unauthorized}
+    end
   end
 
   @doc """
   Removes an override, falling back to the global AccessRules.
+  Enforces ACL.
   """
-  @spec clear_override(String.t(), atom() | String.t(), String.t()) :: {integer(), nil | [term()]}
-  def clear_override(cohort_id, resource_type, resource_id) do
-    res_type_str = to_string(resource_type)
+  @spec clear_override(map(), map(), map(), atom() | String.t(), String.t()) ::
+          {integer(), nil | [term()]} | {:error, :unauthorized}
+  def clear_override(user, cohort, course, resource_type, resource_id) do
+    if can_manage_schedule?(user, cohort, course) do
+      res_type_str = to_string(resource_type)
 
-    from(cs in CohortSchedule,
-      where:
-        cs.cohort_id == ^cohort_id and
-          cs.resource_type == ^res_type_str and
-          cs.resource_id == ^resource_id
-    )
-    |> Repo.delete_all()
+      result =
+        from(cs in CohortSchedule,
+          where:
+            cs.cohort_id == ^cohort.id and
+              cs.resource_type == ^res_type_str and
+              cs.resource_id == ^resource_id
+        )
+        |> Repo.delete_all()
+
+      {:ok, result}
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  @doc false
+  defp can_manage_schedule?(user, cohort, course) do
+    if Athena.Identity.can?(user, "enrollments.update") do
+      policies = Map.get(user.role.policies || %{}, "enrollments.update", [])
+
+      if "own_only" in policies do
+        Athena.Identity.can?(user, "cohorts.update", cohort) or
+          Athena.Identity.can?(user, "courses.update", course)
+      else
+        true
+      end
+    else
+      false
+    end
   end
 end
