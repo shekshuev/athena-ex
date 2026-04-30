@@ -30,16 +30,15 @@ defmodule Athena.Learning do
 
   defdelegate list_cohorts(user, params \\ %{}), to: Cohorts
   defdelegate get_cohort(user, id), to: Cohorts
-  defdelegate create_cohort(attrs), to: Cohorts
-  defdelegate update_cohort(cohort, attrs), to: Cohorts
-  defdelegate delete_cohort(cohort), to: Cohorts
+  defdelegate create_cohort(user, attrs), to: Cohorts
+  defdelegate update_cohort(user, cohort, attrs), to: Cohorts
+  defdelegate delete_cohort(user, cohort), to: Cohorts
   defdelegate get_cohort_options(user), to: Cohorts
 
   defdelegate list_cohort_memberships(cohort_id, params \\ %{}), to: Cohorts
   defdelegate get_cohort_membership!(id), to: Cohorts
   defdelegate add_student_to_cohort(cohort_id, account_id), to: Cohorts
   defdelegate remove_student_from_cohort(membership), to: Cohorts
-  defdelegate get_cohort!(id), to: Cohorts
 
   defdelegate list_cohort_enrollments(user, cohort_id, params \\ %{}), to: Enrollments
   defdelegate get_enrollment!(id), to: Enrollments

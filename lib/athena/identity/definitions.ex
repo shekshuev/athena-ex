@@ -4,7 +4,7 @@ defmodule Athena.Identity.Definitions do
   @permissions ~w"""
   users.read users.update users.delete
   roles.create roles.read roles.update roles.delete
-  courses.create courses.read courses.update courses.delete courses.publish
+  courses.create courses.read courses.update courses.delete
   library.create library.read library.update library.delete
   grading.read grading.update
   enrollments.create enrollments.read enrollments.delete
@@ -15,7 +15,7 @@ defmodule Athena.Identity.Definitions do
   admin
   """
 
-  @policies ~w"own_only not_published only_published published_or_owner"
+  @policies ~w"own_only"
 
   def permissions, do: @permissions
   def policies, do: @policies

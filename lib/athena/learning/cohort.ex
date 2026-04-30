@@ -27,6 +27,7 @@ defmodule Athena.Learning.Cohort do
     field :description, :string
     field :type, Ecto.Enum, values: [:academic, :team], default: :academic
     field :instructor_ids, {:array, :binary_id}, virtual: true
+    field :owner_id, :binary_id
 
     has_many :memberships, Athena.Learning.CohortMembership
 
@@ -41,6 +42,6 @@ defmodule Athena.Learning.Cohort do
   def changeset(cohort, attrs) do
     cohort
     |> cast(attrs, [:name, :description, :instructor_ids, :type])
-    |> validate_required([:name, :type])
+    |> validate_required([:name, :type, :owner_id])
   end
 end

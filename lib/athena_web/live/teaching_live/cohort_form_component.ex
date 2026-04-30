@@ -131,7 +131,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
 
   @doc false
   defp save_cohort(socket, :edit, cohort_params) do
-    case Learning.update_cohort(socket.assigns.cohort, cohort_params) do
+    case Learning.update_cohort(socket.assigns.current_user, socket.assigns.cohort, cohort_params) do
       {:ok, cohort} ->
         notify_parent({:saved, cohort})
 
@@ -142,12 +142,18 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}
+
+      {:error, :unauthorized} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("You are not authorized to update this cohort"))
+         |> push_patch(to: socket.assigns.patch)}
     end
   end
 
   @doc false
   defp save_cohort(socket, :new, cohort_params) do
-    case Learning.create_cohort(cohort_params) do
+    case Learning.create_cohort(socket.assigns.current_user, cohort_params) do
       {:ok, cohort} ->
         notify_parent({:saved, cohort})
 
@@ -158,6 +164,12 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}
+
+      {:error, :unauthorized} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("You are not authorized to create a cohort"))
+         |> push_patch(to: socket.assigns.patch)}
     end
   end
 

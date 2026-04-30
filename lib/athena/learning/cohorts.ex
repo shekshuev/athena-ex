@@ -9,7 +9,7 @@ defmodule Athena.Learning.Cohorts do
 
   import Ecto.Query
   alias Athena.Repo
-  alias Athena.Learning.{Cohort, Instructor, CohortMembership, Instructors, CohortInstructor}
+  alias Athena.Learning.{Cohort, Instructor, CohortMembership, Instructors}
   alias Athena.Identity
 
   @doc """
@@ -18,7 +18,7 @@ defmodule Athena.Learning.Cohorts do
   @spec list_cohorts(map(), map()) ::
           {:ok, {[Cohort.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_cohorts(user, params \\ %{}) do
-    base_query = scope_cohorts(Cohort, user, "cohorts.read")
+    base_query = Identity.scope_query(Cohort, user, "cohorts.read")
 
     case Flop.validate_and_run(base_query, params, for: Cohort) do
       {:ok, {cohorts, meta}} ->
@@ -30,40 +30,13 @@ defmodule Athena.Learning.Cohorts do
     end
   end
 
-  @doc false
-  defp scope_cohorts(query, user, permission) do
-    cond do
-      "admin" in user.role.permissions ->
-        query
-
-      permission in user.role.permissions ->
-        policies = Map.get(user.role.policies || %{}, permission, [])
-
-        if "own_only" in policies do
-          my_cohort_ids =
-            from ci in CohortInstructor,
-              join: i in Instructor,
-              on: ci.instructor_id == i.id,
-              where: i.owner_id == ^user.id,
-              select: ci.cohort_id
-
-          where(query, [c], c.id in subquery(my_cohort_ids))
-        else
-          query
-        end
-
-      true ->
-        where(query, [c], false)
-    end
-  end
-
   @doc """
   Retrieves a single cohort safely.
   """
   def get_cohort(user, id) do
     Cohort
     |> where([c], c.id == ^id)
-    |> scope_cohorts(user, "cohorts.read")
+    |> Identity.scope_query(user, "cohorts.read")
     |> Repo.one()
     |> case do
       nil -> {:error, :not_found}
@@ -72,23 +45,21 @@ defmodule Athena.Learning.Cohorts do
   end
 
   @doc """
-  Gets a single cohort by its ID.
-  Raises `Ecto.NoResultsError` if the Cohort does not exist.
-  """
-  def get_cohort!(id), do: Repo.get!(Cohort, id)
-
-  @doc """
   Creates a new cohort.
 
   Optionally accepts a list of instructor IDs in `instructor_ids` to assign them immediately.
   """
-  @spec create_cohort(map()) :: {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()}
-  def create_cohort(attrs) do
-    %Cohort{}
-    |> Repo.preload(:instructors)
-    |> Cohort.changeset(attrs)
-    |> put_instructors(attrs["instructor_ids"] || attrs[:instructor_ids])
-    |> Repo.insert()
+  @spec create_cohort(map(), map()) :: {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()}
+  def create_cohort(user, attrs) do
+    if Identity.can?(user, "cohorts.create") do
+      %Cohort{owner_id: user.id}
+      |> Repo.preload(:instructors)
+      |> Cohort.changeset(attrs)
+      |> put_instructors(attrs["instructor_ids"] || attrs[:instructor_ids])
+      |> Repo.insert()
+    else
+      {:error, :unauthorized}
+    end
   end
 
   @doc """
@@ -96,21 +67,30 @@ defmodule Athena.Learning.Cohorts do
 
   If `instructor_ids` is provided, it completely replaces the current list of instructors.
   """
-  @spec update_cohort(Cohort.t(), map()) :: {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()}
-  def update_cohort(%Cohort{} = cohort, attrs) do
-    cohort
-    |> Repo.preload(:instructors)
-    |> Cohort.changeset(attrs)
-    |> put_instructors(attrs["instructor_ids"] || attrs[:instructor_ids])
-    |> Repo.update()
+  @spec update_cohort(map(), Cohort.t(), map()) ::
+          {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()}
+  def update_cohort(user, %Cohort{} = cohort, attrs) do
+    if Identity.can?(user, "cohorts.update", cohort) do
+      cohort
+      |> Repo.preload(:instructors)
+      |> Cohort.changeset(attrs)
+      |> put_instructors(attrs["instructor_ids"] || attrs[:instructor_ids])
+      |> Repo.update()
+    else
+      {:error, :unauthorized}
+    end
   end
 
   @doc """
   Deletes a cohort.
   """
-  @spec delete_cohort(Cohort.t()) :: {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()}
-  def delete_cohort(%Cohort{} = cohort) do
-    Repo.delete(cohort)
+  @spec delete_cohort(map(), Cohort.t()) :: {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()}
+  def delete_cohort(user, %Cohort{} = cohort) do
+    if Identity.can?(user, "cohorts.delete", cohort) do
+      Repo.delete(cohort)
+    else
+      {:error, :unauthorized}
+    end
   end
 
   @doc false
@@ -178,7 +158,7 @@ defmodule Athena.Learning.Cohorts do
   """
   def get_cohort_options(user) do
     Cohort
-    |> scope_cohorts(user, "cohorts.read")
+    |> Identity.scope_query(user, "cohorts.read")
     |> select([c], {c.name, c.id})
     |> order_by([c], asc: c.name)
     |> Repo.all()

@@ -109,7 +109,7 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
   end
 
   def handle_event("confirm_delete", _, %{assigns: %{cohort_to_delete: cohort}} = socket) do
-    case Learning.delete_cohort(cohort) do
+    case Learning.delete_cohort(socket.assigns.current_user, cohort) do
       {:ok, _} ->
         {:noreply,
          socket
@@ -251,6 +251,7 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
           id={@cohort.id || :new}
           action={@live_action}
           cohort={@cohort}
+          current_user={@current_user}
           patch={~p"/teaching/cohorts"}
         />
       </.slide_over>

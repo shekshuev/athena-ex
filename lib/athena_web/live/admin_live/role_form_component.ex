@@ -169,7 +169,7 @@ defmodule AthenaWeb.AdminLive.RoleFormComponent do
                   </label>
 
                   <div
-                    :if={perm in (@form[:permissions].value || []) and perm != "admin"}
+                    :if={perm in (@form[:permissions].value || []) and supports_policies?(perm)}
                     class="w-full sm:w-1/2 flex items-center justify-end"
                   >
                     <input type="hidden" name={"role[policies][#{perm}][]"} value="" />
@@ -212,5 +212,12 @@ defmodule AthenaWeb.AdminLive.RoleFormComponent do
   defp perm_label(perm) do
     action = perm |> String.split(".") |> List.last()
     Gettext.dgettext(AthenaWeb.Gettext, "permissions", action)
+  end
+
+  @doc false
+  defp supports_policies?(perm) do
+    resource = perm |> String.split(".") |> List.first()
+
+    resource in ~w(users courses library grading enrollments instructors cohorts files)
   end
 end
