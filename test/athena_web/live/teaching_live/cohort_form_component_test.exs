@@ -6,7 +6,11 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponentTest do
   alias Athena.Learning
 
   setup %{conn: conn} do
-    role = insert(:role, permissions: ["cohorts.read", "cohorts.create", "cohorts.update"])
+    role =
+      insert(:role,
+        permissions: ["cohorts.read", "cohorts.create", "cohorts.update", "instructors.read"]
+      )
+
     account = insert(:account, role: role)
 
     conn = init_test_session(conn, %{"account_id" => account.id})

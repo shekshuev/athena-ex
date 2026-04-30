@@ -65,7 +65,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
   @impl true
   def handle_event("search_instructors", %{"value" => query}, socket) do
     if String.length(query) >= 2 do
-      instructors = Learning.search_instructors(query)
+      instructors = Learning.search_instructors(socket.assigns.current_user, query)
 
       {:noreply, assign(socket, search_query: query, search_results: instructors)}
     else

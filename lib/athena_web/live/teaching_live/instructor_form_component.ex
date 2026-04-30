@@ -121,7 +121,11 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponent do
 
   @doc false
   defp save_instructor(socket, :edit, instructor_params) do
-    case Learning.update_instructor(socket.assigns.instructor, instructor_params) do
+    case Learning.update_instructor(
+           socket.assigns.current_user,
+           socket.assigns.instructor,
+           instructor_params
+         ) do
       {:ok, instructor} ->
         notify_parent({:saved, instructor})
 
@@ -132,12 +136,18 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponent do
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}
+
+      {:error, :unauthorized} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("You are not authorized to update this profile."))
+         |> push_patch(to: socket.assigns.patch)}
     end
   end
 
   @doc false
   defp save_instructor(socket, :new, instructor_params) do
-    case Learning.create_instructor(instructor_params) do
+    case Learning.create_instructor(socket.assigns.current_user, instructor_params) do
       {:ok, instructor} ->
         notify_parent({:saved, instructor})
 
@@ -148,6 +158,12 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponent do
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}
+
+      {:error, :unauthorized} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("You are not authorized to create instructors."))
+         |> push_patch(to: socket.assigns.patch)}
     end
   end
 

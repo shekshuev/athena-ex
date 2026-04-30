@@ -215,9 +215,19 @@ defmodule AthenaWeb.AdminLive.RoleFormComponent do
   end
 
   @doc false
-  defp supports_policies?(perm) do
-    resource = perm |> String.split(".") |> List.first()
+  defp supports_policies?("instructors.read"), do: false
 
-    resource in ~w(users courses library grading enrollments instructors cohorts files)
+  defp supports_policies?("enrollments.create"), do: true
+
+  defp supports_policies?("admin"), do: false
+
+  defp supports_policies?(perm) do
+    parts = String.split(perm, ".")
+
+    if List.last(parts) == "create" do
+      false
+    else
+      List.first(parts) in ~w(users courses library grading enrollments instructors cohorts files)
+    end
   end
 end

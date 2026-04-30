@@ -32,38 +32,39 @@ defmodule Athena.Learning.Instructors do
 
   @doc """
   Searches for instructors by their title or their associated account login.
-
-  Performs a cross-context search: first queries the `Identity` context for 
-  matching logins, then combines those results with a title search in `Learning`.
-  Useful for autocomplete and multi-select components.
+  Requires 'instructors.read' permission.
   """
-  @spec search_instructors(String.t(), integer()) :: [Instructor.t()]
-  def search_instructors(search_query, limit \\ 10) do
-    search_term = "%#{search_query}%"
+  @spec search_instructors(map(), String.t(), integer()) :: [Instructor.t()]
+  def search_instructors(user, search_query, limit \\ 10) do
+    if Identity.can?(user, "instructors.read") do
+      search_term = "%#{search_query}%"
 
-    instructors_by_title =
-      Instructor
-      |> where([i], ilike(i.title, ^search_term))
-      |> limit(^limit)
-      |> Repo.all()
-
-    account_ids_from_login =
-      Identity.search_accounts_by_login(search_query, limit) |> Enum.map(& &1.id)
-
-    instructors_by_account =
-      if account_ids_from_login == [] do
-        []
-      else
+      instructors_by_title =
         Instructor
-        |> where([i], i.owner_id in ^account_ids_from_login)
+        |> where([i], ilike(i.title, ^search_term))
         |> limit(^limit)
         |> Repo.all()
-      end
 
-    (instructors_by_title ++ instructors_by_account)
-    |> Enum.uniq_by(& &1.id)
-    |> Enum.take(limit)
-    |> enrich_with_accounts()
+      account_ids_from_login =
+        Identity.search_accounts_by_login(search_query, limit) |> Enum.map(& &1.id)
+
+      instructors_by_account =
+        if account_ids_from_login == [] do
+          []
+        else
+          Instructor
+          |> where([i], i.owner_id in ^account_ids_from_login)
+          |> limit(^limit)
+          |> Repo.all()
+        end
+
+      (instructors_by_title ++ instructors_by_account)
+      |> Enum.uniq_by(& &1.id)
+      |> Enum.take(limit)
+      |> enrich_with_accounts()
+    else
+      []
+    end
   end
 
   @doc """
@@ -83,30 +84,44 @@ defmodule Athena.Learning.Instructors do
   @doc """
   Creates a new instructor profile.
   """
-  @spec create_instructor(map()) :: {:ok, Instructor.t()} | {:error, Ecto.Changeset.t()}
-  def create_instructor(attrs) do
-    %Instructor{}
-    |> Instructor.changeset(attrs)
-    |> Repo.insert()
+  @spec create_instructor(map(), map()) ::
+          {:ok, Instructor.t()} | {:error, Ecto.Changeset.t() | atom()}
+  def create_instructor(user, attrs) do
+    if Identity.can?(user, "instructors.create") do
+      %Instructor{}
+      |> Instructor.changeset(attrs)
+      |> Repo.insert()
+    else
+      {:error, :unauthorized}
+    end
   end
 
   @doc """
   Updates an existing instructor profile.
   """
-  @spec update_instructor(Instructor.t(), map()) ::
-          {:ok, Instructor.t()} | {:error, Ecto.Changeset.t()}
-  def update_instructor(%Instructor{} = instructor, attrs) do
-    instructor
-    |> Instructor.changeset(attrs)
-    |> Repo.update()
+  @spec update_instructor(map(), Instructor.t(), map()) ::
+          {:ok, Instructor.t()} | {:error, Ecto.Changeset.t() | atom()}
+  def update_instructor(user, %Instructor{} = instructor, attrs) do
+    if Identity.can?(user, "instructors.update", instructor) do
+      instructor
+      |> Instructor.changeset(attrs)
+      |> Repo.update()
+    else
+      {:error, :unauthorized}
+    end
   end
 
   @doc """
   Deletes an instructor profile.
   """
-  @spec delete_instructor(Instructor.t()) :: {:ok, Instructor.t()} | {:error, Ecto.Changeset.t()}
-  def delete_instructor(%Instructor{} = instructor) do
-    Repo.delete(instructor)
+  @spec delete_instructor(map(), Instructor.t()) ::
+          {:ok, Instructor.t()} | {:error, Ecto.Changeset.t() | atom()}
+  def delete_instructor(user, %Instructor{} = instructor) do
+    if Identity.can?(user, "instructors.delete", instructor) do
+      Repo.delete(instructor)
+    else
+      {:error, :unauthorized}
+    end
   end
 
   @doc """
