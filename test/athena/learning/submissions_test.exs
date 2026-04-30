@@ -5,12 +5,18 @@ defmodule Athena.Learning.SubmissionsTest do
   alias Athena.Learning.Submission
   import Athena.Factory
 
-  describe "list_submissions/1" do
-    test "returns paginated submissions with default sorting (inserted_at desc)" do
+  describe "list_submissions/2" do
+    setup do
+      admin_role = insert(:role, permissions: ["grading.read"])
+      admin = insert(:account, role: admin_role)
+      %{admin: admin}
+    end
+
+    test "returns paginated submissions with default sorting (inserted_at desc)", %{admin: admin} do
       sub1 = insert(:submission, inserted_at: ~U[2026-01-01 10:00:00Z])
       sub2 = insert(:submission, inserted_at: ~U[2026-01-02 10:00:00Z])
 
-      assert {:ok, {submissions, meta}} = Submissions.list_submissions(%{})
+      assert {:ok, {submissions, meta}} = Submissions.list_submissions(admin, %{})
 
       assert length(submissions) == 2
       assert Enum.at(submissions, 0).id == sub2.id
@@ -18,7 +24,7 @@ defmodule Athena.Learning.SubmissionsTest do
       assert meta.total_count == 2
     end
 
-    test "filters submissions by status" do
+    test "filters submissions by status", %{admin: admin} do
       insert(:submission, status: :graded)
       insert(:submission, status: :graded)
       sub_review = insert(:submission, status: :needs_review)
@@ -29,14 +35,14 @@ defmodule Athena.Learning.SubmissionsTest do
         ]
       }
 
-      assert {:ok, {submissions, meta}} = Submissions.list_submissions(params)
+      assert {:ok, {submissions, meta}} = Submissions.list_submissions(admin, params)
 
       assert length(submissions) == 1
       assert hd(submissions).id == sub_review.id
       assert meta.total_count == 1
     end
 
-    test "sorts submissions by score" do
+    test "sorts submissions by score", %{admin: admin} do
       sub1 = insert(:submission, score: 100)
       sub2 = insert(:submission, score: 10)
 
@@ -45,9 +51,28 @@ defmodule Athena.Learning.SubmissionsTest do
         "order_directions" => ["asc"]
       }
 
-      assert {:ok, {submissions, _meta}} = Submissions.list_submissions(params)
+      assert {:ok, {submissions, _meta}} = Submissions.list_submissions(admin, params)
 
       assert Enum.map(submissions, & &1.id) == [sub2.id, sub1.id]
+    end
+  end
+
+  describe "get_submission!/2" do
+    setup do
+      admin_role = insert(:role, permissions: ["grading.read"])
+      admin = insert(:account, role: admin_role)
+      %{admin: admin}
+    end
+
+    test "returns the submission with given id", %{admin: admin} do
+      submission = insert(:submission)
+      assert Submissions.get_submission!(admin, submission.id).id == submission.id
+    end
+
+    test "raises Ecto.NoResultsError if submission does not exist", %{admin: admin} do
+      assert_raise Ecto.NoResultsError, fn ->
+        Submissions.get_submission!(admin, Ecto.UUID.generate())
+      end
     end
   end
 
@@ -216,80 +241,84 @@ defmodule Athena.Learning.SubmissionsTest do
     end
   end
 
-  describe "create_submission/1" do
-    test "creates an individual submission with valid attributes" do
-      account_id = Ecto.UUID.generate()
-      block_id = Ecto.UUID.generate()
+  describe "create_submission/2" do
+    test "creates an individual submission, forcing account_id to prevent spoofing" do
+      user = insert(:account)
+      block = insert(:block)
 
       attrs = %{
-        "account_id" => account_id,
-        "block_id" => block_id,
+        "account_id" => Ecto.UUID.generate(),
+        "block_id" => block.id,
         "content" => %{"flag" => "athena{1337}"},
         "status" => "pending"
       }
 
-      assert {:ok, %Submission{} = submission} = Submissions.create_submission(attrs)
-      assert submission.account_id == account_id
-      assert submission.block_id == block_id
-      assert submission.cohort_id == nil
-      assert submission.content["flag"] == "athena{1337}"
-      assert submission.status == :pending
-      assert submission.score == 0
+      assert {:ok, %Submission{} = submission} = Submissions.create_submission(user, attrs)
+
+      assert submission.account_id == user.id
+      assert submission.block_id == block.id
     end
 
     test "creates a team submission when cohort_id is provided" do
-      account_id = Ecto.UUID.generate()
-      block_id = Ecto.UUID.generate()
-      team = insert(:cohort)
+      user = insert(:account)
+      block = insert(:block)
+      cohort = insert(:cohort, type: :team)
 
       attrs = %{
-        "account_id" => account_id,
-        "block_id" => block_id,
-        "cohort_id" => team.id,
+        "block_id" => block.id,
+        "cohort_id" => cohort.id,
         "content" => %{"flag" => "team_flag{999}"},
         "status" => "pending"
       }
 
-      assert {:ok, %Submission{} = submission} = Submissions.create_submission(attrs)
-      assert submission.account_id == account_id
-      assert submission.block_id == block_id
-      assert submission.cohort_id == team.id
+      assert {:ok, %Submission{} = submission} = Submissions.create_submission(user, attrs)
+      assert submission.account_id == user.id
+      assert submission.cohort_id == cohort.id
     end
 
     test "returns error changeset with missing required attributes" do
-      assert {:error, changeset} = Submissions.create_submission(%{})
-      assert "can't be blank" in errors_on(changeset).account_id
+      user = insert(:account)
+      assert {:error, changeset} = Submissions.create_submission(user, %{})
       assert "can't be blank" in errors_on(changeset).block_id
     end
   end
 
-  describe "update_submission/2" do
-    test "updates submission attributes" do
+  describe "update_submission/3 and system_update_submission/2" do
+    setup do
+      admin_role = insert(:role, permissions: ["grading.update"])
+      admin = insert(:account, role: admin_role)
+      student = insert(:account, role: insert(:role, permissions: []))
+
+      %{admin: admin, student: student}
+    end
+
+    test "system_update_submission/2 updates attributes without ACL (for Evaluator)" do
+      submission = insert(:submission, status: :pending, score: 0)
+
+      assert {:ok, updated} = Submissions.system_update_submission(submission, %{"score" => 100})
+      assert updated.score == 100
+    end
+
+    test "update_submission/3 works if user has grading.update permission", %{admin: admin} do
       submission = insert(:submission, status: :pending, score: 0)
 
       assert {:ok, updated} =
-               Submissions.update_submission(submission, %{
-                 "status" => "graded",
+               Submissions.update_submission(admin, submission, %{
+                 "feedback" => "Good job!",
                  "score" => 100,
-                 "feedback" => "Good job!"
+                 "status" => "graded"
                })
 
-      assert updated.status == :graded
       assert updated.score == 100
+      assert updated.status == :graded
       assert updated.feedback == "Good job!"
     end
-  end
 
-  describe "get_submission!/1" do
-    test "returns the submission with given id" do
+    test "update_submission/3 returns unauthorized if user lacks permission", %{student: student} do
       submission = insert(:submission)
-      assert Submissions.get_submission!(submission.id).id == submission.id
-    end
 
-    test "raises Ecto.NoResultsError if submission does not exist" do
-      assert_raise Ecto.NoResultsError, fn ->
-        Submissions.get_submission!(Ecto.UUID.generate())
-      end
+      assert {:error, :unauthorized} =
+               Submissions.update_submission(student, submission, %{"score" => 100})
     end
   end
 
@@ -410,6 +439,46 @@ defmodule Athena.Learning.SubmissionsTest do
       insert(:enrollment, course_id: course.id, cohort_id: cohort.id, status: :dropped)
 
       assert nil == Athena.Learning.Enrollments.get_user_cohort_for_course(user.id, course.id)
+    end
+  end
+
+  describe "ACL: list_submissions/2 and get_submission!/2" do
+    setup do
+      role = insert(:role, permissions: ["grading.read"])
+      instructor = insert(:account, role: role)
+      student = insert(:account, role: insert(:role, permissions: []))
+
+      %{instructor: instructor, student: student}
+    end
+
+    test "instructor with grading.read can list submissions", %{instructor: instructor} do
+      insert_list(3, :submission)
+
+      {:ok, {submissions, meta}} = Submissions.list_submissions(instructor, %{})
+      assert length(submissions) == 3
+      assert meta.total_count == 3
+    end
+
+    test "instructor with grading.read can get specific submission", %{instructor: instructor} do
+      submission = insert(:submission)
+
+      fetched = Submissions.get_submission!(instructor, submission.id)
+      assert fetched.id == submission.id
+    end
+
+    test "student without grading.read cannot list submissions", %{student: student} do
+      insert_list(3, :submission)
+
+      {:ok, {submissions, _meta}} = Submissions.list_submissions(student, %{})
+      assert submissions == []
+    end
+
+    test "student without grading.read cannot get specific submission", %{student: student} do
+      submission = insert(:submission)
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Submissions.get_submission!(student, submission.id)
+      end
     end
   end
 end

@@ -39,7 +39,7 @@ defmodule AthenaWeb.StudioLive.Grading do
     flop_filters = build_flop_filters(status, login, cohort_id, date_from, date_to, has_cheats)
     flop_params = Map.merge(params, %{"filters" => flop_filters})
 
-    case Learning.list_submissions(flop_params) do
+    case Learning.list_submissions(socket.assigns.current_user, flop_params) do
       {:ok, {submissions, meta}} ->
         account_ids = Enum.map(submissions, & &1.account_id) |> Enum.uniq()
         block_ids = Enum.map(submissions, & &1.block_id) |> Enum.uniq()

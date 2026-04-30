@@ -6,7 +6,7 @@ defmodule AthenaWeb.StudioLive.GradingDetailTest do
   alias Athena.Learning.Submission
 
   setup %{conn: conn} do
-    role = insert(:role, permissions: ["grading.update"])
+    role = insert(:role, permissions: ["grading.read", "grading.update", "cohorts.read"])
     admin = insert(:account, role: role)
     conn = init_test_session(conn, %{"account_id" => admin.id})
     %{conn: conn, admin: admin}

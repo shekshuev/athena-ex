@@ -50,12 +50,13 @@ defmodule Athena.Learning do
   defdelegate get_user_cohort_for_course(account_id, course_id), to: Enrollments
   defdelegate can_manage_enrollment?(user, action, enrollment, preloaded_cohort), to: Enrollments
 
-  defdelegate list_submissions(params \\ %{}), to: Submissions
+  defdelegate list_submissions(user, params \\ %{}), to: Submissions
   defdelegate get_submission(account_id, block_id, cohort_id \\ nil), to: Submissions
-  defdelegate create_submission(attrs), to: Submissions
-  defdelegate update_submission(submission, attrs), to: Submissions
+  defdelegate create_submission(user, attrs), to: Submissions
+  defdelegate update_submission(user, submission, attrs), to: Submissions
+  defdelegate system_update_submission(submission, attrs), to: Submissions
   defdelegate get_latest_submissions(account_id, block_ids, cohort_id \\ nil), to: Submissions
-  defdelegate get_submission!(id), to: Submissions
+  defdelegate get_submission!(user, id), to: Submissions
   defdelegate get_team_leaderboard(course_id), to: Submissions
 
   defdelegate mark_completed(account_id, block_id, cohort_id \\ nil), to: Progress

@@ -13,11 +13,24 @@ defmodule Athena.Learning.Submissions do
 
   @doc """
   Lists submissions with pagination, filtering, and sorting using Flop.
+  Enforces grading.read ACL.
   """
-  @spec list_submissions(map()) ::
+  @spec list_submissions(map(), map()) ::
           {:ok, {[Submission.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
-  def list_submissions(params \\ %{}) do
-    Flop.validate_and_run(Submission, params, for: Submission)
+  def list_submissions(user, params \\ %{}) do
+    query = Athena.Identity.scope_query(Submission, user, "grading.read")
+    Flop.validate_and_run(query, params, for: Submission)
+  end
+
+  @doc """
+  Gets a single submission by its ID. Enforces grading.read ACL.
+  Raises `Ecto.NoResultsError` if the Submission does not exist or access is denied.
+  """
+  def get_submission!(user, id) do
+    Submission
+    |> where([s], s.id == ^id)
+    |> Athena.Identity.scope_query(user, "grading.read")
+    |> Repo.one!()
   end
 
   @doc """
@@ -40,21 +53,38 @@ defmodule Athena.Learning.Submissions do
   end
 
   @doc """
-  Creates a new submission.
+  Creates a new submission, forcing the account_id to the current user to prevent spoofing.
   """
-  @spec create_submission(map()) :: {:ok, Submission.t()} | {:error, Ecto.Changeset.t()}
-  def create_submission(attrs) do
+  @spec create_submission(map(), map()) :: {:ok, Submission.t()} | {:error, Ecto.Changeset.t()}
+  def create_submission(user, attrs) do
+    safe_attrs =
+      attrs
+      |> Map.put("account_id", user.id)
+
     %Submission{}
-    |> Submission.changeset(attrs)
+    |> Submission.changeset(safe_attrs)
     |> Repo.insert()
   end
 
   @doc """
-  Updates an existing submission.
+  Updates a submission manually (e.g. manual grading by an instructor). 
+  Enforces ACL: only users with grading.update can do this.
   """
-  @spec update_submission(Submission.t(), map()) ::
-          {:ok, Submission.t()} | {:error, Ecto.Changeset.t()}
-  def update_submission(%Submission{} = submission, attrs) do
+  @spec update_submission(map(), Submission.t(), map()) ::
+          {:ok, Submission.t()} | {:error, Ecto.Changeset.t() | atom()}
+  def update_submission(user, %Submission{} = submission, attrs) do
+    if Athena.Identity.can?(user, "grading.update", submission) do
+      system_update_submission(submission, attrs)
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  @doc """
+  Internal update function for the Player, Exam, and Auto-Evaluator.
+  Bypasses ACL because it's driven by system logic, not direct user input.
+  """
+  def system_update_submission(%Submission{} = submission, attrs) do
     submission
     |> Submission.changeset(attrs)
     |> Repo.update()
@@ -82,12 +112,6 @@ defmodule Athena.Learning.Submissions do
     |> Repo.all()
     |> Map.new(&{&1.block_id, &1})
   end
-
-  @doc """
-  Gets a single submission by its ID.
-  Raises `Ecto.NoResultsError` if the Submission does not exist.
-  """
-  def get_submission!(id), do: Repo.get!(Submission, id)
 
   @doc """
   Generates a leaderboard for a specific competition course.

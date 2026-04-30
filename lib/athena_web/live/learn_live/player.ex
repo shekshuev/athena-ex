@@ -195,20 +195,20 @@ defmodule AthenaWeb.LearnLive.Player do
     questions = Content.generate_exam_questions(block.content)
 
     sub_attrs = %{
-      account_id: user.id,
-      block_id: block.id,
-      status: :pending,
-      cohort_id: socket.assigns.team_id,
-      content: %{
-        type: :quiz_exam,
-        started_at: DateTime.utc_now(),
-        questions: questions,
-        answers: %{},
-        cheat_count: 0
+      "account_id" => user.id,
+      "block_id" => block.id,
+      "status" => :pending,
+      "cohort_id" => socket.assigns.team_id,
+      "content" => %{
+        "type" => :quiz_exam,
+        "started_at" => DateTime.utc_now(),
+        "questions" => questions,
+        "answers" => %{},
+        "cheat_count" => 0
       }
     }
 
-    case Learning.create_submission(sub_attrs) do
+    case Learning.create_submission(user, sub_attrs) do
       {:ok, _submission} ->
         broadcast_team_progress(socket.assigns.team_id, socket.assigns.course.id)
 
@@ -238,17 +238,17 @@ defmodule AthenaWeb.LearnLive.Player do
   @doc false
   defp handle_quiz_submission(socket, block, answer) do
     sub_attrs = %{
-      account_id: socket.assigns.current_user.id,
-      block_id: block.id,
-      cohort_id: socket.assigns.team_id,
-      status: :pending,
-      content: build_submission_content(block, answer)
+      "account_id" => socket.assigns.current_user.id,
+      "block_id" => block.id,
+      "cohort_id" => socket.assigns.team_id,
+      "status" => :pending,
+      "content" => build_submission_content(block, answer)
     }
 
-    case Learning.create_submission(sub_attrs) do
+    case Learning.create_submission(socket.assigns.current_user, sub_attrs) do
       {:ok, submission} ->
         eval_result = Learning.evaluate_sync(submission)
-        {:ok, final_sub} = Learning.update_submission(submission, eval_result)
+        {:ok, final_sub} = Learning.system_update_submission(submission, eval_result)
 
         broadcast_team_progress(socket.assigns.team_id, socket.assigns.course.id)
 

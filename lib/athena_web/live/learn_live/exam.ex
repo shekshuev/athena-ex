@@ -52,13 +52,13 @@ defmodule AthenaWeb.LearnLive.Exam do
     new_content = Map.put(socket.assigns.submission.content, "cheat_count", new_count)
 
     {:ok, updated_sub} =
-      Learning.update_submission(socket.assigns.submission, %{"content" => new_content})
+      Learning.system_update_submission(socket.assigns.submission, %{"content" => new_content})
 
     socket = assign(socket, submission: updated_sub, cheat_count: new_count)
 
     if new_count >= max_cheats do
       {:ok, _failed_sub} =
-        Learning.update_submission(updated_sub, %{"status" => "graded", "score" => 0})
+        Learning.system_update_submission(updated_sub, %{"status" => "graded", "score" => 0})
 
       broadcast_team_progress(socket.assigns.team_id, socket.assigns.course_id)
 
@@ -88,7 +88,7 @@ defmodule AthenaWeb.LearnLive.Exam do
       new_content = Map.put(socket.assigns.submission.content, "answers", new_answers)
 
       {:ok, updated_sub} =
-        Learning.update_submission(socket.assigns.submission, %{"content" => new_content})
+        Learning.system_update_submission(socket.assigns.submission, %{"content" => new_content})
 
       {:noreply, assign(socket, answers: new_answers, submission: updated_sub)}
     else
@@ -325,7 +325,8 @@ defmodule AthenaWeb.LearnLive.Exam do
   end
 
   defp submit_and_exit(socket, submission, course_id) do
-    {:ok, _} = Learning.update_submission(submission, %{"status" => "needs_review", "score" => 0})
+    {:ok, _} =
+      Learning.system_update_submission(submission, %{"status" => "needs_review", "score" => 0})
 
     broadcast_team_progress(socket.assigns.team_id, course_id)
 

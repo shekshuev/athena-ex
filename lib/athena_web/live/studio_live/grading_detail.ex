@@ -15,7 +15,7 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
   def mount(%{"id" => id} = params, _session, socket) do
     return_to = Map.get(params, "return_to", ~p"/studio/grading")
 
-    submission = Learning.get_submission!(id)
+    submission = Learning.get_submission!(socket.assigns.current_user, id)
 
     {:ok, account} = Identity.get_account(submission.account_id)
     {:ok, block} = Content.get_block(submission.block_id)
@@ -49,7 +49,7 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
       "status" => status
     }
 
-    case Learning.update_submission(socket.assigns.submission, attrs) do
+    case Learning.update_submission(socket.assigns.current_user, socket.assigns.submission, attrs) do
       {:ok, _updated_sub} ->
         msg =
           if action == "reject",
