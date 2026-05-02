@@ -255,7 +255,9 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
-      Athena.Content.update_section(s1, %{"visibility" => "hidden"})
+      admin = insert(:account, role: insert(:role, permissions: ["courses.update"]))
+
+      Athena.Content.update_section(admin, s1, %{"visibility" => "hidden"})
 
       Process.sleep(150)
 

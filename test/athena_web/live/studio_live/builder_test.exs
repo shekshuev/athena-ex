@@ -53,7 +53,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       admin: admin
     } do
       {:ok, section} =
-        Content.create_section(%{
+        Content.create_section(admin, %{
           "title" => "My Awesome Lesson",
           "course_id" => course.id,
           "owner_id" => admin.id
@@ -73,7 +73,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
 
     test "deletes a section via modal", %{conn: conn, course: course, admin: admin} do
       {:ok, section} =
-        Content.create_section(%{
+        Content.create_section(admin, %{
           "title" => "To Be Deleted",
           "course_id" => course.id,
           "owner_id" => admin.id
@@ -100,7 +100,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       admin: admin
     } do
       {:ok, section} =
-        Content.create_section(%{
+        Content.create_section(admin, %{
           "title" => "Old Title",
           "course_id" => course.id,
           "owner_id" => admin.id
@@ -128,10 +128,9 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
   describe "Block Management (UI Actions)" do
     setup %{course: course, admin: admin} do
       {:ok, section} =
-        Content.create_section(%{
-          "title" => "Block Lesson",
-          "course_id" => course.id,
-          "owner_id" => admin.id
+        Content.create_section(admin, %{
+          "title" => "Complex Blocks",
+          "course_id" => course.id
         })
 
       %{section: section}
@@ -154,9 +153,18 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert hd(blocks).type == :text
     end
 
-    test "deletes a block via modal", %{conn: conn, course: course, section: section} do
+    test "deletes a block via modal", %{
+      conn: conn,
+      course: course,
+      section: section,
+      admin: admin
+    } do
       {:ok, block} =
-        Content.create_block(%{"type" => "text", "section_id" => section.id, "content" => %{}})
+        Content.create_block(admin, %{
+          "type" => "text",
+          "section_id" => section.id,
+          "content" => %{}
+        })
 
       {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
 
@@ -258,10 +266,11 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
     test "can reorder blocks via move_block_up and move_block_down", %{
       conn: conn,
       course: course,
-      section: section
+      section: section,
+      admin: admin
     } do
-      {:ok, block1} = Content.create_block(%{"type" => "text", "section_id" => section.id})
-      {:ok, block2} = Content.create_block(%{"type" => "text", "section_id" => section.id})
+      {:ok, block1} = Content.create_block(admin, %{"type" => "text", "section_id" => section.id})
+      {:ok, block2} = Content.create_block(admin, %{"type" => "text", "section_id" => section.id})
 
       {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
 
@@ -289,9 +298,10 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
     test "deselects block via click-away", %{
       conn: conn,
       course: course,
-      section: section
+      section: section,
+      admin: admin
     } do
-      {:ok, block} = Content.create_block(%{"type" => "text", "section_id" => section.id})
+      {:ok, block} = Content.create_block(admin, %{"type" => "text", "section_id" => section.id})
 
       {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
 
@@ -312,7 +322,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
   describe "Quiz & Media Inspectors" do
     setup %{course: course, admin: admin} do
       {:ok, section} =
-        Content.create_section(%{
+        Content.create_section(admin, %{
           "title" => "Complex Blocks",
           "course_id" => course.id,
           "owner_id" => admin.id
@@ -324,10 +334,11 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
     test "updates quiz block options via canvas form", %{
       conn: conn,
       course: course,
-      section: section
+      section: section,
+      admin: admin
     } do
       {:ok, block} =
-        Content.create_block(%{
+        Content.create_block(admin, %{
           "type" => "quiz_question",
           "section_id" => section.id,
           "content" => %{
@@ -374,10 +385,11 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
     test "updates quiz exam metadata and parses tags correctly", %{
       conn: conn,
       course: course,
-      section: section
+      section: section,
+      admin: admin
     } do
       {:ok, block} =
-        Content.create_block(%{
+        Content.create_block(admin, %{
           "type" => "quiz_exam",
           "section_id" => section.id,
           "content" => %{
@@ -438,14 +450,14 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       admin: admin
     } do
       {:ok, parent} =
-        Content.create_section(%{
+        Content.create_section(admin, %{
           "title" => "Target Folder",
           "course_id" => course.id,
           "owner_id" => admin.id
         })
 
       {:ok, child} =
-        Content.create_section(%{
+        Content.create_section(admin, %{
           "title" => "Moving Folder",
           "course_id" => course.id,
           "owner_id" => admin.id
@@ -471,14 +483,13 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
   describe "Media Upload State" do
     setup %{course: course, admin: admin} do
       {:ok, section} =
-        Content.create_section(%{
+        Content.create_section(admin, %{
           "title" => "Uploads Lesson",
-          "course_id" => course.id,
-          "owner_id" => admin.id
+          "course_id" => course.id
         })
 
       {:ok, block} =
-        Content.create_block(%{
+        Content.create_block(admin, %{
           "type" => "image",
           "section_id" => section.id,
           "content" => %{"url" => nil, "alt" => ""}
@@ -539,10 +550,9 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
   describe "Library Integration" do
     setup %{course: course, admin: admin} do
       {:ok, section} =
-        Content.create_section(%{
+        Content.create_section(admin, %{
           "title" => "Library Lesson",
-          "course_id" => course.id,
-          "owner_id" => admin.id
+          "course_id" => course.id
         })
 
       %{section: section}
@@ -555,7 +565,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       admin: admin
     } do
       {:ok, block} =
-        Content.create_block(%{
+        Content.create_block(admin, %{
           "type" => "text",
           "section_id" => section.id,
           "content" => %{"text" => "Important content"}
@@ -653,6 +663,33 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
 
       assert html =~ "Alpha Template"
       refute html =~ "Beta Template"
+    end
+  end
+
+  describe "Builder ACL & Security" do
+    test "kicks out a user who does not own the course", %{conn: conn} do
+      sneaky_role =
+        insert(:role,
+          permissions: ["courses.update"],
+          policies: %{"courses.update" => ["own_only"]}
+        )
+
+      sneaky_user = insert(:account, role: sneaky_role)
+
+      target_course = insert(:course)
+
+      sneaky_conn = init_test_session(conn, %{"account_id" => sneaky_user.id})
+
+      assert {:error, {:live_redirect, %{to: "/studio/courses"}}} =
+               live(sneaky_conn, ~p"/studio/courses/#{target_course.id}/builder")
+    end
+
+    test "kicks out a student completely", %{conn: conn, course: course} do
+      student = insert(:account, role: insert(:role, permissions: []))
+      student_conn = init_test_session(conn, %{"account_id" => student.id})
+
+      assert {:error, {:redirect, %{to: "/dashboard"}}} =
+               live(student_conn, ~p"/studio/courses/#{course.id}/builder")
     end
   end
 end

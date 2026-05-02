@@ -35,7 +35,7 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponent do
   @impl true
   def handle_event("search_courses", %{"value" => query}, socket) do
     if String.length(query) >= 2 do
-      courses = Content.search_courses_by_title(query)
+      courses = Content.search_courses_by_title(socket.assigns.current_user, query)
       {:noreply, assign(socket, search_query: query, search_results: courses)}
     else
       {:noreply, assign(socket, search_query: query, search_results: [])}

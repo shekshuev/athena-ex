@@ -46,39 +46,41 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponentTest do
   setup %{conn: conn} do
     role = insert(:role, permissions: ["library.update", "courses.update"])
     admin = insert(:account, role: role)
-    %{conn: conn, admin: admin}
+    course = insert(:course, owner_id: admin.id)
+
+    %{conn: conn, admin: admin, course: course}
   end
 
-  defp render_dummy(conn, admin, upload_type) do
+  defp render_dummy(conn, admin, course, upload_type) do
     live_isolated(conn, DummyLive,
       session: %{
         "upload_type" => upload_type,
         "block_id" => "fake_block_id",
         "current_user" => admin,
-        "course_id" => "fake_course_id",
+        "course_id" => course.id,
         "test_pid" => self()
       }
     )
   end
 
   describe "Initialization & UI Text" do
-    test "renders correctly for images", %{conn: conn, admin: admin} do
-      {:ok, _view, html} = render_dummy(conn, admin, "image")
+    test "renders correctly for images", %{conn: conn, admin: admin, course: course} do
+      {:ok, _view, html} = render_dummy(conn, admin, course, "image")
 
       assert html =~ "Upload Media"
       assert html =~ ".JPG, .PNG, .GIF, .WEBP"
       assert html =~ "Max 10MB"
     end
 
-    test "renders correctly for videos", %{conn: conn, admin: admin} do
-      {:ok, _view, html} = render_dummy(conn, admin, "video")
+    test "renders correctly for videos", %{conn: conn, admin: admin, course: course} do
+      {:ok, _view, html} = render_dummy(conn, admin, course, "video")
 
       assert html =~ ".MP4, .MOV, .WEBM"
       assert html =~ "Max 500MB"
     end
 
-    test "renders correctly for attachments", %{conn: conn, admin: admin} do
-      {:ok, _view, html} = render_dummy(conn, admin, "attachment")
+    test "renders correctly for attachments", %{conn: conn, admin: admin, course: course} do
+      {:ok, _view, html} = render_dummy(conn, admin, course, "attachment")
 
       assert html =~ "Docs, PDFs, Archives"
       assert html =~ "10 files"
@@ -86,8 +88,8 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponentTest do
   end
 
   describe "File Selection & Validation" do
-    test "shows file in the list after selection", %{conn: conn, admin: admin} do
-      {:ok, view, _html} = render_dummy(conn, admin, "image")
+    test "shows file in the list after selection", %{conn: conn, admin: admin, course: course} do
+      {:ok, view, _html} = render_dummy(conn, admin, course, "image")
 
       upload =
         file_input(view, "#upload-form", :media, [
@@ -102,8 +104,8 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponentTest do
   end
 
   describe "Cancellation & Closing" do
-    test "cancels a single file entry", %{conn: conn, admin: admin} do
-      {:ok, view, _html} = render_dummy(conn, admin, "attachment")
+    test "cancels a single file entry", %{conn: conn, admin: admin, course: course} do
+      {:ok, view, _html} = render_dummy(conn, admin, course, "attachment")
 
       upload =
         file_input(view, "#upload-form", :media, [
@@ -121,9 +123,10 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponentTest do
 
     test "emits cancel_media_upload event when clicking Cancel button", %{
       conn: conn,
-      admin: admin
+      admin: admin,
+      course: course
     } do
-      {:ok, view, _html} = render_dummy(conn, admin, "image")
+      {:ok, view, _html} = render_dummy(conn, admin, course, "image")
 
       view
       |> element("button[phx-click='cancel_media_upload']")
@@ -134,8 +137,12 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponentTest do
   end
 
   describe "Save / Submit Event" do
-    test "processes the upload and sends results to parent component", %{conn: conn, admin: admin} do
-      {:ok, view, _html} = render_dummy(conn, admin, "image")
+    test "processes the upload and sends results to parent component", %{
+      conn: conn,
+      admin: admin,
+      course: course
+    } do
+      {:ok, view, _html} = render_dummy(conn, admin, course, "image")
 
       upload =
         file_input(view, "#upload-form", :media, [

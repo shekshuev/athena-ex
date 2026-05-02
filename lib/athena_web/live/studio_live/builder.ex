@@ -110,7 +110,8 @@ defmodule AthenaWeb.StudioLive.Builder do
             Map.put(content_map, "url", file_map["url"])
         end
 
-      {:ok, updated_block} = Content.update_block(block, %{"content" => new_content})
+      {:ok, updated_block} =
+        Content.update_block(socket.assigns.current_user, block, %{"content" => new_content})
 
       {:noreply,
        socket
@@ -146,7 +147,7 @@ defmodule AthenaWeb.StudioLive.Builder do
       "parent_id" => clean_parent_id
     }
 
-    case Content.create_section(attrs) do
+    case Content.create_section(socket.assigns.current_user, attrs) do
       {:ok, new_section} ->
         updated_sections = Content.get_course_tree(course.id)
 
@@ -173,7 +174,7 @@ defmodule AthenaWeb.StudioLive.Builder do
     section = find_section_in_tree(socket.assigns.sections, id)
 
     if section do
-      case Content.update_section(section, section_params) do
+      case Content.update_section(socket.assigns.current_user, section, section_params) do
         {:ok, _updated_section} ->
           updated_sections = Content.get_course_tree(socket.assigns.course.id)
           {:noreply, assign(socket, sections: updated_sections)}
@@ -190,7 +191,7 @@ defmodule AthenaWeb.StudioLive.Builder do
     section = find_section_in_tree(socket.assigns.sections, id)
 
     if section do
-      {:ok, _} = Content.reorder_section(section, new_index)
+      {:ok, _} = Content.reorder_section(socket.assigns.current_user, section, new_index)
       updated_sections = Content.get_course_tree(socket.assigns.course.id)
       {:noreply, assign(socket, sections: updated_sections)}
     else
@@ -205,7 +206,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   def handle_event("confirm_delete_section", _, socket) do
     section = socket.assigns.section_to_delete
-    {:ok, _} = Content.delete_section(section)
+    {:ok, _} = Content.delete_section(socket.assigns.current_user, section)
     updated_sections = Content.get_course_tree(socket.assigns.course.id)
 
     {:noreply,
@@ -279,7 +280,11 @@ defmodule AthenaWeb.StudioLive.Builder do
     section = find_section_in_tree(socket.assigns.sections, section_id)
 
     if section do
-      {:ok, _} = Content.update_section(section, %{"parent_id" => clean_target_id})
+      {:ok, _} =
+        Content.update_section(socket.assigns.current_user, section, %{
+          "parent_id" => clean_target_id
+        })
+
       updated_sections = Content.get_course_tree(socket.assigns.course.id)
 
       {:noreply,
@@ -311,7 +316,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
       index ->
         block = Enum.at(blocks, index)
-        {:ok, _} = Content.reorder_block(block, index - 1)
+        {:ok, _} = Content.reorder_block(socket.assigns.current_user, block, index - 1)
         updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
         {:noreply, assign(socket, blocks: updated_blocks)}
     end
@@ -329,7 +334,7 @@ defmodule AthenaWeb.StudioLive.Builder do
           {:noreply, socket}
         else
           block = Enum.at(blocks, index)
-          {:ok, _} = Content.reorder_block(block, index + 1)
+          {:ok, _} = Content.reorder_block(socket.assigns.current_user, block, index + 1)
           updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
           {:noreply, assign(socket, blocks: updated_blocks)}
         end
@@ -441,7 +446,10 @@ defmodule AthenaWeb.StudioLive.Builder do
       }
 
       new_content = Map.put(content_map, "options", options ++ [new_option])
-      {:ok, updated_block} = Content.update_block(block, %{"content" => new_content})
+
+      {:ok, updated_block} =
+        Content.update_block(socket.assigns.current_user, block, %{"content" => new_content})
+
       {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
     else
       {:noreply, socket}
@@ -456,7 +464,9 @@ defmodule AthenaWeb.StudioLive.Builder do
       options = Map.get(content_map, "options", []) |> Enum.reject(&(&1["id"] == option_id))
       new_content = Map.put(content_map, "options", options)
 
-      {:ok, updated_block} = Content.update_block(block, %{"content" => new_content})
+      {:ok, updated_block} =
+        Content.update_block(socket.assigns.current_user, block, %{"content" => new_content})
+
       {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
     else
       {:noreply, socket}
@@ -483,7 +493,7 @@ defmodule AthenaWeb.StudioLive.Builder do
           content_map
         end
 
-      case Content.update_block(block, %{"content" => content_map}) do
+      case Content.update_block(socket.assigns.current_user, block, %{"content" => content_map}) do
         {:ok, updated_block} ->
           {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
 
@@ -512,7 +522,9 @@ defmodule AthenaWeb.StudioLive.Builder do
           _ -> text_content
         end
 
-      {:ok, updated_block} = Content.update_block(block, %{"content" => new_content})
+      {:ok, updated_block} =
+        Content.update_block(socket.assigns.current_user, block, %{"content" => new_content})
+
       {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
     else
       {:noreply, socket}
@@ -523,7 +535,7 @@ defmodule AthenaWeb.StudioLive.Builder do
     block = Enum.find(socket.assigns.blocks, &(&1.id == id))
 
     if block do
-      {:ok, _updated_block} = Content.reorder_block(block, new_index)
+      {:ok, _updated_block} = Content.reorder_block(socket.assigns.current_user, block, new_index)
       blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
       {:noreply, assign(socket, blocks: blocks)}
     else
@@ -547,7 +559,7 @@ defmodule AthenaWeb.StudioLive.Builder do
       new_content = Map.merge(content_map, content_overrides)
       final_params = Map.put(block_params, "content", new_content)
 
-      case Content.update_block(block, final_params) do
+      case Content.update_block(socket.assigns.current_user, block, final_params) do
         {:ok, updated_block} ->
           {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
 
@@ -569,7 +581,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   def handle_event("confirm_delete_block", _, socket) do
     block = socket.assigns.block_to_delete
-    {:ok, _} = Content.delete_block(block)
+    {:ok, _} = Content.delete_block(socket.assigns.current_user, block)
     updated_blocks = Enum.reject(socket.assigns.blocks, &(&1.id == block.id))
 
     {:noreply,
@@ -591,7 +603,9 @@ defmodule AthenaWeb.StudioLive.Builder do
       new_files = Enum.reject(files, &(&1["url"] == url))
 
       {:ok, updated_block} =
-        Content.update_block(block, %{"content" => Map.put(content_map, "files", new_files)})
+        Content.update_block(socket.assigns.current_user, block, %{
+          "content" => Map.put(content_map, "files", new_files)
+        })
 
       {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
     else
@@ -686,7 +700,7 @@ defmodule AthenaWeb.StudioLive.Builder do
       "after_id" => socket.assigns.library_insert_after_id
     }
 
-    case Content.create_block(attrs) do
+    case Content.create_block(socket.assigns.current_user, attrs) do
       {:ok, block} ->
         updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
 
@@ -1115,7 +1129,7 @@ defmodule AthenaWeb.StudioLive.Builder do
   defp create_and_assign_block(socket, attrs, error_msg \\ gettext("Failed to create block")) do
     full_attrs = Map.put(attrs, "visibility", :inherit)
 
-    case Content.create_block(full_attrs) do
+    case Content.create_block(socket.assigns.current_user, full_attrs) do
       {:ok, block} ->
         updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
         {:noreply, assign(socket, blocks: updated_blocks, active_block_id: block.id)}

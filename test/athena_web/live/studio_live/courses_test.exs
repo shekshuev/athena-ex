@@ -152,5 +152,26 @@ defmodule AthenaWeb.StudioLive.CoursesTest do
 
       assert html =~ "You don&#39;t have permission to delete courses."
     end
+
+    test "should redirect from /edit if user has own_only policy and tries to edit another user's course",
+         %{conn: conn} do
+      role =
+        insert(:role,
+          permissions: ["courses.read", "courses.update"],
+          policies: %{
+            "courses.read" => ["own_only"],
+            "courses.update" => ["own_only"]
+          }
+        )
+
+      instructor = insert(:account, role: role)
+      instructor_conn = init_test_session(conn, %{"account_id" => instructor.id})
+
+      other_user = insert(:account)
+      target_course = insert(:course, owner_id: other_user.id)
+
+      {:error, {:live_redirect, %{to: "/studio/courses"}}} =
+        live(instructor_conn, ~p"/studio/courses/#{target_course.id}/edit")
+    end
   end
 end

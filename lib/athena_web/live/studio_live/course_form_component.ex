@@ -68,7 +68,7 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
   end
 
   defp save_course(socket, :edit, course_params) do
-    case Content.update_course(socket.assigns.course, course_params) do
+    case Content.update_course(socket.assigns.current_user, socket.assigns.course, course_params) do
       {:ok, course} ->
         notify_parent({:saved, course})
 
@@ -83,7 +83,7 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
   end
 
   defp save_course(socket, :new, course_params) do
-    case Content.create_course(course_params) do
+    case Content.create_course(socket.assigns.current_user, course_params) do
       {:ok, course} ->
         notify_parent({:saved, course})
 
