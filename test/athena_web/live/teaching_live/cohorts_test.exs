@@ -130,7 +130,62 @@ defmodule AthenaWeb.TeachingLive.CohortsTest do
 
       html = render_click(lv, "delete_click", %{"id" => target.id})
 
-      assert html =~ "You don&#39;t have permission to delete cohorts."
+      assert html =~ "Permission denied."
+    end
+  end
+
+  describe "Permissions & ACL (Policies: own_only)" do
+    setup %{conn: conn} do
+      role =
+        insert(:role,
+          permissions: ["cohorts.read", "cohorts.update", "cohorts.delete"],
+          policies: %{
+            "cohorts.update" => ["own_only"],
+            "cohorts.delete" => ["own_only"]
+          }
+        )
+
+      instructor = insert(:account, role: role)
+      conn = init_test_session(conn, %{"account_id" => instructor.id})
+
+      %{conn: conn, instructor: instructor}
+    end
+
+    test "shows action buttons ONLY for owned cohorts", %{conn: conn, instructor: instructor} do
+      my_cohort = insert(:cohort, name: "My Precious", owner_id: instructor.id)
+      other_cohort = insert(:cohort, name: "Not Mine", owner_id: Ecto.UUID.generate())
+
+      {:ok, _lv, html} = live(conn, ~p"/teaching/cohorts")
+
+      assert html =~ "My Precious"
+      assert html =~ "Not Mine"
+
+      assert html =~ ~p"/teaching/cohorts/#{my_cohort.id}/edit"
+      refute html =~ ~p"/teaching/cohorts/#{other_cohort.id}/edit"
+
+      assert html =~ ~s(phx-value-id="#{my_cohort.id}")
+      refute html =~ ~s(phx-value-id="#{other_cohort.id}")
+    end
+
+    test "shows permission denied flash if forcing delete on someone else's cohort", %{conn: conn} do
+      other_cohort = insert(:cohort, owner_id: Ecto.UUID.generate())
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts")
+
+      html = render_click(lv, "delete_click", %{"id" => other_cohort.id})
+
+      assert html =~ "Permission denied."
+    end
+
+    test "redirects with permission denied flash if forcing edit on someone else's cohort", %{
+      conn: conn
+    } do
+      other_cohort = insert(:cohort, owner_id: Ecto.UUID.generate())
+
+      assert {:error, {:live_redirect, %{to: "/teaching/cohorts", flash: flash}}} =
+               live(conn, ~p"/teaching/cohorts/#{other_cohort.id}/edit")
+
+      assert flash["error"] == "Permission denied."
     end
   end
 end

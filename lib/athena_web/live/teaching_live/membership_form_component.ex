@@ -40,7 +40,7 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
         "page_size" => 10
       }
 
-      {:ok, {accounts, _}} = Identity.list_accounts(flop_params)
+      {:ok, {accounts, _}} = Identity.list_accounts(socket.assigns.current_user, flop_params)
       {:noreply, assign(socket, search_query: query, search_results: accounts)}
     else
       {:noreply, assign(socket, search_query: query, search_results: [])}

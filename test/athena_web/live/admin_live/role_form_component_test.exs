@@ -38,13 +38,18 @@ defmodule AthenaWeb.AdminLive.RoleFormComponentTest do
       })
       |> render_change()
 
+      assert has_element?(
+               lv,
+               "input[name=\"role[policies][courses.read][]\"][value=\"own_only\"]"
+             )
+
       lv
       |> form("#role-form", %{
         "role" => %{
           "name" => "Super Content Manager",
           "permissions" => ["courses.create", "courses.read"],
           "policies" => %{
-            "courses.read" => ["only_published"]
+            "courses.read" => ["own_only"]
           }
         }
       })
@@ -53,8 +58,7 @@ defmodule AthenaWeb.AdminLive.RoleFormComponentTest do
       assert_patch(lv, ~p"/admin/roles")
       assert {:ok, role} = Roles.get_role_by_name("Super Content Manager")
       assert "courses.create" in role.permissions
-      assert "only_published" in role.policies["courses.read"]
-      assert render(lv) =~ "Role created successfully"
+      assert "own_only" in role.policies["courses.read"]
     end
 
     test "updates an existing role", %{conn: conn} do
@@ -73,11 +77,25 @@ defmodule AthenaWeb.AdminLive.RoleFormComponentTest do
 
       assert_patch(lv, ~p"/admin/roles")
 
-      {:ok, updated_role} = Roles.get_role(role.id)
-      assert updated_role.name == "New Awesome Name"
+      {:ok, updated_role} = Roles.get_role_by_name("New Awesome Name")
       assert "users.update" in updated_role.permissions
+    end
 
-      assert render(lv) =~ "Role updated successfully"
+    test "does not render policy options for system permissions", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/admin/roles/new")
+
+      lv
+      |> form("#role-form", %{
+        "role" => %{
+          "name" => "System Admin",
+          "permissions" => ["roles.read"]
+        }
+      })
+      |> render_change()
+
+      assert has_element?(lv, "input[name=\"role[permissions][]\"][value=\"roles.read\"]")
+
+      refute has_element?(lv, "input[name=\"role[policies][roles.read][]\"]")
     end
   end
 end

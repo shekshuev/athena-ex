@@ -8,6 +8,7 @@ defmodule Athena.Identity.Account do
 
   use Ecto.Schema
   import Ecto.Changeset
+  alias Athena.Identity.{Role, Profile}
 
   use Gettext, backend: AthenaWeb.Gettext
 
@@ -38,8 +39,8 @@ defmodule Athena.Identity.Account do
     field :failed_login_attempts, :integer, default: 0
     field :last_failed_at, :utc_datetime
 
-    belongs_to :role, Athena.Identity.Role
-    has_one :profile, Athena.Identity.Profile, foreign_key: :owner_id
+    belongs_to :role, Role
+    has_one :profile, Profile, foreign_key: :owner_id
 
     field :deleted_at, :utc_datetime
     timestamps(type: :utc_datetime)

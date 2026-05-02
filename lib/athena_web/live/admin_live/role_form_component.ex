@@ -66,7 +66,7 @@ defmodule AthenaWeb.AdminLive.RoleFormComponent do
   end
 
   defp save_role(socket, :edit, role_params) do
-    case Roles.update_role(socket.assigns.role, role_params) do
+    case Roles.update_role(socket.assigns.current_user, socket.assigns.role, role_params) do
       {:ok, role} ->
         notify_parent({:saved, role})
 
@@ -81,7 +81,7 @@ defmodule AthenaWeb.AdminLive.RoleFormComponent do
   end
 
   defp save_role(socket, :new, role_params) do
-    case Roles.create_role(role_params) do
+    case Roles.create_role(socket.assigns.current_user, role_params) do
       {:ok, role} ->
         notify_parent({:saved, role})
 
@@ -169,7 +169,7 @@ defmodule AthenaWeb.AdminLive.RoleFormComponent do
                   </label>
 
                   <div
-                    :if={perm in (@form[:permissions].value || []) and perm != "admin"}
+                    :if={perm in (@form[:permissions].value || []) and supports_policies?(perm)}
                     class="w-full sm:w-1/2 flex items-center justify-end"
                   >
                     <input type="hidden" name={"role[policies][#{perm}][]"} value="" />
@@ -212,5 +212,22 @@ defmodule AthenaWeb.AdminLive.RoleFormComponent do
   defp perm_label(perm) do
     action = perm |> String.split(".") |> List.last()
     Gettext.dgettext(AthenaWeb.Gettext, "permissions", action)
+  end
+
+  @doc false
+  defp supports_policies?("instructors.read"), do: false
+
+  defp supports_policies?("enrollments.create"), do: true
+
+  defp supports_policies?("admin"), do: false
+
+  defp supports_policies?(perm) do
+    parts = String.split(perm, ".")
+
+    if List.last(parts) == "create" do
+      false
+    else
+      List.first(parts) in ~w(users courses library grading enrollments instructors cohorts files)
+    end
   end
 end

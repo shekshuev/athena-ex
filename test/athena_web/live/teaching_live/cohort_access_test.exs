@@ -11,7 +11,8 @@ defmodule AthenaWeb.TeachingLive.CohortAccessTest do
         permissions: [
           "cohorts.read",
           "cohorts.update",
-          "courses.read"
+          "courses.read",
+          "enrollments.update"
         ]
       )
 
@@ -20,9 +21,9 @@ defmodule AthenaWeb.TeachingLive.CohortAccessTest do
     %{conn: conn, admin: admin}
   end
 
-  describe "Cohort Access Studio" do
-    setup do
-      cohort = insert(:cohort, name: "CyberSec 101")
+  describe "Cohort Access Studio (Happy Path)" do
+    setup %{admin: admin} do
+      cohort = insert(:cohort, name: "CyberSec 101", owner_id: admin.id)
       course = insert(:course, title: "Advanced Hacking")
       section = insert(:section, course: course, title: "Network Basics")
       block = insert(:block, section: section, content: %{"text" => "Scan the ports"})
@@ -112,6 +113,110 @@ defmodule AthenaWeb.TeachingLive.CohortAccessTest do
 
       assert html =~ "Unlock Time"
       assert html =~ "Lock Time"
+    end
+  end
+
+  describe "Permissions & ACL (Missing Permissions)" do
+    setup %{conn: conn} do
+      role = insert(:role, permissions: ["cohorts.read", "courses.read"])
+      limited_user = insert(:account, role: role)
+      conn = init_test_session(conn, %{"account_id" => limited_user.id})
+      %{conn: conn, limited_user: limited_user}
+    end
+
+    test "shows error flash if user tries to save override", %{conn: conn} do
+      cohort = insert(:cohort)
+      course = insert(:course)
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/access/#{course.id}")
+
+      html =
+        render_hook(lv, "save_override", %{
+          "resource_type" => "section",
+          "resource_id" => Ecto.UUID.generate(),
+          "visibility" => ""
+        })
+
+      assert html =~ "Permission denied."
+    end
+
+    test "shows error flash if user tries to clear override", %{conn: conn} do
+      cohort = insert(:cohort)
+      course = insert(:course)
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/access/#{course.id}")
+
+      html =
+        render_hook(lv, "clear_override", %{
+          "resource_type" => "section",
+          "resource_id" => Ecto.UUID.generate()
+        })
+
+      assert html =~ "Permission denied."
+    end
+  end
+
+  describe "Permissions & ACL (Policies: own_only)" do
+    setup %{conn: conn} do
+      role =
+        insert(:role,
+          permissions: [
+            "cohorts.read",
+            "courses.read",
+            "enrollments.update",
+            "cohorts.update",
+            "courses.update"
+          ],
+          policies: %{
+            "enrollments.update" => ["own_only"],
+            "cohorts.update" => ["own_only"],
+            "courses.update" => ["own_only"]
+          }
+        )
+
+      instructor = insert(:account, role: role)
+      conn = init_test_session(conn, %{"account_id" => instructor.id})
+
+      %{conn: conn, instructor: instructor}
+    end
+
+    test "allows override if instructor owns the cohort (but not the course)", %{
+      conn: conn,
+      instructor: instructor
+    } do
+      cohort = insert(:cohort, owner_id: instructor.id)
+      course = insert(:course, owner_id: Ecto.UUID.generate())
+      section = insert(:section, course: course)
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/access/#{course.id}")
+
+      html =
+        lv
+        |> form("form", %{
+          "resource_type" => "section",
+          "resource_id" => section.id,
+          "visibility" => "hidden",
+          "unlock_at" => "",
+          "lock_at" => ""
+        })
+        |> render_submit()
+
+      assert html =~ "Access override saved successfully."
+    end
+
+    test "denies override if instructor owns NEITHER cohort nor course", %{conn: conn} do
+      cohort = insert(:cohort, owner_id: Ecto.UUID.generate())
+      course = insert(:course, owner_id: Ecto.UUID.generate())
+      section = insert(:section, course: course)
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/access/#{course.id}")
+
+      html =
+        render_hook(lv, "save_override", %{
+          "resource_type" => "section",
+          "resource_id" => section.id,
+          "visibility" => "hidden"
+        })
+
+      assert html =~ "Permission denied."
     end
   end
 end

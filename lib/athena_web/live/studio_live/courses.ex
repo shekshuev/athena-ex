@@ -116,7 +116,7 @@ defmodule AthenaWeb.StudioLive.Courses do
   end
 
   def handle_event("confirm_delete", _, %{assigns: %{course_to_delete: course}} = socket) do
-    case Content.soft_delete_course(course) do
+    case Content.soft_delete_course(socket.assigns.current_user, course) do
       {:ok, _} ->
         {:noreply,
          socket

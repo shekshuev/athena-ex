@@ -7,6 +7,7 @@ defmodule AthenaWeb.Hooks.Auth do
   """
   import Phoenix.LiveView
   import Phoenix.Component
+  alias Athena.Identity
 
   @doc """
   Main entry point for authentication hooks.
@@ -28,7 +29,7 @@ defmodule AthenaWeb.Hooks.Auth do
         {:cont, assign(socket, :current_user, nil)}
 
       account_id ->
-        case Athena.Identity.get_account(account_id, preload: [:role]) do
+        case Identity.get_account(account_id, preload: [:role]) do
           {:ok, %{status: :active} = account} ->
             maybe_connect_auth_events(socket, account)
 
@@ -69,13 +70,13 @@ defmodule AthenaWeb.Hooks.Auth do
   end
 
   defp reload_user_on_event(event, socket) when event in [:role_updated, :account_updated] do
-    case Athena.Identity.get_account(socket.assigns.current_user.id, preload: [:role]) do
+    case Identity.get_account(socket.assigns.current_user.id, preload: [:role]) do
       {:ok, %{status: :active} = fresh_account} ->
         socket = assign(socket, :current_user, fresh_account)
 
         required_perm = socket.assigns[:required_permission]
 
-        if required_perm && not Athena.Identity.can?(fresh_account, required_perm) do
+        if required_perm && not Identity.can?(fresh_account, required_perm) do
           {:halt,
            socket
            |> put_flash(

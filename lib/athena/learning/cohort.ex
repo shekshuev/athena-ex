@@ -5,6 +5,7 @@ defmodule Athena.Learning.Cohort do
   """
   use Ecto.Schema
   import Ecto.Changeset
+  alias Athena.Learning.{CohortMembership, Instructor, CohortInstructor}
 
   @type t :: %__MODULE__{}
 
@@ -27,11 +28,12 @@ defmodule Athena.Learning.Cohort do
     field :description, :string
     field :type, Ecto.Enum, values: [:academic, :team], default: :academic
     field :instructor_ids, {:array, :binary_id}, virtual: true
+    field :owner_id, :binary_id
 
-    has_many :memberships, Athena.Learning.CohortMembership
+    has_many :memberships, CohortMembership
 
-    many_to_many :instructors, Athena.Learning.Instructor,
-      join_through: Athena.Learning.CohortInstructor,
+    many_to_many :instructors, Instructor,
+      join_through: CohortInstructor,
       on_replace: :delete
 
     timestamps(type: :utc_datetime)
@@ -41,6 +43,6 @@ defmodule Athena.Learning.Cohort do
   def changeset(cohort, attrs) do
     cohort
     |> cast(attrs, [:name, :description, :instructor_ids, :type])
-    |> validate_required([:name, :type])
+    |> validate_required([:name, :type, :owner_id])
   end
 end

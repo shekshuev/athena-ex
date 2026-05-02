@@ -44,7 +44,7 @@ defmodule AthenaWeb.AdminLive.Roles do
         params
       end
 
-    case Roles.list_roles(flop_params) do
+    case Roles.list_roles(socket.assigns.current_user, flop_params) do
       {:ok, {roles, meta}} ->
         socket =
           socket
@@ -75,7 +75,7 @@ defmodule AthenaWeb.AdminLive.Roles do
 
   defp apply_action(socket, :edit, %{"id" => id}) do
     if Identity.can?(socket.assigns.current_user, "roles.update") do
-      case Roles.get_role(id) do
+      case Roles.get_role(socket.assigns.current_user, id) do
         {:ok, role} -> assign(socket, page_title: gettext("Edit Role"), role: role)
         _ -> push_patch(socket, to: ~p"/admin/roles")
       end
@@ -109,7 +109,7 @@ defmodule AthenaWeb.AdminLive.Roles do
 
   def handle_event("delete_click", %{"id" => id}, socket) do
     if Identity.can?(socket.assigns.current_user, "roles.delete") do
-      {:ok, role} = Roles.get_role(id)
+      {:ok, role} = Roles.get_role(socket.assigns.current_user, id)
       {:noreply, assign(socket, role_to_delete: role)}
     else
       {:noreply,
@@ -124,7 +124,7 @@ defmodule AthenaWeb.AdminLive.Roles do
   end
 
   def handle_event("confirm_delete", _, %{assigns: %{role_to_delete: role}} = socket) do
-    case Roles.delete_role(role) do
+    case Roles.delete_role(socket.assigns.current_user, role) do
       {:ok, _} ->
         {:noreply,
          socket
@@ -272,6 +272,7 @@ defmodule AthenaWeb.AdminLive.Roles do
           id={@role.id || :new}
           action={@live_action}
           role={@role}
+          current_user={@current_user}
           patch={~p"/admin/roles"}
         />
       </.slide_over>

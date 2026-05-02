@@ -9,6 +9,8 @@ defmodule AthenaWeb.MediaController do
   """
   use AthenaWeb, :controller
 
+  alias Athena.Media
+
   @doc """
   Intercepts requests to private media, verifies authentication,
   generates a temporary presigned URL, and redirects the client to the S3 object.
@@ -20,9 +22,9 @@ defmodule AthenaWeb.MediaController do
   def download(conn, %{"path" => path_list}) do
     if get_session(conn, "account_id") do
       key = Enum.join(path_list, "/")
-      bucket = Application.get_env(:athena, Athena.Media)[:bucket] || "athena"
+      bucket = Application.get_env(:athena, Media)[:bucket] || "athena"
 
-      case Athena.Media.generate_download_url(bucket, key) do
+      case Media.generate_download_url(bucket, key) do
         {:ok, presigned_url} ->
           redirect(conn, external: presigned_url)
 

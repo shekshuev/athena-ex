@@ -6,6 +6,7 @@ defmodule Athena.Learning.CohortSchedule do
   use Ecto.Schema
   import Ecto.Changeset
   use Gettext, backend: AthenaWeb.Gettext
+  alias Athena.Learning.Cohort
 
   @type t :: %__MODULE__{}
 
@@ -13,7 +14,7 @@ defmodule Athena.Learning.CohortSchedule do
   @foreign_key_type :binary_id
 
   schema "cohort_schedules" do
-    belongs_to :cohort, Athena.Learning.Cohort
+    belongs_to :cohort, Cohort
 
     field :course_id, :binary_id
     field :resource_type, Ecto.Enum, values: [:block, :section]

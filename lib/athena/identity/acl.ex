@@ -52,12 +52,6 @@ defmodule Athena.Identity.Acl do
   end
 
   defp check_policy("own_only", user, resource), do: resource.owner_id == user.id
-  defp check_policy("not_published", _user, resource), do: resource.is_published == false
-  defp check_policy("only_published", _user, resource), do: resource.is_published == true
-
-  defp check_policy("published_or_owner", user, resource) do
-    resource.is_published == true or resource.owner_id == user.id
-  end
 
   defp check_policy(_, _, _), do: false
 
@@ -89,17 +83,5 @@ defmodule Athena.Identity.Acl do
 
   defp apply_query_policy(query, "own_only", user) do
     where(query, [q], q.owner_id == ^user.id)
-  end
-
-  defp apply_query_policy(query, "not_published", _user) do
-    where(query, [q], q.is_published == false)
-  end
-
-  defp apply_query_policy(query, "only_published", _user) do
-    where(query, [q], q.is_published == true)
-  end
-
-  defp apply_query_policy(query, "published_or_owner", user) do
-    where(query, [q], q.is_published == true or q.owner_id == ^user.id)
   end
 end

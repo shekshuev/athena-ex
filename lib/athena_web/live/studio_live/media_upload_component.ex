@@ -4,7 +4,7 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
   Handles presigned URLs, visual progress, and registers files in Athena.Media.
   """
   use AthenaWeb, :live_component
-  alias Athena.Content
+  alias Athena.{Content, Media}
 
   @impl true
   def update(assigns, socket) do
@@ -37,7 +37,7 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
   defp presign_upload(entry, socket) do
     context_id = socket.assigns[:course_id] || "library"
 
-    case Content.prepare_media_upload(context_id, entry.client_name) do
+    case Content.prepare_media_upload(socket.assigns.current_user, context_id, entry.client_name) do
       {:ok, meta} ->
         {:ok, meta, socket}
 
@@ -73,7 +73,7 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
           "owner_id" => user_id
         }
 
-        case Athena.Media.create_file(file_attrs) do
+        case Media.create_file(file_attrs) do
           {:ok, _file} ->
             {:ok,
              %{

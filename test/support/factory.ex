@@ -21,7 +21,7 @@ defmodule Athena.Factory do
   def role_factory do
     %Role{
       name: sequence(:name, &"Role #{&1}"),
-      permissions: ["read:courses", "write:courses"],
+      permissions: ["courses.read", "courses.update"],
       policies: %{}
     }
   end
@@ -111,7 +111,8 @@ defmodule Athena.Factory do
   def cohort_factory do
     %Cohort{
       name: sequence(:name, &"Cohort #{&1}"),
-      description: "A test cohort for integration tests."
+      description: "A test cohort for integration tests.",
+      owner_id: Ecto.UUID.generate()
     }
   end
 

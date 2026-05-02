@@ -35,7 +35,7 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponent do
   @impl true
   def handle_event("search_courses", %{"value" => query}, socket) do
     if String.length(query) >= 2 do
-      courses = Content.search_courses_by_title(query)
+      courses = Content.search_courses_by_title(socket.assigns.current_user, query)
       {:noreply, assign(socket, search_query: query, search_results: courses)}
     else
       {:noreply, assign(socket, search_query: query, search_results: [])}
@@ -60,9 +60,14 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponent do
   end
 
   def handle_event("save", _, socket) do
-    %{cohort_id: cohort_id, selected_course: %{id: course_id}, patch: patch} = socket.assigns
+    %{
+      cohort_id: cohort_id,
+      selected_course: %{id: course_id},
+      patch: patch,
+      current_user: current_user
+    } = socket.assigns
 
-    case Learning.enroll_cohort(cohort_id, course_id) do
+    case Learning.enroll_cohort(current_user, cohort_id, course_id) do
       {:ok, enrollment} ->
         send(self(), {__MODULE__, {:saved, enrollment}})
 
@@ -71,8 +76,14 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponent do
          |> put_flash(:info, gettext("Course successfully assigned to the cohort."))
          |> push_patch(to: patch)}
 
-      {:error, changeset} ->
+      {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, error_msg: parse_error_msg(changeset))}
+
+      {:error, msg} when is_binary(msg) ->
+        {:noreply, assign(socket, error_msg: msg)}
+
+      {:error, :unauthorized} ->
+        {:noreply, assign(socket, error_msg: gettext("Permission denied."))}
     end
   end
 

@@ -9,6 +9,7 @@ defmodule Athena.Content.Section do
 
   use Ecto.Schema
   import Ecto.Changeset
+  alias Athena.Content.{Course, Section, Block, AccessRules}
 
   @type t :: %__MODULE__{}
 
@@ -36,11 +37,11 @@ defmodule Athena.Content.Section do
       values: ~w(enrolled restricted hidden)a,
       default: :enrolled
 
-    embeds_one :access_rules, Athena.Content.AccessRules, on_replace: :update
+    embeds_one :access_rules, AccessRules, on_replace: :update
 
-    belongs_to :course, Athena.Content.Course
-    belongs_to :parent, Athena.Content.Section
-    has_many :blocks, Athena.Content.Block
+    belongs_to :course, Course
+    belongs_to :parent, Section
+    has_many :blocks, Block
 
     field :children, {:array, :any}, virtual: true, default: []
 
@@ -52,7 +53,7 @@ defmodule Athena.Content.Section do
   def changeset(section, attrs) do
     section
     |> cast(attrs, [:id, :title, :order, :path, :course_id, :parent_id, :visibility])
-    |> cast_embed(:access_rules, with: &Athena.Content.AccessRules.changeset/2)
+    |> cast_embed(:access_rules, with: &AccessRules.changeset/2)
     |> validate_required([:id, :title, :path, :course_id, :visibility])
     |> validate_length(:title, min: 1, max: 255)
     |> foreign_key_constraint(:course_id)

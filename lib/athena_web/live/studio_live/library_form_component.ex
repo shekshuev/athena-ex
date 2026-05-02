@@ -60,7 +60,11 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
   end
 
   defp save_block(socket, :edit, params) do
-    case Content.update_library_block(socket.assigns.library_block, params) do
+    case Content.update_library_block(
+           socket.assigns.current_user,
+           socket.assigns.library_block,
+           params
+         ) do
       {:ok, block} ->
         notify_parent({:saved, block})
 
@@ -75,7 +79,7 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
   end
 
   defp save_block(socket, :new, params) do
-    case Content.create_library_block(params) do
+    case Content.create_library_block(socket.assigns.current_user, params) do
       {:ok, block} ->
         notify_parent({:saved, block})
 

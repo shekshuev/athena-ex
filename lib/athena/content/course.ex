@@ -8,6 +8,7 @@ defmodule Athena.Content.Course do
 
   use Ecto.Schema
   import Ecto.Changeset
+  alias Athena.Content.Section
 
   @type t :: %__MODULE__{}
 
@@ -33,7 +34,7 @@ defmodule Athena.Content.Course do
     field :deleted_at, :utc_datetime
     field :type, Ecto.Enum, values: [:standard, :competition], default: :standard
 
-    has_many :sections, Athena.Content.Section
+    has_many :sections, Section
 
     timestamps(type: :utc_datetime)
   end

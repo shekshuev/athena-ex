@@ -5,6 +5,7 @@ defmodule Athena.Learning.CohortInstructor do
   """
   use Ecto.Schema
   import Ecto.Changeset
+  alias Athena.Learning.{Cohort, Instructor}
 
   @type t :: %__MODULE__{}
 
@@ -12,8 +13,8 @@ defmodule Athena.Learning.CohortInstructor do
   @foreign_key_type :binary_id
 
   schema "cohort_instructors" do
-    belongs_to :cohort, Athena.Learning.Cohort
-    belongs_to :instructor, Athena.Learning.Instructor
+    belongs_to :cohort, Cohort
+    belongs_to :instructor, Instructor
 
     timestamps(type: :utc_datetime)
   end

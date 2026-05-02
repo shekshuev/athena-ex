@@ -75,13 +75,20 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
   end
 
   defp apply_action(socket, :edit, %{"id" => id}) do
-    if Identity.can?(socket.assigns.current_user, "cohorts.update") do
-      {:ok, cohort} = Learning.get_cohort(socket.assigns.current_user, id)
-      assign(socket, page_title: gettext("Edit Cohort"), cohort: cohort)
-    else
-      socket
-      |> put_flash(:error, gettext("You don't have permission to edit cohorts."))
-      |> push_patch(to: ~p"/teaching/cohorts")
+    case Learning.get_cohort(socket.assigns.current_user, id) do
+      {:ok, cohort} ->
+        if Identity.can?(socket.assigns.current_user, "cohorts.update", cohort) do
+          assign(socket, page_title: gettext("Edit Cohort"), cohort: cohort)
+        else
+          socket
+          |> put_flash(:error, gettext("Permission denied."))
+          |> push_patch(to: ~p"/teaching/cohorts")
+        end
+
+      {:error, _} ->
+        socket
+        |> put_flash(:error, gettext("Not found."))
+        |> push_patch(to: ~p"/teaching/cohorts")
     end
   end
 
@@ -97,19 +104,24 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
   end
 
   def handle_event("delete_click", %{"id" => id}, socket) do
-    if Identity.can?(socket.assigns.current_user, "cohorts.delete") do
-      {:ok, cohort} = Learning.get_cohort(socket.assigns.current_user, id)
-      {:noreply, assign(socket, cohort_to_delete: cohort)}
-    else
-      {:noreply,
-       socket
-       |> put_flash(:error, gettext("You don't have permission to delete cohorts."))
-       |> push_patch(to: ~p"/teaching/cohorts")}
+    case Learning.get_cohort(socket.assigns.current_user, id) do
+      {:ok, cohort} ->
+        if Identity.can?(socket.assigns.current_user, "cohorts.delete", cohort) do
+          {:noreply, assign(socket, cohort_to_delete: cohort)}
+        else
+          {:noreply,
+           socket
+           |> put_flash(:error, gettext("Permission denied."))
+           |> push_patch(to: ~p"/teaching/cohorts")}
+        end
+
+      {:error, _} ->
+        {:noreply, socket |> put_flash(:error, gettext("Cohort not found."))}
     end
   end
 
   def handle_event("confirm_delete", _, %{assigns: %{cohort_to_delete: cohort}} = socket) do
-    case Learning.delete_cohort(cohort) do
+    case Learning.delete_cohort(socket.assigns.current_user, cohort) do
       {:ok, _} ->
         {:noreply,
          socket
@@ -210,7 +222,7 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
             </.button>
 
             <.button
-              :if={Identity.can?(@current_user, "cohorts.update")}
+              :if={Identity.can?(@current_user, "cohorts.update", cohort)}
               patch={~p"/teaching/cohorts/#{cohort.id}/edit"}
               class="btn btn-ghost btn-xs btn-square"
               title={gettext("Edit")}
@@ -219,7 +231,7 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
             </.button>
 
             <.button
-              :if={Identity.can?(@current_user, "cohorts.delete")}
+              :if={Identity.can?(@current_user, "cohorts.delete", cohort)}
               type="button"
               phx-click="delete_click"
               phx-value-id={cohort.id}
@@ -251,6 +263,7 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
           id={@cohort.id || :new}
           action={@live_action}
           cohort={@cohort}
+          current_user={@current_user}
           patch={~p"/teaching/cohorts"}
         />
       </.slide_over>

@@ -1,15 +1,12 @@
 defmodule Athena.Content.Courses do
   @moduledoc """
   Internal business logic for Course management.
-
-  This module handles all database operations for courses, including
-  CRUD, pagination via Flop, and safe soft deletion.
   """
 
   import Ecto.Query
   alias Athena.Repo
   alias Athena.Content.Course
-  alias Athena.Identity
+  alias Athena.Identity.Acl
 
   @doc """
   Retrieves a paginated list of active (non-deleted) courses, scoped by user permissions.
@@ -19,7 +16,7 @@ defmodule Athena.Content.Courses do
   def list_courses(user, params \\ %{}) do
     Course
     |> where([c], is_nil(c.deleted_at))
-    |> Identity.scope_query(user, "courses.read")
+    |> Acl.scope_query(user, "courses.read")
     |> Flop.validate_and_run(params, for: Course)
   end
 
@@ -31,7 +28,7 @@ defmodule Athena.Content.Courses do
   def list_accessible_course_ids(user) do
     Course
     |> where([c], is_nil(c.deleted_at))
-    |> Identity.scope_query(user, "courses.read")
+    |> Acl.scope_query(user, "courses.read")
     |> select([c], c.id)
     |> Repo.all()
   end
@@ -43,7 +40,7 @@ defmodule Athena.Content.Courses do
   def get_course(user, id) do
     Course
     |> where([c], c.id == ^id and is_nil(c.deleted_at))
-    |> Identity.scope_query(user, "courses.read")
+    |> Acl.scope_query(user, "courses.read")
     |> Repo.one()
     |> case do
       nil -> {:error, :not_found}
@@ -64,33 +61,52 @@ defmodule Athena.Content.Courses do
   end
 
   @doc """
-  Creates a new course.
+  Creates a new course. Automatically sets the owner_id to the creator.
   """
-  @spec create_course(map()) :: {:ok, Course.t()} | {:error, Ecto.Changeset.t()}
-  def create_course(attrs) do
-    %Course{}
-    |> Course.changeset(attrs)
-    |> Repo.insert()
+  @spec create_course(map(), map()) ::
+          {:ok, Course.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+  def create_course(user, attrs) do
+    if Acl.can?(user, "courses.create") do
+      attrs =
+        attrs
+        |> Map.put("owner_id", user.id)
+
+      %Course{}
+      |> Course.changeset(attrs)
+      |> Repo.insert()
+    else
+      {:error, :unauthorized}
+    end
   end
 
   @doc """
   Updates an existing course.
   """
-  @spec update_course(Course.t(), map()) :: {:ok, Course.t()} | {:error, Ecto.Changeset.t()}
-  def update_course(%Course{} = course, attrs) do
-    course
-    |> Course.changeset(attrs)
-    |> Repo.update()
+  @spec update_course(map(), Course.t(), map()) ::
+          {:ok, Course.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+  def update_course(user, %Course{} = course, attrs) do
+    if Acl.can?(user, "courses.update", course) do
+      course
+      |> Course.changeset(attrs)
+      |> Repo.update()
+    else
+      {:error, :unauthorized}
+    end
   end
 
   @doc """
   Soft-deletes a course by setting the `deleted_at` timestamp.
   """
-  @spec soft_delete_course(Course.t()) :: {:ok, Course.t()} | {:error, Ecto.Changeset.t()}
-  def soft_delete_course(%Course{} = course) do
-    course
-    |> Ecto.Changeset.change(%{deleted_at: DateTime.utc_now(:second)})
-    |> Repo.update()
+  @spec soft_delete_course(map(), Course.t()) ::
+          {:ok, Course.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+  def soft_delete_course(user, %Course{} = course) do
+    if Acl.can?(user, "courses.delete", course) do
+      course
+      |> Ecto.Changeset.change(%{deleted_at: DateTime.utc_now(:second)})
+      |> Repo.update()
+    else
+      {:error, :unauthorized}
+    end
   end
 
   @doc """
@@ -108,11 +124,12 @@ defmodule Athena.Content.Courses do
   @doc """
   Searches active courses by title for autocomplete components.
   """
-  def search_courses_by_title(query, limit \\ 10) do
+  def search_courses_by_title(user, query, limit \\ 10) do
     search_term = "%#{query}%"
 
     Course
     |> where([c], ilike(c.title, ^search_term) and is_nil(c.deleted_at))
+    |> Acl.scope_query(user, "courses.read")
     |> limit(^limit)
     |> Repo.all()
   end

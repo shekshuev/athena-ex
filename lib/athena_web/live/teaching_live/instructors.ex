@@ -75,12 +75,13 @@ defmodule AthenaWeb.TeachingLive.Instructors do
   end
 
   defp apply_action(socket, :edit, %{"id" => id}) do
-    if Identity.can?(socket.assigns.current_user, "instructors.update") do
-      {:ok, instructor} = Learning.get_instructor(socket.assigns.current_user, id)
+    {:ok, instructor} = Learning.get_instructor(socket.assigns.current_user, id)
+
+    if Identity.can?(socket.assigns.current_user, "instructors.update", instructor) do
       assign(socket, page_title: gettext("Edit Instructor"), instructor: instructor)
     else
       socket
-      |> put_flash(:error, gettext("You don't have permission to edit instructors."))
+      |> put_flash(:error, gettext("You don't have permission to edit this profile."))
       |> push_patch(to: ~p"/teaching/instructors")
     end
   end
@@ -102,19 +103,20 @@ defmodule AthenaWeb.TeachingLive.Instructors do
   end
 
   def handle_event("delete_click", %{"id" => id}, socket) do
-    if Identity.can?(socket.assigns.current_user, "instructors.delete") do
-      {:ok, instructor} = Learning.get_instructor(socket.assigns.current_user, id)
+    {:ok, instructor} = Learning.get_instructor(socket.assigns.current_user, id)
+
+    if Identity.can?(socket.assigns.current_user, "instructors.delete", instructor) do
       {:noreply, assign(socket, instructor_to_delete: instructor)}
     else
       {:noreply,
        socket
-       |> put_flash(:error, gettext("You don't have permission to delete instructors."))
+       |> put_flash(:error, gettext("You don't have permission to delete this profile."))
        |> push_patch(to: ~p"/teaching/instructors")}
     end
   end
 
   def handle_event("confirm_delete", _, %{assigns: %{instructor_to_delete: instructor}} = socket) do
-    case Learning.delete_instructor(instructor) do
+    case Learning.delete_instructor(socket.assigns.current_user, instructor) do
       {:ok, _} ->
         {:noreply,
          socket
@@ -199,7 +201,7 @@ defmodule AthenaWeb.TeachingLive.Instructors do
         <:action :let={{_id, instructor}}>
           <div class="flex justify-end gap-2">
             <.button
-              :if={Identity.can?(@current_user, "instructors.update")}
+              :if={Identity.can?(@current_user, "instructors.update", instructor)}
               patch={~p"/teaching/instructors/#{instructor.id}/edit"}
               class="btn btn-ghost btn-xs btn-square"
               title={gettext("Edit")}
@@ -208,7 +210,7 @@ defmodule AthenaWeb.TeachingLive.Instructors do
             </.button>
 
             <.button
-              :if={Identity.can?(@current_user, "instructors.delete")}
+              :if={Identity.can?(@current_user, "instructors.delete", instructor)}
               type="button"
               phx-click="delete_click"
               phx-value-id={instructor.id}
@@ -240,6 +242,7 @@ defmodule AthenaWeb.TeachingLive.Instructors do
           id={@instructor.id || :new}
           action={@live_action}
           instructor={@instructor}
+          current_user={@current_user}
           patch={~p"/teaching/instructors"}
         />
       </.slide_over>

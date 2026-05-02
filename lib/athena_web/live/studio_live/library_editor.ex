@@ -138,7 +138,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     final_content = Map.merge(content_map, content_overrides)
     final_params = Map.put(params, "content", final_content)
 
-    case Content.update_library_block(block, final_params) do
+    case Content.update_library_block(socket.assigns.current_user, block, final_params) do
       {:ok, updated_block} ->
         {:noreply,
          assign(socket,
@@ -179,7 +179,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
   end
 
   defp update_and_assign(socket, block, params) do
-    case Content.update_library_block(block, params) do
+    case Content.update_library_block(socket.assigns.current_user, block, params) do
       {:ok, updated} -> {:noreply, assign(socket, block: updated)}
       _ -> {:noreply, socket}
     end

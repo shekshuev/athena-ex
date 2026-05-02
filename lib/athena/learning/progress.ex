@@ -3,9 +3,9 @@ defmodule Athena.Learning.Progress do
   Manages student progression and calculates the High Watermark (Retrograde Locks).
   """
   import Ecto.Query
-  alias Athena.Repo
+  alias Athena.{Repo, Content}
   alias Athena.Learning.BlockProgress
-  alias Athena.Content
+  alias Athena.Content.Section
 
   @doc """
   Marks an interactive block as completed for a user or a team.
@@ -71,7 +71,7 @@ defmodule Athena.Learning.Progress do
   @spec accessible_section_ids(
           map(),
           String.t(),
-          [Athena.Content.Section.t()],
+          [Section.t()],
           list(),
           String.t() | nil
         ) :: [String.t()]

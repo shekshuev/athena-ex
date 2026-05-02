@@ -9,7 +9,7 @@ defmodule Athena.Identity.Role do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Athena.Identity.Definitions
+  alias Athena.Identity.{Definitions, Account}
 
   use Gettext, backend: AthenaWeb.Gettext
 
@@ -34,7 +34,7 @@ defmodule Athena.Identity.Role do
     field :permissions, {:array, :string}, default: []
     field :policies, :map, default: %{}
 
-    has_many :accounts, Athena.Identity.Account
+    has_many :accounts, Account
 
     timestamps(type: :utc_datetime)
   end

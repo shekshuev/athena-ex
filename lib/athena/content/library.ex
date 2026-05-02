@@ -4,7 +4,7 @@ defmodule Athena.Content.Library do
   """
 
   import Ecto.Query
-  alias Athena.Repo
+  alias Athena.{Repo, Identity}
   alias Athena.Content.LibraryBlock
 
   @doc "Lists library blocks with Flop pagination and filtering, scoped by ACL."
@@ -12,7 +12,7 @@ defmodule Athena.Content.Library do
           {:ok, {[LibraryBlock.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_library_blocks(user, params \\ %{}) do
     from(lb in LibraryBlock)
-    |> Athena.Identity.scope_query(user, "library.read")
+    |> Identity.scope_query(user, "library.read")
     |> Flop.validate_and_run(params, for: LibraryBlock)
   end
 
@@ -30,7 +30,7 @@ defmodule Athena.Content.Library do
   def get_library_block(user, id) do
     LibraryBlock
     |> where([lb], lb.id == ^id)
-    |> Athena.Identity.scope_query(user, "library.read")
+    |> Identity.scope_query(user, "library.read")
     |> Repo.one()
     |> case do
       nil -> {:error, :not_found}
@@ -38,28 +38,41 @@ defmodule Athena.Content.Library do
     end
   end
 
-  @doc "Creates a new library block template."
-  @spec create_library_block(map()) :: {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t()}
-  def create_library_block(attrs) do
-    %LibraryBlock{}
-    |> LibraryBlock.changeset(attrs)
-    |> Repo.insert()
+  @doc "Creates a new library block template. Sets owner to current user."
+  @spec create_library_block(map(), map()) ::
+          {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+  def create_library_block(user, attrs) do
+    if Identity.can?(user, "library.update") do
+      %LibraryBlock{owner_id: user.id}
+      |> LibraryBlock.changeset(attrs)
+      |> Repo.insert()
+    else
+      {:error, :unauthorized}
+    end
   end
 
-  @doc "Updates a library block template."
-  @spec update_library_block(LibraryBlock.t(), map()) ::
-          {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t()}
-  def update_library_block(%LibraryBlock{} = block, attrs) do
-    block
-    |> LibraryBlock.changeset(attrs)
-    |> Repo.update()
+  @doc "Updates a library block template. Checks own_only policies."
+  @spec update_library_block(map(), LibraryBlock.t(), map()) ::
+          {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+  def update_library_block(user, %LibraryBlock{} = block, attrs) do
+    if Identity.can?(user, "library.update", block) do
+      block
+      |> LibraryBlock.changeset(attrs)
+      |> Repo.update()
+    else
+      {:error, :unauthorized}
+    end
   end
 
-  @doc "Deletes a library block template."
-  @spec delete_library_block(LibraryBlock.t()) ::
-          {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t()}
-  def delete_library_block(%LibraryBlock{} = block) do
-    Repo.delete(block)
+  @doc "Deletes a library block template. Checks own_only policies."
+  @spec delete_library_block(map(), LibraryBlock.t()) ::
+          {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+  def delete_library_block(user, %LibraryBlock{} = block) do
+    if Identity.can?(user, "library.update", block) do
+      Repo.delete(block)
+    else
+      {:error, :unauthorized}
+    end
   end
 
   @doc """

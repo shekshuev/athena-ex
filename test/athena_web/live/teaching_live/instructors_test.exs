@@ -55,8 +55,8 @@ defmodule AthenaWeb.TeachingLive.InstructorsTest do
       assert html =~ "User Account"
     end
 
-    test "should open the edit instructor slide-over via URL", %{conn: conn} do
-      instructor = insert(:instructor, title: "Target Instructor")
+    test "should open the edit instructor slide-over via URL", %{conn: conn, admin: admin} do
+      instructor = insert(:instructor, title: "Target Instructor", owner_id: admin.id)
 
       {:ok, _lv, html} = live(conn, ~p"/teaching/instructors/#{instructor.id}/edit")
 
@@ -66,8 +66,8 @@ defmodule AthenaWeb.TeachingLive.InstructorsTest do
   end
 
   describe "Instructors page (Delete action)" do
-    test "should show confirmation modal on delete click", %{conn: conn} do
-      instructor = insert(:instructor, title: "Doomed Instructor")
+    test "should show confirmation modal on delete click", %{conn: conn, admin: admin} do
+      instructor = insert(:instructor, title: "Doomed Instructor", owner_id: admin.id)
 
       {:ok, lv, _html} = live(conn, ~p"/teaching/instructors")
 
@@ -79,8 +79,8 @@ defmodule AthenaWeb.TeachingLive.InstructorsTest do
       assert html =~ "Are you sure you want to remove this instructor profile?"
     end
 
-    test "should delete the instructor when confirmed", %{conn: conn} do
-      instructor = insert(:instructor, title: "Doomed Instructor")
+    test "should delete the instructor when confirmed", %{conn: conn, admin: admin} do
+      instructor = insert(:instructor, title: "Doomed Instructor", owner_id: admin.id)
 
       {:ok, lv, _html} = live(conn, ~p"/teaching/instructors")
 
@@ -95,7 +95,7 @@ defmodule AthenaWeb.TeachingLive.InstructorsTest do
     end
   end
 
-  describe "Permissions & ACL" do
+  describe "Permissions & ACL (Missing Permissions)" do
     setup %{conn: conn} do
       role = insert(:role, permissions: ["instructors.read"])
       limited_user = insert(:account, role: role)
@@ -116,15 +116,15 @@ defmodule AthenaWeb.TeachingLive.InstructorsTest do
     end
 
     test "should redirect from /new if user lacks create permission", %{conn: conn} do
-      {:error, {:live_redirect, %{to: "/teaching/instructors"}}} =
-        live(conn, ~p"/teaching/instructors/new")
+      assert {:error, {:live_redirect, %{to: "/teaching/instructors"}}} =
+               live(conn, ~p"/teaching/instructors/new")
     end
 
     test "should redirect from /edit if user lacks update permission", %{conn: conn} do
       target = insert(:instructor)
 
-      {:error, {:live_redirect, %{to: "/teaching/instructors"}}} =
-        live(conn, ~p"/teaching/instructors/#{target.id}/edit")
+      assert {:error, {:live_redirect, %{to: "/teaching/instructors"}}} =
+               live(conn, ~p"/teaching/instructors/#{target.id}/edit")
     end
 
     test "should show error flash on delete_click if user lacks delete permission", %{conn: conn} do
@@ -133,7 +133,54 @@ defmodule AthenaWeb.TeachingLive.InstructorsTest do
 
       html = render_click(lv, "delete_click", %{"id" => target.id})
 
-      assert html =~ "You don&#39;t have permission to delete instructors."
+      assert html =~ "You don&#39;t have permission to delete this profile."
+    end
+  end
+
+  describe "Permissions & ACL (Policies: own_only)" do
+    setup %{conn: conn} do
+      role =
+        insert(:role,
+          permissions: [
+            "instructors.read",
+            "instructors.create",
+            "instructors.update",
+            "instructors.delete"
+          ],
+          policies: %{
+            "instructors.update" => ["own_only"],
+            "instructors.delete" => ["own_only"]
+          }
+        )
+
+      instructor = insert(:account, role: role)
+      conn = init_test_session(conn, %{"account_id" => instructor.id})
+
+      %{conn: conn, instructor: instructor}
+    end
+
+    test "shows Edit and Delete buttons ONLY for owned profiles", %{
+      conn: conn,
+      instructor: instructor
+    } do
+      my_profile = insert(:instructor, owner_id: instructor.id, title: "My Profile")
+      other_profile = insert(:instructor, owner_id: Ecto.UUID.generate(), title: "Other Profile")
+
+      {:ok, _lv, html} = live(conn, ~p"/teaching/instructors")
+
+      assert html =~ ~s(phx-value-id="#{my_profile.id}")
+
+      refute html =~ ~s(phx-value-id="#{other_profile.id}")
+    end
+
+    test "redirects with error if forcing edit on someone else's profile via URL", %{conn: conn} do
+      other_profile = insert(:instructor, owner_id: Ecto.UUID.generate())
+
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               live(conn, ~p"/teaching/instructors/#{other_profile.id}/edit")
+
+      assert to == "/teaching/instructors"
+      assert flash["error"] == "You don't have permission to edit this profile."
     end
   end
 end

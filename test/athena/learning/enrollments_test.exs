@@ -6,14 +6,33 @@ defmodule Athena.Learning.EnrollmentsTest do
   import Athena.Factory
 
   setup do
-    admin_role = insert(:role, permissions: ["admin", "enrollments.read", "courses.read"])
+    admin_role =
+      insert(:role,
+        permissions: [
+          "admin",
+          "enrollments.read",
+          "enrollments.create",
+          "enrollments.update",
+          "enrollments.delete",
+          "courses.read"
+        ]
+      )
+
     admin = insert(:account, role: admin_role)
 
     inst_role =
       insert(:role,
-        permissions: ["enrollments.read", "courses.read"],
+        permissions: [
+          "enrollments.read",
+          "enrollments.create",
+          "enrollments.update",
+          "enrollments.delete",
+          "courses.read"
+        ],
         policies: %{
           "enrollments.read" => ["own_only"],
+          "enrollments.create" => ["own_only"],
+          "enrollments.delete" => ["own_only"],
           "courses.read" => ["own_only"]
         }
       )
@@ -33,69 +52,94 @@ defmodule Athena.Learning.EnrollmentsTest do
     }
   end
 
-  describe "enroll_cohort/3" do
-    test "creates an active enrollment by default" do
-      cohort = insert(:cohort)
-      course = insert(:course)
+  describe "enroll_cohort/4" do
+    test "creates an active enrollment by default", %{admin: admin} do
+      cohort = insert(:cohort, owner_id: admin.id)
+      course = insert(:course, owner_id: admin.id)
 
-      assert {:ok, %Enrollment{} = enrollment} = Enrollments.enroll_cohort(cohort.id, course.id)
+      assert {:ok, %Enrollment{} = enrollment} =
+               Enrollments.enroll_cohort(admin, cohort.id, course.id)
 
       assert enrollment.cohort_id == cohort.id
       assert enrollment.course_id == course.id
       assert enrollment.status == :active
     end
 
-    test "allows specifying a different status" do
-      cohort = insert(:cohort)
-      course = insert(:course)
+    test "allows specifying a different status", %{admin: admin} do
+      cohort = insert(:cohort, owner_id: admin.id)
+      course = insert(:course, owner_id: admin.id)
 
       assert {:ok, %Enrollment{} = enrollment} =
-               Enrollments.enroll_cohort(cohort.id, course.id, :completed)
+               Enrollments.enroll_cohort(admin, cohort.id, course.id, :completed)
 
       assert enrollment.status == :completed
     end
 
-    test "enforces unique constraint per cohort and course" do
-      cohort = insert(:cohort)
-      course = insert(:course)
+    test "enforces unique constraint per cohort and course", %{admin: admin} do
+      cohort = insert(:cohort, owner_id: admin.id)
+      course = insert(:course, owner_id: admin.id)
 
-      assert {:ok, _} = Enrollments.enroll_cohort(cohort.id, course.id)
-      assert {:error, changeset} = Enrollments.enroll_cohort(cohort.id, course.id)
+      assert {:ok, _} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
+      assert {:error, changeset} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
       assert "has already been taken" in errors_on(changeset).course_id
     end
 
-    test "enforces type matching between cohorts and courses" do
-      team_cohort = insert(:cohort, type: :team)
-      academic_cohort = insert(:cohort, type: :academic)
+    test "enforces type matching between cohorts and courses", %{admin: admin} do
+      team_cohort = insert(:cohort, type: :team, owner_id: admin.id)
+      academic_cohort = insert(:cohort, type: :academic, owner_id: admin.id)
 
-      standard_course = insert(:course, type: :standard)
-      competition_course = insert(:course, type: :competition)
+      standard_course = insert(:course, type: :standard, owner_id: admin.id)
+      competition_course = insert(:course, type: :competition, owner_id: admin.id)
 
-      assert {:ok, _} = Enrollments.enroll_cohort(team_cohort.id, competition_course.id)
-      assert {:ok, _} = Enrollments.enroll_cohort(academic_cohort.id, standard_course.id)
+      assert {:ok, _} = Enrollments.enroll_cohort(admin, team_cohort.id, competition_course.id)
+      assert {:ok, _} = Enrollments.enroll_cohort(admin, academic_cohort.id, standard_course.id)
 
-      assert {:error, error_msg} = Enrollments.enroll_cohort(team_cohort.id, standard_course.id)
+      assert {:error, error_msg} =
+               Enrollments.enroll_cohort(admin, team_cohort.id, standard_course.id)
+
       assert error_msg == "Cannot assign a Competition Team to a Standard Course."
 
       assert {:error, error_msg} =
-               Enrollments.enroll_cohort(academic_cohort.id, competition_course.id)
+               Enrollments.enroll_cohort(admin, academic_cohort.id, competition_course.id)
 
       assert error_msg == "Cannot assign an Academic Group to a Competition."
+    end
+
+    test "returns unauthorized if user lacks create permission", %{admin: admin} do
+      user_no_create =
+        insert(:account, role: insert(:role, permissions: ["cohorts.read", "courses.read"]))
+
+      cohort = insert(:cohort, owner_id: admin.id)
+      course = insert(:course, owner_id: admin.id)
+
+      assert {:error, :unauthorized} =
+               Enrollments.enroll_cohort(user_no_create, cohort.id, course.id)
+    end
+
+    test "denies cross-context assignment if instructor does not own the course", %{
+      instructor: inst,
+      admin: admin
+    } do
+      cohort = insert(:cohort, owner_id: inst.id)
+      course = insert(:course, owner_id: admin.id)
+
+      assert {:error, msg} = Enrollments.enroll_cohort(inst, cohort.id, course.id)
+      assert msg == "Cohort or Course not found or access denied."
     end
   end
 
   describe "list_cohort_enrollments/3 (With ACL)" do
     test "admin sees all enrollments", %{admin: admin} do
-      cohort = insert(:cohort)
-      course1 = insert(:course)
-      course2 = insert(:course)
+      cohort = insert(:cohort, owner_id: admin.id)
+      course1 = insert(:course, owner_id: admin.id)
+      course2 = insert(:course, owner_id: admin.id)
 
-      Enrollments.enroll_cohort(cohort.id, course1.id)
-      Enrollments.enroll_cohort(cohort.id, course2.id)
+      Enrollments.enroll_cohort(admin, cohort.id, course1.id)
+      Enrollments.enroll_cohort(admin, cohort.id, course2.id)
 
-      other_cohort = insert(:cohort)
-      other_course = insert(:course)
-      Enrollments.enroll_cohort(other_cohort.id, other_course.id)
+      other_cohort = insert(:cohort, owner_id: admin.id)
+      other_course = insert(:course, owner_id: admin.id)
+      Enrollments.enroll_cohort(admin, other_cohort.id, other_course.id)
 
       {:ok, {enrollments, meta}} = Enrollments.list_cohort_enrollments(admin, cohort.id, %{})
 
@@ -110,13 +154,17 @@ defmodule Athena.Learning.EnrollmentsTest do
 
     test "instructor sees enrollment if they are assigned to the cohort", %{
       instructor: instructor,
-      inst_profile: inst_profile
+      inst_profile: inst_profile,
+      admin: admin
     } do
-      course = insert(:course)
-      cohort = insert(:cohort)
+      course = insert(:course, owner_id: admin.id)
+      cohort = insert(:cohort, owner_id: admin.id)
 
-      Athena.Learning.Cohorts.update_cohort(cohort, %{"instructor_ids" => [inst_profile.id]})
-      Enrollments.enroll_cohort(cohort.id, course.id)
+      Athena.Learning.Cohorts.update_cohort(admin, cohort, %{
+        "instructor_ids" => [inst_profile.id]
+      })
+
+      Enrollments.enroll_cohort(admin, cohort.id, course.id)
 
       {:ok, {enrollments, _meta}} =
         Enrollments.list_cohort_enrollments(instructor, cohort.id, %{})
@@ -125,11 +173,12 @@ defmodule Athena.Learning.EnrollmentsTest do
     end
 
     test "instructor sees enrollment if they own the course (even if cohort is not theirs)", %{
-      instructor: instructor
+      instructor: instructor,
+      admin: admin
     } do
       course = insert(:course, owner_id: instructor.id)
-      cohort = insert(:cohort)
-      Enrollments.enroll_cohort(cohort.id, course.id)
+      cohort = insert(:cohort, owner_id: admin.id)
+      Enrollments.enroll_cohort(admin, cohort.id, course.id)
 
       {:ok, {enrollments, _meta}} =
         Enrollments.list_cohort_enrollments(instructor, cohort.id, %{})
@@ -140,14 +189,17 @@ defmodule Athena.Learning.EnrollmentsTest do
     test "instructor does NOT see enrollment if they own neither the course nor the cohort", %{
       instructor: instructor,
       other_instructor: other_instructor,
-      other_inst_profile: other_inst_profile
+      other_inst_profile: other_inst_profile,
+      admin: admin
     } do
       course = insert(:course, owner_id: other_instructor.id)
-      cohort = insert(:cohort)
+      cohort = insert(:cohort, owner_id: admin.id)
 
-      Athena.Learning.Cohorts.update_cohort(cohort, %{"instructor_ids" => [other_inst_profile.id]})
+      Athena.Learning.Cohorts.update_cohort(admin, cohort, %{
+        "instructor_ids" => [other_inst_profile.id]
+      })
 
-      Enrollments.enroll_cohort(cohort.id, course.id)
+      Enrollments.enroll_cohort(admin, cohort.id, course.id)
 
       {:ok, {enrollments, _meta}} =
         Enrollments.list_cohort_enrollments(instructor, cohort.id, %{})
@@ -156,10 +208,10 @@ defmodule Athena.Learning.EnrollmentsTest do
     end
 
     test "enriches enrollments with course data from Content context", %{admin: admin} do
-      cohort = insert(:cohort)
-      course = insert(:course, title: "Elixir Magic")
+      cohort = insert(:cohort, owner_id: admin.id)
+      course = insert(:course, title: "Elixir Magic", owner_id: admin.id)
 
-      Enrollments.enroll_cohort(cohort.id, course.id)
+      Enrollments.enroll_cohort(admin, cohort.id, course.id)
 
       {:ok, {enrollments, _meta}} = Enrollments.list_cohort_enrollments(admin, cohort.id, %{})
 
@@ -169,47 +221,62 @@ defmodule Athena.Learning.EnrollmentsTest do
     end
   end
 
-  describe "get_enrollment!/1" do
-    test "returns an enriched enrollment if it exists" do
-      cohort = insert(:cohort)
-      course = insert(:course, title: "Advanced OTP")
-      {:ok, enrollment} = Enrollments.enroll_cohort(cohort.id, course.id)
+  describe "get_enrollment!/2" do
+    test "returns an enriched enrollment if it exists", %{admin: admin} do
+      cohort = insert(:cohort, owner_id: admin.id)
+      course = insert(:course, title: "Advanced OTP", owner_id: admin.id)
+      {:ok, enrollment} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
 
-      fetched = Enrollments.get_enrollment!(enrollment.id)
+      fetched = Enrollments.get_enrollment!(admin, enrollment.id)
 
       assert fetched.id == enrollment.id
       assert fetched.cohort.id == cohort.id
       assert fetched.course.title == "Advanced OTP"
     end
 
-    test "raises error if enrollment does not exist" do
+    test "raises error if enrollment does not exist", %{admin: admin} do
       assert_raise Ecto.NoResultsError, fn ->
-        Enrollments.get_enrollment!(Ecto.UUID.generate())
+        Enrollments.get_enrollment!(admin, Ecto.UUID.generate())
+      end
+    end
+
+    test "raises error if instructor does not own the related entities", %{
+      admin: admin,
+      instructor: inst
+    } do
+      cohort = insert(:cohort, owner_id: admin.id)
+      course = insert(:course, owner_id: admin.id)
+      {:ok, enrollment} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Enrollments.get_enrollment!(inst, enrollment.id)
       end
     end
   end
 
-  describe "update_enrollment/2" do
-    test "updates the enrollment status" do
-      cohort = insert(:cohort)
-      course = insert(:course)
-      {:ok, enrollment} = Enrollments.enroll_cohort(cohort.id, course.id)
+  describe "update_enrollment/3" do
+    test "updates the enrollment status", %{admin: admin} do
+      cohort = insert(:cohort, owner_id: admin.id)
+      course = insert(:course, owner_id: admin.id)
+      {:ok, enrollment} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
 
-      assert {:ok, updated} = Enrollments.update_enrollment(enrollment, %{status: :dropped})
+      assert {:ok, updated} =
+               Enrollments.update_enrollment(admin, enrollment, %{status: :dropped})
+
       assert updated.status == :dropped
     end
   end
 
-  describe "delete_enrollment/1" do
-    test "deletes the enrollment record" do
-      cohort = insert(:cohort)
-      course = insert(:course)
-      {:ok, enrollment} = Enrollments.enroll_cohort(cohort.id, course.id)
+  describe "delete_enrollment/2" do
+    test "deletes the enrollment record", %{admin: admin} do
+      cohort = insert(:cohort, owner_id: admin.id)
+      course = insert(:course, owner_id: admin.id)
+      {:ok, enrollment} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
 
-      assert {:ok, _deleted} = Enrollments.delete_enrollment(enrollment)
+      assert {:ok, _deleted} = Enrollments.delete_enrollment(admin, enrollment)
 
       assert_raise Ecto.NoResultsError, fn ->
-        Enrollments.get_enrollment!(enrollment.id)
+        Enrollments.get_enrollment!(admin, enrollment.id)
       end
     end
   end
@@ -235,7 +302,10 @@ defmodule Athena.Learning.EnrollmentsTest do
       course = insert(:course, status: :published)
 
       Athena.Learning.Cohorts.add_student_to_cohort(cohort.id, student.id)
-      Enrollments.enroll_cohort(cohort.id, course.id)
+
+      %Enrollment{}
+      |> Enrollment.changeset(%{cohort_id: cohort.id, course_id: course.id, status: :active})
+      |> Athena.Repo.insert!()
 
       enrollments = Enrollments.list_student_enrollments(student.id)
 
@@ -324,7 +394,10 @@ defmodule Athena.Learning.EnrollmentsTest do
       course = insert(:course, status: :published)
 
       Athena.Learning.Cohorts.add_student_to_cohort(cohort.id, student.id)
-      Enrollments.enroll_cohort(cohort.id, course.id)
+
+      %Enrollment{}
+      |> Enrollment.changeset(%{cohort_id: cohort.id, course_id: course.id, status: :active})
+      |> Athena.Repo.insert!()
 
       assert Enrollments.has_access?(student.id, course.id)
     end

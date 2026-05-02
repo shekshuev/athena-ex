@@ -9,6 +9,7 @@ defmodule Athena.Identity.Profile do
 
   use Ecto.Schema
   import Ecto.Changeset
+  alias Athena.Identity.Account
 
   @type t :: %__MODULE__{}
 
@@ -34,7 +35,7 @@ defmodule Athena.Identity.Profile do
     field :birth_date, :date
     field :metadata, :map, default: %{}
 
-    belongs_to :owner, Athena.Identity.Account
+    belongs_to :owner, Account
 
     timestamps(type: :utc_datetime)
   end
