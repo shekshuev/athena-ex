@@ -7,6 +7,7 @@ defmodule Athena.Learning.Enrollment do
   """
   use Ecto.Schema
   import Ecto.Changeset
+  alias Athena.Learning.Cohort
 
   @type t :: %__MODULE__{}
 
@@ -31,7 +32,7 @@ defmodule Athena.Learning.Enrollment do
 
     field :course_id, :binary_id
     field :account_id, :binary_id
-    belongs_to :cohort, Athena.Learning.Cohort
+    belongs_to :cohort, Cohort
 
     field :course, :any, virtual: true
     field :account, :any, virtual: true

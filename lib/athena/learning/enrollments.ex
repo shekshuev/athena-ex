@@ -9,9 +9,17 @@ defmodule Athena.Learning.Enrollments do
 
   import Ecto.Query
   alias Athena.Repo
-  alias Athena.Learning.{Enrollment, CohortMembership, CohortInstructor, Instructor, Cohorts}
-  alias Athena.Content
-  alias Athena.Identity
+
+  alias Athena.Learning.{
+    Enrollment,
+    CohortMembership,
+    CohortInstructor,
+    Instructor,
+    Cohorts,
+    Cohort
+  }
+
+  alias Athena.{Content, Identity}
 
   use Gettext, backend: AthenaWeb.Gettext
 
@@ -97,9 +105,6 @@ defmodule Athena.Learning.Enrollments do
     else
       {:error, :not_found} ->
         {:error, gettext("Cohort or Course not found or access denied.")}
-
-      error ->
-        error
     end
   end
 
@@ -236,13 +241,13 @@ defmodule Athena.Learning.Enrollments do
   defp owns_cohort?(user, enrollment, preloaded_cohort) do
     cohort =
       preloaded_cohort || enrollment.cohort ||
-        Repo.get(Athena.Learning.Cohort, enrollment.cohort_id)
+        Repo.get(Cohort, enrollment.cohort_id)
 
     cohort != nil and Identity.can?(user, "cohorts.update", cohort)
   end
 
   defp owns_course?(user, enrollment) do
-    course = enrollment.course || Repo.get(Athena.Content.Course, enrollment.course_id)
+    course = enrollment.course || Repo.get(Course, enrollment.course_id)
 
     course != nil and Identity.can?(user, "courses.update", course)
   end
@@ -274,10 +279,10 @@ defmodule Athena.Learning.Enrollments do
   @doc """
   Finds the active cohort a user belongs to for a specific course.
   """
-  @spec get_user_cohort_for_course(String.t(), String.t()) :: Athena.Learning.Cohort.t() | nil
+  @spec get_user_cohort_for_course(String.t(), String.t()) :: Cohort.t() | nil
   def get_user_cohort_for_course(user_id, course_id) do
     query =
-      from c in Athena.Learning.Cohort,
+      from c in Cohort,
         join: cm in CohortMembership,
         on: cm.cohort_id == c.id,
         join: e in Enrollment,

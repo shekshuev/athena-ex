@@ -8,7 +8,8 @@ defmodule AthenaWeb.AdminLive.UserForm do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Athena.Identity
+  alias Athena.{Identity, Repo}
+  alias Athena.Identity.Account
 
   use Gettext, backend: AthenaWeb.Gettext
 
@@ -66,9 +67,9 @@ defmodule AthenaWeb.AdminLive.UserForm do
   Prepares form data from existing Account and Profile structs.
   Safely handles cases where a profile might be missing.
   """
-  @spec from_account(Athena.Identity.Account.t()) :: %__MODULE__{}
+  @spec from_account(Account.t()) :: %__MODULE__{}
   def from_account(account) do
-    account = Athena.Repo.preload(account, :profile)
+    account = Repo.preload(account, :profile)
     profile = account.profile || %{}
 
     %__MODULE__{

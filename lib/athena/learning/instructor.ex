@@ -5,6 +5,7 @@ defmodule Athena.Learning.Instructor do
   """
   use Ecto.Schema
   import Ecto.Changeset
+  alias Athena.Learning.CohortInstructor
 
   @type t :: %__MODULE__{}
 
@@ -29,7 +30,7 @@ defmodule Athena.Learning.Instructor do
 
     field :account, :any, virtual: true
 
-    has_many :cohort_links, Athena.Learning.CohortInstructor
+    has_many :cohort_links, CohortInstructor
     has_many :cohorts, through: [:cohort_links, :cohort]
 
     timestamps(type: :utc_datetime)

@@ -18,7 +18,7 @@ defmodule Athena.Learning.Cohorts do
   @spec list_cohorts(map(), map()) ::
           {:ok, {[Cohort.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_cohorts(user, params \\ %{}) do
-    base_query = Identity.scope_query(Cohort, user, "cohorts.read")
+    base_query = from(c in Cohort) |> Identity.scope_query(user, "cohorts.read")
 
     case Flop.validate_and_run(base_query, params, for: Cohort) do
       {:ok, {cohorts, meta}} ->
@@ -49,7 +49,8 @@ defmodule Athena.Learning.Cohorts do
 
   Optionally accepts a list of instructor IDs in `instructor_ids` to assign them immediately.
   """
-  @spec create_cohort(map(), map()) :: {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()}
+  @spec create_cohort(map(), map()) ::
+          {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()} | {:error, :unauthorized}
   def create_cohort(user, attrs) do
     if Identity.can?(user, "cohorts.create") do
       %Cohort{owner_id: user.id}
@@ -68,7 +69,7 @@ defmodule Athena.Learning.Cohorts do
   If `instructor_ids` is provided, it completely replaces the current list of instructors.
   """
   @spec update_cohort(map(), Cohort.t(), map()) ::
-          {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()}
+          {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()} | {:error, :unauthorized}
   def update_cohort(user, %Cohort{} = cohort, attrs) do
     if Identity.can?(user, "cohorts.update", cohort) do
       cohort
@@ -157,7 +158,7 @@ defmodule Athena.Learning.Cohorts do
   Returns `[{"Cohort Name", "cohort_id"}, ...]`.
   """
   def get_cohort_options(user) do
-    Cohort
+    from(c in Cohort)
     |> Identity.scope_query(user, "cohorts.read")
     |> select([c], {c.name, c.id})
     |> order_by([c], asc: c.name)

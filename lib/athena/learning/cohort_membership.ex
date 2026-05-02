@@ -6,6 +6,7 @@ defmodule Athena.Learning.CohortMembership do
   """
   use Ecto.Schema
   import Ecto.Changeset
+  alias Athena.Learning.Cohort
 
   @type t :: %__MODULE__{}
 
@@ -24,7 +25,7 @@ defmodule Athena.Learning.CohortMembership do
   }
 
   schema "cohort_memberships" do
-    belongs_to :cohort, Athena.Learning.Cohort
+    belongs_to :cohort, Cohort
     field :account_id, :binary_id
 
     field :account, :any, virtual: true

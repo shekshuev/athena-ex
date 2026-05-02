@@ -8,9 +8,9 @@ defmodule Athena.Content.Sections do
   """
 
   import Ecto.Query
-  alias Athena.Repo
+  alias Athena.{Repo, Identity}
   alias Athena.Content.{Course, Section, Blocks}
-  alias Athena.Identity
+  alias Athena.Identity.Account
 
   @doc """
   Retrieves a single section by its ID without ACL (internal use).
@@ -153,7 +153,7 @@ defmodule Athena.Content.Sections do
   Fetches all sections for a course and builds a nested tree structure.
   If a user is provided, filters the tree based on access policies.
   """
-  @spec get_course_tree(String.t(), Athena.Identity.Account.t() | nil | :all) :: [Section.t()]
+  @spec get_course_tree(String.t(), Account.t() | nil | :all) :: [Section.t()]
   def get_course_tree(course_id, user_or_mode \\ :all) do
     sections =
       Section
@@ -202,8 +202,8 @@ defmodule Athena.Content.Sections do
   @doc false
   defp can_edit_course?(user, course_id) do
     Course
-    |> Identity.scope_query(user, "courses.update")
     |> where(id: ^course_id)
+    |> Identity.scope_query(user, "courses.update")
     |> Repo.exists?()
   end
 

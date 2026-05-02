@@ -8,6 +8,7 @@ defmodule AthenaWeb.AuthLive.Login do
   """
 
   use AthenaWeb, :live_view
+  alias Athena.Identity
 
   defmodule LoginForm do
     @moduledoc """
@@ -42,14 +43,14 @@ defmodule AthenaWeb.AuthLive.Login do
         max: 50,
         message: dgettext_noop("errors", "should be between 3 and 50 characters")
       )
-      |> validate_format(:login, Athena.Identity.login_regex(),
+      |> validate_format(:login, Identity.login_regex(),
         message:
           dgettext_noop(
             "errors",
             "can only contain letters, numbers, dots, dashes, and underscores"
           )
       )
-      |> validate_format(:password, Athena.Identity.password_regex(),
+      |> validate_format(:password, Identity.password_regex(),
         message:
           dgettext_noop(
             "errors",
@@ -92,7 +93,7 @@ defmodule AthenaWeb.AuthLive.Login do
     if changeset.valid? do
       login = Ecto.Changeset.get_field(changeset, :login)
 
-      case Athena.Identity.get_account_by_login(login) do
+      case Identity.get_account_by_login(login) do
         {:ok, _account} ->
           {:noreply, assign(socket, form: to_form(changeset, as: "user"), trigger_action: true)}
 

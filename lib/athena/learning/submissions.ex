@@ -7,7 +7,7 @@ defmodule Athena.Learning.Submissions do
   """
 
   import Ecto.Query
-  alias Athena.Repo
+  alias Athena.{Repo, Identity}
   alias Athena.Learning.{Submission, Enrollment, Cohort}
   alias Athena.Content.{Block, Section}
 
@@ -18,7 +18,7 @@ defmodule Athena.Learning.Submissions do
   @spec list_submissions(map(), map()) ::
           {:ok, {[Submission.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_submissions(user, params \\ %{}) do
-    query = Athena.Identity.scope_query(Submission, user, "grading.read")
+    query = from(s in Submission) |> Identity.scope_query(user, "grading.read")
     Flop.validate_and_run(query, params, for: Submission)
   end
 
@@ -29,7 +29,7 @@ defmodule Athena.Learning.Submissions do
   def get_submission!(user, id) do
     Submission
     |> where([s], s.id == ^id)
-    |> Athena.Identity.scope_query(user, "grading.read")
+    |> Identity.scope_query(user, "grading.read")
     |> Repo.one!()
   end
 
@@ -73,7 +73,7 @@ defmodule Athena.Learning.Submissions do
   @spec update_submission(map(), Submission.t(), map()) ::
           {:ok, Submission.t()} | {:error, Ecto.Changeset.t() | atom()}
   def update_submission(user, %Submission{} = submission, attrs) do
-    if Athena.Identity.can?(user, "grading.update", submission) do
+    if Identity.can?(user, "grading.update", submission) do
       system_update_submission(submission, attrs)
     else
       {:error, :unauthorized}

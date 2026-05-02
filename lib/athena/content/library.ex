@@ -4,7 +4,7 @@ defmodule Athena.Content.Library do
   """
 
   import Ecto.Query
-  alias Athena.Repo
+  alias Athena.{Repo, Identity}
   alias Athena.Content.LibraryBlock
 
   @doc "Lists library blocks with Flop pagination and filtering, scoped by ACL."
@@ -12,7 +12,7 @@ defmodule Athena.Content.Library do
           {:ok, {[LibraryBlock.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_library_blocks(user, params \\ %{}) do
     from(lb in LibraryBlock)
-    |> Athena.Identity.scope_query(user, "library.read")
+    |> Identity.scope_query(user, "library.read")
     |> Flop.validate_and_run(params, for: LibraryBlock)
   end
 
@@ -30,7 +30,7 @@ defmodule Athena.Content.Library do
   def get_library_block(user, id) do
     LibraryBlock
     |> where([lb], lb.id == ^id)
-    |> Athena.Identity.scope_query(user, "library.read")
+    |> Identity.scope_query(user, "library.read")
     |> Repo.one()
     |> case do
       nil -> {:error, :not_found}

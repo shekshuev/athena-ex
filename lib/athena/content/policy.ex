@@ -5,6 +5,7 @@ defmodule Athena.Content.Policy do
   """
 
   alias Athena.Identity.Account
+  alias Athena.Repo
   alias Athena.Content.{Block, Section}
 
   @doc """
@@ -47,7 +48,7 @@ defmodule Athena.Content.Policy do
   end
 
   defp handle_visibility(:inherit, user, item, _override, overrides) do
-    section = Athena.Repo.get(Section, item.section_id)
+    section = Repo.get(Section, item.section_id)
     evaluate_visibility(user, section, overrides)
   end
 

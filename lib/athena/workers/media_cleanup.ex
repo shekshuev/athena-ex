@@ -7,7 +7,7 @@ defmodule Athena.Workers.MediaCleanup do
 
   require Logger
   import Ecto.Query
-  alias Athena.Repo
+  alias Athena.{Repo, Media}
   alias Athena.Media.File
   alias Athena.Content.Block
 
@@ -48,7 +48,7 @@ defmodule Athena.Workers.MediaCleanup do
   defp delete_orphaned_file(file) do
     Logger.info(" -> Deleting #{file.original_name} (#{file.key})")
 
-    case Athena.Media.delete_file(file) do
+    case Media.delete_file(file) do
       {:ok, _} -> :ok
       {:error, err} -> Logger.error("Failed to delete #{file.key}: #{inspect(err)}")
     end

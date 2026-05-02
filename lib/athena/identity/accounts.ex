@@ -11,8 +11,8 @@ defmodule Athena.Identity.Accounts do
   """
 
   import Ecto.Query
-  alias Athena.Repo
-  alias Athena.Identity.{Account, Acl}
+  alias Athena.{Repo, Identity, Workers}
+  alias Athena.Identity.{Account, Acl, Profile}
 
   @doc """
   Retrieves a paginated list of accounts with optional preloads.
@@ -50,7 +50,7 @@ defmodule Athena.Identity.Accounts do
       |> Ecto.Multi.insert(:account, Account.changeset(%Account{}, account_attrs))
       |> Ecto.Multi.insert(:profile, fn %{account: account} ->
         attrs = Map.put(profile_attrs, "owner_id", account.id)
-        Athena.Identity.Profile.changeset(%Athena.Identity.Profile{}, attrs)
+        Profile.changeset(%Profile{}, attrs)
       end)
       |> Repo.transaction()
       |> case do
@@ -104,13 +104,13 @@ defmodule Athena.Identity.Accounts do
   defp upsert_profile(repo, account, profile_attrs) do
     if account.profile do
       account.profile
-      |> Athena.Identity.Profile.changeset(profile_attrs)
+      |> Profile.changeset(profile_attrs)
       |> repo.update()
     else
       attrs = Map.put(profile_attrs, "owner_id", account.id)
 
-      %Athena.Identity.Profile{}
-      |> Athena.Identity.Profile.changeset(attrs)
+      %Profile{}
+      |> Profile.changeset(attrs)
       |> repo.insert()
     end
   end
@@ -292,7 +292,7 @@ defmodule Athena.Identity.Accounts do
         })
 
       %{account_id: blocked_acc.id}
-      |> Athena.Workers.UnblockAccount.new(schedule_in: 30 * 60)
+      |> Workers.UnblockAccount.new(schedule_in: 30 * 60)
       |> Oban.insert()
     else
       update_account(account, %{
@@ -338,7 +338,7 @@ defmodule Athena.Identity.Accounts do
 
     Account
     |> where([a], ilike(a.login, ^search_term))
-    |> Athena.Identity.scope_query(user, "users.read")
+    |> Identity.scope_query(user, "users.read")
     |> limit(^limit)
     |> Repo.all()
   end

@@ -7,6 +7,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   visibility, and progression rules.
   """
   use AthenaWeb, :live_component
+  alias Athena.Content.{Section, Block}
 
   @doc """
   Lifecycle hook: handles incoming assigns and sets defaults.
@@ -47,7 +48,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   @spec section_inspector(map()) :: Phoenix.LiveView.Rendered.t()
   defp section_inspector(assigns) do
     attrs = if assigns.section.access_rules, do: %{}, else: %{"access_rules" => %{}}
-    section_changeset = Athena.Content.Section.changeset(assigns.section, attrs)
+    section_changeset = Section.changeset(assigns.section, attrs)
 
     assigns = assign(assigns, :form, to_form(section_changeset))
 
@@ -162,7 +163,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
         do: attrs,
         else: Map.put(attrs, "completion_rule", %{"type" => "none"})
 
-    block_changeset = Athena.Content.Block.changeset(assigns.block, attrs)
+    block_changeset = Block.changeset(assigns.block, attrs)
 
     assigns = assign(assigns, :form, to_form(block_changeset))
 

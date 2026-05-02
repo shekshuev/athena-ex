@@ -7,14 +7,15 @@ defmodule Athena.Content.Blocks do
   """
 
   import Ecto.Query
-  alias Athena.Repo
-  alias Athena.Content.{Block, Course, Section}
+  alias Athena.{Repo, Media, Identity}
+  alias Athena.Content.{Block, Course, Section, Policy}
+  alias Athena.Identity.Account
 
   @doc """
   Retrieves all blocks for a specific section, ordered by their `order` index.
   If a user is provided, filters the blocks based on access policies.
   """
-  @spec list_blocks_by_section(String.t(), Athena.Identity.Account.t() | nil | :all) :: [
+  @spec list_blocks_by_section(String.t(), Account.t() | nil | :all) :: [
           Block.t()
         ]
   def list_blocks_by_section(section_id, user_or_mode \\ :all) do
@@ -27,7 +28,7 @@ defmodule Athena.Content.Blocks do
     if user_or_mode == :all do
       blocks
     else
-      Enum.filter(blocks, &Athena.Content.Policy.can_view?(user_or_mode, &1))
+      Enum.filter(blocks, &Policy.can_view?(user_or_mode, &1))
     end
   end
 
@@ -61,7 +62,7 @@ defmodule Athena.Content.Blocks do
     accessible_courses =
       Course
       |> where([c], is_nil(c.deleted_at))
-      |> Athena.Identity.scope_query(user, "courses.update")
+      |> Identity.scope_query(user, "courses.update")
 
     Block
     |> join(:inner, [b], s in Section, on: b.section_id == s.id)
@@ -187,12 +188,12 @@ defmodule Athena.Content.Blocks do
   """
   def prepare_media_upload(user, course_id, filename) do
     if can_edit_course?(user, course_id) do
-      bucket = Application.get_env(:athena, Athena.Media)[:bucket] || "athena"
+      bucket = Application.get_env(:athena, Media)[:bucket] || "athena"
 
       unique_filename = "#{Ecto.UUID.generate()}-#{filename}"
       key = "courses/#{course_id}/#{unique_filename}"
 
-      case Athena.Media.generate_upload_url(bucket, key) do
+      case Media.generate_upload_url(bucket, key) do
         {:ok, presigned_url} ->
           local_url = "/media/#{key}"
 
@@ -234,7 +235,7 @@ defmodule Athena.Content.Blocks do
 
       Ecto.Multi.new()
       |> Ecto.Multi.run(:file, fn _repo, _changes ->
-        Athena.Media.create_file(file_attrs)
+        Media.create_file(file_attrs)
       end)
       |> Ecto.Multi.update(:block, Block.changeset(block, %{"content" => new_content}))
       |> Repo.transaction()
@@ -275,15 +276,16 @@ defmodule Athena.Content.Blocks do
 
   defp can_edit_course?(user, course_id) do
     Course
-    |> Athena.Identity.Acl.scope_query(user, "courses.update")
     |> where(id: ^course_id)
+    |> Identity.scope_query(user, "courses.update")
     |> Repo.exists?()
   end
 
   defp can_edit_section?(user, section_id) do
     accessible_courses =
       Course
-      |> Athena.Identity.Acl.scope_query(user, "courses.update")
+      |> where([c], is_nil(c.deleted_at))
+      |> Identity.scope_query(user, "courses.update")
 
     Section
     |> join(:inner, [s], c in subquery(accessible_courses), on: s.course_id == c.id)

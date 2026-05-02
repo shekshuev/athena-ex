@@ -7,13 +7,14 @@ defmodule AthenaWeb.SessionController do
   """
 
   use AthenaWeb, :controller
+  alias Athena.Identity
 
   @doc """
   Creates a new session for the user if credentials are valid.
   """
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"user" => %{"login" => login, "password" => password}}) do
-    case Athena.Identity.authenticate(login, password) do
+    case Identity.authenticate(login, password) do
       {:ok, account} ->
         conn
         |> put_session(:account_id, account.id)

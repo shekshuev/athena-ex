@@ -32,6 +32,7 @@ defmodule Athena.Content.QuizQuestion do
   """
   use Ecto.Schema
   import Ecto.Changeset
+  alias Athena.Content.QuizQuestion.Option
 
   @derive Jason.Encoder
   @primary_key false
@@ -41,7 +42,7 @@ defmodule Athena.Content.QuizQuestion do
     field :correct_answer, :string
     field :case_sensitive, :boolean, default: false
 
-    embeds_many :options, Athena.Content.QuizQuestion.Option
+    embeds_many :options, Option
 
     field :general_explanation, :string
   end
@@ -51,14 +52,14 @@ defmodule Athena.Content.QuizQuestion do
           body: map() | nil,
           correct_answer: String.t() | nil,
           case_sensitive: boolean(),
-          options: [Athena.Content.QuizQuestion.Option.t()] | nil,
+          options: [Option.t()] | nil,
           general_explanation: String.t() | nil
         }
 
   def changeset(schema, attrs) do
     schema
     |> cast(attrs, [:question_type, :body, :correct_answer, :case_sensitive, :general_explanation])
-    |> cast_embed(:options, with: &Athena.Content.QuizQuestion.Option.changeset/2)
+    |> cast_embed(:options, with: &Option.changeset/2)
     |> validate_required([:question_type, :body])
     |> validate_type_logic()
   end

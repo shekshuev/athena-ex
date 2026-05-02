@@ -8,8 +8,8 @@ defmodule AthenaWeb.AdminLive.Users do
   """
   use AthenaWeb, :live_view
 
-  alias Athena.Identity
-  alias Athena.Identity.Account
+  alias Athena.{Identity, Repo}
+  alias Athena.Identity.{Account, Profile}
   alias AthenaWeb.AdminLive.UserFormComponent
 
   on_mount {AthenaWeb.Hooks.Permission, "users.read"}
@@ -141,7 +141,7 @@ defmodule AthenaWeb.AdminLive.Users do
           {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_info({UserFormComponent, {:saved, account}}, socket) do
-    account = Athena.Repo.preload(account, [:profile, :role])
+    account = Repo.preload(account, [:profile, :role])
     {:noreply, stream_insert(socket, :accounts, account)}
   end
 
@@ -191,7 +191,7 @@ defmodule AthenaWeb.AdminLive.Users do
           <span class="font-bold">{acc.login}</span>
         </:col>
         <:col :let={{_id, acc}} label={gettext("Full Name")}>
-          {if acc.profile, do: Athena.Identity.Profile.full_name(acc.profile), else: "—"}
+          {if acc.profile, do: Profile.full_name(acc.profile), else: "—"}
         </:col>
         <:col :let={{_id, acc}} label={gettext("Status")}>
           <.status_badge status={acc.status} />

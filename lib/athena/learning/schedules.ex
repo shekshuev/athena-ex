@@ -3,7 +3,7 @@ defmodule Athena.Learning.Schedules do
   Business logic for managing cohort-specific content schedules (Overrides).
   """
   import Ecto.Query
-  alias Athena.Repo
+  alias Athena.{Repo, Identity}
   alias Athena.Learning.{CohortSchedule, CohortMembership}
 
   @doc """
@@ -68,7 +68,7 @@ defmodule Athena.Learning.Schedules do
   Enforces ACL.
   """
   @spec clear_override(map(), map(), map(), atom() | String.t(), String.t()) ::
-          {integer(), nil | [term()]} | {:error, :unauthorized}
+          {:ok, {integer(), nil | [term()]}} | {:error, :unauthorized}
   def clear_override(user, cohort, course, resource_type, resource_id) do
     if can_manage_schedule?(user, cohort, course) do
       res_type_str = to_string(resource_type)
@@ -90,12 +90,12 @@ defmodule Athena.Learning.Schedules do
 
   @doc false
   defp can_manage_schedule?(user, cohort, course) do
-    if Athena.Identity.can?(user, "enrollments.update") do
+    if Identity.can?(user, "enrollments.update") do
       policies = Map.get(user.role.policies || %{}, "enrollments.update", [])
 
       if "own_only" in policies do
-        Athena.Identity.can?(user, "cohorts.update", cohort) or
-          Athena.Identity.can?(user, "courses.update", course)
+        Identity.can?(user, "cohorts.update", cohort) or
+          Identity.can?(user, "courses.update", course)
       else
         true
       end

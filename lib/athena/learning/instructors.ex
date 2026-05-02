@@ -7,9 +7,8 @@ defmodule Athena.Learning.Instructors do
   """
 
   import Ecto.Query
-  alias Athena.Repo
+  alias Athena.{Repo, Identity}
   alias Athena.Learning.Instructor
-  alias Athena.Identity
 
   @doc """
   Retrieves a paginated list of instructors, scoped by user permissions.
@@ -19,7 +18,7 @@ defmodule Athena.Learning.Instructors do
   def list_instructors(user, params \\ %{}) do
     base_query =
       from(i in Instructor)
-      |> Athena.Identity.scope_query(user, "instructors.read")
+      |> Identity.scope_query(user, "instructors.read")
 
     case Flop.validate_and_run(base_query, params, for: Instructor) do
       {:ok, {instructors, meta}} ->
@@ -73,7 +72,7 @@ defmodule Athena.Learning.Instructors do
   def get_instructor(user, id) do
     Instructor
     |> where([i], i.id == ^id)
-    |> Athena.Identity.scope_query(user, "instructors.read")
+    |> Identity.scope_query(user, "instructors.read")
     |> Repo.one()
     |> case do
       nil -> {:error, :not_found}
