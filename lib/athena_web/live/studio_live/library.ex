@@ -95,7 +95,7 @@ defmodule AthenaWeb.StudioLive.Library do
   end
 
   def handle_event("confirm_delete", _, %{assigns: %{block_to_delete: block}} = socket) do
-    case Content.delete_library_block(block) do
+    case Content.delete_library_block(socket.assigns.current_user, block) do
       {:ok, _} ->
         {:noreply,
          socket

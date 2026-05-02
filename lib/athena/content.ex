@@ -65,9 +65,9 @@ defmodule Athena.Content do
   defdelegate list_library_blocks(user, params), to: Library
   defdelegate get_library_block(user, id), to: Library
   defdelegate get_library_block(id), to: Library
-  defdelegate create_library_block(attrs), to: Library
-  defdelegate update_library_block(block, attrs), to: Library
-  defdelegate delete_library_block(block), to: Library
+  defdelegate create_library_block(user, attrs), to: Library
+  defdelegate update_library_block(user, block, attrs), to: Library
+  defdelegate delete_library_block(user, block), to: Library
   defdelegate generate_exam_questions(params), to: Library
 
   defdelegate can_view?(user_or_mode, item, overrides), to: Policy

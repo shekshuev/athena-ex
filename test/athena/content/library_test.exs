@@ -9,16 +9,24 @@ defmodule Athena.Content.LibraryTest do
     role =
       insert(:role,
         permissions: ["library.read", "library.update", "library.delete"],
-        policies: %{"library.read" => ["own_only"], "library.update" => ["own_only"]}
+        policies: %{
+          "library.read" => ["own_only"],
+          "library.update" => ["own_only"],
+          "library.delete" => ["own_only"]
+        }
       )
 
-    admin_role = insert(:role, permissions: ["admin", "library.read"])
+    admin_role =
+      insert(:role, permissions: ["admin", "library.read", "library.update", "library.delete"])
+
+    student_role = insert(:role, permissions: [])
 
     owner1 = insert(:account, role: role)
     owner2 = insert(:account, role: role)
     admin = insert(:account, role: admin_role)
+    student = insert(:account, role: student_role)
 
-    %{owner1: owner1, owner2: owner2, admin: admin}
+    %{owner1: owner1, owner2: owner2, admin: admin, student: student}
   end
 
   describe "list_library_blocks/2 (With ACL)" do
@@ -95,60 +103,79 @@ defmodule Athena.Content.LibraryTest do
     end
   end
 
-  describe "create_library_block/1" do
-    test "should create a new library block with valid attributes" do
-      owner_id = Ecto.UUID.generate()
-
+  describe "create_library_block/2 (With ACL)" do
+    test "should create a new library block and auto-assign owner", %{owner1: owner1} do
       attrs = %{
         "title" => "Base Template",
         "type" => "text",
         "content" => %{"text" => "Template body"},
-        "tags" => ["base", "template"],
-        "owner_id" => owner_id
+        "tags" => ["base", "template"]
       }
 
-      assert {:ok, %LibraryBlock{} = block} = Library.create_library_block(attrs)
+      assert {:ok, %LibraryBlock{} = block} = Library.create_library_block(owner1, attrs)
 
       assert block.title == "Base Template"
       assert block.type == :text
       assert block.tags == ["base", "template"]
-      assert block.owner_id == owner_id
+      assert block.owner_id == owner1.id
     end
 
-    test "should return error changeset when required attributes are missing" do
+    test "should return error changeset when required attributes are missing", %{owner1: owner1} do
       attrs = %{"title" => ""}
 
-      assert {:error, changeset} = Library.create_library_block(attrs)
+      assert {:error, changeset} = Library.create_library_block(owner1, attrs)
       assert "can't be blank" in errors_on(changeset).title
-      assert "can't be blank" in errors_on(changeset).owner_id
+    end
+
+    test "should return unauthorized if user lacks permission", %{student: student} do
+      assert {:error, :unauthorized} = Library.create_library_block(student, %{"title" => "Hack"})
     end
   end
 
-  describe "update_library_block/2" do
-    test "should update existing library block" do
-      block = insert(:library_block, title: "Old Title")
-
+  describe "update_library_block/3 (With ACL)" do
+    test "should update existing library block if owner", %{owner1: owner1} do
+      block = insert(:library_block, title: "Old Title", owner_id: owner1.id)
       attrs = %{"title" => "Updated Title", "tags" => ["new"]}
 
-      assert {:ok, updated} = Library.update_library_block(block, attrs)
+      assert {:ok, updated} = Library.update_library_block(owner1, block, attrs)
       assert updated.title == "Updated Title"
       assert updated.tags == ["new"]
     end
 
-    test "should return error changeset when update data is invalid" do
-      block = insert(:library_block)
+    test "should return error changeset when update data is invalid", %{owner1: owner1} do
+      block = insert(:library_block, owner_id: owner1.id)
 
-      assert {:error, changeset} = Library.update_library_block(block, %{"title" => ""})
+      assert {:error, changeset} = Library.update_library_block(owner1, block, %{"title" => ""})
       assert "can't be blank" in errors_on(changeset).title
+    end
+
+    test "should return unauthorized if user tries to update another user's block", %{
+      owner1: owner1,
+      owner2: owner2
+    } do
+      block = insert(:library_block, owner_id: owner2.id)
+
+      assert {:error, :unauthorized} =
+               Library.update_library_block(owner1, block, %{"title" => "Hacked"})
     end
   end
 
-  describe "delete_library_block/1" do
-    test "should permanently delete library block from database" do
-      block = insert(:library_block)
+  describe "delete_library_block/2 (With ACL)" do
+    test "should permanently delete library block from database if owner", %{owner1: owner1} do
+      block = insert(:library_block, owner_id: owner1.id)
 
-      assert {:ok, _} = Library.delete_library_block(block)
+      assert {:ok, _} = Library.delete_library_block(owner1, block)
       assert Repo.get(LibraryBlock, block.id) == nil
+    end
+
+    test "should return unauthorized if user tries to delete another user's block", %{
+      owner1: owner1,
+      owner2: owner2
+    } do
+      block = insert(:library_block, owner_id: owner2.id)
+
+      assert {:error, :unauthorized} = Library.delete_library_block(owner1, block)
+      assert Repo.get(LibraryBlock, block.id) != nil
     end
   end
 

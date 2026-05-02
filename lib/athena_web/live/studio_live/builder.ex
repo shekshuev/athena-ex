@@ -746,7 +746,7 @@ defmodule AthenaWeb.StudioLive.Builder do
       "owner_id" => socket.assigns.current_user.id
     }
 
-    case Content.create_library_block(attrs) do
+    case Content.create_library_block(socket.assigns.current_user, attrs) do
       {:ok, _lib_block} ->
         {:noreply,
          socket
