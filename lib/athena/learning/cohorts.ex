@@ -9,7 +9,7 @@ defmodule Athena.Learning.Cohorts do
 
   import Ecto.Query
   alias Athena.Repo
-  alias Athena.Learning.{Cohort, Instructor, CohortMembership, Instructors}
+  alias Athena.Learning.{Cohort, Instructor, CohortMembership, CohortInstructor, Instructors}
   alias Athena.Identity
 
   @doc """
@@ -18,7 +18,9 @@ defmodule Athena.Learning.Cohorts do
   @spec list_cohorts(map(), map()) ::
           {:ok, {[Cohort.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_cohorts(user, params \\ %{}) do
-    base_query = from(c in Cohort) |> Identity.scope_query(user, "cohorts.read")
+    base_query =
+      from(c in Cohort)
+      |> scope_cohort_reads(user)
 
     case Flop.validate_and_run(base_query, params, for: Cohort) do
       {:ok, {cohorts, meta}} ->
@@ -36,7 +38,7 @@ defmodule Athena.Learning.Cohorts do
   def get_cohort(user, id) do
     Cohort
     |> where([c], c.id == ^id)
-    |> Identity.scope_query(user, "cohorts.read")
+    |> scope_cohort_reads(user)
     |> Repo.one()
     |> case do
       nil -> {:error, :not_found}
@@ -84,6 +86,7 @@ defmodule Athena.Learning.Cohorts do
 
   @doc """
   Deletes a cohort.
+  Only true owners or global admins can delete.
   """
   @spec delete_cohort(map(), Cohort.t()) :: {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()}
   def delete_cohort(user, %Cohort{} = cohort) do
@@ -91,6 +94,47 @@ defmodule Athena.Learning.Cohorts do
       Repo.delete(cohort)
     else
       {:error, :unauthorized}
+    end
+  end
+
+  @doc """
+  Checks if a user is a co-instructor or owner, granting them teaching access.
+  Use this in UI to determine if a user can add students, grade, or set overrides.
+  """
+  def can_teach_in_cohort?(user, cohort) do
+    if Identity.can?(user, "cohorts.update", cohort) do
+      true
+    else
+      query =
+        from ci in CohortInstructor,
+          join: i in Instructor,
+          on: ci.instructor_id == i.id,
+          where: ci.cohort_id == ^cohort.id and i.owner_id == ^user.id
+
+      Repo.exists?(query)
+    end
+  end
+
+  @doc false
+  defp scope_cohort_reads(query, user) do
+    if Identity.can?(user, "cohorts.read") do
+      policies = Map.get(user.role.policies || %{}, "cohorts.read", [])
+
+      if "own_only" in policies do
+        instructor_cohort_ids =
+          from ci in CohortInstructor,
+            join: i in Instructor,
+            on: ci.instructor_id == i.id,
+            where: i.owner_id == ^user.id,
+            select: ci.cohort_id
+
+        from c in query,
+          where: c.owner_id == ^user.id or c.id in subquery(instructor_cohort_ids)
+      else
+        query
+      end
+    else
+      from c in query, where: false
     end
   end
 
@@ -105,8 +149,6 @@ defmodule Athena.Learning.Cohorts do
 
   @doc """
   Retrieves a paginated list of students enrolled in a specific cohort.
-
-  Enriches the memberships with Account data from the Identity context.
   """
   @spec list_cohort_memberships(String.t(), map()) ::
           {:ok, {[CohortMembership.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
@@ -124,8 +166,6 @@ defmodule Athena.Learning.Cohorts do
 
   @doc """
   Gets a specific cohort membership by ID.
-
-  Enriches the membership with Account data.
   """
   @spec get_cohort_membership!(String.t()) :: CohortMembership.t()
   def get_cohort_membership!(id) do
@@ -159,7 +199,7 @@ defmodule Athena.Learning.Cohorts do
   """
   def get_cohort_options(user) do
     from(c in Cohort)
-    |> Identity.scope_query(user, "cohorts.read")
+    |> scope_cohort_reads(user)
     |> select([c], {c.name, c.id})
     |> order_by([c], asc: c.name)
     |> Repo.all()

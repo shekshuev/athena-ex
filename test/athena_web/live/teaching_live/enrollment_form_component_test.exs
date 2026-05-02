@@ -9,12 +9,7 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponentTest do
     role =
       insert(:role,
         permissions: [
-          "admin",
-          "cohorts.read",
-          "cohorts.update",
-          "enrollments.read",
-          "enrollments.create",
-          "courses.read"
+          "admin"
         ]
       )
 
@@ -103,28 +98,27 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponentTest do
           permissions: [
             "cohorts.read",
             "cohorts.update",
-            "enrollments.read",
-            "enrollments.create",
             "courses.read"
           ],
           policies: %{
             "cohorts.update" => ["own_only"],
-            "enrollments.create" => ["own_only"]
+            "courses.read" => ["own_only"]
           }
         )
 
       instructor = insert(:account, role: role)
+      inst_profile = insert(:instructor, owner_id: instructor.id)
       conn = init_test_session(conn, %{"account_id" => instructor.id})
 
-      %{conn: conn, instructor: instructor}
+      %{conn: conn, instructor: instructor, inst_profile: inst_profile}
     end
 
-    test "allows instructor to assign ANY course to a cohort THEY OWN", %{
+    test "allows instructor to assign a course THEY OWN to a cohort THEY OWN", %{
       conn: conn,
       instructor: instructor
     } do
       my_cohort = insert(:cohort, owner_id: instructor.id)
-      _other_course = insert(:course, title: "Hacking 101", owner_id: Ecto.UUID.generate())
+      _my_course = insert(:course, title: "Hacking 101", owner_id: instructor.id)
 
       {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{my_cohort.id}/enroll_course")
 
@@ -144,23 +138,28 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponentTest do
       assert html =~ "Course successfully assigned"
     end
 
-    test "shows error if instructor tries to assign a course to a cohort they DON'T own, and they DON'T own the course",
-         %{
-           conn: conn
-         } do
-      other_cohort = insert(:cohort, owner_id: Ecto.UUID.generate())
+    test "allows instructor to assign a course if they are a CO-INSTRUCTOR", %{
+      conn: conn,
+      instructor: instructor,
+      inst_profile: inst_profile
+    } do
+      super_admin = insert(:account, role: insert(:role, permissions: ["admin"]))
+      shared_cohort = insert(:cohort, owner_id: super_admin.id)
 
-      _other_course =
-        insert(:course, title: "Forbidden Knowledge", owner_id: Ecto.UUID.generate())
+      Learning.update_cohort(super_admin, shared_cohort, %{
+        "instructor_ids" => [inst_profile.id]
+      })
 
-      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{other_cohort.id}/enroll_course")
+      _my_course = insert(:course, title: "My Module", owner_id: instructor.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{shared_cohort.id}/enroll_course")
 
       lv
       |> element("input[phx-keyup='search_courses']")
-      |> render_keyup(%{"value" => "Forbidden Knowledge"})
+      |> render_keyup(%{"value" => "My Module"})
 
       lv
-      |> element("li", "Forbidden Knowledge")
+      |> element("li", "My Module")
       |> render_click()
 
       html =
@@ -168,7 +167,20 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponentTest do
         |> form("#enrollment-form")
         |> render_submit()
 
-      assert html =~ "Permission denied."
+      assert html =~ "Course successfully assigned"
+    end
+
+    test "redirects with error if instructor tries to access assign form for a cohort they CANNOT teach in",
+         %{
+           conn: conn
+         } do
+      other_cohort = insert(:cohort, owner_id: Ecto.UUID.generate())
+
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               live(conn, ~p"/teaching/cohorts/#{other_cohort.id}/enroll_course")
+
+      assert to == "/teaching/cohorts/#{other_cohort.id}"
+      assert flash["error"] == "Permission denied."
     end
   end
 end

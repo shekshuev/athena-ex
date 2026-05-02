@@ -15,7 +15,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
     user = socket.assigns.current_user
 
     with {:ok, cohort} <- Learning.get_cohort(user, cohort_id),
-         {:ok, course} <- Content.get_course(user, course_id) do
+         {:ok, course} <- Content.get_course(course_id) do
       tree = Content.get_course_tree(course.id, :all)
       overrides = Learning.list_cohort_course_overrides(cohort.id, course.id)
 

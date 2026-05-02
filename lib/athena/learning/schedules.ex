@@ -90,17 +90,7 @@ defmodule Athena.Learning.Schedules do
 
   @doc false
   defp can_manage_schedule?(user, cohort, course) do
-    if Identity.can?(user, "enrollments.update") do
-      policies = Map.get(user.role.policies || %{}, "enrollments.update", [])
-
-      if "own_only" in policies do
-        Identity.can?(user, "cohorts.update", cohort) or
-          Identity.can?(user, "courses.update", course)
-      else
-        true
-      end
-    else
-      false
-    end
+    Athena.Learning.Cohorts.can_teach_in_cohort?(user, cohort) or
+      Identity.can?(user, "courses.update", course)
   end
 end

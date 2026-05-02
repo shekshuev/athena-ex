@@ -3,25 +3,28 @@ defmodule Athena.Learning.SchedulesTest do
 
   alias Athena.Learning.Schedules
   alias Athena.Learning.CohortSchedule
+  alias Athena.Learning.Cohorts
   import Athena.Factory
 
   setup do
-    admin_role = insert(:role, permissions: ["enrollments.update"])
+    admin_role = insert(:role, permissions: ["admin"])
     admin = insert(:account, role: admin_role)
 
     inst_role =
       insert(:role,
-        permissions: ["enrollments.update", "cohorts.update", "courses.update"],
+        permissions: ["cohorts.read", "cohorts.update", "courses.read", "courses.update"],
         policies: %{
-          "enrollments.update" => ["own_only"],
+          "cohorts.read" => ["own_only"],
           "cohorts.update" => ["own_only"],
+          "courses.read" => ["own_only"],
           "courses.update" => ["own_only"]
         }
       )
 
     instructor = insert(:account, role: inst_role)
+    inst_profile = insert(:instructor, owner_id: instructor.id)
 
-    %{admin: admin, instructor: instructor}
+    %{admin: admin, instructor: instructor, inst_profile: inst_profile}
   end
 
   describe "get_student_overrides/3" do
@@ -243,11 +246,31 @@ defmodule Athena.Learning.SchedulesTest do
       assert {:ok, _} = Schedules.set_override(instructor, cohort, course, attrs)
     end
 
-    test "returns unauthorized if instructor owns NEITHER cohort nor course", %{
+    test "allows override if instructor is a CO-INSTRUCTOR in the cohort", %{
+      admin: admin,
       instructor: instructor,
+      inst_profile: inst_profile,
       other_cohort: cohort,
       other_course: course
     } do
+      Cohorts.update_cohort(admin, cohort, %{"instructor_ids" => [inst_profile.id]})
+
+      attrs = %{
+        cohort_id: cohort.id,
+        course_id: course.id,
+        resource_type: :section,
+        resource_id: Ecto.UUID.generate()
+      }
+
+      assert {:ok, _} = Schedules.set_override(instructor, cohort, course, attrs)
+    end
+
+    test "returns unauthorized if instructor owns NEITHER cohort nor course and is NOT a co-instructor",
+         %{
+           instructor: instructor,
+           other_cohort: cohort,
+           other_course: course
+         } do
       attrs = %{
         cohort_id: cohort.id,
         course_id: course.id,

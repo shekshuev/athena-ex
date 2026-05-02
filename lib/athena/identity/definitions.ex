@@ -7,7 +7,6 @@ defmodule Athena.Identity.Definitions do
   courses.create courses.read courses.update courses.delete
   library.create library.read library.update library.delete
   grading.read grading.update
-  enrollments.create enrollments.read enrollments.delete
   instructors.create instructors.read instructors.update instructors.delete
   cohorts.create cohorts.read cohorts.update cohorts.delete
   settings.read settings.update
