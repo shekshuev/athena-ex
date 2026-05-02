@@ -39,7 +39,8 @@ defmodule Athena.Learning do
   defdelegate get_cohort_membership!(id), to: Cohorts
   defdelegate add_student_to_cohort(cohort_id, account_id), to: Cohorts
   defdelegate remove_student_from_cohort(membership), to: Cohorts
-  defdelegate can_teach_in_cohort?(user, cohort), to: Cohorts
+  defdelegate can_manage_cohort_processes?(user, cohort), to: Cohorts
+  defdelegate can_view_cohort_processes?(user, cohort), to: Cohorts
 
   defdelegate list_cohort_enrollments(user, cohort_id, params \\ %{}), to: Enrollments
   defdelegate get_enrollment!(user, id), to: Enrollments

@@ -81,7 +81,7 @@ defmodule Athena.Learning.Enrollments do
   def enroll_cohort(user, cohort_id, course_id, status \\ :active) do
     with {:ok, cohort} <- Cohorts.get_cohort(user, cohort_id),
          {:ok, course} <- Content.get_course(course_id) do
-      if Cohorts.can_teach_in_cohort?(user, cohort) and
+      if Cohorts.can_manage_cohort_processes?(user, cohort) and
            Identity.can?(user, "courses.read", course) do
         insert_if_types_match(cohort, course, status)
       else
@@ -115,7 +115,7 @@ defmodule Athena.Learning.Enrollments do
   def update_enrollment(user, %Enrollment{} = enrollment, attrs) do
     cohort = Repo.get(Cohort, enrollment.cohort_id)
 
-    if Cohorts.can_teach_in_cohort?(user, cohort) do
+    if Cohorts.can_manage_cohort_processes?(user, cohort) do
       enrollment
       |> Enrollment.changeset(attrs)
       |> Repo.update()
@@ -130,7 +130,7 @@ defmodule Athena.Learning.Enrollments do
   def delete_enrollment(user, %Enrollment{} = enrollment) do
     cohort = Repo.get(Cohort, enrollment.cohort_id)
 
-    if Cohorts.can_teach_in_cohort?(user, cohort) do
+    if Cohorts.can_manage_cohort_processes?(user, cohort) do
       Repo.delete(enrollment)
     else
       {:error, :unauthorized}

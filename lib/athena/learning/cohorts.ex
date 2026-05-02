@@ -98,21 +98,46 @@ defmodule Athena.Learning.Cohorts do
   end
 
   @doc """
-  Checks if a user is a co-instructor or owner, granting them teaching access.
-  Use this in UI to determine if a user can add students, grade, or set overrides.
+  (2b) Can a user add students, assign courses, and change overrides?
+  Requires: "cohorts.update" permission (either owner or co-instructor).
   """
-  def can_teach_in_cohort?(user, cohort) do
-    if Identity.can?(user, "cohorts.update", cohort) do
-      true
+  def can_manage_cohort_processes?(user, cohort) do
+    if Identity.can?(user, "cohorts.update") do
+      if Identity.can?(user, "cohorts.update", cohort) do
+        true
+      else
+        co_instructor?(user, cohort)
+      end
     else
-      query =
-        from ci in CohortInstructor,
-          join: i in Instructor,
-          on: ci.instructor_id == i.id,
-          where: ci.cohort_id == ^cohort.id and i.owner_id == ^user.id
-
-      Repo.exists?(query)
+      false
     end
+  end
+
+  @doc """
+  (2a) Can a user simply view the cohort and schedule?
+  Requires: "cohorts.read" permission (either owner or co-instructor).
+  """
+  def can_view_cohort_processes?(user, cohort) do
+    if Identity.can?(user, "cohorts.read") do
+      if Identity.can?(user, "cohorts.read", cohort) do
+        true
+      else
+        co_instructor?(user, cohort)
+      end
+    else
+      false
+    end
+  end
+
+  @doc false
+  defp co_instructor?(user, cohort) do
+    query =
+      from ci in CohortInstructor,
+        join: i in Instructor,
+        on: ci.instructor_id == i.id,
+        where: ci.cohort_id == ^cohort.id and i.owner_id == ^user.id
+
+    Repo.exists?(query)
   end
 
   @doc false

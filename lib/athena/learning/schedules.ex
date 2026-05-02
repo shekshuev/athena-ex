@@ -4,7 +4,7 @@ defmodule Athena.Learning.Schedules do
   """
   import Ecto.Query
   alias Athena.{Repo, Identity}
-  alias Athena.Learning.{CohortSchedule, CohortMembership}
+  alias Athena.Learning.{CohortSchedule, CohortMembership, Cohorts}
 
   @doc """
   Retrieves all schedule overrides for a specific student in a specific course.
@@ -90,7 +90,7 @@ defmodule Athena.Learning.Schedules do
 
   @doc false
   defp can_manage_schedule?(user, cohort, course) do
-    Athena.Learning.Cohorts.can_teach_in_cohort?(user, cohort) or
-      Identity.can?(user, "courses.update", course)
+    Identity.can?(user, "courses.update", course) or
+      Cohorts.can_manage_cohort_processes?(user, cohort)
   end
 end

@@ -280,5 +280,30 @@ defmodule Athena.Learning.SchedulesTest do
 
       assert {:error, :unauthorized} = Schedules.set_override(instructor, cohort, course, attrs)
     end
+
+    test "returns unauthorized if co-instructor lacks 'cohorts.update' permission (e.g. read-only observer)",
+         %{
+           admin: admin,
+           other_cohort: cohort,
+           other_course: course
+         } do
+      observer_role = insert(:role, permissions: ["cohorts.read", "courses.read"])
+      observer = insert(:account, role: observer_role)
+      observer_profile = insert(:instructor, owner_id: observer.id)
+
+      Cohorts.update_cohort(admin, cohort, %{"instructor_ids" => [observer_profile.id]})
+
+      attrs = %{
+        cohort_id: cohort.id,
+        course_id: course.id,
+        resource_type: :section,
+        resource_id: Ecto.UUID.generate()
+      }
+
+      assert {:error, :unauthorized} = Schedules.set_override(observer, cohort, course, attrs)
+
+      assert {:error, :unauthorized} =
+               Schedules.clear_override(observer, cohort, course, :section, Ecto.UUID.generate())
+    end
   end
 end
