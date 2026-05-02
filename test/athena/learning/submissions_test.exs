@@ -481,4 +481,80 @@ defmodule Athena.Learning.SubmissionsTest do
       end
     end
   end
+
+  describe "ACL: own_only policy for submissions" do
+    setup do
+      role =
+        insert(:role,
+          permissions: ["grading.read", "courses.read"],
+          policies: %{
+            "grading.read" => ["own_only"],
+            "courses.read" => ["own_only"]
+          }
+        )
+
+      instructor_account = insert(:account, role: role)
+      student_account = insert(:account, role: insert(:role, permissions: []))
+
+      %{instructor: instructor_account, student: student_account}
+    end
+
+    test "sees submissions for owned courses (via course ownership)", %{
+      instructor: instructor,
+      student: student
+    } do
+      course = insert(:course, owner_id: instructor.id)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section)
+
+      sub = insert(:submission, account_id: student.id, block_id: block.id)
+
+      {:ok, {submissions, _meta}} = Submissions.list_submissions(instructor, %{})
+
+      assert length(submissions) == 1
+      assert hd(submissions).id == sub.id
+    end
+
+    test "sees submissions for assigned cohorts (even if course is owned by someone else)", %{
+      instructor: instructor,
+      student: student
+    } do
+      other_admin = insert(:account)
+
+      course = insert(:course, owner_id: other_admin.id)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section)
+
+      cohort = insert(:cohort)
+      instructor_profile = insert(:instructor, owner_id: instructor.id)
+      insert(:cohort_instructor, instructor_id: instructor_profile.id, cohort_id: cohort.id)
+
+      sub = insert(:submission, account_id: student.id, block_id: block.id, cohort_id: cohort.id)
+
+      {:ok, {submissions, _meta}} = Submissions.list_submissions(instructor, %{})
+
+      assert length(submissions) == 1
+      assert hd(submissions).id == sub.id
+    end
+
+    test "does not see submissions for unassigned cohorts and courses", %{
+      instructor: instructor,
+      student: student
+    } do
+      other_admin = insert(:account)
+
+      course = insert(:course, owner_id: other_admin.id)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section)
+
+      other_cohort = insert(:cohort)
+
+      insert(:submission, account_id: student.id, block_id: block.id, cohort_id: other_cohort.id)
+      insert(:submission, account_id: student.id, block_id: block.id, cohort_id: nil)
+
+      {:ok, {submissions, _meta}} = Submissions.list_submissions(instructor, %{})
+
+      assert submissions == []
+    end
+  end
 end

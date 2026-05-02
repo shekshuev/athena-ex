@@ -15,7 +15,8 @@ defmodule Athena.Factory do
     Submission,
     SubmissionContent,
     CohortSchedule,
-    CohortMembership
+    CohortMembership,
+    CohortInstructor
   }
 
   def role_factory do
@@ -150,6 +151,13 @@ defmodule Athena.Factory do
       resource_id: Ecto.UUID.generate(),
       unlock_at: nil,
       lock_at: nil
+    }
+  end
+
+  def cohort_instructor_factory do
+    %CohortInstructor{
+      instructor_id: Ecto.UUID.generate(),
+      cohort_id: Ecto.UUID.generate()
     }
   end
 end
