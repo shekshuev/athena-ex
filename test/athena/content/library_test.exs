@@ -294,4 +294,77 @@ defmodule Athena.Content.LibraryTest do
       assert results == []
     end
   end
+
+  describe "Sharing and Roles Logic" do
+    setup %{owner1: owner, owner2: collaborator} do
+      block = insert(:library_block, owner_id: owner.id)
+      %{block: block, owner: owner, collaborator: collaborator}
+    end
+
+    test "share_block creates a share and upserts role", %{
+      owner: owner,
+      block: block,
+      collaborator: collaborator
+    } do
+      assert {:ok, share} = Library.share_block(owner, block, collaborator.id, :reader)
+      assert share.role == :reader
+
+      assert {:ok, updated_share} = Library.share_block(owner, block, collaborator.id, :writer)
+      assert updated_share.role == :writer
+
+      shares = Library.list_block_shares(block)
+      assert length(shares) == 1
+      assert hd(shares).account_id == collaborator.id
+      assert hd(shares).role == :writer
+    end
+
+    test "update_library_block respects reader and writer roles", %{
+      owner: owner,
+      block: block,
+      collaborator: collaborator
+    } do
+      Library.share_block(owner, block, collaborator.id, :reader)
+
+      assert {:error, :unauthorized} =
+               Library.update_library_block(collaborator, block, %{"title" => "Hacked"})
+
+      Library.share_block(owner, block, collaborator.id, :writer)
+
+      assert {:ok, updated} =
+               Library.update_library_block(collaborator, block, %{"title" => "Collab Edit"})
+
+      assert updated.title == "Collab Edit"
+    end
+
+    test "revoke_block_share removes access completely", %{
+      owner: owner,
+      block: block,
+      collaborator: collaborator
+    } do
+      Library.share_block(owner, block, collaborator.id, :reader)
+      assert {:ok, :revoked} = Library.revoke_block_share(owner, block, collaborator.id)
+      assert Library.list_block_shares(block) == []
+    end
+
+    test "toggle_block_public changes visibility", %{owner: owner, block: block} do
+      assert {:ok, updated} = Library.toggle_block_public(owner, block, true)
+      assert updated.is_public == true
+    end
+
+    test "list_library_blocks scope includes shared and public blocks for non-owners", %{
+      owner: owner,
+      block: block,
+      collaborator: collaborator
+    } do
+      public_block = insert(:library_block, owner_id: owner.id, is_public: true)
+
+      Library.share_block(owner, block, collaborator.id, :reader)
+
+      {:ok, {fetched_blocks, _}} = Library.list_library_blocks(collaborator, %{})
+      ids = Enum.map(fetched_blocks, & &1.id)
+
+      assert block.id in ids
+      assert public_block.id in ids
+    end
+  end
 end

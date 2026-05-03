@@ -31,6 +31,7 @@ defmodule Athena.Content.LibraryBlock do
     field :content, :map, default: %{}
     field :tags, {:array, :string}, default: []
     field :owner_id, :binary_id
+    field :is_public, :boolean, default: false
 
     timestamps(type: :utc_datetime)
   end
@@ -41,7 +42,7 @@ defmodule Athena.Content.LibraryBlock do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(library_block, attrs) do
     library_block
-    |> cast(attrs, [:title, :type, :content, :tags, :owner_id])
+    |> cast(attrs, [:title, :type, :content, :tags, :owner_id, :is_public])
     |> validate_required([:title, :type, :content, :owner_id])
     |> validate_length(:title, min: 3, max: 255)
     |> validate_content_by_type()

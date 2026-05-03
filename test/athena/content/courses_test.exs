@@ -334,4 +334,81 @@ defmodule Athena.Content.CoursesTest do
       assert hd(results).title == "Elixir by me"
     end
   end
+
+  describe "Sharing and Roles Logic" do
+    setup %{instructor: owner, other_instructor: collaborator} do
+      course = insert(:course, owner_id: owner.id)
+      %{course: course, owner: owner, collaborator: collaborator}
+    end
+
+    test "share_course creates a share and upserts role", %{
+      owner: owner,
+      course: course,
+      collaborator: collaborator
+    } do
+      assert {:ok, share} = Courses.share_course(owner, course, collaborator.id, :reader)
+      assert share.role == :reader
+
+      assert {:ok, updated_share} = Courses.share_course(owner, course, collaborator.id, :writer)
+      assert updated_share.role == :writer
+
+      shares = Courses.list_course_shares(course)
+      assert length(shares) == 1
+      assert hd(shares).account_id == collaborator.id
+      assert hd(shares).role == :writer
+    end
+
+    test "update_course respects reader and writer roles", %{
+      owner: owner,
+      course: course,
+      collaborator: collaborator
+    } do
+      Courses.share_course(owner, course, collaborator.id, :reader)
+
+      assert {:error, :unauthorized} =
+               Courses.update_course(collaborator, course, %{"title" => "Hacked"})
+
+      Courses.share_course(owner, course, collaborator.id, :writer)
+
+      assert {:ok, updated} =
+               Courses.update_course(collaborator, course, %{"title" => "Collab Edit"})
+
+      assert updated.title == "Collab Edit"
+    end
+
+    test "revoke_course_share removes access completely", %{
+      owner: owner,
+      course: course,
+      collaborator: collaborator
+    } do
+      Courses.share_course(owner, course, collaborator.id, :reader)
+      assert {:ok, :revoked} = Courses.revoke_course_share(owner, course, collaborator.id)
+
+      assert Courses.list_course_shares(course) == []
+
+      assert {:error, :unauthorized} =
+               Courses.update_course(collaborator, course, %{"title" => "Hacked"})
+    end
+
+    test "toggle_course_public changes visibility", %{owner: owner, course: course} do
+      assert {:ok, updated} = Courses.toggle_course_public(owner, course, true)
+      assert updated.is_public == true
+    end
+
+    test "list_courses scope includes shared and public courses for non-owners", %{
+      owner: owner,
+      course: course,
+      collaborator: collaborator
+    } do
+      public_course = insert(:course, owner_id: owner.id, is_public: true)
+
+      Courses.share_course(owner, course, collaborator.id, :reader)
+
+      {:ok, {fetched_courses, _}} = Courses.list_courses(collaborator, %{})
+      ids = Enum.map(fetched_courses, & &1.id)
+
+      assert course.id in ids
+      assert public_course.id in ids
+    end
+  end
 end
