@@ -24,6 +24,41 @@ defmodule Athena.Content do
   def soft_delete_course(user, course),
     do: Courses.soft_delete_course(user, course) |> notify_subscribers()
 
+  def share_course(user, course, account_id, role) do
+    case Courses.share_course(user, course, account_id, role) do
+      {:ok, _share} = result ->
+        Phoenix.PubSub.broadcast(Athena.PubSub, "user_courses:#{account_id}", :refresh_courses)
+        result
+
+      error ->
+        error
+    end
+  end
+
+  def revoke_course_share(user, course, account_id) do
+    case Courses.revoke_course_share(user, course, account_id) do
+      {:ok, :revoked} = result ->
+        Phoenix.PubSub.broadcast(Athena.PubSub, "user_courses:#{account_id}", :refresh_courses)
+        result
+
+      error ->
+        error
+    end
+  end
+
+  def toggle_course_public(user, course, is_public) do
+    case Courses.toggle_course_public(user, course, is_public) do
+      {:ok, _course} = result ->
+        Phoenix.PubSub.broadcast(Athena.PubSub, "public_courses", :refresh_courses)
+        result
+
+      error ->
+        error
+    end
+  end
+
+  defdelegate list_course_shares(course), to: Courses
+
   defdelegate get_section(user, id), to: Sections
   defdelegate get_section(id), to: Sections
   defdelegate get_course_tree(course_id, user_or_mode \\ :all), to: Sections

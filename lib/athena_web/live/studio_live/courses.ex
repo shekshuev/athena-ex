@@ -1,37 +1,30 @@
 defmodule AthenaWeb.StudioLive.Courses do
   @moduledoc """
   LiveView for managing courses in the Studio.
-
-  Displays a paginated and searchable list of courses using Streams for optimal
-  DOM diffing. Handles course soft-deletion and integrates with `CourseFormComponent`
-  for creating and editing courses via a slide-over.
   """
   use AthenaWeb, :live_view
 
   alias Athena.Content
   alias Athena.Content.Course
   alias Athena.Identity
-  alias AthenaWeb.StudioLive.CourseFormComponent
+  alias AthenaWeb.StudioLive.{CourseFormComponent, CourseShareComponent}
 
   on_mount {AthenaWeb.Hooks.Permission, "courses.read"}
 
-  @doc """
-  Initializes the LiveView, setting up the courses stream and default assigns.
-  """
-  @spec mount(map(), map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def mount(_params, _session, socket) do
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(Athena.PubSub, "user_courses:#{socket.assigns.current_user.id}")
+      Phoenix.PubSub.subscribe(Athena.PubSub, "public_courses")
+    end
+
     {:ok,
      socket
      |> assign(course_to_delete: nil)
+     |> assign(course_to_share: nil)
      |> stream(:courses, [])}
   end
 
-  @doc """
-  Handles URL parameters for pagination, search, and live actions (:index, :new, :edit).
-  """
-  @spec handle_params(map(), String.t(), Phoenix.LiveView.Socket.t()) ::
-          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_params(params, _url, socket) do
     search = Map.get(params, "search", "")
@@ -75,23 +68,24 @@ defmodule AthenaWeb.StudioLive.Courses do
   end
 
   defp apply_action(socket, :edit, %{"id" => id}) do
-    if Identity.can?(socket.assigns.current_user, "courses.update") do
-      case Content.get_course(socket.assigns.current_user, id) do
-        {:ok, course} -> assign(socket, page_title: gettext("Edit Course"), course: course)
-        _ -> push_patch(socket, to: ~p"/studio/courses")
-      end
-    else
-      socket
-      |> put_flash(:error, gettext("You don't have permission to edit courses."))
-      |> push_patch(to: ~p"/studio/courses")
+    case Content.get_course(socket.assigns.current_user, id) do
+      {:ok, course} ->
+        info = course_badges(course, socket.assigns.current_user)
+
+        if info.role in [:owner, :writer] or
+             Identity.can?(socket.assigns.current_user, "courses.update", course) do
+          assign(socket, page_title: gettext("Edit Course"), course: course)
+        else
+          socket
+          |> put_flash(:error, gettext("You don't have permission to edit this course."))
+          |> push_patch(to: ~p"/studio/courses")
+        end
+
+      _ ->
+        push_patch(socket, to: ~p"/studio/courses")
     end
   end
 
-  @doc """
-  Handles UI events such as searching and course deletion confirmations.
-  """
-  @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
-          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_event("search", %{"search" => search}, socket) do
     params = %{
@@ -104,13 +98,15 @@ defmodule AthenaWeb.StudioLive.Courses do
   end
 
   def handle_event("delete_click", %{"id" => id}, socket) do
-    if Identity.can?(socket.assigns.current_user, "courses.delete") do
-      {:ok, course} = Content.get_course(socket.assigns.current_user, id)
+    {:ok, course} = Content.get_course(socket.assigns.current_user, id)
+
+    if course.owner_id == socket.assigns.current_user.id or
+         Identity.can?(socket.assigns.current_user, "courses.delete", course) do
       {:noreply, assign(socket, course_to_delete: course)}
     else
       {:noreply,
        socket
-       |> put_flash(:error, gettext("You don't have permission to delete courses."))
+       |> put_flash(:error, gettext("Only the owner can delete this course."))
        |> push_patch(to: ~p"/studio/courses")}
     end
   end
@@ -133,14 +129,120 @@ defmodule AthenaWeb.StudioLive.Courses do
     {:noreply, assign(socket, course_to_delete: nil)}
   end
 
-  @doc """
-  Handles messages from child components, such as a successfully saved course.
-  """
-  @spec handle_info(term(), Phoenix.LiveView.Socket.t()) ::
-          {:noreply, Phoenix.LiveView.Socket.t()}
+  def handle_event("share_click", %{"id" => id}, socket) do
+    case Content.get_course(socket.assigns.current_user, id) do
+      {:ok, course} ->
+        if course.owner_id == socket.assigns.current_user.id or
+             Identity.can?(socket.assigns.current_user, "courses.update", course) do
+          {:noreply, assign(socket, course_to_share: course)}
+        else
+          {:noreply,
+           socket |> put_flash(:error, gettext("Only the owner can share this course."))}
+        end
+
+      _ ->
+        {:noreply, socket |> put_flash(:error, gettext("Cannot access this course."))}
+    end
+  end
+
+  def handle_event("cancel_share", _, socket) do
+    {:noreply, assign(socket, course_to_share: nil)}
+  end
+
   @impl true
   def handle_info({CourseFormComponent, {:saved, course}}, socket) do
     {:noreply, stream_insert(socket, :courses, course)}
+  end
+
+  def handle_info({CourseShareComponent, {:updated, course}}, socket) do
+    socket =
+      if socket.assigns.course_to_share && socket.assigns.course_to_share.id == course.id do
+        assign(socket, course_to_share: course)
+      else
+        socket
+      end
+
+    {:noreply, stream_insert(socket, :courses, course)}
+  end
+
+  @impl true
+  def handle_info(:refresh_courses, socket) do
+    params = %{
+      "search" => socket.assigns.search,
+      "page" => socket.assigns.meta.current_page,
+      "page_size" => socket.assigns.meta.page_size
+    }
+
+    flop_params =
+      if params["search"] != "" do
+        Map.put(params, "filters", %{
+          "0" => %{"field" => "title", "op" => "ilike_and", "value" => params["search"]}
+        })
+      else
+        params
+      end
+
+    case Content.list_courses(socket.assigns.current_user, flop_params) do
+      {:ok, {courses, meta}} ->
+        {:noreply,
+         socket
+         |> assign(meta: meta)
+         |> stream(:courses, courses, reset: true)}
+
+      {:error, _meta} ->
+        {:noreply, socket}
+    end
+  end
+
+  defp course_badges(course, user) do
+    shares = Content.list_course_shares(course)
+
+    role =
+      cond do
+        course.owner_id == user.id -> :owner
+        share = Enum.find(shares, &(&1.account_id == user.id)) -> share.role
+        true -> :none
+      end
+
+    %{
+      role: role,
+      is_public: course.is_public,
+      shares_count: length(shares)
+    }
+  end
+
+  defp access_badges(assigns) do
+    ~H"""
+    <div class="flex gap-1 items-center">
+      <span
+        :if={@info.role != :none}
+        class={[
+          "badge badge-xs font-bold uppercase shrink-0",
+          @info.role == :owner && "badge-primary badge-soft",
+          @info.role == :writer && "badge-secondary badge-soft",
+          @info.role == :reader && "badge-accent badge-soft"
+        ]}
+      >
+        {Atom.to_string(@info.role)}
+      </span>
+
+      <span
+        :if={@info.is_public}
+        class="badge badge-xs badge-neutral font-bold uppercase shrink-0"
+      >
+        <.icon name="hero-globe-alt" class="size-3 mr-1" />
+        {gettext("Public")}
+      </span>
+
+      <span
+        :if={!@info.is_public and @info.shares_count > 0 and @info.role == :owner}
+        class="badge badge-xs badge-info badge-soft font-bold shrink-0"
+      >
+        <.icon name="hero-users" class="size-3 mr-1" />
+        {@info.shares_count}
+      </span>
+    </div>
+    """
   end
 
   @impl true
@@ -185,7 +287,10 @@ defmodule AthenaWeb.StudioLive.Courses do
 
       <.table id="courses" rows={@streams.courses}>
         <:col :let={{_id, course}} label={gettext("Title")}>
-          <span class="font-bold">{course.title}</span>
+          <div class="flex flex-col gap-1 items-start">
+            <span class="font-bold">{course.title}</span>
+            <.access_badges info={course_badges(course, @current_user)} />
+          </div>
         </:col>
         <:col :let={{_id, course}} label={gettext("Status")}>
           <.status_badge status={course.status} />
@@ -194,9 +299,13 @@ defmodule AthenaWeb.StudioLive.Courses do
           <span class="text-sm opacity-60">{Calendar.strftime(course.inserted_at, "%d.%m.%Y")}</span>
         </:col>
         <:action :let={{_id, course}}>
+          <% info = course_badges(course, @current_user) %>
           <div class="flex justify-end gap-2">
             <.button
-              :if={Identity.can?(@current_user, "courses.update")}
+              :if={
+                info.role in [:owner, :writer] or
+                  Identity.can?(@current_user, "courses.update", course)
+              }
               navigate={~p"/studio/courses/#{course.id}/builder"}
               class="btn btn-primary btn-xs btn-square btn-soft"
               title={gettext("Open Builder")}
@@ -205,7 +314,10 @@ defmodule AthenaWeb.StudioLive.Courses do
             </.button>
 
             <.button
-              :if={Identity.can?(@current_user, "courses.update")}
+              :if={
+                info.role in [:owner, :writer] or
+                  Identity.can?(@current_user, "courses.update", course)
+              }
               patch={~p"/studio/courses/#{course.id}/edit"}
               class="btn btn-ghost btn-xs btn-square"
               title={gettext("Edit Settings")}
@@ -214,7 +326,18 @@ defmodule AthenaWeb.StudioLive.Courses do
             </.button>
 
             <.button
-              :if={Identity.can?(@current_user, "courses.delete")}
+              :if={info.role == :owner or Identity.can?(@current_user, "courses.update", course)}
+              type="button"
+              phx-click="share_click"
+              phx-value-id={course.id}
+              class="btn btn-ghost btn-xs btn-square"
+              title={gettext("Share Access")}
+            >
+              <.icon name="hero-share" class="size-4" />
+            </.button>
+
+            <.button
+              :if={info.role == :owner or Identity.can?(@current_user, "courses.delete", course)}
               type="button"
               phx-click="delete_click"
               phx-value-id={course.id}
@@ -255,16 +378,31 @@ defmodule AthenaWeb.StudioLive.Courses do
         id="delete-course-modal"
         show={@course_to_delete != nil}
         title={gettext("Delete Course")}
-        description={
-          gettext(
-            "Are you sure you want to move this course to the archive? Users will no longer be able to access it."
-          )
-        }
+        description={gettext("Are you sure you want to move this course to the archive?")}
         confirm_label={gettext("Delete")}
         danger={true}
         on_cancel={JS.push("cancel_delete")}
         on_confirm={JS.push("confirm_delete")}
       />
+
+      <.modal
+        id="share-course-modal"
+        show={@course_to_share != nil}
+        title={
+          gettext("Share Course: %{title}",
+            title: if(@course_to_share, do: @course_to_share.title, else: "")
+          )
+        }
+        on_cancel={JS.push("cancel_share")}
+      >
+        <.live_component
+          :if={@course_to_share}
+          module={CourseShareComponent}
+          id={"share-#{@course_to_share.id}"}
+          course={@course_to_share}
+          current_user={@current_user}
+        />
+      </.modal>
     </div>
     """
   end
