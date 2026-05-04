@@ -19,6 +19,7 @@ defmodule Athena.Application do
       # Start to serve requests, typically the last entry
       {Oban, Application.fetch_env!(:athena, Oban)},
       Athena.Media.EventListener,
+      Athena.Content.Listener,
       {Cachex, name: :account_cache},
       AthenaWeb.Endpoint
     ]

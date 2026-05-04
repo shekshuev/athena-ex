@@ -14,11 +14,16 @@
 ARG ELIXIR_VERSION=1.19.5
 ARG OTP_VERSION=28.3.1
 ARG DEBIAN_VERSION=trixie-20260406-slim
+ARG COMMIT_SHA="dev"
+
 
 ARG BUILDER_IMAGE="docker.io/hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 ARG RUNNER_IMAGE="docker.io/debian:${DEBIAN_VERSION}"
 
 FROM ${BUILDER_IMAGE} AS builder
+
+ARG COMMIT_SHA 
+ENV COMMIT_SHA=$COMMIT_SHA
 
 # install build dependencies
 RUN apt-get update \
@@ -48,6 +53,8 @@ RUN npm install --prefix assets --progress=false --silent
 # to be re-compiled.
 COPY config/config.exs config/${MIX_ENV}.exs config/
 RUN mix deps.compile
+
+COPY assets/postcss.config.js ./assets/
 
 RUN mix assets.setup
 

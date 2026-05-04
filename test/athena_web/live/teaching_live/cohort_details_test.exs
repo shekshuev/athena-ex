@@ -11,9 +11,6 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
         permissions: [
           "cohorts.read",
           "cohorts.update",
-          "enrollments.read",
-          "enrollments.create",
-          "enrollments.delete",
           "courses.read"
         ]
       )
@@ -124,7 +121,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
 
       refute html =~ "hero-user-plus"
       refute html =~ "hero-book-open size-4"
-      refute html =~ "hero-x-mark size-4"
+      refute html =~ "phx-click=\"delete_click\""
     end
 
     test "should show error flash if user tries to trigger delete membership", %{conn: conn} do
@@ -147,22 +144,20 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
           permissions: [
             "cohorts.read",
             "cohorts.update",
-            "enrollments.read",
-            "enrollments.create",
-            "enrollments.delete",
             "courses.read"
           ],
           policies: %{
+            "cohorts.read" => ["own_only"],
             "cohorts.update" => ["own_only"],
-            "enrollments.create" => ["own_only"],
-            "enrollments.delete" => ["own_only"]
+            "courses.read" => ["own_only"]
           }
         )
 
       instructor = insert(:account, role: role)
+      inst_profile = insert(:instructor, owner_id: instructor.id)
       conn = init_test_session(conn, %{"account_id" => instructor.id})
 
-      %{conn: conn, instructor: instructor}
+      %{conn: conn, instructor: instructor, inst_profile: inst_profile}
     end
 
     test "shows action buttons ONLY for owned cohorts and enrollments", %{
@@ -170,55 +165,54 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
       instructor: instructor
     } do
       my_cohort = insert(:cohort, owner_id: instructor.id)
-      other_cohort = insert(:cohort, owner_id: Ecto.UUID.generate())
 
       student = insert(:account)
       {:ok, my_membership} = Learning.add_student_to_cohort(my_cohort.id, student.id)
-      {:ok, other_membership} = Learning.add_student_to_cohort(other_cohort.id, student.id)
 
       my_course = insert(:course, owner_id: instructor.id)
-      other_course = insert(:course, owner_id: Ecto.UUID.generate())
-
       {:ok, my_enrollment} = Learning.enroll_cohort(instructor, my_cohort.id, my_course.id)
-
-      super_admin = insert(:account, role: insert(:role, permissions: ["admin"]))
-
-      {:ok, other_enrollment} =
-        Learning.enroll_cohort(super_admin, other_cohort.id, other_course.id)
 
       {:ok, _lv, my_html} = live(conn, ~p"/teaching/cohorts/#{my_cohort.id}")
 
       assert my_html =~ ~p"/teaching/cohorts/#{my_cohort.id}/add_student"
       assert my_html =~ ~s(phx-value-id="#{my_membership.id}")
       assert my_html =~ ~s(phx-value-id="#{my_enrollment.id}")
+    end
 
-      {:ok, _lv, other_html} = live(conn, ~p"/teaching/cohorts/#{other_cohort.id}")
+    test "shows action buttons for cohort if user is co-instructor", %{
+      conn: conn,
+      inst_profile: inst_profile
+    } do
+      super_admin = insert(:account, role: insert(:role, permissions: ["admin"]))
+      shared_cohort = insert(:cohort, owner_id: super_admin.id)
 
-      refute other_html =~ ~p"/teaching/cohorts/#{other_cohort.id}/add_student"
-      refute other_html =~ ~s(phx-value-id="#{other_membership.id}")
-      refute other_html =~ ~s(phx-value-id="#{other_enrollment.id}")
+      Learning.update_cohort(super_admin, shared_cohort, %{
+        "instructor_ids" => [inst_profile.id]
+      })
+
+      {:ok, _lv, html} = live(conn, ~p"/teaching/cohorts/#{shared_cohort.id}")
+
+      assert html =~ ~p"/teaching/cohorts/#{shared_cohort.id}/add_student"
+    end
+
+    test "redirects on mount if trying to access someone else's cohort without rights", %{
+      conn: conn
+    } do
+      other_cohort = insert(:cohort, owner_id: Ecto.UUID.generate())
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               live(conn, ~p"/teaching/cohorts/#{other_cohort.id}")
+
+      assert to == "/teaching/cohorts"
     end
 
     test "redirects with error if forcing add_student on someone else's cohort", %{conn: conn} do
       other_cohort = insert(:cohort, owner_id: Ecto.UUID.generate())
 
-      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+      assert {:error, {:live_redirect, %{to: to}}} =
                live(conn, ~p"/teaching/cohorts/#{other_cohort.id}/add_student")
 
-      assert to == "/teaching/cohorts/#{other_cohort.id}"
-      assert flash["error"]
-    end
-
-    test "shows error flash if forcing delete membership on someone else's cohort", %{conn: conn} do
-      other_cohort = insert(:cohort, owner_id: Ecto.UUID.generate())
-      student = insert(:account)
-      {:ok, membership} = Learning.add_student_to_cohort(other_cohort.id, student.id)
-
-      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{other_cohort.id}")
-
-      html = render_click(lv, "delete_click", %{"id" => membership.id})
-
-      assert html =~ "Permission denied"
+      assert to == "/teaching/cohorts"
     end
   end
 end

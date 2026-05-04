@@ -6,7 +6,7 @@ defmodule Athena.Factory do
 
   alias Athena.Identity.{Account, Role, Profile}
   alias Athena.Media.{File, Quota}
-  alias Athena.Content.{Course, Section, Block, LibraryBlock}
+  alias Athena.Content.{Course, Section, Block, LibraryBlock, CourseShare, LibraryBlockShare}
 
   alias Athena.Learning.{
     Cohort,
@@ -15,7 +15,8 @@ defmodule Athena.Factory do
     Submission,
     SubmissionContent,
     CohortSchedule,
-    CohortMembership
+    CohortMembership,
+    CohortInstructor
   }
 
   def role_factory do
@@ -150,6 +151,29 @@ defmodule Athena.Factory do
       resource_id: Ecto.UUID.generate(),
       unlock_at: nil,
       lock_at: nil
+    }
+  end
+
+  def cohort_instructor_factory do
+    %CohortInstructor{
+      instructor_id: Ecto.UUID.generate(),
+      cohort_id: Ecto.UUID.generate()
+    }
+  end
+
+  def course_share_factory do
+    %CourseShare{
+      course: build(:course),
+      account_id: Ecto.UUID.generate(),
+      role: :reader
+    }
+  end
+
+  def library_block_share_factory do
+    %LibraryBlockShare{
+      library_block: build(:library_block),
+      account_id: Ecto.UUID.generate(),
+      role: :reader
     }
   end
 end

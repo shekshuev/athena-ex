@@ -4,7 +4,7 @@ defmodule Athena.Learning.Schedules do
   """
   import Ecto.Query
   alias Athena.{Repo, Identity}
-  alias Athena.Learning.{CohortSchedule, CohortMembership}
+  alias Athena.Learning.{CohortSchedule, CohortMembership, Cohorts}
 
   @doc """
   Retrieves all schedule overrides for a specific student in a specific course.
@@ -90,17 +90,7 @@ defmodule Athena.Learning.Schedules do
 
   @doc false
   defp can_manage_schedule?(user, cohort, course) do
-    if Identity.can?(user, "enrollments.update") do
-      policies = Map.get(user.role.policies || %{}, "enrollments.update", [])
-
-      if "own_only" in policies do
-        Identity.can?(user, "cohorts.update", cohort) or
-          Identity.can?(user, "courses.update", course)
-      else
-        true
-      end
-    else
-      false
-    end
+    Identity.can?(user, "courses.update", course) or
+      Cohorts.can_manage_cohort_processes?(user, cohort)
   end
 end

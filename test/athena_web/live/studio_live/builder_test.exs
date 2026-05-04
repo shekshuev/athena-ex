@@ -670,12 +670,11 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
     test "kicks out a user who does not own the course", %{conn: conn} do
       sneaky_role =
         insert(:role,
-          permissions: ["courses.update"],
-          policies: %{"courses.update" => ["own_only"]}
+          permissions: ["courses.read", "courses.update"],
+          policies: %{"courses.read" => ["own_only"], "courses.update" => ["own_only"]}
         )
 
       sneaky_user = insert(:account, role: sneaky_role)
-
       target_course = insert(:course)
 
       sneaky_conn = init_test_session(conn, %{"account_id" => sneaky_user.id})
@@ -684,12 +683,77 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
                live(sneaky_conn, ~p"/studio/courses/#{target_course.id}/builder")
     end
 
-    test "kicks out a student completely", %{conn: conn, course: course} do
+    test "kicks out a student completely via Permission Hook", %{conn: conn, course: course} do
       student = insert(:account, role: insert(:role, permissions: []))
       student_conn = init_test_session(conn, %{"account_id" => student.id})
 
       assert {:error, {:redirect, %{to: "/dashboard"}}} =
                live(student_conn, ~p"/studio/courses/#{course.id}/builder")
+    end
+  end
+
+  describe "Collaborator Roles (Reader vs Writer)" do
+    setup %{admin: owner, course: course} do
+      role = insert(:role, permissions: ["courses.read", "courses.update"])
+      collaborator = insert(:account, role: role)
+
+      {:ok, section} =
+        Content.create_section(owner, %{"title" => "Collab Lesson", "course_id" => course.id})
+
+      %{section: section, collaborator: collaborator}
+    end
+
+    test "reader sees read-only mode, no inspector, and no add buttons", %{
+      conn: conn,
+      course: course,
+      collaborator: reader
+    } do
+      insert(:course_share, course: course, account_id: reader.id, role: :reader)
+      reader_conn = init_test_session(conn, %{"account_id" => reader.id})
+
+      {:ok, _lv, html} = live(reader_conn, ~p"/studio/courses/#{course.id}/builder")
+
+      assert html =~ course.title
+
+      refute html =~ "Inspector"
+      refute html =~ "Add Here"
+      refute html =~ "New Lesson"
+    end
+
+    test "writer sees edit mode and inspector", %{
+      conn: conn,
+      course: course,
+      collaborator: writer
+    } do
+      insert(:course_share, course: course, account_id: writer.id, role: :writer)
+      writer_conn = init_test_session(conn, %{"account_id" => writer.id})
+
+      {:ok, _lv, html} = live(writer_conn, ~p"/studio/courses/#{course.id}/builder")
+
+      assert html =~ course.title
+      assert html =~ "Inspector"
+      assert html =~ "Add Here"
+    end
+
+    test "reader is blocked from mutating events at the handler level", %{
+      conn: conn,
+      course: course,
+      section: section,
+      collaborator: reader
+    } do
+      insert(:course_share, course: course, account_id: reader.id, role: :reader)
+      reader_conn = init_test_session(conn, %{"account_id" => reader.id})
+
+      {:ok, lv, _html} = live(reader_conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      render_hook(lv, "add_text_block", %{"after_id" => nil})
+
+      blocks = Content.list_blocks_by_section(section.id)
+      assert blocks == []
     end
   end
 end

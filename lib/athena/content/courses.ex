@@ -5,8 +5,8 @@ defmodule Athena.Content.Courses do
 
   import Ecto.Query
   alias Athena.Repo
-  alias Athena.Content.Course
-  alias Athena.Identity.Acl
+  alias Athena.Content.{Course, CourseShare}
+  alias Athena.Identity
 
   @doc """
   Retrieves a paginated list of active (non-deleted) courses, scoped by user permissions.
@@ -16,7 +16,7 @@ defmodule Athena.Content.Courses do
   def list_courses(user, params \\ %{}) do
     Course
     |> where([c], is_nil(c.deleted_at))
-    |> Acl.scope_query(user, "courses.read")
+    |> scope_course_reads(user)
     |> Flop.validate_and_run(params, for: Course)
   end
 
@@ -28,7 +28,7 @@ defmodule Athena.Content.Courses do
   def list_accessible_course_ids(user) do
     Course
     |> where([c], is_nil(c.deleted_at))
-    |> Acl.scope_query(user, "courses.read")
+    |> scope_course_reads(user)
     |> select([c], c.id)
     |> Repo.all()
   end
@@ -40,7 +40,7 @@ defmodule Athena.Content.Courses do
   def get_course(user, id) do
     Course
     |> where([c], c.id == ^id and is_nil(c.deleted_at))
-    |> Acl.scope_query(user, "courses.read")
+    |> scope_course_reads(user)
     |> Repo.one()
     |> case do
       nil -> {:error, :not_found}
@@ -66,7 +66,7 @@ defmodule Athena.Content.Courses do
   @spec create_course(map(), map()) ::
           {:ok, Course.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
   def create_course(user, attrs) do
-    if Acl.can?(user, "courses.create") do
+    if Identity.can?(user, "courses.create") do
       attrs =
         attrs
         |> Map.put("owner_id", user.id)
@@ -85,7 +85,7 @@ defmodule Athena.Content.Courses do
   @spec update_course(map(), Course.t(), map()) ::
           {:ok, Course.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
   def update_course(user, %Course{} = course, attrs) do
-    if Acl.can?(user, "courses.update", course) do
+    if can_edit_course?(user, course) do
       course
       |> Course.changeset(attrs)
       |> Repo.update()
@@ -100,7 +100,7 @@ defmodule Athena.Content.Courses do
   @spec soft_delete_course(map(), Course.t()) ::
           {:ok, Course.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
   def soft_delete_course(user, %Course{} = course) do
-    if Acl.can?(user, "courses.delete", course) do
+    if Identity.can?(user, "courses.delete", course) do
       course
       |> Ecto.Changeset.change(%{deleted_at: DateTime.utc_now(:second)})
       |> Repo.update()
@@ -129,8 +129,109 @@ defmodule Athena.Content.Courses do
 
     Course
     |> where([c], ilike(c.title, ^search_term) and is_nil(c.deleted_at))
-    |> Acl.scope_query(user, "courses.read")
+    |> scope_course_reads(user)
     |> limit(^limit)
     |> Repo.all()
+  end
+
+  @doc """
+  Shares a course with a specific user account (by UUID) and assigns a role.
+  Updates the role if the share already exists via UPSERT.
+  """
+  def share_course(user, %Course{} = course, account_id, role \\ :reader) do
+    if can_edit_course?(user, course) do
+      %CourseShare{}
+      |> CourseShare.changeset(%{course_id: course.id, account_id: account_id, role: role})
+      |> Repo.insert(
+        on_conflict: [set: [role: role, updated_at: DateTime.utc_now(:second)]],
+        conflict_target: [:course_id, :account_id]
+      )
+      |> case do
+        {:ok, share} -> {:ok, share}
+        {:error, changeset} -> {:error, changeset}
+      end
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  @doc """
+  Revokes a specific user's access to a course.
+  """
+  def revoke_course_share(user, %Course{} = course, account_id) do
+    if can_edit_course?(user, course) do
+      from(cs in CourseShare, where: cs.course_id == ^course.id and cs.account_id == ^account_id)
+      |> Repo.delete_all()
+
+      {:ok, :revoked}
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  @doc """
+  Toggles the public visibility of a course.
+  """
+  def toggle_course_public(user, %Course{} = course, is_public) when is_boolean(is_public) do
+    if can_edit_course?(user, course) do
+      course
+      |> Ecto.Changeset.change(%{is_public: is_public})
+      |> Repo.update()
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  @doc """
+  Returns a list of maps %{account_id: id, role: role} that this course is shared with.
+  """
+  def list_course_shares(%Course{} = course) do
+    Repo.all(
+      from cs in CourseShare,
+        where: cs.course_id == ^course.id,
+        select: %{account_id: cs.account_id, role: cs.role}
+    )
+  end
+
+  @doc """
+  Checks whether the user can edit the course (owner or has the writer role).
+  """
+  def can_edit_course?(user, course) do
+    if Identity.can?(user, "courses.update", course) do
+      true
+    else
+      if Identity.can?(user, "courses.update") do
+        Repo.exists?(
+          from cs in CourseShare,
+            where: cs.course_id == ^course.id and cs.account_id == ^user.id and cs.role == :writer
+        )
+      else
+        false
+      end
+    end
+  end
+
+  @doc false
+  defp scope_course_reads(query, user) do
+    if Identity.can?(user, "courses.read") do
+      policies = Map.get(user.role.policies || %{}, "courses.read", [])
+
+      if "own_only" in policies do
+        shared_course_ids =
+          from cs in CourseShare,
+            where: cs.account_id == ^user.id,
+            select: cs.course_id
+
+        from c in query,
+          where:
+            c.owner_id == ^user.id or
+              c.is_public == true or
+              c.id in subquery(shared_course_ids)
+      else
+        query
+      end
+    else
+      from c in query, where: false
+    end
   end
 end

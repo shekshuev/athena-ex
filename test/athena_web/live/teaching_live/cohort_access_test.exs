@@ -4,6 +4,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccessTest do
 
   import Athena.Factory
   alias Athena.Learning
+  alias Athena.Learning.Cohorts
 
   setup %{conn: conn} do
     role =
@@ -12,7 +13,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccessTest do
           "cohorts.read",
           "cohorts.update",
           "courses.read",
-          "enrollments.update"
+          "courses.update"
         ]
       )
 
@@ -160,25 +161,26 @@ defmodule AthenaWeb.TeachingLive.CohortAccessTest do
         insert(:role,
           permissions: [
             "cohorts.read",
-            "courses.read",
-            "enrollments.update",
             "cohorts.update",
+            "courses.read",
             "courses.update"
           ],
           policies: %{
-            "enrollments.update" => ["own_only"],
+            "cohorts.read" => ["own_only"],
             "cohorts.update" => ["own_only"],
+            "courses.read" => ["own_only"],
             "courses.update" => ["own_only"]
           }
         )
 
       instructor = insert(:account, role: role)
+      inst_profile = insert(:instructor, owner_id: instructor.id)
       conn = init_test_session(conn, %{"account_id" => instructor.id})
 
-      %{conn: conn, instructor: instructor}
+      %{conn: conn, instructor: instructor, inst_profile: inst_profile}
     end
 
-    test "allows override if instructor owns the cohort (but not the course)", %{
+    test "allows override if instructor owns the cohort", %{
       conn: conn,
       instructor: instructor
     } do
@@ -202,21 +204,46 @@ defmodule AthenaWeb.TeachingLive.CohortAccessTest do
       assert html =~ "Access override saved successfully."
     end
 
-    test "denies override if instructor owns NEITHER cohort nor course", %{conn: conn} do
-      cohort = insert(:cohort, owner_id: Ecto.UUID.generate())
+    test "allows override if instructor is a CO-INSTRUCTOR", %{
+      conn: conn,
+      inst_profile: inst_profile
+    } do
+      super_admin = insert(:account, role: insert(:role, permissions: ["admin"]))
+
+      cohort = insert(:cohort, owner_id: super_admin.id)
+      Cohorts.update_cohort(super_admin, cohort, %{"instructor_ids" => [inst_profile.id]})
+
       course = insert(:course, owner_id: Ecto.UUID.generate())
       section = insert(:section, course: course)
 
       {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/access/#{course.id}")
 
       html =
-        render_hook(lv, "save_override", %{
+        lv
+        |> form("form", %{
           "resource_type" => "section",
           "resource_id" => section.id,
-          "visibility" => "hidden"
+          "visibility" => "hidden",
+          "unlock_at" => "",
+          "lock_at" => ""
         })
+        |> render_submit()
 
-      assert html =~ "Permission denied."
+      assert html =~ "Access override saved successfully."
+    end
+
+    test "redirects with error on mount if instructor tries to access a cohort they don't own and are not part of",
+         %{
+           conn: conn
+         } do
+      cohort = insert(:cohort, owner_id: Ecto.UUID.generate())
+      course = insert(:course, owner_id: Ecto.UUID.generate())
+
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               live(conn, ~p"/teaching/cohorts/#{cohort.id}/access/#{course.id}")
+
+      assert to == "/teaching/cohorts/#{cohort.id}"
+      assert flash["error"] == "Access denied or course not found."
     end
   end
 end

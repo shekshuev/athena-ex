@@ -9,7 +9,6 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   use AthenaWeb, :live_view
 
   alias Athena.Learning
-  alias Athena.Identity
   alias AthenaWeb.TeachingLive.MembershipFormComponent
   alias AthenaWeb.TeachingLive.EnrollmentFormComponent
 
@@ -70,7 +69,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   end
 
   defp apply_action(socket, :add_student, _params) do
-    if Identity.can?(socket.assigns.current_user, "cohorts.update", socket.assigns.cohort) do
+    if Learning.can_manage_cohort_processes?(socket.assigns.current_user, socket.assigns.cohort) do
       assign(socket, page_title: gettext("Add Student to Cohort"))
     else
       socket
@@ -80,7 +79,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   end
 
   defp apply_action(socket, :enroll_course, _params) do
-    if Identity.can?(socket.assigns.current_user, "enrollments.create") do
+    if Learning.can_manage_cohort_processes?(socket.assigns.current_user, socket.assigns.cohort) do
       assign(socket, page_title: gettext("Assign Course to Cohort"))
     else
       socket
@@ -96,7 +95,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_event("delete_click", %{"id" => id}, socket) do
-    if Identity.can?(socket.assigns.current_user, "cohorts.update", socket.assigns.cohort) do
+    if Learning.can_manage_cohort_processes?(socket.assigns.current_user, socket.assigns.cohort) do
       membership = Learning.get_cohort_membership!(id)
       {:noreply, assign(socket, membership_to_delete: membership)}
     else
@@ -125,12 +124,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   def handle_event("delete_enrollment_click", %{"id" => id}, socket) do
     enrollment = Learning.get_enrollment!(socket.assigns.current_user, id)
 
-    if Learning.can_manage_enrollment?(
-         socket.assigns.current_user,
-         "enrollments.delete",
-         enrollment,
-         socket.assigns.cohort
-       ) do
+    if Learning.can_manage_cohort_processes?(socket.assigns.current_user, socket.assigns.cohort) do
       {:noreply, assign(socket, enrollment_to_delete: enrollment)}
     else
       {:noreply, put_flash(socket, :error, gettext("Permission denied."))}
@@ -217,7 +211,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         <div class="flex justify-between items-center">
           <h2 class="text-xl font-display font-bold">{gettext("Assigned Courses")}</h2>
           <.button
-            :if={Identity.can?(@current_user, "enrollments.create")}
+            :if={Learning.Cohorts.can_manage_cohort_processes?(@current_user, @cohort)}
             patch={~p"/teaching/cohorts/#{@cohort.id}/enroll_course"}
             class="btn btn-primary btn-sm"
           >
@@ -250,6 +244,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           <:action :let={{_id, enrollment}}>
             <div class="flex items-center gap-2 justify-end">
               <.link
+                :if={Learning.Cohorts.can_view_cohort_processes?(@current_user, @cohort)}
                 navigate={~p"/teaching/cohorts/#{@cohort.id}/access/#{enrollment.course.id}"}
                 class="btn btn-ghost btn-xs text-primary hover:bg-primary/10"
                 title={gettext("Access Settings")}
@@ -259,14 +254,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
               </.link>
 
               <button
-                :if={
-                  Learning.can_manage_enrollment?(
-                    @current_user,
-                    "enrollments.delete",
-                    enrollment,
-                    @cohort
-                  )
-                }
+                :if={Learning.Cohorts.can_manage_cohort_processes?(@current_user, @cohort)}
                 type="button"
                 phx-click="delete_enrollment_click"
                 phx-value-id={enrollment.id}
@@ -284,7 +272,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         <div class="flex justify-between items-center">
           <h2 class="text-xl font-display font-bold">{gettext("Students")}</h2>
           <.button
-            :if={Identity.can?(@current_user, "cohorts.update", @cohort)}
+            :if={Learning.Cohorts.can_manage_cohort_processes?(@current_user, @cohort)}
             patch={~p"/teaching/cohorts/#{@cohort.id}/add_student"}
             class="btn btn-primary btn-sm"
           >
@@ -305,7 +293,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           <:action :let={{_id, membership}}>
             <div class="flex justify-end">
               <.button
-                :if={Identity.can?(@current_user, "cohorts.update", @cohort)}
+                :if={Learning.Cohorts.can_manage_cohort_processes?(@current_user, @cohort)}
                 type="button"
                 phx-click="delete_click"
                 phx-value-id={membership.id}

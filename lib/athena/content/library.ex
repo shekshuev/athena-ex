@@ -5,14 +5,14 @@ defmodule Athena.Content.Library do
 
   import Ecto.Query
   alias Athena.{Repo, Identity}
-  alias Athena.Content.LibraryBlock
+  alias Athena.Content.{LibraryBlock, LibraryBlockShare}
 
   @doc "Lists library blocks with Flop pagination and filtering, scoped by ACL."
   @spec list_library_blocks(map(), map()) ::
           {:ok, {[LibraryBlock.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_library_blocks(user, params \\ %{}) do
     from(lb in LibraryBlock)
-    |> Identity.scope_query(user, "library.read")
+    |> scope_library_reads(user)
     |> Flop.validate_and_run(params, for: LibraryBlock)
   end
 
@@ -30,7 +30,7 @@ defmodule Athena.Content.Library do
   def get_library_block(user, id) do
     LibraryBlock
     |> where([lb], lb.id == ^id)
-    |> Identity.scope_query(user, "library.read")
+    |> scope_library_reads(user)
     |> Repo.one()
     |> case do
       nil -> {:error, :not_found}
@@ -55,7 +55,7 @@ defmodule Athena.Content.Library do
   @spec update_library_block(map(), LibraryBlock.t(), map()) ::
           {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
   def update_library_block(user, %LibraryBlock{} = block, attrs) do
-    if Identity.can?(user, "library.update", block) do
+    if can_edit_block?(user, block) do
       block
       |> LibraryBlock.changeset(attrs)
       |> Repo.update()
@@ -67,8 +67,10 @@ defmodule Athena.Content.Library do
   @doc "Deletes a library block template. Checks own_only policies."
   @spec delete_library_block(map(), LibraryBlock.t()) ::
           {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+  @spec delete_library_block(map(), LibraryBlock.t()) ::
+          {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
   def delete_library_block(user, %LibraryBlock{} = block) do
-    if Identity.can?(user, "library.update", block) do
+    if can_edit_block?(user, block) do
       Repo.delete(block)
     else
       {:error, :unauthorized}
@@ -142,5 +144,113 @@ defmodule Athena.Content.Library do
     |> order_by(fragment("RANDOM()"))
     |> limit(^limit)
     |> Repo.all()
+  end
+
+  @doc """
+  Shares a library block with a specific user account (by UUID) and assigns a role.
+  Updates the role if the share already exists via UPSERT.
+  """
+  def share_block(user, %LibraryBlock{} = block, account_id, role \\ :reader) do
+    if can_edit_block?(user, block) do
+      %LibraryBlockShare{}
+      |> LibraryBlockShare.changeset(%{
+        library_block_id: block.id,
+        account_id: account_id,
+        role: role
+      })
+      |> Repo.insert(
+        on_conflict: [set: [role: role, updated_at: DateTime.utc_now(:second)]],
+        conflict_target: [:library_block_id, :account_id]
+      )
+      |> case do
+        {:ok, share} -> {:ok, share}
+        {:error, changeset} -> {:error, changeset}
+      end
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  @doc """
+  Revokes a specific user's access to a library block.
+  """
+  def revoke_block_share(user, %LibraryBlock{} = block, account_id) do
+    if can_edit_block?(user, block) do
+      from(s in LibraryBlockShare,
+        where: s.library_block_id == ^block.id and s.account_id == ^account_id
+      )
+      |> Repo.delete_all()
+
+      {:ok, :revoked}
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  @doc """
+  Toggles the public visibility of a library block.
+  """
+  def toggle_block_public(user, %LibraryBlock{} = block, is_public) when is_boolean(is_public) do
+    if can_edit_block?(user, block) do
+      block
+      |> Ecto.Changeset.change(%{is_public: is_public})
+      |> Repo.update()
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  @doc """
+  Returns a list of maps %{account_id: id, role: role} that this block is shared with.
+  """
+  def list_block_shares(%LibraryBlock{} = block) do
+    Repo.all(
+      from s in LibraryBlockShare,
+        where: s.library_block_id == ^block.id,
+        select: %{account_id: s.account_id, role: s.role}
+    )
+  end
+
+  @doc false
+  defp scope_library_reads(query, user) do
+    if Identity.can?(user, "library.read") do
+      policies = Map.get(user.role.policies || %{}, "library.read", [])
+
+      if "own_only" in policies do
+        shared_block_ids =
+          from s in LibraryBlockShare,
+            where: s.account_id == ^user.id,
+            select: s.library_block_id
+
+        from b in query,
+          where:
+            b.owner_id == ^user.id or
+              b.is_public == true or
+              b.id in subquery(shared_block_ids)
+      else
+        query
+      end
+    else
+      from b in query, where: false
+    end
+  end
+
+  @doc """
+  Checks whether the user can edit the block (owner or has the writer role).
+  """
+  def can_edit_block?(user, block) do
+    if Identity.can?(user, "library.update", block) do
+      true
+    else
+      if Identity.can?(user, "library.update") do
+        Repo.exists?(
+          from s in LibraryBlockShare,
+            where:
+              s.library_block_id == ^block.id and s.account_id == ^user.id and s.role == :writer
+        )
+      else
+        false
+      end
+    end
   end
 end

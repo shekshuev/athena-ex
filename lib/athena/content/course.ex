@@ -33,8 +33,10 @@ defmodule Athena.Content.Course do
     field :owner_id, :binary_id
     field :deleted_at, :utc_datetime
     field :type, Ecto.Enum, values: [:standard, :competition], default: :standard
+    field :is_public, :boolean, default: false
 
     has_many :sections, Section
+    has_many :shares, Athena.Content.CourseShare, on_delete: :delete_all
 
     timestamps(type: :utc_datetime)
   end
@@ -45,7 +47,7 @@ defmodule Athena.Content.Course do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(course, attrs) do
     course
-    |> cast(attrs, [:title, :description, :status, :type, :owner_id, :deleted_at])
+    |> cast(attrs, [:title, :description, :status, :type, :owner_id, :deleted_at, :is_public])
     |> validate_required([:title, :status, :type, :owner_id])
     |> validate_length(:title, min: 3, max: 255)
     |> unique_constraint(:title, name: :courses_title_index)

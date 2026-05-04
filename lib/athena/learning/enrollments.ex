@@ -2,9 +2,8 @@ defmodule Athena.Learning.Enrollments do
   @moduledoc """
   Business logic for managing course enrollments.
 
-  Handles assigning entire cohorts (or potentially individual students) 
-  to courses. Delegates data enrichment (fetching course details and 
-  account info) to the `Athena.Content` and `Athena.Identity` contexts.
+  Handles assigning entire cohorts to courses. Access is governed by
+  whether the user has teaching rights in the associated cohort.
   """
 
   import Ecto.Query
@@ -24,15 +23,13 @@ defmodule Athena.Learning.Enrollments do
   use Gettext, backend: AthenaWeb.Gettext
 
   @doc """
-  Retrieves a paginated list of enrollments for a specific cohort, scoped by user.
+  Retrieves a paginated list of enrollments for a specific cohort.
   """
-  @spec list_cohort_enrollments(map(), String.t(), map()) ::
-          {:ok, {[Enrollment.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_cohort_enrollments(user, cohort_id, params \\ %{}) do
     base_query =
       Enrollment
       |> where(cohort_id: ^cohort_id)
-      |> scope_enrollments(user, "enrollments.read")
+      |> scope_enrollments(user)
 
     case Flop.validate_and_run(base_query, params, for: Enrollment) do
       {:ok, {enrollments, meta}} ->
@@ -44,45 +41,35 @@ defmodule Athena.Learning.Enrollments do
   end
 
   @doc false
-  defp scope_enrollments(query, user, permission) do
-    cond do
-      "admin" in user.role.permissions ->
-        query
+  defp scope_enrollments(query, user) do
+    if "admin" in user.role.permissions do
+      query
+    else
+      my_cohort_ids =
+        from c in Cohort,
+          left_join: ci in CohortInstructor,
+          on: ci.cohort_id == c.id,
+          left_join: i in Instructor,
+          on: ci.instructor_id == i.id,
+          where: c.owner_id == ^user.id or i.owner_id == ^user.id,
+          select: c.id
 
-      permission in user.role.permissions ->
-        policies = Map.get(user.role.policies || %{}, permission, [])
+      my_course_ids = Content.list_accessible_course_ids(user)
 
-        if "own_only" in policies do
-          my_cohort_ids =
-            from ci in CohortInstructor,
-              join: i in Instructor,
-              on: ci.instructor_id == i.id,
-              where: i.owner_id == ^user.id,
-              select: ci.cohort_id
-
-          my_course_ids = Content.list_accessible_course_ids(user)
-
-          where(
-            query,
-            [e],
-            e.course_id in ^my_course_ids or e.cohort_id in subquery(my_cohort_ids)
-          )
-        else
-          query
-        end
-
-      true ->
-        where(query, [e], false)
+      where(
+        query,
+        [e],
+        e.course_id in ^my_course_ids or e.cohort_id in subquery(my_cohort_ids)
+      )
     end
   end
 
   @doc """
   Gets a specific enrollment by ID safely based on user scope.
   """
-  @spec get_enrollment!(map(), String.t()) :: Enrollment.t()
   def get_enrollment!(user, id) do
     Enrollment
-    |> scope_enrollments(user, "enrollments.read")
+    |> scope_enrollments(user)
     |> preload(:cohort)
     |> Repo.get!(id)
     |> enrich_enrollments()
@@ -90,14 +77,12 @@ defmodule Athena.Learning.Enrollments do
 
   @doc """
   Assigns an entire cohort to a course.
-  Enforces type matching and uses context functions to verify ACL on both the Cohort and the Course.
   """
-  @spec enroll_cohort(map(), String.t(), String.t(), atom()) ::
-          {:ok, Enrollment.t()} | {:error, String.t() | Ecto.Changeset.t() | atom()}
   def enroll_cohort(user, cohort_id, course_id, status \\ :active) do
     with {:ok, cohort} <- Cohorts.get_cohort(user, cohort_id),
-         {:ok, course} <- Content.get_course(user, course_id) do
-      if can_create_enrollment?(user, cohort, course) do
+         {:ok, course} <- Content.get_course(course_id) do
+      if Cohorts.can_manage_cohort_processes?(user, cohort) and
+           Identity.can?(user, "courses.read", course) do
         insert_if_types_match(cohort, course, status)
       else
         {:error, :unauthorized}
@@ -105,25 +90,6 @@ defmodule Athena.Learning.Enrollments do
     else
       {:error, :not_found} ->
         {:error, gettext("Cohort or Course not found or access denied.")}
-    end
-  end
-
-  @doc """
-  Checks if a user can create an enrollment for a specific cohort and course.
-  For 'own_only' policies, they must own either the cohort or the course.
-  """
-  def can_create_enrollment?(user, cohort, course) do
-    if Identity.can?(user, "enrollments.create") do
-      policies = Map.get(user.role.policies || %{}, "enrollments.create", [])
-
-      if "own_only" in policies do
-        Identity.can?(user, "cohorts.update", cohort) or
-          Identity.can?(user, "courses.update", course)
-      else
-        true
-      end
-    else
-      false
     end
   end
 
@@ -146,10 +112,10 @@ defmodule Athena.Learning.Enrollments do
   @doc """
   Updates an enrollment's attributes.
   """
-  @spec update_enrollment(map(), Enrollment.t(), map()) ::
-          {:ok, Enrollment.t()} | {:error, Ecto.Changeset.t() | atom()}
   def update_enrollment(user, %Enrollment{} = enrollment, attrs) do
-    if can_manage_enrollment?(user, "enrollments.update", enrollment) do
+    cohort = Repo.get(Cohort, enrollment.cohort_id)
+
+    if Cohorts.can_manage_cohort_processes?(user, cohort) do
       enrollment
       |> Enrollment.changeset(attrs)
       |> Repo.update()
@@ -161,10 +127,10 @@ defmodule Athena.Learning.Enrollments do
   @doc """
   Revokes access completely by permanently deleting the enrollment record.
   """
-  @spec delete_enrollment(map(), Enrollment.t()) ::
-          {:ok, Enrollment.t()} | {:error, Ecto.Changeset.t() | atom()}
   def delete_enrollment(user, %Enrollment{} = enrollment) do
-    if can_manage_enrollment?(user, "enrollments.delete", enrollment) do
+    cohort = Repo.get(Cohort, enrollment.cohort_id)
+
+    if Cohorts.can_manage_cohort_processes?(user, cohort) do
       Repo.delete(enrollment)
     else
       {:error, :unauthorized}
@@ -173,10 +139,8 @@ defmodule Athena.Learning.Enrollments do
 
   @doc """
   Retrieves all active course enrollments for a specific student.
-  Includes both direct enrollments and cohort-based enrollments.
   ONLY RETURNS PUBLISHED COURSES.
   """
-  @spec list_student_enrollments(String.t()) :: [Enrollment.t()]
   def list_student_enrollments(account_id) do
     cohort_ids_query =
       from cm in CohortMembership,
@@ -195,7 +159,6 @@ defmodule Athena.Learning.Enrollments do
   @doc """
   Fast check if a student has active access to a course.
   """
-  @spec has_access?(String.t(), String.t()) :: boolean()
   def has_access?(account_id, course_id) do
     case Content.get_course(course_id) do
       {:ok, %{status: :published}} ->
@@ -213,43 +176,6 @@ defmodule Athena.Learning.Enrollments do
       _ ->
         false
     end
-  end
-
-  @doc """
-  Checks if a user can manage (update/delete) an enrollment.
-  For 'own_only' policies, the user must own either the associated cohort or the course.
-  Takes an optional preloaded `cohort` to prevent N+1 queries in UI lists.
-  """
-  def can_manage_enrollment?(user, action, %Enrollment{} = enrollment, preloaded_cohort \\ nil) do
-    if Identity.can?(user, action) do
-      policies = Map.get(user.role.policies || %{}, action, [])
-
-      if "own_only" in policies do
-        check_own_only_policy(user, enrollment, preloaded_cohort)
-      else
-        true
-      end
-    else
-      false
-    end
-  end
-
-  defp check_own_only_policy(user, enrollment, preloaded_cohort) do
-    owns_cohort?(user, enrollment, preloaded_cohort) or owns_course?(user, enrollment)
-  end
-
-  defp owns_cohort?(user, enrollment, preloaded_cohort) do
-    cohort =
-      preloaded_cohort || enrollment.cohort ||
-        Repo.get(Cohort, enrollment.cohort_id)
-
-    cohort != nil and Identity.can?(user, "cohorts.update", cohort)
-  end
-
-  defp owns_course?(user, enrollment) do
-    course = enrollment.course || Repo.get(Course, enrollment.course_id)
-
-    course != nil and Identity.can?(user, "courses.update", course)
   end
 
   @doc false
@@ -279,7 +205,6 @@ defmodule Athena.Learning.Enrollments do
   @doc """
   Finds the active cohort a user belongs to for a specific course.
   """
-  @spec get_user_cohort_for_course(String.t(), String.t()) :: Cohort.t() | nil
   def get_user_cohort_for_course(user_id, course_id) do
     query =
       from c in Cohort,

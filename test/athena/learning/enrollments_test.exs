@@ -9,12 +9,7 @@ defmodule Athena.Learning.EnrollmentsTest do
     admin_role =
       insert(:role,
         permissions: [
-          "admin",
-          "enrollments.read",
-          "enrollments.create",
-          "enrollments.update",
-          "enrollments.delete",
-          "courses.read"
+          "admin"
         ]
       )
 
@@ -23,16 +18,13 @@ defmodule Athena.Learning.EnrollmentsTest do
     inst_role =
       insert(:role,
         permissions: [
-          "enrollments.read",
-          "enrollments.create",
-          "enrollments.update",
-          "enrollments.delete",
+          "cohorts.read",
+          "cohorts.update",
           "courses.read"
         ],
         policies: %{
-          "enrollments.read" => ["own_only"],
-          "enrollments.create" => ["own_only"],
-          "enrollments.delete" => ["own_only"],
+          "cohorts.read" => ["own_only"],
+          "cohorts.update" => ["own_only"],
           "courses.read" => ["own_only"]
         }
       )
@@ -105,26 +97,24 @@ defmodule Athena.Learning.EnrollmentsTest do
       assert error_msg == "Cannot assign an Academic Group to a Competition."
     end
 
-    test "returns unauthorized if user lacks create permission", %{admin: admin} do
-      user_no_create =
-        insert(:account, role: insert(:role, permissions: ["cohorts.read", "courses.read"]))
+    test "returns error if user has no access to the cohort", %{admin: admin} do
+      user_no_access = insert(:account, role: insert(:role, permissions: []))
 
       cohort = insert(:cohort, owner_id: admin.id)
       course = insert(:course, owner_id: admin.id)
 
-      assert {:error, :unauthorized} =
-               Enrollments.enroll_cohort(user_no_create, cohort.id, course.id)
+      assert {:error, "Cohort or Course not found or access denied."} =
+               Enrollments.enroll_cohort(user_no_access, cohort.id, course.id)
     end
 
-    test "denies cross-context assignment if instructor does not own the course", %{
+    test "returns unauthorized if instructor can teach in cohort but cannot read the course", %{
       instructor: inst,
       admin: admin
     } do
       cohort = insert(:cohort, owner_id: inst.id)
       course = insert(:course, owner_id: admin.id)
 
-      assert {:error, msg} = Enrollments.enroll_cohort(inst, cohort.id, course.id)
-      assert msg == "Cohort or Course not found or access denied."
+      assert {:error, :unauthorized} = Enrollments.enroll_cohort(inst, cohort.id, course.id)
     end
   end
 
@@ -265,6 +255,15 @@ defmodule Athena.Learning.EnrollmentsTest do
 
       assert updated.status == :dropped
     end
+
+    test "returns unauthorized if user cannot teach in cohort", %{admin: admin, instructor: inst} do
+      cohort = insert(:cohort, owner_id: admin.id)
+      course = insert(:course, owner_id: admin.id)
+      {:ok, enrollment} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
+
+      assert {:error, :unauthorized} =
+               Enrollments.update_enrollment(inst, enrollment, %{status: :dropped})
+    end
   end
 
   describe "delete_enrollment/2" do
@@ -278,6 +277,14 @@ defmodule Athena.Learning.EnrollmentsTest do
       assert_raise Ecto.NoResultsError, fn ->
         Enrollments.get_enrollment!(admin, enrollment.id)
       end
+    end
+
+    test "returns unauthorized if user cannot teach in cohort", %{admin: admin, instructor: inst} do
+      cohort = insert(:cohort, owner_id: admin.id)
+      course = insert(:course, owner_id: admin.id)
+      {:ok, enrollment} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
+
+      assert {:error, :unauthorized} = Enrollments.delete_enrollment(inst, enrollment)
     end
   end
 

@@ -11,7 +11,19 @@ defmodule Athena.Identity do
   defdelegate authenticate(login, password), to: Accounts
   defdelegate register_admin_user(user, account_attrs, profile_attrs), to: Accounts
   defdelegate update_admin_user(user, account, account_attrs, profile_attrs), to: Accounts
-  defdelegate soft_delete_account(account), to: Accounts
+
+  def soft_delete_account(account) do
+    Accounts.soft_delete_account(account)
+    |> notify_subscribers()
+  end
+
+  defp notify_subscribers({:ok, %Account{} = account} = result) do
+    Phoenix.PubSub.broadcast(Athena.PubSub, "identity:events", {:account_deleted, account.id})
+    result
+  end
+
+  defp notify_subscribers(result), do: result
+
   defdelegate login_regex(), to: Account
   defdelegate password_regex(), to: Account
   defdelegate get_accounts_map(ids), to: Accounts

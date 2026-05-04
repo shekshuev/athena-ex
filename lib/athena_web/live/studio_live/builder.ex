@@ -11,7 +11,7 @@ defmodule AthenaWeb.StudioLive.Builder do
   alias Athena.Content
   alias Athena.Content.Block
 
-  on_mount {AthenaWeb.Hooks.Permission, "courses.update"}
+  on_mount {AthenaWeb.Hooks.Permission, "courses.read"}
 
   @allowed_image_types ~w(.jpg .jpeg .png .gif .webp)
   @allowed_video_types ~w(.mp4 .mov .webm)
@@ -31,53 +31,92 @@ defmodule AthenaWeb.StudioLive.Builder do
   @spec mount(map(), map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def mount(%{"id" => course_id}, _session, socket) do
-    case Content.get_course(socket.assigns.current_user, course_id) do
-      {:ok, course} ->
-        if connected?(socket), do: :timer.send_interval(1000, self(), :tick)
-        sections = Content.get_course_tree(course.id)
-        active_section_id = if sections != [], do: hd(sections).id, else: nil
+    with {:ok, course} <- Content.get_course(socket.assigns.current_user, course_id),
+         role when role != :none <- determine_role(course, socket.assigns.current_user) do
+      if connected?(socket) do
+        :timer.send_interval(1000, self(), :tick)
+        Phoenix.PubSub.subscribe(Athena.PubSub, "builder:#{course.id}")
+        Phoenix.PubSub.subscribe(Athena.PubSub, "user_courses:#{socket.assigns.current_user.id}")
+        Phoenix.PubSub.subscribe(Athena.PubSub, "public_courses")
+      end
 
-        blocks =
-          if active_section_id do
-            Content.list_blocks_by_section(active_section_id)
-          else
-            []
-          end
+      sections = Content.get_course_tree(course.id)
+      active_section_id = if sections != [], do: hd(sections).id, else: nil
 
+      blocks =
+        if active_section_id, do: Content.list_blocks_by_section(active_section_id), else: []
+
+      {:ok,
+       socket
+       |> assign(
+         role: role,
+         course: course,
+         sections: sections,
+         active_section_id: active_section_id,
+         active_block_id: nil,
+         blocks: blocks,
+         uploading_for_block: nil,
+         uploading_media_type: nil,
+         viewing_parent_id: nil,
+         moving_section_id: nil,
+         quick_nav_open: false,
+         section_to_delete: nil,
+         block_to_delete: nil,
+         server_now: DateTime.utc_now() |> DateTime.truncate(:second),
+         saving_block_to_library: nil,
+         library_picker_open: false,
+         library_blocks: [],
+         library_search: "",
+         show_media_modal: false,
+         active_upload_block_id: nil,
+         upload_type: nil,
+         library_insert_after_id: nil
+       )}
+    else
+      _ ->
         {:ok,
          socket
-         |> assign(
-           course: course,
-           sections: sections,
-           active_section_id: active_section_id,
-           active_block_id: nil,
-           blocks: blocks,
-           uploading_for_block: nil,
-           uploading_media_type: nil,
-           viewing_parent_id: nil,
-           moving_section_id: nil,
-           quick_nav_open: false,
-           section_to_delete: nil,
-           block_to_delete: nil,
-           server_now: DateTime.utc_now() |> DateTime.truncate(:second),
-           saving_block_to_library: nil,
-           library_picker_open: false,
-           library_blocks: [],
-           library_search: "",
-           show_media_modal: false,
-           active_upload_block_id: nil,
-           upload_type: nil,
-           library_insert_after_id: nil
-         )}
-
-      _ ->
-        {:ok, push_navigate(socket, to: ~p"/studio/courses")}
+         |> put_flash(:error, gettext("You don't have access to this course."))
+         |> push_navigate(to: ~p"/studio/courses")}
     end
   end
 
   @impl true
   def handle_info(:tick, socket) do
     {:noreply, assign(socket, server_now: DateTime.utc_now() |> DateTime.truncate(:second))}
+  end
+
+  def handle_info(:refresh_tree, socket) do
+    sections = Content.get_course_tree(socket.assigns.course.id)
+    {:noreply, assign(socket, sections: sections)}
+  end
+
+  @impl true
+  def handle_info(:refresh_courses, socket) do
+    with {:ok, course} <-
+           Content.get_course(socket.assigns.current_user, socket.assigns.course.id),
+         new_role when new_role != :none <- determine_role(course, socket.assigns.current_user) do
+      socket =
+        if new_role != socket.assigns.role do
+          put_flash(socket, :info, gettext("Your access level has been updated."))
+        else
+          socket
+        end
+
+      {:noreply, assign(socket, course: course, role: new_role)}
+    else
+      :none ->
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("Your access to this course was revoked."))
+         |> push_navigate(to: ~p"/studio/courses")}
+
+      _ ->
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("This course is no longer available."))
+         |> push_navigate(to: ~p"/studio/courses")}
+    end
   end
 
   def handle_info(
@@ -137,87 +176,127 @@ defmodule AthenaWeb.StudioLive.Builder do
   end
 
   def handle_event("add_section", %{"parent_id" => parent_id}, socket) do
-    course = socket.assigns.course
-    clean_parent_id = if parent_id == "", do: nil, else: parent_id
+    if can_edit?(socket) do
+      course = socket.assigns.course
+      clean_parent_id = if parent_id == "", do: nil, else: parent_id
 
-    attrs = %{
-      "title" => gettext("New Lesson"),
-      "course_id" => course.id,
-      "owner_id" => socket.assigns.current_user.id,
-      "parent_id" => clean_parent_id
-    }
+      attrs = %{
+        "title" => gettext("New Lesson"),
+        "course_id" => course.id,
+        "owner_id" => socket.assigns.current_user.id,
+        "parent_id" => clean_parent_id
+      }
 
-    case Content.create_section(socket.assigns.current_user, attrs) do
-      {:ok, new_section} ->
-        updated_sections = Content.get_course_tree(course.id)
+      case Content.create_section(socket.assigns.current_user, attrs) do
+        {:ok, new_section} ->
+          updated_sections = Content.get_course_tree(course.id)
 
-        {:noreply,
-         socket
-         |> assign(
-           sections: updated_sections,
-           active_section_id: new_section.id,
-           viewing_parent_id: clean_parent_id
-         )
-         |> put_flash(:info, gettext("Section added"))}
+          {:noreply,
+           socket
+           |> assign(
+             sections: updated_sections,
+             active_section_id: new_section.id,
+             viewing_parent_id: clean_parent_id
+           )
+           |> put_flash(:info, gettext("Section added"))}
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, gettext("Failed to add section"))}
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, gettext("Failed to add section"))}
+      end
+
+      Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
+      {:noreply, socket}
+    else
+      {:noreply, socket}
     end
   end
 
   def handle_event("add_section", _, socket) do
-    handle_event("add_section", %{"parent_id" => socket.assigns.viewing_parent_id || ""}, socket)
+    if can_edit?(socket) do
+      course = socket.assigns.course
+
+      handle_event(
+        "add_section",
+        %{"parent_id" => socket.assigns.viewing_parent_id || ""},
+        socket
+      )
+
+      Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("update_section_meta", %{"section" => section_params}, socket) do
     id = section_params["id"]
-    section = find_section_in_tree(socket.assigns.sections, id)
 
-    if section do
-      case Content.update_section(socket.assigns.current_user, section, section_params) do
-        {:ok, _updated_section} ->
-          updated_sections = Content.get_course_tree(socket.assigns.course.id)
-          {:noreply, assign(socket, sections: updated_sections)}
+    with true <- can_edit?(socket),
+         section when not is_nil(section) <- find_section_in_tree(socket.assigns.sections, id),
+         {:ok, _} <- Content.update_section(socket.assigns.current_user, section, section_params) do
+      updated_sections = Content.get_course_tree(socket.assigns.course.id)
 
-        {:error, _changeset} ->
-          {:noreply, socket}
+      Phoenix.PubSub.broadcast(
+        Athena.PubSub,
+        "builder:#{socket.assigns.course.id}",
+        :refresh_tree
+      )
+
+      {:noreply, assign(socket, sections: updated_sections)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("reorder_section", %{"id" => id, "new_index" => new_index}, socket) do
+    if can_edit?(socket) do
+      course = socket.assigns.course
+      section = find_section_in_tree(socket.assigns.sections, id)
+
+      if section do
+        {:ok, _} = Content.reorder_section(socket.assigns.current_user, section, new_index)
+        updated_sections = Content.get_course_tree(socket.assigns.course.id)
+        Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
+        {:noreply, assign(socket, sections: updated_sections)}
+      else
+        {:noreply, socket}
       end
     else
       {:noreply, socket}
     end
   end
 
-  def handle_event("reorder_section", %{"id" => id, "new_index" => new_index}, socket) do
-    section = find_section_in_tree(socket.assigns.sections, id)
-
-    if section do
-      {:ok, _} = Content.reorder_section(socket.assigns.current_user, section, new_index)
-      updated_sections = Content.get_course_tree(socket.assigns.course.id)
-      {:noreply, assign(socket, sections: updated_sections)}
+  def handle_event("delete_section_click", %{"id" => id}, socket) do
+    if can_edit?(socket) do
+      course = socket.assigns.course
+      section = find_section_in_tree(socket.assigns.sections, id)
+      Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
+      {:noreply, assign(socket, section_to_delete: section)}
     else
       {:noreply, socket}
     end
   end
 
-  def handle_event("delete_section_click", %{"id" => id}, socket) do
-    section = find_section_in_tree(socket.assigns.sections, id)
-    {:noreply, assign(socket, section_to_delete: section)}
-  end
-
   def handle_event("confirm_delete_section", _, socket) do
-    section = socket.assigns.section_to_delete
-    {:ok, _} = Content.delete_section(socket.assigns.current_user, section)
-    updated_sections = Content.get_course_tree(socket.assigns.course.id)
+    if can_edit?(socket) do
+      course = socket.assigns.course
+      section = socket.assigns.section_to_delete
+      {:ok, _} = Content.delete_section(socket.assigns.current_user, section)
+      updated_sections = Content.get_course_tree(socket.assigns.course.id)
+      Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
 
-    {:noreply,
-     socket
-     |> put_flash(:info, gettext("Section deleted"))
-     |> assign(
-       sections: updated_sections,
-       section_to_delete: nil,
-       active_section_id: nil,
-       blocks: []
-     )}
+      {:noreply,
+       socket
+       |> put_flash(:info, gettext("Section deleted"))
+       |> assign(
+         sections: updated_sections,
+         section_to_delete: nil,
+         active_section_id: nil,
+         blocks: []
+       )}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("cancel_section_delete", _, socket) do
@@ -266,7 +345,11 @@ defmodule AthenaWeb.StudioLive.Builder do
   end
 
   def handle_event("open_move_modal", %{"id" => id}, socket) do
-    {:noreply, assign(socket, moving_section_id: id)}
+    if can_edit?(socket) do
+      {:noreply, assign(socket, moving_section_id: id)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("cancel_move", _, socket) do
@@ -274,23 +357,29 @@ defmodule AthenaWeb.StudioLive.Builder do
   end
 
   def handle_event("move_section", %{"target_id" => target_id}, socket) do
-    section_id = socket.assigns.moving_section_id
-    clean_target_id = if target_id == "root", do: nil, else: target_id
+    if can_edit?(socket) do
+      course = socket.assigns.course
+      section_id = socket.assigns.moving_section_id
+      clean_target_id = if target_id == "root", do: nil, else: target_id
 
-    section = find_section_in_tree(socket.assigns.sections, section_id)
+      section = find_section_in_tree(socket.assigns.sections, section_id)
 
-    if section do
-      {:ok, _} =
-        Content.update_section(socket.assigns.current_user, section, %{
-          "parent_id" => clean_target_id
-        })
+      if section do
+        {:ok, _} =
+          Content.update_section(socket.assigns.current_user, section, %{
+            "parent_id" => clean_target_id
+          })
 
-      updated_sections = Content.get_course_tree(socket.assigns.course.id)
+        updated_sections = Content.get_course_tree(socket.assigns.course.id)
+        Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
 
-      {:noreply,
-       socket
-       |> assign(sections: updated_sections, moving_section_id: nil)
-       |> put_flash(:info, gettext("Moved successfully"))}
+        {:noreply,
+         socket
+         |> assign(sections: updated_sections, moving_section_id: nil)
+         |> put_flash(:info, gettext("Moved successfully"))}
+      else
+        {:noreply, socket}
+      end
     else
       {:noreply, socket}
     end
@@ -305,178 +394,227 @@ defmodule AthenaWeb.StudioLive.Builder do
   end
 
   def handle_event("move_block_up", %{"id" => id}, socket) do
-    blocks = socket.assigns.blocks
+    if can_edit?(socket) do
+      course = socket.assigns.course
+      blocks = socket.assigns.blocks
 
-    case Enum.find_index(blocks, &(&1.id == id)) do
-      nil ->
-        {:noreply, socket}
+      case Enum.find_index(blocks, &(&1.id == id)) do
+        nil ->
+          {:noreply, socket}
 
-      0 ->
-        {:noreply, socket}
+        0 ->
+          {:noreply, socket}
 
-      index ->
-        block = Enum.at(blocks, index)
-        {:ok, _} = Content.reorder_block(socket.assigns.current_user, block, index - 1)
-        updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
-        {:noreply, assign(socket, blocks: updated_blocks)}
+        index ->
+          block = Enum.at(blocks, index)
+          {:ok, _} = Content.reorder_block(socket.assigns.current_user, block, index - 1)
+          updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
+
+          Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
+          {:noreply, assign(socket, blocks: updated_blocks)}
+      end
+    else
+      {:noreply, socket}
     end
   end
 
   def handle_event("move_block_down", %{"id" => id}, socket) do
     blocks = socket.assigns.blocks
 
-    case Enum.find_index(blocks, &(&1.id == id)) do
-      nil ->
-        {:noreply, socket}
+    with true <- can_edit?(socket),
+         index when not is_nil(index) <- Enum.find_index(blocks, &(&1.id == id)),
+         false <- index == length(blocks) - 1 do
+      block = Enum.at(blocks, index)
+      {:ok, _} = Content.reorder_block(socket.assigns.current_user, block, index + 1)
+      updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
 
-      index ->
-        if index == length(blocks) - 1 do
-          {:noreply, socket}
-        else
-          block = Enum.at(blocks, index)
-          {:ok, _} = Content.reorder_block(socket.assigns.current_user, block, index + 1)
-          updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
-          {:noreply, assign(socket, blocks: updated_blocks)}
-        end
+      Phoenix.PubSub.broadcast(
+        Athena.PubSub,
+        "builder:#{socket.assigns.course.id}",
+        :refresh_tree
+      )
+
+      {:noreply, assign(socket, blocks: updated_blocks)}
+    else
+      _ -> {:noreply, socket}
     end
   end
 
   def handle_event("add_text_block", params, socket) do
-    attrs = %{
-      "type" => "text",
-      "content" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
-      "section_id" => socket.assigns.active_section_id,
-      "after_id" => clean_after_id(params["after_id"])
-    }
+    if can_edit?(socket) do
+      attrs = %{
+        "type" => "text",
+        "content" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+        "section_id" => socket.assigns.active_section_id,
+        "after_id" => clean_after_id(params["after_id"])
+      }
 
-    create_and_assign_block(socket, attrs)
+      create_and_assign_block(socket, attrs)
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("add_code_block", params, socket) do
-    attrs = %{
-      "type" => "code",
-      "content" => %{"code" => "IO.puts(:hello)"},
-      "section_id" => socket.assigns.active_section_id,
-      "after_id" => clean_after_id(params["after_id"])
-    }
+    if can_edit?(socket) do
+      attrs = %{
+        "type" => "code",
+        "content" => %{"code" => "IO.puts(:hello)"},
+        "section_id" => socket.assigns.active_section_id,
+        "after_id" => clean_after_id(params["after_id"])
+      }
 
-    create_and_assign_block(socket, attrs)
+      create_and_assign_block(socket, attrs)
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("add_quiz_question_block", params, socket) do
-    attrs = %{
-      "type" => "quiz_question",
-      "content" => %{
-        "question_type" => "open",
-        "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
-        "options" => []
-      },
-      "section_id" => socket.assigns.active_section_id,
-      "after_id" => clean_after_id(params["after_id"])
-    }
+    if can_edit?(socket) do
+      attrs = %{
+        "type" => "quiz_question",
+        "content" => %{
+          "question_type" => "open",
+          "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+          "options" => []
+        },
+        "section_id" => socket.assigns.active_section_id,
+        "after_id" => clean_after_id(params["after_id"])
+      }
 
-    create_and_assign_block(socket, attrs, gettext("Failed to create quiz block"))
+      create_and_assign_block(socket, attrs, gettext("Failed to create quiz block"))
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("add_quiz_exam_block", params, socket) do
-    attrs = %{
-      "type" => "quiz_exam",
-      "section_id" => socket.assigns.active_section_id,
-      "after_id" => clean_after_id(params["after_id"]),
-      "content" => %{
-        "count" => 10,
-        "time_limit" => nil,
-        "mandatory_tags" => [],
-        "include_tags" => [],
-        "exclude_tags" => []
+    if can_edit?(socket) do
+      attrs = %{
+        "type" => "quiz_exam",
+        "section_id" => socket.assigns.active_section_id,
+        "after_id" => clean_after_id(params["after_id"]),
+        "content" => %{
+          "count" => 10,
+          "time_limit" => nil,
+          "mandatory_tags" => [],
+          "include_tags" => [],
+          "exclude_tags" => []
+        }
       }
-    }
 
-    create_and_assign_block(socket, attrs, gettext("Failed to create quiz exam block"))
+      create_and_assign_block(socket, attrs, gettext("Failed to create quiz exam block"))
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("add_image_block", params, socket) do
-    attrs = %{
-      "type" => "image",
-      "content" => %{"url" => nil, "alt" => "", "caption" => ""},
-      "section_id" => socket.assigns.active_section_id,
-      "after_id" => clean_after_id(params["after_id"])
-    }
+    if can_edit?(socket) do
+      attrs = %{
+        "type" => "image",
+        "content" => %{"url" => nil, "alt" => "", "caption" => ""},
+        "section_id" => socket.assigns.active_section_id,
+        "after_id" => clean_after_id(params["after_id"])
+      }
 
-    create_and_assign_block(socket, attrs, gettext("Failed to create image block"))
+      create_and_assign_block(socket, attrs, gettext("Failed to create image block"))
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("add_video_block", params, socket) do
-    attrs = %{
-      "type" => "video",
-      "content" => %{"url" => nil, "poster_url" => nil, "controls" => true},
-      "section_id" => socket.assigns.active_section_id,
-      "after_id" => clean_after_id(params["after_id"])
-    }
+    if can_edit?(socket) do
+      attrs = %{
+        "type" => "video",
+        "content" => %{"url" => nil, "poster_url" => nil, "controls" => true},
+        "section_id" => socket.assigns.active_section_id,
+        "after_id" => clean_after_id(params["after_id"])
+      }
 
-    create_and_assign_block(socket, attrs, gettext("Failed to create video block"))
+      create_and_assign_block(socket, attrs, gettext("Failed to create video block"))
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("add_attachment_block", params, socket) do
-    attrs = %{
-      "type" => "attachment",
-      "content" => %{
-        "description" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
-        "files" => []
-      },
-      "section_id" => socket.assigns.active_section_id,
-      "after_id" => clean_after_id(params["after_id"])
-    }
+    if can_edit?(socket) do
+      attrs = %{
+        "type" => "attachment",
+        "content" => %{
+          "description" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+          "files" => []
+        },
+        "section_id" => socket.assigns.active_section_id,
+        "after_id" => clean_after_id(params["after_id"])
+      }
 
-    create_and_assign_block(socket, attrs, gettext("Failed to create attachment block"))
+      create_and_assign_block(socket, attrs, gettext("Failed to create attachment block"))
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("add_quiz_option", %{"id" => block_id}, socket) do
-    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+    if can_edit?(socket) do
+      course = socket.assigns.course
+      block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
 
-    if block do
-      content_map = normalize_content(block.content || %{})
-      options = Map.get(content_map, "options", [])
+      if block do
+        content_map = normalize_content(block.content || %{})
+        options = Map.get(content_map, "options", [])
 
-      new_option = %{
-        "id" => Ecto.UUID.generate(),
-        "text" => "",
-        "is_correct" => false,
-        "explanation" => ""
-      }
+        new_option = %{
+          "id" => Ecto.UUID.generate(),
+          "text" => "",
+          "is_correct" => false,
+          "explanation" => ""
+        }
 
-      new_content = Map.put(content_map, "options", options ++ [new_option])
+        new_content = Map.put(content_map, "options", options ++ [new_option])
 
-      {:ok, updated_block} =
-        Content.update_block(socket.assigns.current_user, block, %{"content" => new_content})
+        {:ok, updated_block} =
+          Content.update_block(socket.assigns.current_user, block, %{"content" => new_content})
 
-      {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+        Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
+        {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+      else
+        {:noreply, socket}
+      end
     else
       {:noreply, socket}
     end
   end
 
   def handle_event("remove_quiz_option", %{"id" => block_id, "option_id" => option_id}, socket) do
-    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+    if can_edit?(socket) do
+      course = socket.assigns.course
+      block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
 
-    if block do
-      content_map = normalize_content(block.content || %{})
-      options = Map.get(content_map, "options", []) |> Enum.reject(&(&1["id"] == option_id))
-      new_content = Map.put(content_map, "options", options)
+      if block do
+        content_map = normalize_content(block.content || %{})
+        options = Map.get(content_map, "options", []) |> Enum.reject(&(&1["id"] == option_id))
+        new_content = Map.put(content_map, "options", options)
 
-      {:ok, updated_block} =
-        Content.update_block(socket.assigns.current_user, block, %{"content" => new_content})
+        {:ok, updated_block} =
+          Content.update_block(socket.assigns.current_user, block, %{"content" => new_content})
 
-      {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+        Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
+        {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+      else
+        {:noreply, socket}
+      end
     else
       {:noreply, socket}
     end
   end
 
   def handle_event("update_quiz_content", %{"block_id" => id} = params, socket) do
-    block = Enum.find(socket.assigns.blocks, &(&1.id == id))
-
-    if block do
+    with true <- can_edit?(socket),
+         block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == id)) do
       content_map = normalize_content(block.content || %{})
 
       content_map =
@@ -495,24 +633,28 @@ defmodule AthenaWeb.StudioLive.Builder do
 
       case Content.update_block(socket.assigns.current_user, block, %{"content" => content_map}) do
         {:ok, updated_block} ->
+          Phoenix.PubSub.broadcast(
+            Athena.PubSub,
+            "builder:#{socket.assigns.course.id}",
+            :refresh_tree
+          )
+
           {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
 
         {:error, changeset} ->
+          in_memory_block = Ecto.Changeset.apply_changes(changeset)
+
           {:noreply,
-           assign(
-             socket,
-             blocks: replace_block(socket.assigns.blocks, Ecto.Changeset.apply_changes(changeset))
-           )}
+           assign(socket, blocks: replace_block(socket.assigns.blocks, in_memory_block))}
       end
     else
-      {:noreply, socket}
+      _ -> {:noreply, socket}
     end
   end
 
   def handle_event("update_content", %{"id" => id, "content" => text_content}, socket) do
-    block = Enum.find(socket.assigns.blocks, &(&1.id == id))
-
-    if block do
+    with true <- can_edit?(socket),
+         block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == id)) do
       content_map = normalize_content(block.content || %{})
 
       new_content =
@@ -525,19 +667,33 @@ defmodule AthenaWeb.StudioLive.Builder do
       {:ok, updated_block} =
         Content.update_block(socket.assigns.current_user, block, %{"content" => new_content})
 
+      Phoenix.PubSub.broadcast(
+        Athena.PubSub,
+        "builder:#{socket.assigns.course.id}",
+        :refresh_tree
+      )
+
       {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
     else
-      {:noreply, socket}
+      _ -> {:noreply, socket}
     end
   end
 
   def handle_event("reorder_block", %{"id" => id, "new_index" => new_index}, socket) do
-    block = Enum.find(socket.assigns.blocks, &(&1.id == id))
+    if can_edit?(socket) do
+      course = socket.assigns.course
+      block = Enum.find(socket.assigns.blocks, &(&1.id == id))
 
-    if block do
-      {:ok, _updated_block} = Content.reorder_block(socket.assigns.current_user, block, new_index)
-      blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
-      {:noreply, assign(socket, blocks: blocks)}
+      if block do
+        {:ok, _updated_block} =
+          Content.reorder_block(socket.assigns.current_user, block, new_index)
+
+        blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
+        Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
+        {:noreply, assign(socket, blocks: blocks)}
+      else
+        {:noreply, socket}
+      end
     else
       {:noreply, socket}
     end
@@ -545,9 +701,9 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   def handle_event("update_block_meta", %{"block" => block_params} = params, socket) do
     id = block_params["id"]
-    block = Enum.find(socket.assigns.blocks, &(&1.id == id))
 
-    if block do
+    with true <- can_edit?(socket),
+         block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == id)) do
       content_map = normalize_content(block.content || %{})
       content_overrides = Map.get(block_params, "content", %{})
 
@@ -561,53 +717,87 @@ defmodule AthenaWeb.StudioLive.Builder do
 
       case Content.update_block(socket.assigns.current_user, block, final_params) do
         {:ok, updated_block} ->
+          Phoenix.PubSub.broadcast(
+            Athena.PubSub,
+            "builder:#{socket.assigns.course.id}",
+            :refresh_tree
+          )
+
           {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
 
         {:error, changeset} ->
           in_memory_block = Ecto.Changeset.apply_changes(changeset)
 
+          Phoenix.PubSub.broadcast(
+            Athena.PubSub,
+            "builder:#{socket.assigns.course.id}",
+            :refresh_tree
+          )
+
           {:noreply,
            assign(socket, blocks: replace_block(socket.assigns.blocks, in_memory_block))}
       end
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("delete_block_click", %{"id" => id}, socket) do
+    if can_edit?(socket) do
+      course = socket.assigns.course
+      block = Enum.find(socket.assigns.blocks, &(&1.id == id))
+      Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
+      {:noreply, assign(socket, block_to_delete: block)}
     else
       {:noreply, socket}
     end
   end
 
-  def handle_event("delete_block_click", %{"id" => id}, socket) do
-    block = Enum.find(socket.assigns.blocks, &(&1.id == id))
-    {:noreply, assign(socket, block_to_delete: block)}
-  end
-
   def handle_event("confirm_delete_block", _, socket) do
-    block = socket.assigns.block_to_delete
-    {:ok, _} = Content.delete_block(socket.assigns.current_user, block)
-    updated_blocks = Enum.reject(socket.assigns.blocks, &(&1.id == block.id))
+    if can_edit?(socket) do
+      course = socket.assigns.course
+      block = socket.assigns.block_to_delete
+      {:ok, _} = Content.delete_block(socket.assigns.current_user, block)
+      updated_blocks = Enum.reject(socket.assigns.blocks, &(&1.id == block.id))
+      Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
 
-    {:noreply,
-     socket
-     |> put_flash(:info, gettext("Block deleted"))
-     |> assign(blocks: updated_blocks, block_to_delete: nil, active_block_id: nil)}
+      {:noreply,
+       socket
+       |> put_flash(:info, gettext("Block deleted"))
+       |> assign(blocks: updated_blocks, block_to_delete: nil, active_block_id: nil)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("cancel_block_delete", _, socket) do
-    {:noreply, assign(socket, block_to_delete: nil)}
+    if can_edit?(socket) do
+      {:noreply, assign(socket, block_to_delete: nil)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("delete_attachment", %{"block_id" => block_id, "url" => url}, socket) do
-    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+    if can_edit?(socket) do
+      course = socket.assigns.course
+      block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
 
-    if block do
-      content_map = normalize_content(block.content || %{})
-      files = Map.get(content_map, "files", [])
-      new_files = Enum.reject(files, &(&1["url"] == url))
+      if block do
+        content_map = normalize_content(block.content || %{})
+        files = Map.get(content_map, "files", [])
+        new_files = Enum.reject(files, &(&1["url"] == url))
 
-      {:ok, updated_block} =
-        Content.update_block(socket.assigns.current_user, block, %{
-          "content" => Map.put(content_map, "files", new_files)
-        })
+        {:ok, updated_block} =
+          Content.update_block(socket.assigns.current_user, block, %{
+            "content" => Map.put(content_map, "files", new_files)
+          })
 
-      {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+        Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
+        {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+      else
+        {:noreply, socket}
+      end
     else
       {:noreply, socket}
     end
@@ -618,143 +808,179 @@ defmodule AthenaWeb.StudioLive.Builder do
         %{"block_id" => block_id, "media_type" => type},
         socket
       ) do
-    {:noreply,
-     assign(socket, show_media_modal: true, active_upload_block_id: block_id, upload_type: type)}
+    if can_edit?(socket) do
+      {:noreply,
+       assign(socket, show_media_modal: true, active_upload_block_id: block_id, upload_type: type)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("cancel_media_upload", _, socket) do
-    {:noreply,
-     assign(socket, show_media_modal: false, active_upload_block_id: nil, upload_type: nil)}
+    if can_edit?(socket) do
+      {:noreply,
+       assign(socket, show_media_modal: false, active_upload_block_id: nil, upload_type: nil)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("validate_media", _params, socket), do: {:noreply, socket}
 
   def handle_event("cancel_upload", _, socket) do
-    upload_name =
-      case to_string(socket.assigns.uploading_media_type) do
-        "video" -> :video_upload
-        "attachment" -> :attachment_upload
-        _ -> :image_upload
-      end
+    case can_edit?(socket) do
+      true ->
+        socket = clear_active_uploads(socket, socket.assigns.uploading_media_type)
+        {:noreply, assign(socket, uploading_for_block: nil, uploading_media_type: nil)}
 
-    socket =
-      if socket.assigns.uploading_media_type do
-        Enum.reduce(socket.assigns.uploads[upload_name].entries, socket, fn entry, acc ->
-          cancel_upload(acc, upload_name, entry.ref)
-        end)
-      else
-        socket
-      end
-
-    {:noreply, assign(socket, uploading_for_block: nil, uploading_media_type: nil)}
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   def handle_event("cancel-upload", %{"ref" => ref}, socket) do
-    upload_name =
-      case to_string(socket.assigns.uploading_media_type) do
-        "video" -> :video_upload
-        "attachment" -> :attachment_upload
-        _ -> :image_upload
-      end
+    if can_edit?(socket) do
+      upload_name =
+        case to_string(socket.assigns.uploading_media_type) do
+          "video" -> :video_upload
+          "attachment" -> :attachment_upload
+          _ -> :image_upload
+        end
 
-    {:noreply, cancel_upload(socket, upload_name, ref)}
+      {:noreply, cancel_upload(socket, upload_name, ref)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("open_library_picker", params, socket) do
-    {:ok, {blocks, _meta}} = Content.list_library_blocks(socket.assigns.current_user, %{})
+    if can_edit?(socket) do
+      {:ok, {blocks, _meta}} = Content.list_library_blocks(socket.assigns.current_user, %{})
 
-    {:noreply,
-     assign(socket,
-       library_picker_open: true,
-       library_blocks: blocks,
-       library_search: "",
-       library_insert_after_id: clean_after_id(params["after_id"])
-     )}
+      {:noreply,
+       assign(socket,
+         library_picker_open: true,
+         library_blocks: blocks,
+         library_search: "",
+         library_insert_after_id: clean_after_id(params["after_id"])
+       )}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("close_library_picker", _, socket) do
-    {:noreply, assign(socket, library_picker_open: false)}
+    if can_edit?(socket) do
+      {:noreply, assign(socket, library_picker_open: false)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("search_library", %{"search" => search}, socket) do
-    flop_params =
-      if search != "",
-        do: %{
-          "filters" => %{"0" => %{"field" => "title", "op" => "ilike_and", "value" => search}}
-        },
-        else: %{}
+    if can_edit?(socket) do
+      flop_params =
+        if search != "",
+          do: %{
+            "filters" => %{"0" => %{"field" => "title", "op" => "ilike_and", "value" => search}}
+          },
+          else: %{}
 
-    {:ok, {blocks, _meta}} =
-      Content.list_library_blocks(socket.assigns.current_user, flop_params)
+      {:ok, {blocks, _meta}} =
+        Content.list_library_blocks(socket.assigns.current_user, flop_params)
 
-    {:noreply, assign(socket, library_blocks: blocks, library_search: search)}
+      {:noreply, assign(socket, library_blocks: blocks, library_search: search)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("insert_from_library", %{"id" => lib_id}, socket) do
-    {:ok, lib_block} = Content.get_library_block(lib_id)
+    if can_edit?(socket) do
+      course = socket.assigns.course
+      {:ok, lib_block} = Content.get_library_block(lib_id)
 
-    attrs = %{
-      "type" => Atom.to_string(lib_block.type),
-      "content" => lib_block.content,
-      "section_id" => socket.assigns.active_section_id,
-      "after_id" => socket.assigns.library_insert_after_id
-    }
+      attrs = %{
+        "type" => Atom.to_string(lib_block.type),
+        "content" => lib_block.content,
+        "section_id" => socket.assigns.active_section_id,
+        "after_id" => socket.assigns.library_insert_after_id
+      }
 
-    case Content.create_block(socket.assigns.current_user, attrs) do
-      {:ok, block} ->
-        updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
+      case Content.create_block(socket.assigns.current_user, attrs) do
+        {:ok, block} ->
+          updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
+          Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
 
-        {:noreply,
-         socket
-         |> assign(
-           blocks: updated_blocks,
-           active_block_id: block.id,
-           library_picker_open: false,
-           library_insert_after_id: nil
-         )
-         |> put_flash(:info, gettext("Block inserted from library!"))}
+          {:noreply,
+           socket
+           |> assign(
+             blocks: updated_blocks,
+             active_block_id: block.id,
+             library_picker_open: false,
+             library_insert_after_id: nil
+           )
+           |> put_flash(:info, gettext("Block inserted from library!"))}
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, gettext("Failed to insert block"))}
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, gettext("Failed to insert block"))}
+      end
+    else
+      {:noreply, socket}
     end
   end
 
   def handle_event("open_save_library_modal", %{"id" => id}, socket) do
-    block = Enum.find(socket.assigns.blocks, &(&1.id == id))
-    {:noreply, assign(socket, saving_block_to_library: block)}
+    if can_edit?(socket) do
+      block = Enum.find(socket.assigns.blocks, &(&1.id == id))
+      {:noreply, assign(socket, saving_block_to_library: block)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("cancel_save_library", _, socket) do
-    {:noreply, assign(socket, saving_block_to_library: nil)}
+    if can_edit?(socket) do
+      {:noreply, assign(socket, saving_block_to_library: nil)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("save_to_library", %{"title" => title, "tags_string" => tags_str}, socket) do
-    block = socket.assigns.saving_block_to_library
-    content_map = normalize_content(block.content || %{})
+    if can_edit?(socket) do
+      course = socket.assigns.course
+      block = socket.assigns.saving_block_to_library
+      content_map = normalize_content(block.content || %{})
 
-    tags =
-      tags_str
-      |> String.split(",", trim: true)
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
+      tags =
+        tags_str
+        |> String.split(",", trim: true)
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
 
-    attrs = %{
-      "title" => title,
-      "type" => Atom.to_string(block.type),
-      "content" => content_map,
-      "tags" => tags,
-      "owner_id" => socket.assigns.current_user.id
-    }
+      attrs = %{
+        "title" => title,
+        "type" => Atom.to_string(block.type),
+        "content" => content_map,
+        "tags" => tags,
+        "owner_id" => socket.assigns.current_user.id
+      }
 
-    case Content.create_library_block(socket.assigns.current_user, attrs) do
-      {:ok, _lib_block} ->
-        {:noreply,
-         socket
-         |> assign(saving_block_to_library: nil)
-         |> put_flash(:info, gettext("Saved to library!"))}
+      case Content.create_library_block(socket.assigns.current_user, attrs) do
+        {:ok, _lib_block} ->
+          Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, gettext("Failed to save to library"))}
+          {:noreply,
+           socket
+           |> assign(saving_block_to_library: nil)
+           |> put_flash(:info, gettext("Saved to library!"))}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, gettext("Failed to save to library"))}
+      end
+    else
+      {:noreply, socket}
     end
   end
 
@@ -770,7 +996,8 @@ defmodule AthenaWeb.StudioLive.Builder do
         active_block: active_block,
         image_types_str: @image_types_str,
         video_types_str: @video_types_str,
-        attachment_types_str: @attachment_types_str
+        attachment_types_str: @attachment_types_str,
+        block_mode: if(assigns.role in [:owner, :writer], do: :edit, else: :preview)
       )
 
     ~H"""
@@ -790,6 +1017,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             sections={@sections}
             active_section_id={@active_section_id}
             viewing_parent_id={@viewing_parent_id}
+            role={@role}
           />
         </div>
       </div>
@@ -804,13 +1032,17 @@ defmodule AthenaWeb.StudioLive.Builder do
                 blocks={@blocks}
                 active_section_id={@active_section_id}
                 active_block_id={@active_block_id}
+                mode={@block_mode}
               />
             </div>
           </div>
         </div>
       </div>
 
-      <div class="w-80 flex flex-col bg-base-100 border-l border-base-300 shrink-0 z-10">
+      <div
+        :if={@role in [:owner, :writer]}
+        class="w-80 flex flex-col bg-base-100 border-l border-base-300 shrink-0 z-10"
+      >
         <div class="p-4 border-b border-base-300">
           <h3 class="font-bold text-sm uppercase tracking-wider text-base-content/70">
             {gettext("Inspector")}
@@ -1228,5 +1460,34 @@ defmodule AthenaWeb.StudioLive.Builder do
     |> String.split(",", trim: true)
     |> Enum.map(&String.trim/1)
     |> Enum.reject(&(&1 == ""))
+  end
+
+  defp determine_role(course, user) do
+    shares = Content.list_course_shares(course)
+
+    cond do
+      course.owner_id == user.id -> :owner
+      share = Enum.find(shares, &(&1.account_id == user.id)) -> share.role
+      course.is_public -> :reader
+      true -> :none
+    end
+  end
+
+  defp can_edit?(socket), do: socket.assigns.role in [:owner, :writer]
+
+  @doc false
+  defp clear_active_uploads(socket, nil), do: socket
+
+  defp clear_active_uploads(socket, media_type) do
+    upload_name =
+      case to_string(media_type) do
+        "video" -> :video_upload
+        "attachment" -> :attachment_upload
+        _ -> :image_upload
+      end
+
+    Enum.reduce(socket.assigns.uploads[upload_name].entries, socket, fn entry, acc ->
+      cancel_upload(acc, upload_name, entry.ref)
+    end)
   end
 end

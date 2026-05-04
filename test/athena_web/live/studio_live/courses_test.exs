@@ -150,7 +150,7 @@ defmodule AthenaWeb.StudioLive.CoursesTest do
 
       html = render_click(lv, "delete_click", %{"id" => target.id})
 
-      assert html =~ "You don&#39;t have permission to delete courses."
+      assert html =~ "Only the owner can delete this course."
     end
 
     test "should redirect from /edit if user has own_only policy and tries to edit another user's course",
@@ -172,6 +172,124 @@ defmodule AthenaWeb.StudioLive.CoursesTest do
 
       {:error, {:live_redirect, %{to: "/studio/courses"}}} =
         live(instructor_conn, ~p"/studio/courses/#{target_course.id}/edit")
+    end
+  end
+
+  describe "Courses page (Badges and Access UI)" do
+    setup %{conn: conn} do
+      role =
+        insert(:role,
+          permissions: ["courses.read", "courses.update", "courses.delete"],
+          policies: %{"courses.read" => ["own_only"], "courses.update" => ["own_only"]}
+        )
+
+      owner = insert(:account, role: role)
+      reader = insert(:account, role: role, login: "testreader")
+      conn = init_test_session(conn, %{"account_id" => owner.id})
+
+      %{conn: conn, owner: owner, reader: reader}
+    end
+
+    test "shows OWNER badge and share count when shared", %{
+      conn: conn,
+      owner: owner,
+      reader: reader
+    } do
+      course = insert(:course, owner_id: owner.id)
+
+      insert(:course_share, course: course, account_id: reader.id, role: :reader)
+
+      {:ok, _lv, html} = live(conn, ~p"/studio/courses")
+
+      assert html =~ "owner"
+      assert html =~ "hero-users"
+      assert html =~ "1\n"
+    end
+
+    test "shows PUBLIC badge", %{conn: conn, owner: owner} do
+      insert(:course, owner_id: owner.id, is_public: true)
+
+      {:ok, _lv, html} = live(conn, ~p"/studio/courses")
+
+      assert html =~ "Public"
+      assert html =~ "hero-globe-alt"
+    end
+
+    test "shows WRITER badge for collaborator", %{conn: conn, owner: owner, reader: writer} do
+      course = insert(:course, owner_id: owner.id)
+      insert(:course_share, course: course, account_id: writer.id, role: :writer)
+
+      writer_conn = init_test_session(conn, %{"account_id" => writer.id})
+      {:ok, _lv, html} = live(writer_conn, ~p"/studio/courses")
+
+      assert html =~ "writer"
+      refute html =~ "hero-users"
+    end
+  end
+
+  describe "Course Share Component" do
+    setup %{conn: conn} do
+      role =
+        insert(:role,
+          permissions: ["courses.read", "courses.update", "users.read"],
+          policies: %{"courses.read" => ["own_only"], "courses.update" => ["own_only"]}
+        )
+
+      owner = insert(:account, role: role)
+      target_user = insert(:account, login: "collaborator")
+      course = insert(:course, owner_id: owner.id)
+
+      conn = init_test_session(conn, %{"account_id" => owner.id})
+
+      %{conn: conn, owner: owner, course: course, target_user: target_user}
+    end
+
+    test "opens share modal and toggles public access", %{conn: conn, course: course} do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses")
+
+      html =
+        lv
+        |> element("button[phx-click='share_click'][phx-value-id='#{course.id}']")
+        |> render_click()
+
+      assert html =~ "Share Course:"
+      assert html =~ "Public Access"
+
+      html =
+        lv
+        |> element("#share-#{course.id} form[phx-change='toggle_public']")
+        |> render_change(%{"is_public" => "true"})
+
+      assert html =~ "Public"
+    end
+
+    test "searches users and adds a share", %{
+      conn: conn,
+      course: course,
+      target_user: target_user
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses")
+
+      lv
+      |> element("button[phx-click='share_click'][phx-value-id='#{course.id}']")
+      |> render_click()
+
+      html =
+        lv
+        |> element("#share-#{course.id} form[phx-change='search_users']")
+        |> render_change(%{"query" => "collab"})
+
+      assert html =~ target_user.login
+
+      html =
+        lv
+        |> element(
+          "button[phx-click='add_share'][phx-value-account_id='#{target_user.id}'][phx-value-role='reader']"
+        )
+        |> render_click()
+
+      assert html =~ "select-sm"
+      assert html =~ "hero-x-mark"
     end
   end
 end

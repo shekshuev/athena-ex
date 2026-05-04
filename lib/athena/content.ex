@@ -24,6 +24,41 @@ defmodule Athena.Content do
   def soft_delete_course(user, course),
     do: Courses.soft_delete_course(user, course) |> notify_subscribers()
 
+  def share_course(user, course, account_id, role) do
+    case Courses.share_course(user, course, account_id, role) do
+      {:ok, _share} = result ->
+        Phoenix.PubSub.broadcast(Athena.PubSub, "user_courses:#{account_id}", :refresh_courses)
+        result
+
+      error ->
+        error
+    end
+  end
+
+  def revoke_course_share(user, course, account_id) do
+    case Courses.revoke_course_share(user, course, account_id) do
+      {:ok, :revoked} = result ->
+        Phoenix.PubSub.broadcast(Athena.PubSub, "user_courses:#{account_id}", :refresh_courses)
+        result
+
+      error ->
+        error
+    end
+  end
+
+  def toggle_course_public(user, course, is_public) do
+    case Courses.toggle_course_public(user, course, is_public) do
+      {:ok, _course} = result ->
+        Phoenix.PubSub.broadcast(Athena.PubSub, "public_courses", :refresh_courses)
+        result
+
+      error ->
+        error
+    end
+  end
+
+  defdelegate list_course_shares(course), to: Courses
+
   defdelegate get_section(user, id), to: Sections
   defdelegate get_section(id), to: Sections
   defdelegate get_course_tree(course_id, user_or_mode \\ :all), to: Sections
@@ -69,6 +104,41 @@ defmodule Athena.Content do
   defdelegate update_library_block(user, block, attrs), to: Library
   defdelegate delete_library_block(user, block), to: Library
   defdelegate generate_exam_questions(params), to: Library
+
+  def share_block(user, block, account_id, role) do
+    case Library.share_block(user, block, account_id, role) do
+      {:ok, _share} = result ->
+        Phoenix.PubSub.broadcast(Athena.PubSub, "user_library:#{account_id}", :refresh_library)
+        result
+
+      error ->
+        error
+    end
+  end
+
+  def revoke_block_share(user, block, account_id) do
+    case Library.revoke_block_share(user, block, account_id) do
+      {:ok, :revoked} = result ->
+        Phoenix.PubSub.broadcast(Athena.PubSub, "user_library:#{account_id}", :refresh_library)
+        result
+
+      error ->
+        error
+    end
+  end
+
+  def toggle_block_public(user, block, is_public) do
+    case Library.toggle_block_public(user, block, is_public) do
+      {:ok, _block} = result ->
+        Phoenix.PubSub.broadcast(Athena.PubSub, "public_library", :refresh_library)
+        result
+
+      error ->
+        error
+    end
+  end
+
+  defdelegate list_block_shares(block), to: Library
 
   defdelegate can_view?(user_or_mode, item, overrides), to: Policy
 

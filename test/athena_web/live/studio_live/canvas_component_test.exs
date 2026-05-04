@@ -11,7 +11,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
         render_component(CanvasComponent,
           active_section_id: nil,
           blocks: [],
-          active_block_id: nil
+          active_block_id: nil,
+          mode: :edit
         )
 
       assert html =~ "Select a section from the sidebar to view its blocks."
@@ -23,7 +24,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
         render_component(CanvasComponent,
           active_section_id: "some-section-id",
           blocks: [],
-          active_block_id: nil
+          active_block_id: nil,
+          mode: :edit
         )
 
       assert html =~ "Add Content"
@@ -45,7 +47,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
         render_component(CanvasComponent,
           active_section_id: "sec-1",
           blocks: [text_block],
-          active_block_id: nil
+          active_block_id: nil,
+          mode: :edit
         )
 
       assert html =~ ~s(id="tiptap-edit-block-123")
@@ -64,7 +67,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
         render_component(CanvasComponent,
           active_section_id: "sec-1",
           blocks: [code_block],
-          active_block_id: nil
+          active_block_id: nil,
+          mode: :edit
         )
 
       assert html =~ "elixir"
@@ -78,7 +82,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
         render_component(CanvasComponent,
           active_section_id: "sec-1",
           blocks: [image_block],
-          active_block_id: nil
+          active_block_id: nil,
+          mode: :edit
         )
 
       assert html =~ "Image not uploaded yet"
@@ -96,7 +101,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
         render_component(CanvasComponent,
           active_section_id: "sec-1",
           blocks: [image_block],
-          active_block_id: nil
+          active_block_id: nil,
+          mode: :edit
         )
 
       assert html =~ "<img"
@@ -115,7 +121,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
         render_component(CanvasComponent,
           active_section_id: "sec-1",
           blocks: [exam_block],
-          active_block_id: nil
+          active_block_id: nil,
+          mode: :edit
         )
 
       assert html =~ "Final Exam"
@@ -138,7 +145,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
         render_component(CanvasComponent,
           active_section_id: "sec-1",
           blocks: [attachment_block],
-          active_block_id: "block-att-2"
+          active_block_id: "block-att-2",
+          mode: :edit
         )
 
       assert html =~ "Manage Files"
@@ -155,7 +163,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
         render_component(CanvasComponent,
           active_section_id: "sec-1",
           blocks: [video_block],
-          active_block_id: "block-vid-1"
+          active_block_id: "block-vid-1",
+          mode: :edit
         )
 
       assert html =~ "Upload Media"
@@ -177,7 +186,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
         render_component(CanvasComponent,
           active_section_id: "sec-1",
           blocks: [quiz_block],
-          active_block_id: "block-quiz-exact"
+          active_block_id: "block-quiz-exact",
+          mode: :edit
         )
 
       assert html =~ "Answer Editor"
@@ -208,7 +218,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
         render_component(CanvasComponent,
           active_section_id: "sec-1",
           blocks: [quiz_block],
-          active_block_id: "block-quiz-multi"
+          active_block_id: "block-quiz-multi",
+          mode: :edit
         )
 
       assert html =~ "Answer Editor"
@@ -232,7 +243,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
         render_component(CanvasComponent,
           active_section_id: "sec-1",
           blocks: [quiz_block],
-          active_block_id: "block-quiz-open"
+          active_block_id: "block-quiz-open",
+          mode: :edit
         )
 
       assert html =~ "Answer Editor"
@@ -241,7 +253,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
   end
 
   describe "Active State Highlighting & Controls" do
-    test "highlights the active block and renders controls" do
+    test "highlights the active block and renders controls in edit mode" do
       block1 = %Block{id: "block-1", type: :text, content: %{}}
       block2 = %Block{id: "block-2", type: :text, content: %{}}
 
@@ -249,7 +261,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
         render_component(CanvasComponent,
           active_section_id: "sec-1",
           blocks: [block1, block2],
-          active_block_id: "block-1"
+          active_block_id: "block-1",
+          mode: :edit
         )
 
       assert html =~ ~r/ring-2 ring-primary bg-base-100/s
@@ -261,6 +274,34 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       assert html =~ "hero-chevron-down"
 
       assert html =~ ~s(phx-value-after_id="block-1")
+    end
+  end
+
+  describe "Reader Mode Restrictions (:preview)" do
+    test "hides all editing controls and drag-and-drop features in preview mode" do
+      block1 = %Block{id: "block-1", type: :text, content: %{"text" => "hello"}}
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [block1],
+          active_block_id: "block-1",
+          mode: :preview
+        )
+
+      refute html =~ ~s(phx-hook="Sortable")
+
+      refute html =~ "move_block_up"
+      refute html =~ "move_block_down"
+      refute html =~ "Drag to Reorder"
+
+      refute html =~ "Add Content"
+      refute html =~ "add_text_block"
+
+      refute html =~ "Answer Editor"
+      refute html =~ "Manage Files"
+
+      assert html =~ "tiptap-preview-block-1"
     end
   end
 end

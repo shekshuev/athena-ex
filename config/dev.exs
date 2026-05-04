@@ -27,7 +27,7 @@ config :athena, AthenaWeb.Endpoint,
   secret_key_base: "2FuWysHTAf1fscLYHZ9rZN7XjBTPztO8QHAXiP0N86lUPaaArxPHpxQdau3w7KvU",
   watchers: [
     esbuild: {Esbuild, :install_and_run, [:athena, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:athena, ~w(--watch)]}
+    npm: ["run", "build:css", "--", "--watch", cd: Path.expand("../assets", __DIR__)]
   ]
 
 # ## SSL Support

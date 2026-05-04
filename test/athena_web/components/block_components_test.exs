@@ -54,6 +54,21 @@ defmodule AthenaWeb.BlockComponentsTest do
       refute html =~ "ring-primary"
       assert html =~ "mb-10"
     end
+
+    test "renders text block in :preview mode as read-only", %{block: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:preview} active={false} />
+        """)
+
+      assert html =~ "tiptap-preview-#{block.id}"
+      assert html =~ "Some amazing text content"
+      assert html =~ ~s(data-readonly="true")
+      assert html =~ "cursor-default"
+      refute html =~ "ring-primary"
+    end
   end
 
   describe "content_block/1 :image" do
@@ -332,6 +347,21 @@ defmodule AthenaWeb.BlockComponentsTest do
       assert html =~ "bg-error/10"
       assert html =~ "ring-success"
     end
+
+    test "renders in :preview mode with disabled inputs and pointer-events-none", %{block: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:preview} />
+        """)
+
+      assert html =~ "Pick one"
+      assert html =~ " disabled"
+      assert html =~ "pointer-events-none"
+      assert html =~ "cursor-default"
+      refute html =~ "Student&#39;s Answer:"
+    end
   end
 
   describe "content_block/1 :quiz_question (multiple choice)" do
@@ -550,6 +580,20 @@ defmodule AthenaWeb.BlockComponentsTest do
       refute html =~ "Start Exam"
       refute html =~ "hero-play-solid"
       refute html =~ "ring-primary"
+    end
+
+    test "renders read-only banner without start button in :preview mode", %{block: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:preview} />
+        """)
+
+      assert html =~ "Final Exam"
+      assert html =~ "15 Questions"
+      refute html =~ "Start Exam"
+      assert html =~ "cursor-default"
     end
   end
 end

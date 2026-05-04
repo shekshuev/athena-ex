@@ -7,30 +7,68 @@ defmodule Athena.Learning.Submissions do
   """
 
   import Ecto.Query
-  alias Athena.{Repo, Identity}
-  alias Athena.Learning.{Submission, Enrollment, Cohort}
+  alias Athena.{Repo, Identity, Content}
+  alias Athena.Learning.{Submission, Enrollment, Cohort, Instructor, CohortInstructor}
   alias Athena.Content.{Block, Section}
 
   @doc """
   Lists submissions with pagination, filtering, and sorting using Flop.
-  Enforces grading.read ACL.
+  Enforces grading.read ACL through custom scoping.
   """
   @spec list_submissions(map(), map()) ::
           {:ok, {[Submission.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_submissions(user, params \\ %{}) do
-    query = from(s in Submission) |> Identity.scope_query(user, "grading.read")
+    query =
+      Submission
+      |> scope_submissions(user, "grading.read")
+
     Flop.validate_and_run(query, params, for: Submission)
   end
 
   @doc """
-  Gets a single submission by its ID. Enforces grading.read ACL.
+  Gets a single submission by its ID. Enforces grading.read ACL through custom scoping.
   Raises `Ecto.NoResultsError` if the Submission does not exist or access is denied.
   """
   def get_submission!(user, id) do
     Submission
     |> where([s], s.id == ^id)
-    |> Identity.scope_query(user, "grading.read")
+    |> scope_submissions(user, "grading.read")
     |> Repo.one!()
+  end
+
+  @doc false
+  defp scope_submissions(query, user, permission) do
+    cond do
+      "admin" in user.role.permissions ->
+        query
+
+      permission in user.role.permissions ->
+        policies = Map.get(user.role.policies || %{}, permission, [])
+
+        if "own_only" in policies do
+          my_cohort_ids =
+            from ci in CohortInstructor,
+              join: i in Instructor,
+              on: ci.instructor_id == i.id,
+              where: i.owner_id == ^user.id,
+              select: ci.cohort_id
+
+          my_course_ids = Content.list_accessible_course_ids(user)
+
+          query
+          |> join(:inner, [s], b in Block, on: s.block_id == b.id)
+          |> join(:inner, [s, b], sec in Section, on: b.section_id == sec.id)
+          |> where(
+            [s, b, sec],
+            s.cohort_id in subquery(my_cohort_ids) or sec.course_id in ^my_course_ids
+          )
+        else
+          query
+        end
+
+      true ->
+        where(query, [s], false)
+    end
   end
 
   @doc """
