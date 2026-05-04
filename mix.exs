@@ -101,10 +101,14 @@ defmodule Athena.MixProject do
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
-      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
-      "assets.build": ["compile", "tailwind athena", "esbuild athena"],
+      "assets.setup": [
+        "tailwind.install --if-missing",
+        "esbuild.install --if-missing",
+        "cmd --cd assets npm install"
+      ],
+      "assets.build": ["compile", "esbuild athena", "cmd --cd assets npm run build:css"],
       "assets.deploy": [
-        "tailwind athena --minify",
+        "cmd --cd assets npm run build:css:minify",
         "esbuild athena --minify",
         "phx.digest"
       ],

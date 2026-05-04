@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:css": "postcss css/app.css -o ../priv/static/assets/css/app.css",
+    "build:css:minify": "NODE_ENV=production postcss css/app.css -o ../priv/static/assets/css/app.css"
   },
   "keywords": [],
   "author": "",
@@ -36,9 +38,17 @@
     "@tiptap/extension-underline": "2.27.2",
     "@tiptap/starter-kit": "2.27.2",
     "@tiptap/suggestion": "2.27.2",
+    "daisyui": "^5.5.19",
     "katex": "^0.16.45",
     "lowlight": "^3.3.0",
     "sortablejs": "^1.15.7",
     "tippy.js": "^6.3.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.4",
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.13",
+    "postcss-cli": "^11.0.1",
+    "postcss-import": "^16.1.1"
   }
 }

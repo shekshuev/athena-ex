@@ -54,6 +54,8 @@ RUN npm install --prefix assets --progress=false --silent
 COPY config/config.exs config/${MIX_ENV}.exs config/
 RUN mix deps.compile
 
+COPY assets/postcss.config.js ./assets/
+
 RUN mix assets.setup
 
 COPY priv priv
