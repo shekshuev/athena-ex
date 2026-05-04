@@ -76,175 +76,191 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
         {AthenaWeb.StudioLive.MediaUploadComponent, {:saved, _block_id, media_type, results}},
         socket
       ) do
-    with true <- can_edit?(socket) do
-      block = socket.assigns.block
-      content_map = normalize_content(block.content || %{})
+    case can_edit?(socket) do
+      true ->
+        block = socket.assigns.block
+        content_map = normalize_content(block.content || %{})
 
-      new_content =
-        case media_type do
-          "attachment" ->
-            Map.put(content_map, "files", Map.get(content_map, "files", []) ++ results)
+        new_content =
+          case media_type do
+            "attachment" ->
+              Map.put(content_map, "files", Map.get(content_map, "files", []) ++ results)
 
-          _ ->
-            file_map = List.first(results)
-            Map.put(content_map, "url", file_map["url"])
-        end
+            _ ->
+              file_map = List.first(results)
+              Map.put(content_map, "url", file_map["url"])
+          end
 
-      socket =
-        socket
-        |> assign(show_media_modal: false, upload_type: nil)
-        |> put_flash(:info, gettext("Media uploaded successfully!"))
+        socket =
+          socket
+          |> assign(show_media_modal: false, upload_type: nil)
+          |> put_flash(:info, gettext("Media uploaded successfully!"))
 
-      update_and_assign(socket, block, %{"content" => new_content})
-    else
-      _ -> {:noreply, socket}
+        update_and_assign(socket, block, %{"content" => new_content})
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
   @impl true
   def handle_event("update_content", %{"content" => parsed}, socket) do
-    with true <- can_edit?(socket) do
-      block = socket.assigns.block
-      content_map = normalize_content(block.content || %{})
+    case can_edit?(socket) do
+      true ->
+        block = socket.assigns.block
+        content_map = normalize_content(block.content || %{})
 
-      new_content =
-        case block.type do
-          :attachment -> Map.put(content_map, "description", parsed)
-          :quiz_question -> Map.put(content_map, "body", parsed)
-          _ -> parsed
-        end
+        new_content =
+          case block.type do
+            :attachment -> Map.put(content_map, "description", parsed)
+            :quiz_question -> Map.put(content_map, "body", parsed)
+            _ -> parsed
+          end
 
-      update_and_assign(socket, block, %{"content" => new_content})
-    else
-      _ -> {:noreply, socket}
+        update_and_assign(socket, block, %{"content" => new_content})
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
   def handle_event("add_quiz_option", _, socket) do
-    with true <- can_edit?(socket) do
-      block = socket.assigns.block
-      content_map = normalize_content(block.content || %{})
-      options = Map.get(content_map, "options", [])
+    case can_edit?(socket) do
+      true ->
+        block = socket.assigns.block
+        content_map = normalize_content(block.content || %{})
+        options = Map.get(content_map, "options", [])
 
-      new_option = %{
-        "id" => Ecto.UUID.generate(),
-        "text" => "New Option",
-        "is_correct" => false,
-        "explanation" => ""
-      }
+        new_option = %{
+          "id" => Ecto.UUID.generate(),
+          "text" => "New Option",
+          "is_correct" => false,
+          "explanation" => ""
+        }
 
-      new_content = Map.put(content_map, "options", options ++ [new_option])
-      update_and_assign(socket, block, %{"content" => new_content})
-    else
-      _ -> {:noreply, socket}
+        new_content = Map.put(content_map, "options", options ++ [new_option])
+        update_and_assign(socket, block, %{"content" => new_content})
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
   def handle_event("remove_quiz_option", %{"option_id" => option_id}, socket) do
-    with true <- can_edit?(socket) do
-      block = socket.assigns.block
-      content_map = normalize_content(block.content || %{})
-      options = Map.get(content_map, "options", []) |> Enum.reject(&(&1["id"] == option_id))
+    case can_edit?(socket) do
+      true ->
+        block = socket.assigns.block
+        content_map = normalize_content(block.content || %{})
+        options = Map.get(content_map, "options", []) |> Enum.reject(&(&1["id"] == option_id))
 
-      update_and_assign(socket, block, %{"content" => Map.put(content_map, "options", options)})
-    else
-      _ -> {:noreply, socket}
+        update_and_assign(socket, block, %{"content" => Map.put(content_map, "options", options)})
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
   def handle_event("update_quiz_content", params, socket) do
-    with true <- can_edit?(socket) do
-      block = socket.assigns.block
-      content_map = normalize_content(block.content || %{})
+    case can_edit?(socket) do
+      true ->
+        block = socket.assigns.block
+        content_map = normalize_content(block.content || %{})
 
-      content_map =
-        if ans = params["correct_answer"],
-          do: Map.put(content_map, "correct_answer", ans),
-          else: content_map
+        content_map =
+          if ans = params["correct_answer"],
+            do: Map.put(content_map, "correct_answer", ans),
+            else: content_map
 
-      content_map =
-        if opts = params["options"],
-          do:
-            Map.put(content_map, "options", parse_quiz_options(opts, params["correct_option_id"])),
-          else: content_map
+        content_map =
+          if opts = params["options"],
+            do:
+              Map.put(
+                content_map,
+                "options",
+                parse_quiz_options(opts, params["correct_option_id"])
+              ),
+            else: content_map
 
-      update_and_assign(socket, block, %{"content" => content_map})
-    else
-      _ -> {:noreply, socket}
+        update_and_assign(socket, block, %{"content" => content_map})
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
   def handle_event("delete_attachment", %{"url" => url}, socket) do
-    with true <- can_edit?(socket) do
-      block = socket.assigns.block
-      content_map = normalize_content(block.content || %{})
-      files = Map.get(content_map, "files", []) |> Enum.reject(&(&1["url"] == url))
+    case can_edit?(socket) do
+      true ->
+        block = socket.assigns.block
+        content_map = normalize_content(block.content || %{})
+        files = Map.get(content_map, "files", []) |> Enum.reject(&(&1["url"] == url))
 
-      update_and_assign(socket, block, %{"content" => Map.put(content_map, "files", files)})
-    else
-      _ -> {:noreply, socket}
+        update_and_assign(socket, block, %{"content" => Map.put(content_map, "files", files)})
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
   def handle_event("request_media_upload", %{"media_type" => type}, socket) do
-    with true <- can_edit?(socket) do
-      {:noreply, assign(socket, show_media_modal: true, upload_type: type)}
-    else
+    case can_edit?(socket) do
+      true -> {:noreply, assign(socket, show_media_modal: true, upload_type: type)}
       _ -> {:noreply, socket}
     end
   end
 
   def handle_event("cancel_media_upload", _, socket) do
-    with true <- can_edit?(socket) do
-      {:noreply, assign(socket, show_media_modal: false, upload_type: nil)}
-    else
+    case can_edit?(socket) do
+      true -> {:noreply, assign(socket, show_media_modal: false, upload_type: nil)}
       _ -> {:noreply, socket}
     end
   end
 
   def handle_event("update_meta", %{"library_block" => params} = form_data, socket) do
-    with true <- can_edit?(socket) do
-      block = socket.assigns.block
-      tags_string = Map.get(form_data, "tags_string", socket.assigns.tags_string)
+    case can_edit?(socket) do
+      true ->
+        block = socket.assigns.block
+        tags_string = Map.get(form_data, "tags_string", socket.assigns.tags_string)
 
-      params =
-        if Map.has_key?(form_data, "tags_string") do
-          tags =
-            tags_string
-            |> String.split(",", trim: true)
-            |> Enum.map(&String.trim/1)
-            |> Enum.reject(&(&1 == ""))
+        params =
+          if Map.has_key?(form_data, "tags_string") do
+            tags =
+              tags_string
+              |> String.split(",", trim: true)
+              |> Enum.map(&String.trim/1)
+              |> Enum.reject(&(&1 == ""))
 
-          Map.put(params, "tags", tags)
-        else
-          params
+            Map.put(params, "tags", tags)
+          else
+            params
+          end
+
+        content_map = normalize_content(block.content || %{})
+        content_overrides = Map.get(params, "content", %{})
+
+        content_overrides =
+          content_map
+          |> apply_quiz_meta_overrides(content_overrides)
+          |> apply_exam_meta_overrides(block.type, form_data)
+
+        final_content = Map.merge(content_map, content_overrides)
+        final_params = Map.put(params, "content", final_content)
+
+        case Content.update_library_block(socket.assigns.current_user, block, final_params) do
+          {:ok, updated_block} ->
+            {:noreply,
+             assign(socket,
+               block: updated_block,
+               form: to_form(LibraryBlock.changeset(updated_block, %{})),
+               tags_string: tags_string
+             )}
+
+          {:error, changeset} ->
+            {:noreply, assign(socket, form: to_form(changeset))}
         end
 
-      content_map = normalize_content(block.content || %{})
-      content_overrides = Map.get(params, "content", %{})
-
-      content_overrides =
-        content_map
-        |> apply_quiz_meta_overrides(content_overrides)
-        |> apply_exam_meta_overrides(block.type, form_data)
-
-      final_content = Map.merge(content_map, content_overrides)
-      final_params = Map.put(params, "content", final_content)
-
-      case Content.update_library_block(socket.assigns.current_user, block, final_params) do
-        {:ok, updated_block} ->
-          {:noreply,
-           assign(socket,
-             block: updated_block,
-             form: to_form(LibraryBlock.changeset(updated_block, %{})),
-             tags_string: tags_string
-           )}
-
-        {:error, changeset} ->
-          {:noreply, assign(socket, form: to_form(changeset))}
-      end
-    else
-      _ -> {:noreply, socket}
+      _ ->
+        {:noreply, socket}
     end
   end
 

@@ -828,11 +828,13 @@ defmodule AthenaWeb.StudioLive.Builder do
   def handle_event("validate_media", _params, socket), do: {:noreply, socket}
 
   def handle_event("cancel_upload", _, socket) do
-    with true <- can_edit?(socket) do
-      socket = clear_active_uploads(socket, socket.assigns.uploading_media_type)
-      {:noreply, assign(socket, uploading_for_block: nil, uploading_media_type: nil)}
-    else
-      _ -> {:noreply, socket}
+    case can_edit?(socket) do
+      true ->
+        socket = clear_active_uploads(socket, socket.assigns.uploading_media_type)
+        {:noreply, assign(socket, uploading_for_block: nil, uploading_media_type: nil)}
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
