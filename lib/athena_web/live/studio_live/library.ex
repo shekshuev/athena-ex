@@ -1,23 +1,28 @@
 defmodule AthenaWeb.StudioLive.Library do
   @moduledoc """
   LiveView for managing reusable content templates (Library Blocks).
-  Displays a visual grid gallery of templates using streams and universal content blocks.
+  Displays templates in a table format with contextual access controls.
   """
   use AthenaWeb, :live_view
 
   alias Athena.Content
   alias Athena.Content.LibraryBlock
   alias Athena.Identity
-  alias AthenaWeb.StudioLive.LibraryFormComponent
-  import AthenaWeb.BlockComponents
+  alias AthenaWeb.StudioLive.{LibraryFormComponent, LibraryShareComponent}
 
   on_mount {AthenaWeb.Hooks.Permission, "library.read"}
 
   @impl true
   def mount(_params, _session, socket) do
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(Athena.PubSub, "user_library:#{socket.assigns.current_user.id}")
+      Phoenix.PubSub.subscribe(Athena.PubSub, "public_library")
+    end
+
     {:ok,
      socket
      |> assign(block_to_delete: nil)
+     |> assign(block_to_share: nil)
      |> stream(:library_blocks, [])}
   end
 
@@ -64,15 +69,21 @@ defmodule AthenaWeb.StudioLive.Library do
   end
 
   defp apply_action(socket, :edit, %{"id" => id}) do
-    if Identity.can?(socket.assigns.current_user, "library.update") do
-      case Content.get_library_block(socket.assigns.current_user, id) do
-        {:ok, block} -> assign(socket, page_title: gettext("Edit Template"), library_block: block)
-        _ -> push_patch(socket, to: ~p"/studio/library")
-      end
-    else
-      socket
-      |> put_flash(:error, gettext("You don't have permission to edit templates."))
-      |> push_patch(to: ~p"/studio/library")
+    case Content.get_library_block(socket.assigns.current_user, id) do
+      {:ok, block} ->
+        info = block_badges(block, socket.assigns.current_user)
+
+        if info.role in [:owner, :writer] or
+             Identity.can?(socket.assigns.current_user, "library.update", block) do
+          assign(socket, page_title: gettext("Edit Template"), library_block: block)
+        else
+          socket
+          |> put_flash(:error, gettext("You don't have permission to edit this template."))
+          |> push_patch(to: ~p"/studio/library")
+        end
+
+      _ ->
+        push_patch(socket, to: ~p"/studio/library")
     end
   end
 
@@ -83,13 +94,15 @@ defmodule AthenaWeb.StudioLive.Library do
   end
 
   def handle_event("delete_click", %{"id" => id}, socket) do
-    if Identity.can?(socket.assigns.current_user, "library.delete") do
-      {:ok, block} = Content.get_library_block(socket.assigns.current_user, id)
+    {:ok, block} = Content.get_library_block(socket.assigns.current_user, id)
+
+    if block.owner_id == socket.assigns.current_user.id or
+         Identity.can?(socket.assigns.current_user, "library.delete", block) do
       {:noreply, assign(socket, block_to_delete: block)}
     else
       {:noreply,
        socket
-       |> put_flash(:error, gettext("You don't have permission to delete templates."))
+       |> put_flash(:error, gettext("Only the owner can delete this template."))
        |> push_patch(to: ~p"/studio/library")}
     end
   end
@@ -112,9 +125,128 @@ defmodule AthenaWeb.StudioLive.Library do
     {:noreply, assign(socket, block_to_delete: nil)}
   end
 
+  def handle_event("share_click", %{"id" => id}, socket) do
+    case Content.get_library_block(socket.assigns.current_user, id) do
+      {:ok, block} ->
+        if block.owner_id == socket.assigns.current_user.id or
+             Identity.can?(socket.assigns.current_user, "library.update", block) do
+          {:noreply, assign(socket, block_to_share: block)}
+        else
+          {:noreply,
+           socket |> put_flash(:error, gettext("Only the owner can share this template."))}
+        end
+
+      _ ->
+        {:noreply, socket |> put_flash(:error, gettext("Cannot access this template."))}
+    end
+  end
+
+  def handle_event("cancel_share", _, socket) do
+    {:noreply, assign(socket, block_to_share: nil)}
+  end
+
   @impl true
   def handle_info({LibraryFormComponent, {:saved, block}}, socket) do
     {:noreply, stream_insert(socket, :library_blocks, block)}
+  end
+
+  def handle_info({LibraryShareComponent, {:updated, block}}, socket) do
+    socket =
+      if socket.assigns.block_to_share && socket.assigns.block_to_share.id == block.id do
+        assign(socket, block_to_share: block)
+      else
+        socket
+      end
+
+    {:noreply, stream_insert(socket, :library_blocks, block)}
+  end
+
+  @impl true
+  def handle_info(:refresh_library, socket) do
+    params = %{
+      "search" => socket.assigns.search,
+      "page" => socket.assigns.meta.current_page,
+      "page_size" => socket.assigns.meta.page_size
+    }
+
+    flop_params =
+      if params["search"] != "" do
+        Map.put(params, "filters", %{
+          "0" => %{"field" => "title", "op" => "ilike_and", "value" => params["search"]}
+        })
+      else
+        params
+      end
+
+    case Content.list_library_blocks(socket.assigns.current_user, flop_params) do
+      {:ok, {blocks, meta}} ->
+        {:noreply,
+         socket
+         |> assign(meta: meta)
+         |> stream(:library_blocks, blocks, reset: true)}
+
+      {:error, _meta} ->
+        {:noreply, socket}
+    end
+  end
+
+  defp block_badges(block, user) do
+    shares = Content.list_block_shares(block)
+
+    role =
+      cond do
+        block.owner_id == user.id -> :owner
+        share = Enum.find(shares, &(&1.account_id == user.id)) -> share.role
+        true -> :none
+      end
+
+    %{
+      role: role,
+      is_public: block.is_public,
+      shares_count: length(shares)
+    }
+  end
+
+  defp access_badges(assigns) do
+    ~H"""
+    <div class="flex gap-1 items-center">
+      <span
+        :if={@info.role != :none}
+        class={[
+          "badge badge-xs font-bold uppercase shrink-0",
+          @info.role == :owner && "badge-primary badge-soft",
+          @info.role == :writer && "badge-secondary badge-soft",
+          @info.role == :reader && "badge-accent badge-soft"
+        ]}
+      >
+        {Atom.to_string(@info.role)}
+      </span>
+
+      <span
+        :if={@info.is_public}
+        class="badge badge-xs badge-neutral font-bold uppercase shrink-0"
+      >
+        <.icon name="hero-eye" class="size-3 mr-1" />
+        {gettext("Public")}
+      </span>
+
+      <span
+        :if={!@info.is_public and @info.shares_count > 0 and @info.role == :owner}
+        class="badge badge-xs badge-info badge-soft font-bold shrink-0"
+      >
+        <.icon name="hero-users" class="size-3 mr-1" />
+        {@info.shares_count}
+      </span>
+    </div>
+    """
+  end
+
+  defp type_badge(assigns) do
+    ~H"""
+    <span class="badge badge-sm font-bold shadow-sm border border-base-200 bg-base-100 text-base-content/70 uppercase tracking-widest text-[10px]">
+      {Atom.to_string(@type) |> String.replace("_", " ")}
+    </span>
+    """
   end
 
   @impl true
@@ -131,7 +263,7 @@ defmodule AthenaWeb.StudioLive.Library do
         <.button
           :if={Identity.can?(@current_user, "library.create")}
           patch={~p"/studio/library/new"}
-          class="btn btn-primary shadow-lg shadow-primary/20"
+          class="btn btn-primary"
         >
           <.icon name="hero-plus" class="size-5" />
           {gettext("Create Template")}
@@ -157,83 +289,71 @@ defmodule AthenaWeb.StudioLive.Library do
         </.form>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 mt-8">
-        <div
-          :for={{dom_id, block} <- @streams.library_blocks}
-          id={dom_id}
-          class="card bg-base-100 border border-base-200 shadow-sm hover:shadow-xl hover:border-primary/40 transition-all duration-300 overflow-hidden group flex flex-col"
-        >
-          <div class="h-48 bg-linear-to-br from-base-200 to-base-300 relative overflow-hidden flex items-center justify-center pointer-events-none select-none">
-            <div class="origin-top-left w-[140%] scale-[0.70] p-6 opacity-60 group-hover:opacity-100 transition-opacity duration-300">
-              <.content_block block={block} mode={:play} answers={%{}} />
-            </div>
-            <div class="absolute bottom-0 left-0 right-0 h-24 bg-linear-to-t from-base-100 to-transparent z-10">
-            </div>
+      <.table id="library-blocks" rows={@streams.library_blocks}>
+        <:col :let={{_id, block}} label={gettext("Title")}>
+          <div class="flex flex-col gap-1 items-start">
+            <span class="font-bold">{block.title}</span>
+            <.access_badges info={block_badges(block, @current_user)} />
           </div>
+        </:col>
+        <:col :let={{_id, block}} label={gettext("Type")}>
+          <.type_badge type={block.type} />
+        </:col>
+        <:col :let={{_id, block}} label={gettext("Created At")}>
+          <span class="text-sm opacity-60">{Calendar.strftime(block.inserted_at, "%d.%m.%Y")}</span>
+        </:col>
+        <:action :let={{_id, block}}>
+          <% info = block_badges(block, @current_user) %>
+          <% can_edit =
+            info.role in [:owner, :writer] or Identity.can?(@current_user, "library.update", block) %>
+          <% can_view = can_edit or info.role == :reader or info.is_public %>
 
-          <div class="card-body p-6 grow gap-4">
-            <div>
-              <div class="flex justify-between items-start gap-4">
-                <h2
-                  class="card-title text-xl font-display font-bold group-hover:text-primary transition-colors line-clamp-2"
-                  title={block.title}
-                >
-                  {block.title}
-                </h2>
-                <span class="badge badge-sm font-bold shadow-sm border-0 bg-base-200 text-base-content/70 uppercase tracking-widest text-[10px] shrink-0 mt-1">
-                  {Atom.to_string(block.type) |> String.replace("_", " ")}
-                </span>
-              </div>
+          <div class="flex justify-end gap-2">
+            <.button
+              :if={can_view}
+              navigate={~p"/studio/library/#{block.id}/editor"}
+              class="btn btn-primary btn-xs btn-square btn-soft"
+              title={if can_edit, do: gettext("Open Editor"), else: gettext("View Template")}
+            >
+              <.icon
+                name={if can_edit, do: "hero-wrench-screwdriver", else: "hero-eye"}
+                class="size-4"
+              />
+            </.button>
 
-              <div class="flex flex-wrap gap-1 mt-3">
-                <span :for={tag <- block.tags || []} class="badge badge-xs badge-neutral">{tag}</span>
-                <span :if={block.tags == []} class="text-xs opacity-50 italic">
-                  {gettext("No tags")}
-                </span>
-              </div>
-            </div>
+            <.button
+              :if={can_edit}
+              patch={~p"/studio/library/#{block.id}/edit"}
+              class="btn btn-ghost btn-xs btn-square"
+              title={gettext("Edit Metadata")}
+            >
+              <.icon name="hero-pencil-square" class="size-4" />
+            </.button>
 
-            <div class="mt-auto pt-6 flex items-center justify-between border-t border-base-200/50">
-              <div class="text-xs text-base-content/50 font-mono">
-                {Calendar.strftime(block.inserted_at, "%d.%m.%Y")}
-              </div>
+            <.button
+              :if={info.role == :owner or Identity.can?(@current_user, "library.update", block)}
+              type="button"
+              phx-click="share_click"
+              phx-value-id={block.id}
+              class="btn btn-ghost btn-xs btn-square"
+              title={gettext("Share Access")}
+            >
+              <.icon name="hero-share" class="size-4" />
+            </.button>
 
-              <div class="flex items-center gap-2">
-                <.button
-                  :if={Identity.can?(@current_user, "library.update")}
-                  patch={~p"/studio/library/#{block.id}/edit"}
-                  class="btn btn-ghost btn-sm btn-square text-base-content/70"
-                  title={gettext("Edit Metadata")}
-                >
-                  <.icon name="hero-pencil-square" class="size-4" />
-                </.button>
-
-                <.button
-                  :if={Identity.can?(@current_user, "library.delete")}
-                  type="button"
-                  phx-click="delete_click"
-                  phx-value-id={block.id}
-                  class="btn btn-ghost btn-sm btn-square text-error hover:bg-error/10"
-                  title={gettext("Delete")}
-                >
-                  <.icon name="hero-trash" class="size-4" />
-                </.button>
-
-                <.link
-                  navigate={~p"/studio/library/#{block.id}/editor"}
-                  class="btn btn-primary btn-sm group-hover:pr-3 transition-all ml-1"
-                >
-                  {gettext("Edit")}
-                  <.icon
-                    name="hero-arrow-right"
-                    class="size-4 opacity-0 -ml-4 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300"
-                  />
-                </.link>
-              </div>
-            </div>
+            <.button
+              :if={info.role == :owner or Identity.can?(@current_user, "library.delete", block)}
+              type="button"
+              phx-click="delete_click"
+              phx-value-id={block.id}
+              class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
+              title={gettext("Delete")}
+            >
+              <.icon name="hero-trash" class="size-4" />
+            </.button>
           </div>
-        </div>
-      </div>
+        </:action>
+      </.table>
 
       <div class="flex justify-end mt-8">
         <.pagination
@@ -273,6 +393,25 @@ defmodule AthenaWeb.StudioLive.Library do
         on_cancel={JS.push("cancel_delete")}
         on_confirm={JS.push("confirm_delete")}
       />
+
+      <.modal
+        id="share-library-modal"
+        show={@block_to_share != nil}
+        title={
+          gettext("Share Template: %{title}",
+            title: if(@block_to_share, do: @block_to_share.title, else: "")
+          )
+        }
+        on_cancel={JS.push("cancel_share")}
+      >
+        <.live_component
+          :if={@block_to_share}
+          module={LibraryShareComponent}
+          id={"share-#{@block_to_share.id}"}
+          library_block={@block_to_share}
+          current_user={@current_user}
+        />
+      </.modal>
     </div>
     """
   end

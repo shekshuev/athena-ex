@@ -2,6 +2,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
   @moduledoc """
   Standalone editor for Library Blocks.
   Uses a strict two-column card UI, matching GradingDetail.
+  Implements strict RBAC and real-time collaboration updates.
   """
   use AthenaWeb, :live_view
 
@@ -9,146 +10,64 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
   alias Athena.Content.LibraryBlock
   import AthenaWeb.BlockComponents
 
-  on_mount {AthenaWeb.Hooks.Permission, "library.update"}
+  on_mount {AthenaWeb.Hooks.Permission, "library.read"}
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
-    case Content.get_library_block(socket.assigns.current_user, id) do
-      {:ok, block} ->
-        form = to_form(LibraryBlock.changeset(block, %{}))
+    with {:ok, block} <- Content.get_library_block(socket.assigns.current_user, id),
+         role when role != :none <- determine_role(block, socket.assigns.current_user) do
+      if connected?(socket) do
+        Phoenix.PubSub.subscribe(Athena.PubSub, "user_library:#{socket.assigns.current_user.id}")
+        Phoenix.PubSub.subscribe(Athena.PubSub, "public_library")
+      end
 
-        {:ok,
-         socket
-         |> assign(
-           page_title: gettext("Edit Template"),
-           block: block,
-           form: form,
-           tags_string: Enum.join(block.tags || [], ", "),
-           show_media_modal: false,
-           upload_type: nil
-         )}
+      form = to_form(LibraryBlock.changeset(block, %{}))
 
+      {:ok,
+       socket
+       |> assign(
+         role: role,
+         page_title: gettext("Edit Template"),
+         block: block,
+         form: form,
+         tags_string: Enum.join(block.tags || [], ", "),
+         show_media_modal: false,
+         upload_type: nil
+       )}
+    else
       _ ->
         {:ok,
          socket
-         |> put_flash(:error, gettext("Template not found."))
+         |> put_flash(:error, gettext("Template not found or access denied."))
          |> push_navigate(to: ~p"/studio/library")}
     end
   end
 
   @impl true
-  def handle_event("update_content", %{"content" => parsed}, socket) do
-    block = socket.assigns.block
-    content_map = normalize_content(block.content || %{})
+  def handle_info(:refresh_library, socket) do
+    with {:ok, block} <-
+           Content.get_library_block(socket.assigns.current_user, socket.assigns.block.id),
+         new_role when new_role != :none <- determine_role(block, socket.assigns.current_user) do
+      socket =
+        if new_role != socket.assigns.role do
+          put_flash(socket, :info, gettext("Your access level has been updated."))
+        else
+          socket
+        end
 
-    new_content =
-      case block.type do
-        :attachment -> Map.put(content_map, "description", parsed)
-        :quiz_question -> Map.put(content_map, "body", parsed)
-        _ -> parsed
-      end
-
-    update_and_assign(socket, block, %{"content" => new_content})
-  end
-
-  def handle_event("add_quiz_option", _, socket) do
-    block = socket.assigns.block
-    content_map = normalize_content(block.content || %{})
-    options = Map.get(content_map, "options", [])
-
-    new_option = %{
-      "id" => Ecto.UUID.generate(),
-      "text" => "",
-      "is_correct" => false,
-      "explanation" => ""
-    }
-
-    new_content = Map.put(content_map, "options", options ++ [new_option])
-    update_and_assign(socket, block, %{"content" => new_content})
-  end
-
-  def handle_event("remove_quiz_option", %{"option_id" => option_id}, socket) do
-    block = socket.assigns.block
-    content_map = normalize_content(block.content || %{})
-    options = Map.get(content_map, "options", []) |> Enum.reject(&(&1["id"] == option_id))
-
-    update_and_assign(socket, block, %{"content" => Map.put(content_map, "options", options)})
-  end
-
-  def handle_event("update_quiz_content", params, socket) do
-    block = socket.assigns.block
-    content_map = normalize_content(block.content || %{})
-
-    content_map =
-      if ans = params["correct_answer"],
-        do: Map.put(content_map, "correct_answer", ans),
-        else: content_map
-
-    content_map =
-      if opts = params["options"],
-        do:
-          Map.put(content_map, "options", parse_quiz_options(opts, params["correct_option_id"])),
-        else: content_map
-
-    update_and_assign(socket, block, %{"content" => content_map})
-  end
-
-  def handle_event("delete_attachment", %{"url" => url}, socket) do
-    block = socket.assigns.block
-    content_map = normalize_content(block.content || %{})
-    files = Map.get(content_map, "files", []) |> Enum.reject(&(&1["url"] == url))
-
-    update_and_assign(socket, block, %{"content" => Map.put(content_map, "files", files)})
-  end
-
-  def handle_event("request_media_upload", %{"media_type" => type}, socket) do
-    {:noreply, assign(socket, show_media_modal: true, upload_type: type)}
-  end
-
-  def handle_event("cancel_media_upload", _, socket) do
-    {:noreply, assign(socket, show_media_modal: false, upload_type: nil)}
-  end
-
-  def handle_event("update_meta", %{"library_block" => params} = form_data, socket) do
-    block = socket.assigns.block
-
-    tags_string = Map.get(form_data, "tags_string", socket.assigns.tags_string)
-
-    params =
-      if Map.has_key?(form_data, "tags_string") do
-        tags =
-          tags_string
-          |> String.split(",", trim: true)
-          |> Enum.map(&String.trim/1)
-          |> Enum.reject(&(&1 == ""))
-
-        Map.put(params, "tags", tags)
-      else
-        params
-      end
-
-    content_map = normalize_content(block.content || %{})
-    content_overrides = Map.get(params, "content", %{})
-
-    content_overrides =
-      content_map
-      |> apply_quiz_meta_overrides(content_overrides)
-      |> apply_exam_meta_overrides(block.type, form_data)
-
-    final_content = Map.merge(content_map, content_overrides)
-    final_params = Map.put(params, "content", final_content)
-
-    case Content.update_library_block(socket.assigns.current_user, block, final_params) do
-      {:ok, updated_block} ->
+      {:noreply, assign(socket, block: block, role: new_role)}
+    else
+      :none ->
         {:noreply,
-         assign(socket,
-           block: updated_block,
-           form: to_form(LibraryBlock.changeset(updated_block, %{})),
-           tags_string: tags_string
-         )}
+         socket
+         |> put_flash(:error, gettext("Your access to this template was revoked."))
+         |> push_navigate(to: ~p"/studio/library")}
 
-      {:error, changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
+      _ ->
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("This template is no longer available."))
+         |> push_navigate(to: ~p"/studio/library")}
     end
   end
 
@@ -157,36 +76,196 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
         {AthenaWeb.StudioLive.MediaUploadComponent, {:saved, _block_id, media_type, results}},
         socket
       ) do
-    block = socket.assigns.block
-    content_map = normalize_content(block.content || %{})
+    with true <- can_edit?(socket) do
+      block = socket.assigns.block
+      content_map = normalize_content(block.content || %{})
 
-    new_content =
-      case media_type do
-        "attachment" ->
-          Map.put(content_map, "files", Map.get(content_map, "files", []) ++ results)
+      new_content =
+        case media_type do
+          "attachment" ->
+            Map.put(content_map, "files", Map.get(content_map, "files", []) ++ results)
 
-        _ ->
-          file_map = List.first(results)
-          Map.put(content_map, "url", file_map["url"])
-      end
+          _ ->
+            file_map = List.first(results)
+            Map.put(content_map, "url", file_map["url"])
+        end
 
-    socket =
-      socket
-      |> assign(show_media_modal: false, upload_type: nil)
-      |> put_flash(:info, gettext("Media uploaded successfully!"))
+      socket =
+        socket
+        |> assign(show_media_modal: false, upload_type: nil)
+        |> put_flash(:info, gettext("Media uploaded successfully!"))
 
-    update_and_assign(socket, block, %{"content" => new_content})
-  end
-
-  defp update_and_assign(socket, block, params) do
-    case Content.update_library_block(socket.assigns.current_user, block, params) do
-      {:ok, updated} -> {:noreply, assign(socket, block: updated)}
+      update_and_assign(socket, block, %{"content" => new_content})
+    else
       _ -> {:noreply, socket}
     end
   end
 
   @impl true
+  def handle_event("update_content", %{"content" => parsed}, socket) do
+    with true <- can_edit?(socket) do
+      block = socket.assigns.block
+      content_map = normalize_content(block.content || %{})
+
+      new_content =
+        case block.type do
+          :attachment -> Map.put(content_map, "description", parsed)
+          :quiz_question -> Map.put(content_map, "body", parsed)
+          _ -> parsed
+        end
+
+      update_and_assign(socket, block, %{"content" => new_content})
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("add_quiz_option", _, socket) do
+    with true <- can_edit?(socket) do
+      block = socket.assigns.block
+      content_map = normalize_content(block.content || %{})
+      options = Map.get(content_map, "options", [])
+
+      new_option = %{
+        "id" => Ecto.UUID.generate(),
+        "text" => "New Option",
+        "is_correct" => false,
+        "explanation" => ""
+      }
+
+      new_content = Map.put(content_map, "options", options ++ [new_option])
+      update_and_assign(socket, block, %{"content" => new_content})
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("remove_quiz_option", %{"option_id" => option_id}, socket) do
+    with true <- can_edit?(socket) do
+      block = socket.assigns.block
+      content_map = normalize_content(block.content || %{})
+      options = Map.get(content_map, "options", []) |> Enum.reject(&(&1["id"] == option_id))
+
+      update_and_assign(socket, block, %{"content" => Map.put(content_map, "options", options)})
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("update_quiz_content", params, socket) do
+    with true <- can_edit?(socket) do
+      block = socket.assigns.block
+      content_map = normalize_content(block.content || %{})
+
+      content_map =
+        if ans = params["correct_answer"],
+          do: Map.put(content_map, "correct_answer", ans),
+          else: content_map
+
+      content_map =
+        if opts = params["options"],
+          do:
+            Map.put(content_map, "options", parse_quiz_options(opts, params["correct_option_id"])),
+          else: content_map
+
+      update_and_assign(socket, block, %{"content" => content_map})
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("delete_attachment", %{"url" => url}, socket) do
+    with true <- can_edit?(socket) do
+      block = socket.assigns.block
+      content_map = normalize_content(block.content || %{})
+      files = Map.get(content_map, "files", []) |> Enum.reject(&(&1["url"] == url))
+
+      update_and_assign(socket, block, %{"content" => Map.put(content_map, "files", files)})
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("request_media_upload", %{"media_type" => type}, socket) do
+    with true <- can_edit?(socket) do
+      {:noreply, assign(socket, show_media_modal: true, upload_type: type)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("cancel_media_upload", _, socket) do
+    with true <- can_edit?(socket) do
+      {:noreply, assign(socket, show_media_modal: false, upload_type: nil)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("update_meta", %{"library_block" => params} = form_data, socket) do
+    with true <- can_edit?(socket) do
+      block = socket.assigns.block
+      tags_string = Map.get(form_data, "tags_string", socket.assigns.tags_string)
+
+      params =
+        if Map.has_key?(form_data, "tags_string") do
+          tags =
+            tags_string
+            |> String.split(",", trim: true)
+            |> Enum.map(&String.trim/1)
+            |> Enum.reject(&(&1 == ""))
+
+          Map.put(params, "tags", tags)
+        else
+          params
+        end
+
+      content_map = normalize_content(block.content || %{})
+      content_overrides = Map.get(params, "content", %{})
+
+      content_overrides =
+        content_map
+        |> apply_quiz_meta_overrides(content_overrides)
+        |> apply_exam_meta_overrides(block.type, form_data)
+
+      final_content = Map.merge(content_map, content_overrides)
+      final_params = Map.put(params, "content", final_content)
+
+      case Content.update_library_block(socket.assigns.current_user, block, final_params) do
+        {:ok, updated_block} ->
+          {:noreply,
+           assign(socket,
+             block: updated_block,
+             form: to_form(LibraryBlock.changeset(updated_block, %{})),
+             tags_string: tags_string
+           )}
+
+        {:error, changeset} ->
+          {:noreply, assign(socket, form: to_form(changeset))}
+      end
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  defp update_and_assign(socket, block, params) do
+    case Content.update_library_block(socket.assigns.current_user, block, params) do
+      {:ok, updated} ->
+        {:noreply, assign(socket, block: updated)}
+
+      {:error, changeset} ->
+        in_memory_block = Ecto.Changeset.apply_changes(changeset)
+        {:noreply, assign(socket, block: in_memory_block)}
+    end
+  end
+
+  @impl true
   def render(assigns) do
+    assigns =
+      assign(assigns,
+        block_mode: if(assigns.role in [:owner, :writer], do: :edit, else: :preview)
+      )
+
     ~H"""
     <div class="max-w-7xl mx-auto pb-20 pt-4">
       <div class="flex items-center gap-4 mb-8 border-b border-base-200 pb-6">
@@ -213,13 +292,16 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
               <h2 class="text-lg font-bold">{gettext("Content Editor")}</h2>
             </div>
             <div class="relative w-full">
-              <.content_block block={@block} mode={:edit} active={true} />
-              <.block_editor block={@block} target={nil} />
+              <.content_block block={@block} mode={@block_mode} active={true} />
+              <.block_editor :if={@role in [:owner, :writer]} block={@block} target={nil} />
             </div>
           </div>
         </div>
 
-        <div class="w-full lg:w-[400px] shrink-0 bg-base-100 rounded-sm border border-base-300 shadow-sm sticky top-8 flex flex-col overflow-hidden">
+        <div
+          :if={@role in [:owner, :writer]}
+          class="w-full lg:w-[400px] shrink-0 bg-base-100 rounded-sm border border-base-300 shadow-sm sticky top-8 flex flex-col overflow-hidden"
+        >
           <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-200 bg-base-200/30">
             <div>
               <div class="text-[10px] font-bold text-base-content/50 uppercase tracking-widest mb-0.5">
@@ -387,7 +469,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
         </div>
       </div>
 
-      <%= if @show_media_modal do %>
+      <%= if @show_media_modal and @role in [:owner, :writer] do %>
         <.live_component
           module={AthenaWeb.StudioLive.MediaUploadComponent}
           id="media-uploader"
@@ -400,6 +482,19 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     </div>
     """
   end
+
+  defp determine_role(block, user) do
+    shares = Content.list_block_shares(block)
+
+    cond do
+      block.owner_id == user.id -> :owner
+      share = Enum.find(shares, &(&1.account_id == user.id)) -> share.role
+      block.is_public -> :reader
+      true -> :none
+    end
+  end
+
+  defp can_edit?(socket), do: socket.assigns.role in [:owner, :writer]
 
   defp normalize_content(%{__struct__: _} = struct),
     do: struct |> Map.from_struct() |> normalize_content()

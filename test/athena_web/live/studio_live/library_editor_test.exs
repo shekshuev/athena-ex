@@ -31,7 +31,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       assert {:live_redirect, %{to: "/studio/library"}} = redirect
     end
 
-    test "redirects if user lacks library.update permission", %{conn: conn} do
+    test "redirects if user lacks library.read permission", %{conn: conn} do
       limited_role = insert(:role, permissions: [])
       limited_user = insert(:account, role: limited_role)
       conn = init_test_session(conn, %{"account_id" => limited_user.id})
@@ -47,7 +47,8 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       end
     end
 
-    test "redirects and shows error if user tries to edit someone else's template", %{conn: conn} do
+    test "redirects and shows error if user tries to edit someone else's template without sharing",
+         %{conn: conn} do
       other_user = insert(:account)
 
       block = insert(:library_block, owner_id: other_user.id)
@@ -55,7 +56,10 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       assert {:error, redirect} = live(conn, ~p"/studio/library/#{block.id}/editor")
 
       assert {:live_redirect,
-              %{to: "/studio/library", flash: %{"error" => "Template not found."}}} = redirect
+              %{
+                to: "/studio/library",
+                flash: %{"error" => "Template not found or access denied."}
+              }} = redirect
     end
 
     test "renders editor successfully with template title", %{conn: conn, admin: admin} do
@@ -137,6 +141,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
           type: :quiz_question,
           content: %{
             "question_type" => "multiple",
+            "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
             "options" => [
               %{"id" => "opt1", "text" => "First Option", "is_correct" => false},
               %{"id" => "opt2", "text" => "Second Option", "is_correct" => false}
@@ -150,10 +155,11 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       render_hook(lv, "add_quiz_option", %{})
 
       {:ok, updated_block} = Content.get_library_block(block.id)
-      assert length(updated_block.content["options"]) == 2
+      assert length(updated_block.content["options"]) == 3
       render_hook(lv, "remove_quiz_option", %{"option_id" => "opt2"})
 
       {:ok, final_block} = Content.get_library_block(block.id)
+      assert length(final_block.content["options"]) == 2
       assert hd(final_block.content["options"])["id"] == "opt1"
     end
   end
@@ -199,6 +205,60 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       files = updated_block.content["files"]
       assert length(files) == 1
       assert hd(files)["url"] == "/fake/url/2.pdf"
+    end
+  end
+
+  describe "Collaborator Roles (Reader vs Writer)" do
+    setup %{admin: owner} do
+      role_reader = insert(:role, permissions: ["library.read"])
+      reader = insert(:account, role: role_reader)
+
+      role_writer = insert(:role, permissions: ["library.read", "library.update"])
+      writer = insert(:account, role: role_writer)
+
+      block = insert(:library_block, title: "Shared Template", owner_id: owner.id)
+
+      insert(:library_block_share, library_block: block, account_id: reader.id, role: :reader)
+      insert(:library_block_share, library_block: block, account_id: writer.id, role: :writer)
+
+      %{block: block, reader: reader, writer: writer}
+    end
+
+    test "reader sees preview mode and no inspector", %{conn: conn, block: block, reader: reader} do
+      reader_conn = init_test_session(conn, %{"account_id" => reader.id})
+      {:ok, _lv, html} = live(reader_conn, ~p"/studio/library/#{block.id}/editor")
+
+      assert html =~ block.title
+      refute html =~ "Inspector"
+      refute html =~ "Template Settings"
+      assert html =~ ~s(data-readonly="true")
+    end
+
+    test "reader is blocked from mutating events at the handler level", %{
+      conn: conn,
+      block: block,
+      reader: reader
+    } do
+      reader_conn = init_test_session(conn, %{"account_id" => reader.id})
+      {:ok, lv, _html} = live(reader_conn, ~p"/studio/library/#{block.id}/editor")
+
+      render_hook(lv, "update_meta", %{
+        "library_block" => %{"title" => "Hacked Title"},
+        "tags_string" => ""
+      })
+
+      {:ok, unchanged_block} = Content.get_library_block(block.id)
+      assert unchanged_block.title == "Shared Template"
+    end
+
+    test "writer sees edit mode and inspector", %{conn: conn, block: block, writer: writer} do
+      writer_conn = init_test_session(conn, %{"account_id" => writer.id})
+      {:ok, _lv, html} = live(writer_conn, ~p"/studio/library/#{block.id}/editor")
+
+      assert html =~ block.title
+      assert html =~ "Inspector"
+      assert html =~ "Template Settings"
+      assert html =~ ~s(name="library_block[title]")
     end
   end
 end

@@ -16,7 +16,7 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
   end
 
   describe "Library page (Index)" do
-    test "should render the library templates list", %{conn: conn, admin: admin} do
+    test "should render the library templates list in a table", %{conn: conn, admin: admin} do
       block = insert(:library_block, title: "Base Quiz Template", owner_id: admin.id)
 
       {:ok, _lv, html} = live(conn, ~p"/studio/library")
@@ -24,6 +24,7 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
       assert html =~ "Library"
       assert html =~ "Create Template"
       assert html =~ block.title
+      assert html =~ "hero-wrench-screwdriver"
     end
 
     test "should handle search functionality", %{conn: conn, admin: admin} do
@@ -46,12 +47,12 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
     test "should open the create template slide-over via URL", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/studio/library/new")
 
-      assert html =~ "Template Metadata"
-      assert html =~ "Block Type"
+      assert html =~ "Create Template"
+      assert html =~ "Title"
       assert html =~ "Tags (comma separated)"
     end
 
-    test "should open the edit template slide-over via URL", %{conn: conn, admin: admin} do
+    test "should open the edit metadata slide-over via URL", %{conn: conn, admin: admin} do
       block = insert(:library_block, title: "Target Template", owner_id: admin.id)
 
       {:ok, _lv, html} = live(conn, ~p"/studio/library/#{block.id}/edit")
@@ -72,7 +73,7 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
         |> element("button[phx-click='delete_click'][phx-value-id='#{block.id}']")
         |> render_click()
 
-      assert html =~ "Are you sure you want to permanently delete this template?"
+      assert html =~ "permanently delete this template"
     end
 
     test "should delete the template when confirmed", %{conn: conn, admin: admin} do
@@ -101,43 +102,116 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
     end
 
     test "should not see action buttons if user only has read permission", %{
-      conn: conn,
-      limited_user: user
+      conn: conn
     } do
-      insert(:library_block, owner_id: user.id)
+      insert(:library_block, owner_id: Ecto.UUID.generate(), is_public: true)
+
       {:ok, _lv, html} = live(conn, ~p"/studio/library")
 
       assert html =~ "Library"
-
       refute html =~ "Create Template"
       refute html =~ "hero-pencil-square"
       refute html =~ "hero-trash"
+      refute html =~ "hero-share"
+      assert html =~ "hero-eye"
     end
 
     test "should redirect from /new if user lacks create permission", %{conn: conn} do
-      {:error, {:live_redirect, %{to: "/studio/library"}}} = live(conn, ~p"/studio/library/new")
+      assert {:error, {:live_redirect, %{to: "/studio/library"}}} =
+               live(conn, ~p"/studio/library/new")
     end
 
     test "should redirect from /edit if user lacks update permission", %{
-      conn: conn,
-      limited_user: user
+      conn: conn
     } do
-      target = insert(:library_block, owner_id: user.id)
+      target = insert(:library_block, owner_id: Ecto.UUID.generate(), is_public: true)
 
-      {:error, {:live_redirect, %{to: "/studio/library"}}} =
-        live(conn, ~p"/studio/library/#{target.id}/edit")
+      assert {:error, {:live_redirect, %{to: "/studio/library"}}} =
+               live(conn, ~p"/studio/library/#{target.id}/edit")
     end
 
     test "should show error flash on delete_click if user lacks delete permission", %{
-      conn: conn,
-      limited_user: user
+      conn: conn
     } do
-      target = insert(:library_block, owner_id: user.id)
+      target = insert(:library_block, owner_id: Ecto.UUID.generate(), is_public: true)
       {:ok, lv, _html} = live(conn, ~p"/studio/library")
 
       html = render_click(lv, "delete_click", %{"id" => target.id})
 
-      assert html =~ "You don&#39;t have permission to delete templates."
+      assert html =~ "Only the owner can delete this template."
+    end
+
+    test "can access Editor in preview mode for public blocks", %{conn: conn} do
+      target = insert(:library_block, owner_id: Ecto.UUID.generate(), is_public: true)
+      {:ok, _lv, html} = live(conn, ~p"/studio/library/#{target.id}/editor")
+      assert html =~ target.title
+    end
+  end
+
+  describe "Collaborator Roles (Reader vs Writer)" do
+    setup %{admin: owner} do
+      role = insert(:role, permissions: ["library.read"])
+      collaborator = insert(:account, role: role)
+
+      block = insert(:library_block, title: "Collab Block", owner_id: owner.id)
+
+      %{block: block, collaborator: collaborator}
+    end
+
+    test "reader sees only view button and enters read-only preview mode", %{
+      conn: conn,
+      block: block,
+      collaborator: reader
+    } do
+      insert(:library_block_share, library_block: block, account_id: reader.id, role: :reader)
+      reader_conn = init_test_session(conn, %{"account_id" => reader.id})
+
+      {:ok, lv_index, html_index} = live(reader_conn, ~p"/studio/library")
+
+      assert html_index =~ block.title
+      assert html_index =~ "hero-eye"
+      refute html_index =~ "hero-wrench-screwdriver"
+      refute html_index =~ "hero-pencil-square"
+      refute html_index =~ "hero-share"
+      refute html_index =~ "hero-trash"
+
+      lv_index
+      |> element("a[title='View Template']")
+      |> render_click()
+
+      {:ok, _lv_editor, html_editor} = live(reader_conn, ~p"/studio/library/#{block.id}/editor")
+
+      assert html_editor =~ block.title
+      refute html_editor =~ "Inspector"
+      refute html_editor =~ "Template Settings"
+      assert html_editor =~ "data-readonly=\"true\""
+    end
+
+    test "writer sees edit buttons and has access to inspector", %{
+      conn: conn,
+      block: block,
+      collaborator: writer
+    } do
+      insert(:library_block_share, library_block: block, account_id: writer.id, role: :writer)
+      writer_conn = init_test_session(conn, %{"account_id" => writer.id})
+
+      {:ok, lv_index, html_index} = live(writer_conn, ~p"/studio/library")
+
+      assert html_index =~ block.title
+      assert html_index =~ "hero-wrench-screwdriver"
+      assert html_index =~ "hero-pencil-square"
+      refute html_index =~ "hero-share"
+      refute html_index =~ "hero-trash"
+
+      lv_index
+      |> element("a[title='Open Editor']")
+      |> render_click()
+
+      {:ok, _lv_editor, html_editor} = live(writer_conn, ~p"/studio/library/#{block.id}/editor")
+
+      assert html_editor =~ block.title
+      assert html_editor =~ "Inspector"
+      assert html_editor =~ "Template Settings"
     end
   end
 end
