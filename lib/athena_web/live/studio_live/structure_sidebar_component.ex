@@ -62,7 +62,7 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponent do
 
       <div
         id={"sidebar-level-#{@viewing_parent_id || "root"}"}
-        phx-hook="Sortable"
+        phx-hook={if @role in [:owner, :writer], do: "Sortable", else: nil}
         data-event-name="reorder_section"
         class="flex-1 overflow-y-auto space-y-1 pr-2 pb-4"
       >
@@ -116,7 +116,7 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponent do
         </div>
       </div>
 
-      <div class="pt-4 mt-auto border-t border-base-300 shrink-0">
+      <div :if={@role in [:owner, :writer]} class="pt-4 mt-auto border-t border-base-300 shrink-0">
         <button
           type="button"
           phx-click="add_section"

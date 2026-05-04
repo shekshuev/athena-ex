@@ -300,24 +300,25 @@ defmodule AthenaWeb.StudioLive.Courses do
         </:col>
         <:action :let={{_id, course}}>
           <% info = course_badges(course, @current_user) %>
+          <% can_edit =
+            info.role in [:owner, :writer] or Identity.can?(@current_user, "courses.update", course) %>
+          <% can_view = can_edit or info.role == :reader or info.is_public %>
+
           <div class="flex justify-end gap-2">
             <.button
-              :if={
-                info.role in [:owner, :writer] or
-                  Identity.can?(@current_user, "courses.update", course)
-              }
+              :if={can_view}
               navigate={~p"/studio/courses/#{course.id}/builder"}
               class="btn btn-primary btn-xs btn-square btn-soft"
-              title={gettext("Open Builder")}
+              title={if can_edit, do: gettext("Open Builder"), else: gettext("View Course")}
             >
-              <.icon name="hero-wrench-screwdriver" class="size-4" />
+              <.icon
+                name={if can_edit, do: "hero-wrench-screwdriver", else: "hero-eye"}
+                class="size-4"
+              />
             </.button>
 
             <.button
-              :if={
-                info.role in [:owner, :writer] or
-                  Identity.can?(@current_user, "courses.update", course)
-              }
+              :if={can_edit}
               patch={~p"/studio/courses/#{course.id}/edit"}
               class="btn btn-ghost btn-xs btn-square"
               title={gettext("Edit Settings")}
@@ -326,7 +327,7 @@ defmodule AthenaWeb.StudioLive.Courses do
             </.button>
 
             <.button
-              :if={info.role == :owner or Identity.can?(@current_user, "courses.update", course)}
+              :if={can_edit}
               type="button"
               phx-click="share_click"
               phx-value-id={course.id}
@@ -337,7 +338,7 @@ defmodule AthenaWeb.StudioLive.Courses do
             </.button>
 
             <.button
-              :if={info.role == :owner or Identity.can?(@current_user, "courses.delete", course)}
+              :if={can_edit}
               type="button"
               phx-click="delete_click"
               phx-value-id={course.id}
