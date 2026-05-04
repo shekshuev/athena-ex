@@ -995,7 +995,7 @@ defmodule AthenaWeb.StudioLive.Builder do
         image_types_str: @image_types_str,
         video_types_str: @video_types_str,
         attachment_types_str: @attachment_types_str,
-        block_mode: if(assigns.role in [:owner, :writer], do: :edit, else: :play)
+        block_mode: if(assigns.role in [:owner, :writer], do: :edit, else: :preview)
       )
 
     ~H"""

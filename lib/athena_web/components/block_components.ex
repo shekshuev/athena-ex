@@ -14,7 +14,7 @@ defmodule AthenaWeb.BlockComponents do
   Routes to specific renderers based on block type.
   """
   attr :block, :map, required: true
-  attr :mode, :atom, required: true, values: [:edit, :play, :review]
+  attr :mode, :atom, required: true, values: [:edit, :play, :review, :preview]
   attr :answers, :map, default: %{}
   attr :submission, :map, default: nil
   attr :active, :boolean, default: false
@@ -60,6 +60,12 @@ defmodule AthenaWeb.BlockComponents do
 
   defp wrapper_classes(:play, _), do: "mb-10 last:mb-0 w-full"
   defp wrapper_classes(:review, _), do: "mb-10 last:mb-0 w-full"
+
+  defp wrapper_classes(:preview, true),
+    do: "p-5 rounded-sm ring-2 ring-base-300 bg-base-100 transition-all shadow-sm cursor-default"
+
+  defp wrapper_classes(:preview, false),
+    do: "p-5 rounded-sm ring-1 ring-base-200 bg-base-100 transition-all opacity-80 cursor-default"
 
   defp render_text(assigns) do
     ~H"""
@@ -299,7 +305,7 @@ defmodule AthenaWeb.BlockComponents do
             "bg-base-100 border-success/30 ring-2 ring-success/20",
           @mode == :review && (not is_selected and not is_correct) &&
             "bg-base-100 border-base-300 opacity-60",
-          @mode == :edit && "bg-base-100 border-base-200 opacity-60 pointer-events-none"
+          @mode in [:edit, :preview] && "bg-base-100 border-base-200 opacity-60 pointer-events-none"
         ]}>
           <input
             type={if @q_type == "single", do: "radio", else: "checkbox"}

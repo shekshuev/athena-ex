@@ -20,7 +20,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <div :if={@active_section_id != nil} class="flex-1 flex flex-col pb-32">
         <div
           id="canvas-blocks-list"
-          phx-hook="Sortable"
+          phx-hook={if @mode == :edit, do: "Sortable"}
           data-event-name="reorder_block"
           class="flex-1 flex flex-col gap-2"
         >
@@ -30,7 +30,10 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
             data-id={block.id}
             class="relative group flex flex-col"
           >
-            <div class="absolute -left-8 top-0 flex flex-col items-center gap-1 opacity-0 group-hover:opacity-50 hover:opacity-100! transition-opacity sm:flex z-10">
+            <div
+              :if={@mode == :edit}
+              class="absolute -left-8 top-0 flex flex-col items-center gap-1 opacity-0 group-hover:opacity-50 hover:opacity-100! transition-opacity sm:flex z-10"
+            >
               <.button
                 phx-click="move_block_up"
                 phx-value-id={block.id}
@@ -63,7 +66,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
                 @active_block_id != block.id && block.type == :text && "max-h-48 overflow-hidden"
               ]}
             >
-              <.content_block block={block} mode={:edit} active={@active_block_id == block.id} />
+              <.content_block block={block} mode={@mode} active={@active_block_id == block.id} />
 
               <div
                 :if={@active_block_id != block.id && block.type == :text}
@@ -72,13 +75,13 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
               </div>
             </div>
 
-            <%= if @active_block_id == block.id do %>
+            <%= if @mode == :edit and @active_block_id == block.id do %>
               <div class="mt-2">
                 <.block_editor block={block} />
               </div>
             <% end %>
 
-            <%= if @active_block_id == block.id do %>
+            <%= if @mode == :edit and @active_block_id == block.id do %>
               <div class="relative z-40 my-4 flex justify-center animate-in fade-in zoom-in duration-200">
                 <.add_content_dropdown after_id={block.id} direction="dropdown-bottom" />
               </div>
@@ -86,7 +89,10 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
           </div>
         </div>
 
-        <div class="mt-12 flex justify-center z-30 opacity-50 hover:opacity-100 transition-opacity">
+        <div
+          :if={@mode == :edit}
+          class="mt-12 flex justify-center z-30 opacity-50 hover:opacity-100 transition-opacity"
+        >
           <.add_content_dropdown direction="dropdown-top" />
         </div>
       </div>
