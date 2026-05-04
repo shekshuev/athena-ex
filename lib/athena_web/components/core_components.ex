@@ -692,9 +692,13 @@ defmodule AthenaWeb.CoreComponents do
     """
   end
 
-  @commit_sha (case System.cmd("git", ["rev-parse", "--short", "HEAD"]) do
-                 {sha, 0} -> String.trim(sha)
-                 _ -> "dev"
+  @commit_sha (if sha = System.get_env("COMMIT_SHA") do
+                 String.slice(sha, 0, 7)
+               else
+                 case System.cmd("git", ["rev-parse", "--short", "HEAD"], stderr_to_stdout: true) do
+                   {sha, 0} -> String.trim(sha)
+                   _ -> "dev"
+                 end
                end)
 
   def app_version do

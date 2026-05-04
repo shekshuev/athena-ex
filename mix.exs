@@ -4,7 +4,7 @@ defmodule Athena.MixProject do
   def project do
     [
       app: :athena,
-      version: "0.3.4",
+      version: "0.4.0",
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
