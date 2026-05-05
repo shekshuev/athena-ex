@@ -299,7 +299,7 @@ defmodule Athena.Learning.SubmissionsTest do
       assert updated.score == 100
     end
 
-    test "update_submission/3 works if user has grading.update permission", %{admin: admin} do
+    test "update_submission/3 works if user has global grading.update permission", %{admin: admin} do
       submission = insert(:submission, status: :pending, score: 0)
 
       assert {:ok, updated} =
@@ -319,6 +319,55 @@ defmodule Athena.Learning.SubmissionsTest do
 
       assert {:error, :unauthorized} =
                Submissions.update_submission(student, submission, %{"score" => 100})
+    end
+  end
+
+  describe "ACL: own_only policy for update_submission/3" do
+    setup do
+      role =
+        insert(:role,
+          permissions: ["grading.update", "courses.read"],
+          policies: %{
+            "grading.update" => ["own_only"],
+            "courses.read" => ["own_only"]
+          }
+        )
+
+      instructor = insert(:account, role: role)
+      student = insert(:account, role: insert(:role, permissions: []))
+
+      %{instructor: instructor, student: student}
+    end
+
+    test "allows update if instructor owns the course", %{
+      instructor: instructor,
+      student: student
+    } do
+      course = insert(:course, owner_id: instructor.id)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section)
+
+      submission = insert(:submission, account_id: student.id, block_id: block.id, score: 0)
+
+      assert {:ok, updated} =
+               Submissions.update_submission(instructor, submission, %{"score" => 100})
+
+      assert updated.score == 100
+    end
+
+    test "returns unauthorized if instructor does NOT own the course", %{
+      instructor: instructor,
+      student: student
+    } do
+      other_admin = insert(:account)
+      course = insert(:course, owner_id: other_admin.id)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section)
+
+      submission = insert(:submission, account_id: student.id, block_id: block.id, score: 0)
+
+      assert {:error, :unauthorized} =
+               Submissions.update_submission(instructor, submission, %{"score" => 100})
     end
   end
 
