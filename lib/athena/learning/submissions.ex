@@ -7,7 +7,7 @@ defmodule Athena.Learning.Submissions do
   """
 
   import Ecto.Query
-  alias Athena.{Repo, Identity, Content}
+  alias Athena.{Repo, Content}
   alias Athena.Learning.{Submission, Enrollment, Cohort, Instructor, CohortInstructor}
   alias Athena.Content.{Block, Section}
 
