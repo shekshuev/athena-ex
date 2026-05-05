@@ -1,4 +1,4 @@
-defmodule AthenaWeb.StudioLive.GradingTest do
+defmodule AthenaWeb.TeachingLive.GradingTest do
   use AthenaWeb.ConnCase, async: true
   import Phoenix.LiveViewTest
 
@@ -31,7 +31,7 @@ defmodule AthenaWeb.StudioLive.GradingTest do
         score: 100
       )
 
-      {:ok, _lv, html} = live(conn, ~p"/studio/grading")
+      {:ok, _lv, html} = live(conn, ~p"/teaching/grading")
 
       assert html =~ "Grading Center"
 
@@ -50,7 +50,7 @@ defmodule AthenaWeb.StudioLive.GradingTest do
         status: :needs_review
       )
 
-      {:ok, _lv, html} = live(conn, ~p"/studio/grading")
+      {:ok, _lv, html} = live(conn, ~p"/teaching/grading")
 
       assert html =~ "Unknown"
       assert html =~ "Deleted Block"
@@ -67,7 +67,7 @@ defmodule AthenaWeb.StudioLive.GradingTest do
         score: 0
       )
 
-      {:ok, _lv, html} = live(conn, ~p"/studio/grading")
+      {:ok, _lv, html} = live(conn, ~p"/teaching/grading")
 
       assert html =~ "cheater_student"
       assert html =~ "Rejected"
@@ -85,7 +85,7 @@ defmodule AthenaWeb.StudioLive.GradingTest do
       insert(:submission, account_id: student1.id, block_id: block.id, status: :needs_review)
       insert(:submission, account_id: student2.id, block_id: block.id, status: :graded)
 
-      {:ok, lv, _html} = live(conn, ~p"/studio/grading")
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading")
 
       html = lv |> form("form", %{"status" => "graded"}) |> render_change()
 
@@ -101,7 +101,7 @@ defmodule AthenaWeb.StudioLive.GradingTest do
       insert(:submission, account_id: student1.id, block_id: block.id)
       insert(:submission, account_id: student2.id, block_id: block.id)
 
-      {:ok, lv, _html} = live(conn, ~p"/studio/grading")
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading")
 
       html = lv |> form("form", %{"login" => "alice"}) |> render_change()
 
@@ -118,7 +118,7 @@ defmodule AthenaWeb.StudioLive.GradingTest do
       insert(:submission, account_id: student1.id, block_id: block.id, cohort_id: cohort.id)
       insert(:submission, account_id: student2.id, block_id: block.id)
 
-      {:ok, lv, _html} = live(conn, ~p"/studio/grading")
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading")
 
       html = lv |> form("form", %{"cohort_id" => cohort.id}) |> render_change()
 
@@ -143,7 +143,7 @@ defmodule AthenaWeb.StudioLive.GradingTest do
         content: %{"cheat_count" => 0}
       )
 
-      {:ok, lv, _html} = live(conn, ~p"/studio/grading")
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading")
 
       html = lv |> form("form", %{"has_cheats" => "true"}) |> render_change()
 
@@ -168,7 +168,7 @@ defmodule AthenaWeb.StudioLive.GradingTest do
         inserted_at: ~U[2026-05-05 12:00:00Z]
       )
 
-      {:ok, lv, _html} = live(conn, ~p"/studio/grading")
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading")
 
       html =
         lv
@@ -180,11 +180,11 @@ defmodule AthenaWeb.StudioLive.GradingTest do
     end
 
     test "reset filters clears all params and redirects back to base url", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, ~p"/studio/grading?status=graded&login=foo&has_cheats=true")
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading?status=graded&login=foo&has_cheats=true")
 
       lv |> element("button[phx-click='reset_filters']") |> render_click()
 
-      assert_patch(lv, "/studio/grading")
+      assert_patch(lv, "/teaching/grading")
     end
 
     test "filters by rejected status using the select dropdown", %{conn: conn} do
@@ -195,7 +195,7 @@ defmodule AthenaWeb.StudioLive.GradingTest do
       insert(:submission, account_id: student1.id, block_id: block.id, status: :graded)
       insert(:submission, account_id: student2.id, block_id: block.id, status: :rejected)
 
-      {:ok, lv, _html} = live(conn, ~p"/studio/grading")
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading")
 
       html = lv |> form("form", %{"status" => "rejected"}) |> render_change()
 
@@ -210,7 +210,7 @@ defmodule AthenaWeb.StudioLive.GradingTest do
       limited_user = insert(:account, role: role)
       conn = init_test_session(conn, %{"account_id" => limited_user.id})
 
-      assert {:error, redirect} = live(conn, ~p"/studio/grading")
+      assert {:error, redirect} = live(conn, ~p"/teaching/grading")
 
       case redirect do
         {:redirect, %{to: _path}} -> assert true

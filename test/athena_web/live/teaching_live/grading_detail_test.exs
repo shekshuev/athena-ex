@@ -1,4 +1,4 @@
-defmodule AthenaWeb.StudioLive.GradingDetailTest do
+defmodule AthenaWeb.TeachingLive.GradingDetailTest do
   use AthenaWeb.ConnCase, async: true
   import Phoenix.LiveViewTest
 
@@ -35,7 +35,7 @@ defmodule AthenaWeb.StudioLive.GradingDetailTest do
           status: :needs_review
         )
 
-      {:ok, _lv, html} = live(conn, ~p"/studio/grading/#{sub.id}")
+      {:ok, _lv, html} = live(conn, ~p"/teaching/grading/#{sub.id}")
 
       assert html =~ "Submission from hacker_boy"
 
@@ -65,7 +65,7 @@ defmodule AthenaWeb.StudioLive.GradingDetailTest do
           status: :needs_review
         )
 
-      {:ok, _lv, html} = live(conn, ~p"/studio/grading/#{sub.id}")
+      {:ok, _lv, html} = live(conn, ~p"/teaching/grading/#{sub.id}")
 
       assert html =~ "Submission from tolstoy"
       assert html =~ "War and Peace. Volume 1."
@@ -98,7 +98,7 @@ defmodule AthenaWeb.StudioLive.GradingDetailTest do
           status: :needs_review
         )
 
-      {:ok, _lv, html} = live(conn, ~p"/studio/grading/#{sub.id}")
+      {:ok, _lv, html} = live(conn, ~p"/teaching/grading/#{sub.id}")
 
       assert html =~ "sneaky_student"
 
@@ -123,7 +123,7 @@ defmodule AthenaWeb.StudioLive.GradingDetailTest do
           status: :needs_review
         )
 
-      {:ok, _lv, html} = live(conn, ~p"/studio/grading/#{sub.id}")
+      {:ok, _lv, html} = live(conn, ~p"/teaching/grading/#{sub.id}")
 
       refute html =~ "Cheating Detected"
     end
@@ -142,12 +142,12 @@ defmodule AthenaWeb.StudioLive.GradingDetailTest do
           status: :needs_review
         )
 
-      {:ok, lv, _html} = live(conn, ~p"/studio/grading/#{sub.id}")
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{sub.id}")
 
       lv
       |> form("#grading-form", %{"score" => "85", "feedback" => "Good essay, bro!"})
       |> render_submit(%{"action" => "grade"})
-      |> follow_redirect(conn, ~p"/studio/grading")
+      |> follow_redirect(conn, ~p"/teaching/grading")
 
       updated_sub = Athena.Repo.get!(Submission, sub.id)
 
@@ -170,13 +170,13 @@ defmodule AthenaWeb.StudioLive.GradingDetailTest do
           status: :needs_review
         )
 
-      {:ok, lv, _html} = live(conn, ~p"/studio/grading/#{sub.id}")
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{sub.id}")
 
       lv
       |> form("#grading-form", %{"score" => "85", "feedback" => "Very bad!"})
       |> render_submit(%{"action" => "reject"})
 
-      assert_redirect(lv, "/studio/grading")
+      assert_redirect(lv, "/teaching/grading")
 
       updated_sub = Athena.Repo.get!(Athena.Learning.Submission, sub.id)
       assert updated_sub.status == :rejected
@@ -195,7 +195,7 @@ defmodule AthenaWeb.StudioLive.GradingDetailTest do
       block = insert(:block)
       sub = insert(:submission, account_id: student.id, block_id: block.id)
 
-      assert {:error, redirect} = live(conn, ~p"/studio/grading/#{sub.id}")
+      assert {:error, redirect} = live(conn, ~p"/teaching/grading/#{sub.id}")
 
       case redirect do
         {:redirect, %{to: _path}} -> assert true

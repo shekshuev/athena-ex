@@ -1,4 +1,4 @@
-defmodule AthenaWeb.StudioLive.Grading do
+defmodule AthenaWeb.TeachingLive.Grading do
   @moduledoc """
   LiveView for managing student submissions and assignments.
   Uses strict, professional card UI consistent with the student dashboard.
@@ -65,7 +65,7 @@ defmodule AthenaWeb.StudioLive.Grading do
         {:noreply, socket}
 
       {:error, _meta} ->
-        {:noreply, push_patch(socket, to: ~p"/studio/grading")}
+        {:noreply, push_patch(socket, to: ~p"/teaching/grading")}
     end
   end
 
@@ -83,12 +83,12 @@ defmodule AthenaWeb.StudioLive.Grading do
       |> Enum.reject(fn {_, v} -> v in ["", nil, "false"] end)
       |> Map.new()
 
-    {:noreply, push_patch(socket, to: ~p"/studio/grading?#{query_params}")}
+    {:noreply, push_patch(socket, to: ~p"/teaching/grading?#{query_params}")}
   end
 
   @impl true
   def handle_event("reset_filters", _params, socket) do
-    {:noreply, push_patch(socket, to: ~p"/studio/grading")}
+    {:noreply, push_patch(socket, to: ~p"/teaching/grading")}
   end
 
   defp build_flop_filters(status, login, cohort_id, date_from, date_to, has_cheats) do
@@ -301,7 +301,7 @@ defmodule AthenaWeb.StudioLive.Grading do
               </div>
 
               <.link
-                navigate={~p"/studio/grading/#{sub.id}?return_to=#{@current_path}"}
+                navigate={~p"/teaching/grading/#{sub.id}?return_to=#{@current_path}"}
                 class={[
                   "btn btn-sm group-hover:pr-3 transition-all",
                   sub.status == :needs_review && "btn-primary",
@@ -325,7 +325,7 @@ defmodule AthenaWeb.StudioLive.Grading do
           meta={@meta}
           path_fn={
             fn p ->
-              ~p"/studio/grading?page=#{p}&status=#{@current_status}&login=#{@login}&cohort_id=#{@cohort_id}&date_from=#{@date_from}&date_to=#{@date_to}&has_cheats=#{@has_cheats}"
+              ~p"/teaching/grading?page=#{p}&status=#{@current_status}&login=#{@login}&cohort_id=#{@cohort_id}&date_from=#{@date_from}&date_to=#{@date_to}&has_cheats=#{@has_cheats}"
             end
           }
         />
