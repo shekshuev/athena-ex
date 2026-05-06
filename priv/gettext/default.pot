@@ -557,7 +557,8 @@ msgstr ""
 #: lib/athena_web/live/admin_live/users.ex:196
 #: lib/athena_web/live/studio_live/courses.ex:295
 #: lib/athena_web/live/teaching_live/cohort_details.ex:229
-#: lib/athena_web/live/teaching_live/grading.ex:187
+#: lib/athena_web/live/teaching_live/grading.ex:219
+#: lib/athena_web/live/teaching_live/grading.ex:305
 #, elixir-autogen, elixir-format
 msgid "Status"
 msgstr ""
@@ -1611,8 +1612,7 @@ msgstr ""
 #: lib/athena_web/live/teaching_live/cohort_details.ex:202
 #: lib/athena_web/live/teaching_live/cohort_form_component.ex:56
 #: lib/athena_web/live/teaching_live/cohort_form_component.ex:268
-#: lib/athena_web/live/teaching_live/grading.ex:257
-#: lib/athena_web/live/teaching_live/grading.ex:259
+#: lib/athena_web/live/teaching_live/grading.ex:291
 #: lib/athena_web/live/teaching_live/instructors.ex:190
 #, elixir-autogen, elixir-format
 msgid "Unknown"
@@ -1849,11 +1849,6 @@ msgstr ""
 msgid "Are you sure you want to submit the exam?"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/grading.ex:268
-#, elixir-autogen, elixir-format
-msgid "Assignment Type"
-msgstr ""
-
 #: lib/athena_web/live/studio_live/library_editor.ex:299
 #: lib/athena_web/live/teaching_live/grading_detail.ex:85
 #, elixir-autogen, elixir-format
@@ -1903,11 +1898,6 @@ msgstr ""
 #: lib/athena_web/live/teaching_live/grading_detail.ex:174
 #, elixir-autogen, elixir-format
 msgid "Current automated score. You can override it manually."
-msgstr ""
-
-#: lib/athena_web/live/teaching_live/grading.ex:274
-#, elixir-autogen, elixir-format
-msgid "Deleted Block"
 msgstr ""
 
 #: lib/athena_web/live/studio_live/library_editor.ex:482
@@ -2006,7 +1996,7 @@ msgstr ""
 msgid "General Settings"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/grading.ex:312
+#: lib/athena_web/live/teaching_live/grading.ex:351
 #, elixir-autogen, elixir-format
 msgid "Grade"
 msgstr ""
@@ -2016,12 +2006,12 @@ msgstr ""
 msgid "Grade Submission"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/grading.ex:184
+#: lib/athena_web/live/teaching_live/grading.ex:216
 #, elixir-autogen, elixir-format
 msgid "Graded"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/grading.ex:149
+#: lib/athena_web/live/teaching_live/grading.ex:180
 #, elixir-autogen, elixir-format
 msgid "Grading Center"
 msgstr ""
@@ -2092,7 +2082,7 @@ msgstr ""
 msgid "Min"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/grading.ex:183
+#: lib/athena_web/live/teaching_live/grading.ex:215
 #, elixir-autogen, elixir-format
 msgid "Needs Review"
 msgstr ""
@@ -2107,7 +2097,7 @@ msgstr ""
 msgid "No questions available"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/grading.ex:224
+#: lib/athena_web/live/teaching_live/grading.ex:279
 #, elixir-autogen, elixir-format
 msgid "No submissions found"
 msgstr ""
@@ -2170,13 +2160,13 @@ msgstr ""
 msgid "Return to Course"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/grading.ex:152
+#: lib/athena_web/live/teaching_live/grading.ex:183
 #, elixir-autogen, elixir-format
 msgid "Review and grade student submissions."
 msgstr ""
 
 #: lib/athena_web/live/learn_live/leaderboard.ex:65
-#: lib/athena_web/live/teaching_live/grading.ex:281
+#: lib/athena_web/live/teaching_live/grading.ex:309
 #, elixir-autogen, elixir-format
 msgid "Score"
 msgstr ""
@@ -2191,7 +2181,7 @@ msgstr ""
 msgid "Start Exam"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/grading.ex:252
+#: lib/athena_web/live/teaching_live/grading.ex:288
 #, elixir-autogen, elixir-format
 msgid "Student"
 msgstr ""
@@ -2282,7 +2272,7 @@ msgstr ""
 msgid "Video not uploaded yet"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/grading.ex:312
+#: lib/athena_web/live/teaching_live/grading.ex:351
 #, elixir-autogen, elixir-format
 msgid "View"
 msgstr ""
@@ -2315,11 +2305,6 @@ msgstr ""
 #: lib/athena_web/live/teaching_live/grading_detail.ex:191
 #, elixir-autogen, elixir-format
 msgid "Write your feedback here... It will be visible to the student."
-msgstr ""
-
-#: lib/athena_web/live/teaching_live/grading.ex:227
-#, elixir-autogen, elixir-format
-msgid "You're all caught up! There are no student submissions matching this filter right now."
 msgstr ""
 
 #: lib/athena_web/live/auth_live/force_password_change.ex:91
@@ -2778,52 +2763,47 @@ msgstr ""
 msgid "Underline"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/grading.ex:194
+#: lib/athena_web/live/teaching_live/grading.ex:226
 #, elixir-autogen, elixir-format
 msgid "All Cohorts"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/grading.ex:182
+#: lib/athena_web/live/teaching_live/grading.ex:214
 #, elixir-autogen, elixir-format
 msgid "All Statuses"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/grading.ex:215
+#: lib/athena_web/live/teaching_live/grading.ex:242
 #, elixir-autogen, elixir-format
 msgid "Cheaters Only"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/grading.ex:195
+#: lib/athena_web/live/teaching_live/grading.ex:227
 #, elixir-autogen, elixir-format
 msgid "Cohort"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/grading.ex:158
+#: lib/athena_web/live/teaching_live/grading.ex:190
 #, elixir-autogen, elixir-format
 msgid "Filters"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/grading.ex:207
+#: lib/athena_web/live/teaching_live/grading.ex:248
 #, elixir-autogen, elixir-format
 msgid "From Date"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/grading.ex:165
-#, elixir-autogen, elixir-format
-msgid "Reset"
-msgstr ""
-
-#: lib/athena_web/live/teaching_live/grading.ex:202
+#: lib/athena_web/live/teaching_live/grading.ex:234
 #, elixir-autogen, elixir-format
 msgid "Start typing..."
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/grading.ex:201
+#: lib/athena_web/live/teaching_live/grading.ex:233
 #, elixir-autogen, elixir-format
 msgid "Student Login"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/grading.ex:208
+#: lib/athena_web/live/teaching_live/grading.ex:249
 #, elixir-autogen, elixir-format
 msgid "To Date"
 msgstr ""
@@ -2967,7 +2947,7 @@ msgid "Reject"
 msgstr ""
 
 #: lib/athena_web/live/learn_live/player.ex:567
-#: lib/athena_web/live/teaching_live/grading.ex:185
+#: lib/athena_web/live/teaching_live/grading.ex:217
 #, elixir-autogen, elixir-format
 msgid "Rejected"
 msgstr ""
@@ -3109,4 +3089,44 @@ msgstr ""
 #: lib/athena_web/components/layouts/root.html.heex:18
 #, elixir-autogen, elixir-format
 msgid "Your browser is out of date. Athena LMS may not display correctly. Please update your browser for the best experience."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/grading.ex:295
+#, elixir-autogen, elixir-format
+msgid "Assignment"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/grading.ex:269
+#, elixir-autogen, elixir-format
+msgid "Clear Filter"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/grading.ex:300
+#, elixir-autogen, elixir-format
+msgid "Deleted"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/grading.ex:338
+#, elixir-autogen, elixir-format
+msgid "Filter by this assignment"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/grading.ex:197
+#, elixir-autogen, elixir-format
+msgid "Reset All"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/grading.ex:261
+#, elixir-autogen, elixir-format
+msgid "Showing submissions filtered by a specific assignment."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/grading.ex:323
+#, elixir-autogen, elixir-format
+msgid "Submitted At"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/grading.ex:282
+#, elixir-autogen, elixir-format
+msgid "You're all caught up! There are no student submissions matching your criteria."
 msgstr ""

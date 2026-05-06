@@ -40,7 +40,7 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
 
       assert html =~ "janedoe"
       assert html =~ "Graded"
-      assert html =~ "100"
+      assert html =~ "100 <span class=\"text-xs opacity-50 font-normal\">/ 100</span>"
     end
 
     test "should handle unknown accounts or blocks gracefully", %{conn: conn} do
@@ -53,7 +53,7 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
       {:ok, _lv, html} = live(conn, ~p"/teaching/grading")
 
       assert html =~ "Unknown"
-      assert html =~ "Deleted Block"
+      assert html =~ "Deleted"
     end
 
     test "renders rejected submissions correctly", %{conn: conn} do
@@ -71,8 +71,8 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
 
       assert html =~ "cheater_student"
       assert html =~ "Rejected"
-      assert html =~ "bg-error/10 text-error"
-      assert html =~ "0"
+      assert html =~ "badge-error badge-soft"
+      assert html =~ "text-error"
     end
   end
 
@@ -201,6 +201,26 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
 
       assert html =~ "bad_boy"
       refute html =~ "good_boy"
+    end
+
+    test "filters by block_id via hidden url param and displays info alert", %{conn: conn} do
+      student1 = insert(:account, login: "block1_boy")
+      student2 = insert(:account, login: "block2_boy")
+      block1 = insert(:block, type: :text)
+      block2 = insert(:block, type: :code)
+
+      insert(:submission, account_id: student1.id, block_id: block1.id)
+      insert(:submission, account_id: student2.id, block_id: block2.id)
+
+      {:ok, lv, html} = live(conn, ~p"/teaching/grading?block_id=#{block1.id}")
+
+      assert html =~ "block1_boy"
+      refute html =~ "block2_boy"
+
+      assert html =~ "Showing submissions filtered by a specific assignment"
+
+      html = lv |> element("button[phx-click='clear_block_filter']") |> render_click()
+      assert html =~ "block2_boy"
     end
   end
 
