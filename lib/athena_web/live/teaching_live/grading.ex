@@ -35,7 +35,6 @@ defmodule AthenaWeb.TeachingLive.Grading do
     date_from = Map.get(params, "date_from", "")
     date_to = Map.get(params, "date_to", "")
     has_cheats = Map.get(params, "has_cheats", "false")
-    # <-- Ловим скрытый параметр
     block_id = Map.get(params, "block_id", "")
 
     flop_filters =
@@ -61,7 +60,6 @@ defmodule AthenaWeb.TeachingLive.Grading do
           |> assign(:date_from, date_from)
           |> assign(:date_to, date_to)
           |> assign(:has_cheats, has_cheats)
-          # <-- Сохраняем в стейт
           |> assign(:block_id, block_id)
           |> assign(:accounts, accounts)
           |> assign(:blocks, blocks)
@@ -85,7 +83,6 @@ defmodule AthenaWeb.TeachingLive.Grading do
         "date_from" => params["date_from"],
         "date_to" => params["date_to"],
         "has_cheats" => params["has_cheats"] || "false",
-        # <-- Прокидываем дальше, если он был задан
         "block_id" => socket.assigns.block_id
       }
       |> Enum.reject(fn {_, v} -> v in ["", nil, "false"] end)
@@ -96,12 +93,10 @@ defmodule AthenaWeb.TeachingLive.Grading do
 
   @impl true
   def handle_event("reset_filters", _params, socket) do
-    # При полном сбросе убиваем и скрытый block_id тоже
     {:noreply, push_patch(socket, to: ~p"/teaching/grading")}
   end
 
   def handle_event("clear_block_filter", _params, socket) do
-    # Сброс ТОЛЬКО скрытого фильтра по блоку
     query_params =
       %{
         "status" => socket.assigns.current_status,
@@ -251,7 +246,6 @@ defmodule AthenaWeb.TeachingLive.Grading do
         </.form>
       </div>
 
-      <%!-- Плашка, если активен невидимый фильтр по блоку --%>
       <div
         :if={@block_id != ""}
         class="alert alert-info shadow-sm bg-info/10 text-info border-info/20"
@@ -328,7 +322,6 @@ defmodule AthenaWeb.TeachingLive.Grading do
 
           <:action :let={{_id, sub}}>
             <div class="flex justify-end gap-2">
-              <%!-- Кнопка-воронка для фильтрации --%>
               <.link
                 :if={@block_id == ""}
                 patch={
@@ -340,7 +333,6 @@ defmodule AthenaWeb.TeachingLive.Grading do
                 <.icon name="hero-funnel" class="size-4" />
               </.link>
 
-              <%!-- Кнопка проверки/просмотра --%>
               <.link
                 navigate={~p"/teaching/grading/#{sub.id}?return_to=#{@current_path}"}
                 class={[
