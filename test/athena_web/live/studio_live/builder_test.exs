@@ -804,6 +804,18 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert {:error, {:redirect, %{to: "/dashboard"}}} =
                live(student_conn, ~p"/studio/courses/#{course.id}/builder")
     end
+
+    test "allows global admin to access and edit a course they don't own", %{conn: conn} do
+      other_user = insert(:account)
+      other_course = insert(:course, owner_id: other_user.id)
+
+      {:ok, _lv, html} = live(conn, ~p"/studio/courses/#{other_course.id}/builder")
+
+      assert html =~ other_course.title
+
+      assert html =~ "Inspector"
+      assert html =~ "Add Here"
+    end
   end
 
   describe "Collaborator Roles (Reader vs Writer)" do

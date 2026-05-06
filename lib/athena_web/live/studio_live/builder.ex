@@ -10,6 +10,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   alias Athena.Content
   alias Athena.Content.Block
+  alias Athena.Identity
 
   on_mount {AthenaWeb.Hooks.Permission, "courses.read"}
 
@@ -1563,6 +1564,7 @@ defmodule AthenaWeb.StudioLive.Builder do
     cond do
       course.owner_id == user.id -> :owner
       share = Enum.find(shares, &(&1.account_id == user.id)) -> share.role
+      Identity.can?(user, "courses.update", course) -> :owner
       course.is_public -> :reader
       true -> :none
     end
