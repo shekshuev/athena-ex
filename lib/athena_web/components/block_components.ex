@@ -559,34 +559,11 @@ defmodule AthenaWeb.BlockComponents do
     ~H"""
     <div class="fixed-toolbar hidden group-focus-within:flex flex-wrap gap-2 bg-base-100 border border-base-300 rounded-sm p-1.5 mb-3 shadow-sm sticky top-2 z-10 items-center">
       <div class="join flex-wrap">
-        <select
-          class="join-item select select-bordered select-sm min-h-0 h-8 w-36 text-xs font-normal px-2 bg-transparent focus:outline-none"
-          data-action="font-family"
-        >
-          <option value="">{gettext("Font")}</option>
-          <option value="Arial">Arial</option>
-          <option value="Courier New">Courier</option>
-          <option value="Times New Roman">Times</option>
-          <option value="Georgia">Georgia</option>
-        </select>
-        <select
-          class="join-item select select-bordered select-sm min-h-0 h-8 w-36 text-xs font-normal px-2 bg-transparent focus:outline-none border-l-0"
-          data-action="font-size"
-        >
-          <option value="">{gettext("Size")}</option>
-          <option value="12px">12px</option>
-          <option value="14px">14px</option>
-          <option value="16px">16px</option>
-          <option value="18px">18px</option>
-          <option value="24px">24px</option>
-          <option value="32px">32px</option>
-        </select>
-
         <button
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3 text-base"
           data-action="bold"
-          title={gettext("Bold")}
+          data-tippy-content={"#{gettext("Bold")} ($mod+B)"}
         >
           <b>B</b>
         </button>
@@ -594,7 +571,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3 text-base"
           data-action="italic"
-          title={gettext("Italic")}
+          data-tippy-content={"#{gettext("Italic")} ($mod+I)"}
         >
           <i class="font-serif">I</i>
         </button>
@@ -602,7 +579,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3 text-base"
           data-action="underline"
-          title={gettext("Underline")}
+          data-tippy-content={"#{gettext("Underline")} ($mod+U)"}
         >
           <u>U</u>
         </button>
@@ -610,7 +587,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-2 text-sm font-serif"
           data-action="subscript"
-          title={gettext("Subscript")}
+          data-tippy-content={"#{gettext("Subscript")} ($mod+,)"}
         >
           X₂
         </button>
@@ -618,7 +595,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-2 text-sm font-serif"
           data-action="superscript"
-          title={gettext("Superscript")}
+          data-tippy-content={"#{gettext("Superscript")} ($mod+.)"}
         >
           X²
         </button>
@@ -626,14 +603,14 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3"
           data-action="inline-code"
-          title={gettext("Inline Code")}
+          data-tippy-content={"#{gettext("Inline Code")} ($mod+E)"}
         >
           <.icon name="hero-code-bracket" class="size-5" />
         </button>
 
         <div
           class="join-item flex items-center px-2"
-          title={gettext("Text Color")}
+          data-tippy-content={gettext("Text Color")}
         >
           <.icon name="hero-swatch" class="size-4 mr-1 text-base-content/50" />
           <input
@@ -646,7 +623,7 @@ defmodule AthenaWeb.BlockComponents do
 
         <div
           class="join-item flex items-center px-2"
-          title={gettext("Highlight Color")}
+          data-tippy-content={gettext("Highlight Color")}
         >
           <.icon name="hero-paint-brush" class="size-4 mr-1 text-base-content/50" />
           <input
@@ -660,7 +637,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-2 border-r border-base-200"
           data-action="unset-highlight"
-          title={gettext("Clear Highlight")}
+          data-tippy-content={gettext("Clear Highlight")}
         >
           <.icon name="hero-no-symbol" class="size-4 text-base-content/50" />
         </button>
@@ -669,7 +646,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3 font-bold text-base"
           data-action="paragraph"
-          title={gettext("Paragraph")}
+          data-tippy-content={"#{gettext("Paragraph")} ($mod+$alt+0)"}
         >
           ¶
         </button>
@@ -677,7 +654,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm font-bold text-base"
           data-action="h1"
-          title={gettext("Heading 1")}
+          data-tippy-content={"#{gettext("Heading 1")} ($mod+$alt+1)"}
         >
           H1
         </button>
@@ -685,7 +662,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm font-bold text-base"
           data-action="h2"
-          title={gettext("Heading 2")}
+          data-tippy-content={"#{gettext("Heading 2")} ($mod+$alt+2)"}
         >
           H2
         </button>
@@ -693,7 +670,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm font-bold text-base"
           data-action="h3"
-          title={gettext("Heading 3")}
+          data-tippy-content={"#{gettext("Heading 3")} ($mod+$alt+3)"}
         >
           H3
         </button>
@@ -701,7 +678,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-2"
           data-action="align-left"
-          title={gettext("Align Left")}
+          data-tippy-content={"#{gettext("Align Left")} ($mod+$shift+L)"}
         >
           <.icon name="hero-bars-3-bottom-left" class="size-5" />
         </button>
@@ -709,7 +686,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-2"
           data-action="align-center"
-          title={gettext("Align Center")}
+          data-tippy-content={"#{gettext("Align Center")} ($mod+$shift+E)"}
         >
           <.icon name="hero-bars-3" class="size-5" />
         </button>
@@ -717,7 +694,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-2"
           data-action="align-right"
-          title={gettext("Align Right")}
+          data-tippy-content={"#{gettext("Align Right")} ($mod+$shift+R)"}
         >
           <.icon name="hero-bars-3-bottom-right" class="size-5" />
         </button>
@@ -726,7 +703,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3"
           data-action="bullet"
-          title={gettext("Bullet List")}
+          data-tippy-content={"#{gettext("Bullet List")} ($mod+$shift+8)"}
         >
           <.icon name="hero-list-bullet" class="size-5" />
         </button>
@@ -734,7 +711,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3 font-bold font-serif text-base"
           data-action="ordered"
-          title={gettext("Ordered List")}
+          data-tippy-content={"#{gettext("Ordered List")} ($mod+$shift+7)"}
         >
           1.
         </button>
@@ -742,7 +719,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3"
           data-action="quote"
-          title={gettext("Blockquote")}
+          data-tippy-content={"#{gettext("Blockquote")} ($mod+$shift+B)"}
         >
           <.icon name="hero-chat-bubble-bottom-center-text" class="size-5" />
         </button>
@@ -750,7 +727,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3"
           data-action="code-block"
-          title={gettext("Code Block")}
+          data-tippy-content={"#{gettext("Code Block")} ($mod+$alt+C)"}
         >
           <.icon name="hero-command-line" class="size-5" />
         </button>
@@ -758,7 +735,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3 font-bold"
           data-action="divider"
-          title={gettext("Divider")}
+          data-tippy-content={"#{gettext("Divider")} ($mod+Enter)"}
         >
           —
         </button>
@@ -767,7 +744,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3"
           data-action="details"
-          title={gettext("Spoiler / Details")}
+          data-tippy-content={"#{gettext("Spoiler / Details")} ($mod+$shift+D)"}
         >
           <.icon name="hero-chevron-down" class="size-5" />
         </button>
@@ -776,7 +753,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3"
           data-action="link"
-          title={gettext("Link")}
+          data-tippy-content={"#{gettext("Link")} ($mod+K)"}
         >
           <.icon name="hero-link" class="size-5" />
         </button>
@@ -784,7 +761,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3"
           data-action="image"
-          title={gettext("Image")}
+          data-tippy-content={"#{gettext("Image")} ($mod+$shift+I)"}
         >
           <.icon name="hero-photo" class="size-5" />
         </button>
@@ -792,15 +769,16 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3"
           data-action="table"
-          title={gettext("Insert Table")}
+          data-tippy-content={"#{gettext("Insert Table")} ($mod+$alt+T)"}
         >
           <.icon name="hero-table-cells" class="size-5" />
         </button>
+
         <button
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-2 text-xs font-bold tracking-wider hidden tiptap-table-control"
           data-action="add-row"
-          title={gettext("Add Row")}
+          data-tippy-content={gettext("Add Row")}
         >
           + Row
         </button>
@@ -808,7 +786,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-2 text-xs font-bold tracking-wider hidden tiptap-table-control"
           data-action="add-col"
-          title={gettext("Add Column")}
+          data-tippy-content={gettext("Add Column")}
         >
           + Col
         </button>
@@ -816,7 +794,7 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-2 text-xs font-bold tracking-wider hidden tiptap-table-control"
           data-action="del-row"
-          title={gettext("Delete Row")}
+          data-tippy-content={gettext("Delete Row")}
         >
           - Row
         </button>
@@ -824,15 +802,15 @@ defmodule AthenaWeb.BlockComponents do
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-2 text-xs font-bold tracking-wider hidden tiptap-table-control"
           data-action="del-col"
-          title={gettext("Delete Column")}
+          data-tippy-content={gettext("Delete Column")}
         >
           - Col
         </button>
         <button
           type="button"
-          class="join-item btn btn-sm btn-ghost rounded-sm px-2 hidden tiptap-table-control"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-2 hidden tiptap-table-control text-error hover:bg-error/10"
           data-action="del-table"
-          title={gettext("Delete Table")}
+          data-tippy-content={gettext("Delete Table")}
         >
           <.icon name="hero-trash" class="size-4" />
         </button>

@@ -121,7 +121,7 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponent do
           type="button"
           phx-click="add_section"
           phx-value-parent_id={@viewing_parent_id || ""}
-          class="btn btn-soft btn-neutral btn-sm w-full"
+          class="btn btn-soft btn-sm w-full"
         >
           <.icon name="hero-plus" class="size-4" />
           {gettext("Add Here")}

@@ -4,7 +4,6 @@ import Color from "@tiptap/extension-color";
 import Details from "@tiptap/extension-details";
 import DetailsContent from "@tiptap/extension-details-content";
 import DetailsSummary from "@tiptap/extension-details-summary";
-import FontFamily from "@tiptap/extension-font-family";
 import Highlight from "@tiptap/extension-highlight";
 import TiptapImage from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
@@ -26,8 +25,34 @@ import { hooks as colocatedHooks } from "phoenix-colocated/athena";
 import "phoenix_html";
 import { LiveSocket } from "phoenix_live_view";
 import Sortable from "sortablejs";
+import tippy from "tippy.js";
+import "tippy.js/dist/tippy.css";
 import topbar from "../vendor/topbar";
 const lowlight = createLowlight(common);
+
+const isMac =
+  typeof window !== "undefined" &&
+  navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
+const modKey = isMac ? "⌘" : "Ctrl";
+const altKey = isMac ? "⌥" : "Alt";
+const shiftKey = isMac ? "⇧" : "Shift";
+
+tippy.setDefaultProps({
+  theme: "athena",
+  delay: [200, 0],
+  animation: "fade",
+  arrow: true,
+  onShow(instance) {
+    let content = instance.reference.getAttribute("data-tippy-content");
+    if (content) {
+      content = content
+        .replace(/\$mod/g, modKey)
+        .replace(/\$alt/g, altKey)
+        .replace(/\$shift/g, shiftKey);
+      instance.setContent(content);
+    }
+  },
+});
 
 const csrfToken = document
   .querySelector("meta[name='csrf-token']")
@@ -131,7 +156,6 @@ Hooks.TiptapEditor = {
       }),
       TextStyle,
       Color,
-      FontFamily,
       Subscript,
       Superscript,
       Mathematics.configure({
@@ -176,12 +200,6 @@ Hooks.TiptapEditor = {
         }
       }
 
-      const fontSelect = toolbar.querySelector('[data-action="font-family"]');
-      if (fontSelect) {
-        const activeFont = editor.getAttributes("textStyle").fontFamily || "";
-        fontSelect.value = activeFont.replace(/['"]/g, "");
-      }
-
       const colorInput = toolbar.querySelector('[data-action="text-color"]');
       if (colorInput) {
         colorInput.value = editor.getAttributes("textStyle").color || "#000000";
@@ -204,6 +222,83 @@ Hooks.TiptapEditor = {
       editorProps: {
         attributes: {
           class: "prose dark:prose-invert max-w-none focus:outline-none w-full",
+        },
+        handleKeyDown: (view, event) => {
+          if (isReadOnly) return false;
+
+          const isMod = event.ctrlKey || event.metaKey;
+
+          if (isMod && event.key === ",") {
+            event.preventDefault();
+            this.editor.chain().focus().toggleSubscript().run();
+            return true;
+          }
+
+          if (isMod && event.key === ".") {
+            event.preventDefault();
+            this.editor.chain().focus().toggleSuperscript().run();
+            return true;
+          }
+
+          if (isMod && event.key.toLowerCase() === "k") {
+            event.preventDefault();
+            const url = window.prompt("URL:");
+            if (url) this.editor.chain().focus().setLink({ href: url }).run();
+            return true;
+          }
+
+          if (isMod && event.altKey && event.key.toLowerCase() === "t") {
+            event.preventDefault();
+            this.editor
+              .chain()
+              .focus()
+              .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+              .run();
+            return true;
+          }
+
+          if (isMod && event.shiftKey && event.key.toLowerCase() === "d") {
+            event.preventDefault();
+            if (this.editor.isActive("details")) {
+              this.editor.chain().focus().unsetDetails().run();
+            } else {
+              this.editor.chain().focus().setDetails().run();
+            }
+            return true;
+          }
+
+          if (isMod && event.shiftKey && event.key.toLowerCase() === "i") {
+            event.preventDefault();
+            hook.pushEvent("request_media_upload", {
+              block_id: blockId,
+              media_type: "tiptap_image",
+            });
+            return true;
+          }
+
+          if (isMod && event.key === "Enter") {
+            event.preventDefault();
+            this.editor.chain().focus().setHorizontalRule().run();
+            return true;
+          }
+
+          if (isMod && event.shiftKey && event.key.toLowerCase() === "l") {
+            event.preventDefault();
+            this.editor.chain().focus().setTextAlign("left").run();
+            return true;
+          }
+          if (isMod && event.shiftKey && event.key.toLowerCase() === "e") {
+            event.preventDefault();
+            this.editor.chain().focus().setTextAlign("center").run();
+            return true;
+          }
+          if (isMod && event.shiftKey && event.key.toLowerCase() === "r") {
+            event.preventDefault();
+            this.editor.chain().focus().setTextAlign("right").run();
+            return true;
+          }
+
+          return false;
         },
       },
       onUpdate: ({ editor }) => {
@@ -230,6 +325,8 @@ Hooks.TiptapEditor = {
       const toolbar = wrapper ? wrapper.querySelector(".fixed-toolbar") : null;
 
       if (toolbar) {
+        tippy(toolbar.querySelectorAll("[data-tippy-content]"));
+
         toolbar.addEventListener("click", (e) => {
           const btn = e.target.closest("button");
           if (!btn) return;
@@ -308,11 +405,6 @@ Hooks.TiptapEditor = {
             const action = e.target.dataset.action;
             const value = e.target.value;
             const chain = this.editor.chain().focus();
-
-            if (action === "font-family") {
-              if (value) chain.setFontFamily(value).run();
-              else chain.unsetFontFamily().run();
-            }
           }
         });
 

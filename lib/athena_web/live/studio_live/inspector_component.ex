@@ -132,7 +132,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
           type="button"
           phx-click="open_move_modal"
           phx-value-id={@section.id}
-          class="btn btn-neutral btn-soft w-full"
+          class="btn btn-soft btn-sm w-full"
         >
           <.icon name="hero-folder-arrow-down" class="size-4" />
           {gettext("Move To...")}
@@ -142,7 +142,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
           type="button"
           phx-click="delete_section_click"
           phx-value-id={@section.id}
-          class="btn btn-error btn-soft w-full"
+          class="btn btn-error btn-soft btn-sm w-full"
         >
           <.icon name="hero-trash" class="size-4" />
           {gettext("Delete Section")}

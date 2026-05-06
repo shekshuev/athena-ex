@@ -381,6 +381,19 @@
       color: #e06c75;
     }
   }
+
+  .tippy-box[data-theme~="athena"] {
+    @apply bg-base-content text-base-100 text-xs font-bold py-1.5 px-3 rounded-md shadow-lg tracking-wide;
+  }
+
+  .tippy-box[data-theme~="athena"][data-placement^="top"]
+    > .tippy-arrow::before {
+    border-top-color: var(--color-base-content) !important;
+  }
+  .tippy-box[data-theme~="athena"][data-placement^="bottom"]
+    > .tippy-arrow::before {
+    border-bottom-color: var(--color-base-content) !important;
+  }
 }
 
 .Tiptap-mathematics-editor {
