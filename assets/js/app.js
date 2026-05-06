@@ -5,7 +5,6 @@ import Details from "@tiptap/extension-details";
 import DetailsContent from "@tiptap/extension-details-content";
 import DetailsSummary from "@tiptap/extension-details-summary";
 import Highlight from "@tiptap/extension-highlight";
-import TiptapImage from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Mathematics from "@tiptap/extension-mathematics";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -27,8 +26,13 @@ import { LiveSocket } from "phoenix_live_view";
 import Sortable from "sortablejs";
 import tippy from "tippy.js";
 import "tippy.js/dist/tippy.css";
+import ImageResize from "tiptap-extension-resize-image";
 import topbar from "../vendor/topbar";
 const lowlight = createLowlight(common);
+
+const ResizableImage = ImageResize.extend({
+  name: "image",
+});
 
 const isMac =
   typeof window !== "undefined" &&
@@ -138,12 +142,6 @@ Hooks.TiptapEditor = {
       CodeBlockLowlight.configure({ lowlight }),
       Underline,
       Link.configure({ openOnClick: isReadOnly }),
-      TiptapImage.configure({
-        inline: false,
-        HTMLAttributes: {
-          class: "rounded-sm max-h-[500px] shadow-sm my-4 mx-auto",
-        },
-      }),
       Highlight.configure({ multicolor: true }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       Table.configure({ resizable: !isReadOnly }),
@@ -185,6 +183,12 @@ Hooks.TiptapEditor = {
       DetailsContent.configure({
         HTMLAttributes: {
           class: "tiptap-details-content",
+        },
+      }),
+      ResizableImage.configure({
+        inline: false,
+        HTMLAttributes: {
+          class: "rounded-sm shadow-sm my-4 mx-auto",
         },
       }),
     ];
