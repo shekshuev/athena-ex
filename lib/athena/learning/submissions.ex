@@ -7,7 +7,7 @@ defmodule Athena.Learning.Submissions do
   """
 
   import Ecto.Query
-  alias Athena.{Repo, Identity, Content}
+  alias Athena.{Repo, Content}
   alias Athena.Learning.{Submission, Enrollment, Cohort, Instructor, CohortInstructor}
   alias Athena.Content.{Block, Section}
 
@@ -111,7 +111,13 @@ defmodule Athena.Learning.Submissions do
   @spec update_submission(map(), Submission.t(), map()) ::
           {:ok, Submission.t()} | {:error, Ecto.Changeset.t() | atom()}
   def update_submission(user, %Submission{} = submission, attrs) do
-    if Identity.can?(user, "grading.update", submission) do
+    has_access? =
+      Submission
+      |> where([s], s.id == ^submission.id)
+      |> scope_submissions(user, "grading.update")
+      |> Repo.exists?()
+
+    if has_access? do
       system_update_submission(submission, attrs)
     else
       {:error, :unauthorized}

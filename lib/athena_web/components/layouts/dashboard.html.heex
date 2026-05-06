@@ -93,7 +93,7 @@
         </li>
       </ul>
 
-      <%= if Identity.can_any?(@current_user, ["courses.read", "library.read", "grading.read"]) do %>
+      <%= if Identity.can_any?(@current_user, ["courses.read", "library.read"]) do %>
         <div class="py-4 overflow-hidden">
           <div class="h-px bg-base-300 w-full"></div>
           <div class="mt-4 px-3 text-[10px] font-black text-base-content/50 uppercase tracking-widest group-[.is-collapsed]/sidebar:hidden">
@@ -111,16 +111,6 @@
               </div>
             </.link>
           </li>
-          <li :if={Identity.can?(@current_user, "grading.read")}>
-            <.link navigate={~p"/studio/grading"} class="flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <.icon name="hero-academic-cap" class="size-6 shrink-0" />
-                <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
-                  {gettext("Assignments")}
-                </span>
-              </div>
-            </.link>
-          </li>
           <li :if={Identity.can?(@current_user, "library.read")}>
             <.link navigate={~p"/studio/library"} class="flex items-center">
               <div class="flex items-center gap-2">
@@ -134,7 +124,7 @@
         </ul>
       <% end %>
 
-      <%= if Identity.can_any?(@current_user, ["cohorts.read", "instructors.read"]) do %>
+      <%= if Identity.can_any?(@current_user, ["cohorts.read", "instructors.read", "grading.read"]) do %>
         <div class="py-4 overflow-hidden">
           <div class="h-px bg-base-300 w-full"></div>
           <div class="mt-4 px-3 text-[10px] font-black text-base-content/50 uppercase tracking-widest group-[.is-collapsed]/sidebar:hidden">
@@ -142,6 +132,16 @@
           </div>
         </div>
         <ul class="menu p-0 w-full gap-1">
+          <li :if={Identity.can?(@current_user, "grading.read")}>
+            <.link navigate={~p"/teaching/grading"} class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <.icon name="hero-academic-cap" class="size-6 shrink-0" />
+                <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                  {gettext("Assignments")}
+                </span>
+              </div>
+            </.link>
+          </li>
           <li :if={Identity.can?(@current_user, "cohorts.read")}>
             <.link navigate={~p"/teaching/cohorts"} class="flex items-center">
               <div class="flex items-center gap-2">

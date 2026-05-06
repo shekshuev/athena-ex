@@ -501,3 +501,13 @@
 .prose .tiptap-details-content > :last-child {
   margin-bottom: 0 !important;
 }
+
+.browser-support-banner {
+  display: none;
+}
+
+@supports not ((color: oklch(0% 0 0)) and (selector(&))) {
+  .browser-support-banner {
+    display: flex;
+  }
+}

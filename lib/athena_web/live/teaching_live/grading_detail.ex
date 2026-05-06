@@ -1,4 +1,4 @@
-defmodule AthenaWeb.StudioLive.GradingDetail do
+defmodule AthenaWeb.TeachingLive.GradingDetail do
   @moduledoc """
   LiveView for grading a specific student submission.
   Shows the read-only submission on the left and grading controls on the right
@@ -13,7 +13,7 @@ defmodule AthenaWeb.StudioLive.GradingDetail do
 
   @impl true
   def mount(%{"id" => id} = params, _session, socket) do
-    return_to = Map.get(params, "return_to", ~p"/studio/grading")
+    return_to = Map.get(params, "return_to", ~p"/teaching/grading")
 
     submission = Learning.get_submission!(socket.assigns.current_user, id)
 

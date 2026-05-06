@@ -95,7 +95,7 @@ defmodule AthenaWeb.LearnLive.LeaderboardTest do
       insert(:submission,
         block_id: block1.id,
         cohort_id: cheaters.id,
-        score: 999,
+        score: 888,
         status: :graded
       )
 
@@ -112,7 +112,7 @@ defmodule AthenaWeb.LearnLive.LeaderboardTest do
       assert html =~ "Disqualified"
       assert html =~ "opacity-50 grayscale bg-error/5"
 
-      refute html =~ "999"
+      refute html =~ "888"
     end
 
     test "redirects if user has no access to the course", %{conn: conn} do
