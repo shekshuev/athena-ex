@@ -40,10 +40,12 @@ defmodule AthenaWeb.StudioLive.Courses do
 
     case Content.list_courses(socket.assigns.current_user, flop_params) do
       {:ok, {courses, meta}} ->
+        courses_with_owners = enrich_with_owners(courses)
+
         socket =
           socket
           |> assign(meta: meta, search: search)
-          |> stream(:courses, courses, reset: true)
+          |> stream(:courses, courses_with_owners, reset: true)
           |> apply_action(socket.assigns.live_action, params)
 
         {:noreply, socket}
@@ -151,7 +153,9 @@ defmodule AthenaWeb.StudioLive.Courses do
 
   @impl true
   def handle_info({CourseFormComponent, {:saved, course}}, socket) do
-    {:noreply, stream_insert(socket, :courses, course)}
+    [enriched_course] = enrich_with_owners([course])
+
+    {:noreply, stream_insert(socket, :courses, enriched_course)}
   end
 
   def handle_info({CourseShareComponent, {:updated, course}}, socket) do
@@ -162,7 +166,9 @@ defmodule AthenaWeb.StudioLive.Courses do
         socket
       end
 
-    {:noreply, stream_insert(socket, :courses, course)}
+    [enriched_course] = enrich_with_owners([course])
+
+    {:noreply, stream_insert(socket, :courses, enriched_course)}
   end
 
   @impl true
@@ -184,10 +190,12 @@ defmodule AthenaWeb.StudioLive.Courses do
 
     case Content.list_courses(socket.assigns.current_user, flop_params) do
       {:ok, {courses, meta}} ->
+        courses_with_owners = enrich_with_owners(courses)
+
         {:noreply,
          socket
          |> assign(meta: meta)
-         |> stream(:courses, courses, reset: true)}
+         |> stream(:courses, courses_with_owners, reset: true)}
 
       {:error, _meta} ->
         {:noreply, socket}
@@ -209,6 +217,17 @@ defmodule AthenaWeb.StudioLive.Courses do
       is_public: course.is_public,
       shares_count: length(shares)
     }
+  end
+
+  defp enrich_with_owners(courses) do
+    owner_ids = courses |> Enum.map(& &1.owner_id) |> Enum.uniq()
+
+    accounts_map = Identity.get_accounts_map(owner_ids)
+
+    Enum.map(courses, fn course ->
+      login = get_in(accounts_map, [course.owner_id, Access.key(:login)]) || "Unknown"
+      Map.put(course, :owner_login, login)
+    end)
   end
 
   defp access_badges(assigns) do
@@ -295,6 +314,13 @@ defmodule AthenaWeb.StudioLive.Courses do
         <:col :let={{_id, course}} label={gettext("Status")}>
           <.status_badge status={course.status} />
         </:col>
+
+        <:col :let={{_id, course}} label={gettext("Owner")}>
+          <span class="text-sm font-medium text-base-content/80">
+            {course.owner_login}
+          </span>
+        </:col>
+
         <:col :let={{_id, course}} label={gettext("Created At")}>
           <span class="text-sm opacity-60">{Calendar.strftime(course.inserted_at, "%d.%m.%Y")}</span>
         </:col>

@@ -62,6 +62,17 @@ defmodule AthenaWeb.StudioLive.CoursesTest do
       assert html =~ "Active Course"
       refute html =~ "Deleted Course"
     end
+
+    test "displays the course owner's username in the table", %{conn: conn} do
+      course_owner = insert(:account, login: "heisenberg")
+
+      insert(:course, title: "Chemistry 101", owner_id: course_owner.id)
+
+      {:ok, _lv, html} = live(conn, ~p"/studio/courses")
+
+      assert html =~ "Chemistry 101"
+      assert html =~ "heisenberg"
+    end
   end
 
   describe "Courses page (Create/Edit actions)" do

@@ -1414,7 +1414,7 @@ msgstr "Сохранить шаблон"
 #: lib/athena_web/live/studio_live/inspector_component.ex:462
 #, elixir-autogen, elixir-format
 msgid "Save to Library"
-msgstr "Сохранить в библиотеку"
+msgstr "В библиотеку"
 
 #: lib/athena_web/live/studio_live/builder.ex:977
 #, elixir-autogen, elixir-format

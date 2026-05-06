@@ -4,9 +4,7 @@ import Color from "@tiptap/extension-color";
 import Details from "@tiptap/extension-details";
 import DetailsContent from "@tiptap/extension-details-content";
 import DetailsSummary from "@tiptap/extension-details-summary";
-import FontFamily from "@tiptap/extension-font-family";
 import Highlight from "@tiptap/extension-highlight";
-import TiptapImage from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Mathematics from "@tiptap/extension-mathematics";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -26,14 +24,66 @@ import { hooks as colocatedHooks } from "phoenix-colocated/athena";
 import "phoenix_html";
 import { LiveSocket } from "phoenix_live_view";
 import Sortable from "sortablejs";
+import tippy from "tippy.js";
+import "tippy.js/dist/tippy.css";
+import ImageResize from "tiptap-extension-resize-image";
 import topbar from "../vendor/topbar";
 const lowlight = createLowlight(common);
+
+const ResizableImage = ImageResize.extend({
+  name: "image",
+});
+
+const isMac =
+  typeof window !== "undefined" &&
+  navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
+const modKey = isMac ? "⌘" : "Ctrl";
+const altKey = isMac ? "⌥" : "Alt";
+const shiftKey = isMac ? "⇧" : "Shift";
+
+tippy.setDefaultProps({
+  theme: "athena",
+  delay: [200, 0],
+  animation: "fade",
+  arrow: true,
+  onShow(instance) {
+    let content = instance.reference.getAttribute("data-tippy-content");
+    if (content) {
+      content = content
+        .replace(/\$mod/g, modKey)
+        .replace(/\$alt/g, altKey)
+        .replace(/\$shift/g, shiftKey);
+      instance.setContent(content);
+    }
+  },
+});
 
 const csrfToken = document
   .querySelector("meta[name='csrf-token']")
   .getAttribute("content");
 
 const Hooks = {};
+
+Hooks.TippyTooltip = {
+  mounted() {
+    this.instance = tippy(this.el, {
+      content: this.el.getAttribute("data-tippy-content"),
+      theme: "athena",
+      delay: [200, 0],
+      animation: "fade",
+    });
+  },
+  updated() {
+    if (this.instance) {
+      this.instance.setContent(this.el.getAttribute("data-tippy-content"));
+    }
+  },
+  destroyed() {
+    if (this.instance) {
+      this.instance.destroy();
+    }
+  },
+};
 
 Hooks.Sortable = {
   mounted() {
@@ -102,17 +152,17 @@ Hooks.TiptapEditor = {
     const isReadOnly = this.el.dataset.readonly === "true";
     let timeout;
 
+    this.clipboardFiles = {};
+
+    const uploadBlobToS3 = (blobEntry) => {
+      Uploaders.S3([blobEntry], () => {});
+    };
+
     const extensions = [
       StarterKit.configure({ codeBlock: false }),
       CodeBlockLowlight.configure({ lowlight }),
       Underline,
       Link.configure({ openOnClick: isReadOnly }),
-      TiptapImage.configure({
-        inline: false,
-        HTMLAttributes: {
-          class: "rounded-sm max-h-[500px] shadow-sm my-4 mx-auto",
-        },
-      }),
       Highlight.configure({ multicolor: true }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       Table.configure({ resizable: !isReadOnly }),
@@ -131,7 +181,6 @@ Hooks.TiptapEditor = {
       }),
       TextStyle,
       Color,
-      FontFamily,
       Subscript,
       Superscript,
       Mathematics.configure({
@@ -157,6 +206,12 @@ Hooks.TiptapEditor = {
           class: "tiptap-details-content",
         },
       }),
+      ResizableImage.configure({
+        inline: false,
+        HTMLAttributes: {
+          class: "rounded-sm shadow-sm my-4 mx-auto",
+        },
+      }),
     ];
 
     const updateToolbarState = (editor) => {
@@ -174,12 +229,6 @@ Hooks.TiptapEditor = {
             tableControl.classList.add("hidden");
           }
         }
-      }
-
-      const fontSelect = toolbar.querySelector('[data-action="font-family"]');
-      if (fontSelect) {
-        const activeFont = editor.getAttributes("textStyle").fontFamily || "";
-        fontSelect.value = activeFont.replace(/['"]/g, "");
       }
 
       const colorInput = toolbar.querySelector('[data-action="text-color"]');
@@ -204,6 +253,149 @@ Hooks.TiptapEditor = {
       editorProps: {
         attributes: {
           class: "prose dark:prose-invert max-w-none focus:outline-none w-full",
+        },
+        handleKeyDown: (view, event) => {
+          if (isReadOnly) return false;
+
+          const isMod = event.ctrlKey || event.metaKey;
+
+          if (isMod && event.key === ",") {
+            event.preventDefault();
+            this.editor.chain().focus().toggleSubscript().run();
+            return true;
+          }
+
+          if (isMod && event.key === ".") {
+            event.preventDefault();
+            this.editor.chain().focus().toggleSuperscript().run();
+            return true;
+          }
+
+          if (isMod && event.key.toLowerCase() === "k") {
+            event.preventDefault();
+            const url = window.prompt("URL:");
+            if (url) this.editor.chain().focus().setLink({ href: url }).run();
+            return true;
+          }
+
+          if (isMod && event.altKey && event.key.toLowerCase() === "t") {
+            event.preventDefault();
+            this.editor
+              .chain()
+              .focus()
+              .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+              .run();
+            return true;
+          }
+
+          if (isMod && event.shiftKey && event.key.toLowerCase() === "d") {
+            event.preventDefault();
+            if (this.editor.isActive("details")) {
+              this.editor.chain().focus().unsetDetails().run();
+            } else {
+              this.editor.chain().focus().setDetails().run();
+            }
+            return true;
+          }
+
+          if (isMod && event.shiftKey && event.key.toLowerCase() === "i") {
+            event.preventDefault();
+            hook.pushEvent("request_media_upload", {
+              block_id: blockId,
+              media_type: "tiptap_image",
+            });
+            return true;
+          }
+
+          if (isMod && event.key === "Enter") {
+            event.preventDefault();
+            this.editor.chain().focus().setHorizontalRule().run();
+            return true;
+          }
+
+          if (isMod && event.shiftKey && event.key.toLowerCase() === "l") {
+            event.preventDefault();
+            this.editor.chain().focus().setTextAlign("left").run();
+            return true;
+          }
+          if (isMod && event.shiftKey && event.key.toLowerCase() === "e") {
+            event.preventDefault();
+            this.editor.chain().focus().setTextAlign("center").run();
+            return true;
+          }
+          if (isMod && event.shiftKey && event.key.toLowerCase() === "r") {
+            event.preventDefault();
+            this.editor.chain().focus().setTextAlign("right").run();
+            return true;
+          }
+
+          return false;
+        },
+        handlePaste: (view, event, slice) => {
+          if (isReadOnly) return false;
+
+          const clipboardData = event.clipboardData || window.clipboardData;
+          if (!clipboardData) return false;
+
+          const types = clipboardData.types || [];
+          const hasHtml = types.includes("text/html");
+
+          const items = Array.from(clipboardData.items);
+          const imageItems = items.filter(
+            (item) => item.kind === "file" && item.type.startsWith("image/"),
+          );
+
+          if (hasHtml && imageItems.length > 0) {
+            const html = clipboardData.getData("text/html");
+
+            if (html.includes("file://")) {
+              event.preventDefault();
+
+              const text = clipboardData.getData("text/plain");
+              if (text) {
+                this.editor.chain().focus().insertContent(text).run();
+              }
+
+              imageItems.forEach((item) => {
+                const file = item.getAsFile();
+                const tempId = crypto.randomUUID();
+
+                hook.clipboardFiles[tempId] = file;
+
+                hook.pushEvent("media_upload_clipboard_request", {
+                  block_id: blockId,
+                  file_name: `clipboard_${tempId.substring(0, 8)}.png`,
+                  file_type: file.type,
+                  file_size: file.size,
+                  temp_id: tempId,
+                });
+              });
+
+              return true;
+            }
+          }
+
+          if (imageItems.length > 0) {
+            event.preventDefault();
+
+            imageItems.forEach((item) => {
+              const file = item.getAsFile();
+              const tempId = crypto.randomUUID();
+
+              hook.clipboardFiles[tempId] = file;
+
+              hook.pushEvent("media_upload_clipboard_request", {
+                block_id: blockId,
+                file_name: `clipboard_${tempId.substring(0, 8)}.png`,
+                file_type: file.type,
+                file_size: file.size,
+                temp_id: tempId,
+              });
+            });
+            return true;
+          }
+
+          return false;
         },
       },
       onUpdate: ({ editor }) => {
@@ -230,6 +422,8 @@ Hooks.TiptapEditor = {
       const toolbar = wrapper ? wrapper.querySelector(".fixed-toolbar") : null;
 
       if (toolbar) {
+        tippy(toolbar.querySelectorAll("[data-tippy-content]"));
+
         toolbar.addEventListener("click", (e) => {
           const btn = e.target.closest("button");
           if (!btn) return;
@@ -308,11 +502,6 @@ Hooks.TiptapEditor = {
             const action = e.target.dataset.action;
             const value = e.target.value;
             const chain = this.editor.chain().focus();
-
-            if (action === "font-family") {
-              if (value) chain.setFontFamily(value).run();
-              else chain.unsetFontFamily().run();
-            }
           }
         });
 
@@ -324,9 +513,45 @@ Hooks.TiptapEditor = {
         });
       }
 
+      this.handleClipboardPresigned = (e) => {
+        const { temp_id, upload_url, final_url } = e.detail;
+
+        const blob = this.clipboardFiles[temp_id];
+        if (!blob) return;
+
+        const blobEntry = {
+          file: blob,
+          tempId: temp_id,
+          meta: { url: upload_url },
+
+          progress: (percent) => {
+            if (percent === 100) {
+              hook.pushEvent("media_upload_clipboard_success", {
+                block_id: blockId,
+                temp_id: temp_id,
+                final_url: final_url,
+              });
+
+              delete this.clipboardFiles[temp_id];
+            }
+          },
+
+          error: () => {
+            delete this.clipboardFiles[temp_id];
+          },
+        };
+
+        uploadBlobToS3(blobEntry);
+      };
+      window.addEventListener(
+        "phx:media_upload_presigned",
+        this.handleClipboardPresigned,
+      );
+
       this.handleInsertMedia = (e) => {
         if (e.detail.block_id === blockId && e.detail.type === "tiptap_image") {
           this.editor.chain().focus().setImage({ src: e.detail.url }).run();
+
           hook.pushEvent("update_content", {
             id: blockId,
             content: this.editor.getJSON(),

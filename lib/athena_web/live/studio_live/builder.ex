@@ -10,6 +10,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   alias Athena.Content
   alias Athena.Content.Block
+  alias Athena.Identity
 
   on_mount {AthenaWeb.Hooks.Permission, "courses.read"}
 
@@ -70,7 +71,8 @@ defmodule AthenaWeb.StudioLive.Builder do
          show_media_modal: false,
          active_upload_block_id: nil,
          upload_type: nil,
-         library_insert_after_id: nil
+         library_insert_after_id: nil,
+         pending_uploads: %{}
        )}
     else
       _ ->
@@ -825,6 +827,100 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
+  def handle_event("media_upload_clipboard_request", params, socket) do
+    if can_edit?(socket) do
+      %{
+        "block_id" => _block_id,
+        "file_name" => file_name,
+        "file_type" => mime_type,
+        "temp_id" => temp_id,
+        "file_size" => file_size
+      } = params
+
+      bucket = Application.get_env(:athena, Athena.Media)[:bucket] || "athena"
+
+      course_id = socket.assigns.course.id
+
+      unique_id = Ecto.UUID.generate()
+
+      clean_name = file_name |> String.replace(~r/[^a-zA-Z0-9_\-\.]/, "_")
+      key = "courses/#{course_id}/#{unique_id}-#{clean_name}"
+
+      case Athena.Media.generate_upload_url(bucket, key) do
+        {:ok, upload_url} ->
+          path_segments = String.split(key, "/")
+          final_url = ~p"/media/#{path_segments}"
+
+          pending = socket.assigns[:pending_uploads] || %{}
+
+          updated_pending =
+            Map.put(pending, temp_id, %{
+              bucket: bucket,
+              key: key,
+              original_name: file_name,
+              size: file_size,
+              mime_type: mime_type,
+              final_url: final_url
+            })
+
+          {:noreply,
+           socket
+           |> assign(:pending_uploads, updated_pending)
+           |> push_event("media_upload_presigned", %{
+             temp_id: temp_id,
+             upload_url: upload_url,
+             final_url: final_url
+           })}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, gettext("Could not generate upload URL"))}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("media_upload_clipboard_success", params, socket) do
+    %{
+      "block_id" => block_id,
+      "temp_id" => temp_id,
+      "final_url" => final_url
+    } = params
+
+    pending = socket.assigns[:pending_uploads] || %{}
+
+    with true <- can_edit?(socket),
+         {upload_data, updated_pending} when not is_nil(upload_data) <- Map.pop(pending, temp_id),
+         file_attrs = %{
+           "bucket" => upload_data.bucket,
+           "key" => upload_data.key,
+           "original_name" => upload_data.original_name,
+           "mime_type" => upload_data.mime_type,
+           "size" => upload_data.size,
+           "context" => "course_material",
+           "owner_id" => socket.assigns.current_user.id
+         },
+         {:ok, _file} <- Athena.Media.create_file(file_attrs) do
+      {:noreply,
+       socket
+       |> assign(:pending_uploads, updated_pending)
+       |> push_event("insert_media", %{
+         block_id: block_id,
+         type: "tiptap_image",
+         url: final_url
+       })}
+    else
+      false ->
+        {:noreply, socket}
+
+      {nil, _} ->
+        {:noreply, socket}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to save media record"))}
+    end
+  end
+
   def handle_event("validate_media", _params, socket), do: {:noreply, socket}
 
   def handle_event("cancel_upload", _, socket) do
@@ -1468,6 +1564,7 @@ defmodule AthenaWeb.StudioLive.Builder do
     cond do
       course.owner_id == user.id -> :owner
       share = Enum.find(shares, &(&1.account_id == user.id)) -> share.role
+      Identity.can?(user, "courses.update", course) -> :owner
       course.is_public -> :reader
       true -> :none
     end
