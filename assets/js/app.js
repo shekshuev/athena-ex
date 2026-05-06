@@ -127,6 +127,12 @@ Hooks.TiptapEditor = {
     const isReadOnly = this.el.dataset.readonly === "true";
     let timeout;
 
+    this.clipboardFiles = {};
+
+    const uploadBlobToS3 = (blobEntry) => {
+      Uploaders.S3([blobEntry], () => {});
+    };
+
     const extensions = [
       StarterKit.configure({ codeBlock: false }),
       CodeBlockLowlight.configure({ lowlight }),
@@ -300,6 +306,72 @@ Hooks.TiptapEditor = {
 
           return false;
         },
+        handlePaste: (view, event, slice) => {
+          if (isReadOnly) return false;
+
+          const clipboardData = event.clipboardData || window.clipboardData;
+          if (!clipboardData) return false;
+
+          const types = clipboardData.types || [];
+          const hasHtml = types.includes("text/html");
+
+          const items = Array.from(clipboardData.items);
+          const imageItems = items.filter(
+            (item) => item.kind === "file" && item.type.startsWith("image/"),
+          );
+
+          if (hasHtml && imageItems.length > 0) {
+            const html = clipboardData.getData("text/html");
+
+            if (html.includes("file://")) {
+              event.preventDefault();
+
+              const text = clipboardData.getData("text/plain");
+              if (text) {
+                this.editor.chain().focus().insertContent(text).run();
+              }
+
+              imageItems.forEach((item) => {
+                const file = item.getAsFile();
+                const tempId = crypto.randomUUID();
+
+                hook.clipboardFiles[tempId] = file;
+
+                hook.pushEvent("media_upload_clipboard_request", {
+                  block_id: blockId,
+                  file_name: `clipboard_${tempId.substring(0, 8)}.png`,
+                  file_type: file.type,
+                  file_size: file.size,
+                  temp_id: tempId,
+                });
+              });
+
+              return true;
+            }
+          }
+
+          if (imageItems.length > 0) {
+            event.preventDefault();
+
+            imageItems.forEach((item) => {
+              const file = item.getAsFile();
+              const tempId = crypto.randomUUID();
+
+              hook.clipboardFiles[tempId] = file;
+
+              hook.pushEvent("media_upload_clipboard_request", {
+                block_id: blockId,
+                file_name: `clipboard_${tempId.substring(0, 8)}.png`,
+                file_type: file.type,
+                file_size: file.size,
+                temp_id: tempId,
+              });
+            });
+            return true;
+          }
+
+          return false;
+        },
       },
       onUpdate: ({ editor }) => {
         if (isReadOnly) return;
@@ -416,9 +488,45 @@ Hooks.TiptapEditor = {
         });
       }
 
+      this.handleClipboardPresigned = (e) => {
+        const { temp_id, upload_url, final_url } = e.detail;
+
+        const blob = this.clipboardFiles[temp_id];
+        if (!blob) return;
+
+        const blobEntry = {
+          file: blob,
+          tempId: temp_id,
+          meta: { url: upload_url },
+
+          progress: (percent) => {
+            if (percent === 100) {
+              hook.pushEvent("media_upload_clipboard_success", {
+                block_id: blockId,
+                temp_id: temp_id,
+                final_url: final_url,
+              });
+
+              delete this.clipboardFiles[temp_id];
+            }
+          },
+
+          error: () => {
+            delete this.clipboardFiles[temp_id];
+          },
+        };
+
+        uploadBlobToS3(blobEntry);
+      };
+      window.addEventListener(
+        "phx:media_upload_presigned",
+        this.handleClipboardPresigned,
+      );
+
       this.handleInsertMedia = (e) => {
         if (e.detail.block_id === blockId && e.detail.type === "tiptap_image") {
           this.editor.chain().focus().setImage({ src: e.detail.url }).run();
+
           hook.pushEvent("update_content", {
             id: blockId,
             content: this.editor.getJSON(),

@@ -51,7 +51,7 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponent do
               type="button"
               phx-click="drill_up"
               phx-value-id={crumb.id}
-              class="hover:text-primary transition-colors truncate max-w-[100px]"
+              class="hover:text-primary transition-colors truncate max-w-25"
               title={crumb.title}
             >
               {crumb.title}

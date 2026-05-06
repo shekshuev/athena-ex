@@ -547,6 +547,120 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
     end
   end
 
+  describe "Clipboard Media Upload" do
+    setup %{course: course, admin: admin} do
+      {:ok, section} =
+        Content.create_section(admin, %{
+          "title" => "Clipboard Lesson",
+          "course_id" => course.id
+        })
+
+      %{section: section}
+    end
+
+    test "handles clipboard upload request and generates presigned url", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      render_hook(lv, "media_upload_clipboard_request", %{
+        "block_id" => Ecto.UUID.generate(),
+        "file_name" => "clipboard_1234.png",
+        "file_type" => "image/png",
+        "file_size" => 1024,
+        "temp_id" => "temp_uuid_123"
+      })
+
+      assert_push_event(lv, "media_upload_presigned", %{
+        temp_id: "temp_uuid_123",
+        upload_url: upload_url,
+        final_url: final_url
+      })
+
+      assert upload_url =~ "X-Amz-Signature"
+      assert final_url =~ "/media/courses/#{course.id}/"
+    end
+
+    test "handles successful clipboard upload and inserts media", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      block_id = Ecto.UUID.generate()
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      render_hook(lv, "media_upload_clipboard_request", %{
+        "block_id" => block_id,
+        "file_name" => "test.png",
+        "file_type" => "image/png",
+        "file_size" => 2048,
+        "temp_id" => "success_temp_id"
+      })
+
+      assert_push_event(lv, "media_upload_presigned", %{final_url: final_url})
+
+      render_hook(lv, "media_upload_clipboard_success", %{
+        "block_id" => block_id,
+        "temp_id" => "success_temp_id",
+        "final_url" => final_url
+      })
+
+      {:ok, {files, _meta}} = Athena.Media.list_files()
+      assert length(files) == 1
+      uploaded_file = hd(files)
+
+      assert uploaded_file.original_name == "test.png"
+      assert uploaded_file.size == 2048
+      assert uploaded_file.mime_type == "image/png"
+      assert uploaded_file.context == :course_material
+
+      assert_push_event(lv, "insert_media", %{
+        block_id: ^block_id,
+        type: "tiptap_image",
+        url: ^final_url
+      })
+    end
+
+    test "reader role cannot trigger clipboard uploads", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      role = insert(:role, permissions: ["courses.read", "courses.update"])
+      reader = insert(:account, role: role)
+      insert(:course_share, course: course, account_id: reader.id, role: :reader)
+
+      reader_conn = init_test_session(conn, %{"account_id" => reader.id})
+
+      {:ok, lv, _html} = live(reader_conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      render_hook(lv, "media_upload_clipboard_request", %{
+        "block_id" => Ecto.UUID.generate(),
+        "file_name" => "hack.png",
+        "file_type" => "image/png",
+        "file_size" => 1024,
+        "temp_id" => "hack_temp_id"
+      })
+
+      refute_push_event(lv, "media_upload_presigned", %{})
+    end
+  end
+
   describe "Library Integration" do
     setup %{course: course, admin: admin} do
       {:ok, section} =
