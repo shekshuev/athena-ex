@@ -153,7 +153,9 @@ defmodule AthenaWeb.StudioLive.Courses do
 
   @impl true
   def handle_info({CourseFormComponent, {:saved, course}}, socket) do
-    {:noreply, stream_insert(socket, :courses, course)}
+    [enriched_course] = enrich_with_owners([course])
+
+    {:noreply, stream_insert(socket, :courses, enriched_course)}
   end
 
   def handle_info({CourseShareComponent, {:updated, course}}, socket) do
@@ -164,7 +166,9 @@ defmodule AthenaWeb.StudioLive.Courses do
         socket
       end
 
-    {:noreply, stream_insert(socket, :courses, course)}
+    [enriched_course] = enrich_with_owners([course])
+
+    {:noreply, stream_insert(socket, :courses, enriched_course)}
   end
 
   @impl true
