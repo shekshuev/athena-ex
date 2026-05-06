@@ -64,6 +64,27 @@ const csrfToken = document
 
 const Hooks = {};
 
+Hooks.TippyTooltip = {
+  mounted() {
+    this.instance = tippy(this.el, {
+      content: this.el.getAttribute("data-tippy-content"),
+      theme: "athena",
+      delay: [200, 0],
+      animation: "fade",
+    });
+  },
+  updated() {
+    if (this.instance) {
+      this.instance.setContent(this.el.getAttribute("data-tippy-content"));
+    }
+  },
+  destroyed() {
+    if (this.instance) {
+      this.instance.destroy();
+    }
+  },
+};
+
 Hooks.Sortable = {
   mounted() {
     const eventName = this.el.dataset.eventName || "reorder";

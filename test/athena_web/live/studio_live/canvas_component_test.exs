@@ -16,10 +16,10 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
         )
 
       assert html =~ "Select a section from the sidebar to view its blocks."
-      refute html =~ "Add Content"
+      refute html =~ "Add to end"
     end
 
-    test "shows floating add menu when section has no blocks" do
+    test "shows bottom add menu when section has no blocks" do
       html =
         render_component(CanvasComponent,
           active_section_id: "some-section-id",
@@ -28,14 +28,13 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           mode: :edit
         )
 
-      assert html =~ "Add Content"
-      assert html =~ "Text Block"
-      assert html =~ "Code Sandbox"
-      assert html =~ "Quiz Exam"
-      assert html =~ "Quiz Question"
+      assert html =~ "Text"
+      assert html =~ "Code"
+      assert html =~ "Exam"
+      assert html =~ "Question"
       assert html =~ "Image"
       assert html =~ "Video"
-      assert html =~ "Files &amp; Materials"
+      assert html =~ "File"
     end
   end
 
@@ -272,7 +271,22 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       assert html =~ "move_block_down"
       assert html =~ "hero-chevron-up"
       assert html =~ "hero-chevron-down"
+    end
 
+    test "renders inline insertion panel under active block" do
+      block1 = %Block{id: "block-1", type: :text, content: %{}}
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [block1],
+          active_block_id: "block-1",
+          mode: :edit
+        )
+
+      assert html =~ ~s(id="inline-add-text-block-1")
+      assert html =~ ~s(phx-hook="TippyTooltip")
+      assert html =~ ~s(data-tippy-content="Code Sandbox")
       assert html =~ ~s(phx-value-after_id="block-1")
     end
   end
@@ -295,7 +309,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       refute html =~ "move_block_down"
       refute html =~ "Drag to Reorder"
 
-      refute html =~ "Add Content"
+      refute html =~ "Add to end"
+      refute html =~ "INSERT"
       refute html =~ "add_text_block"
 
       refute html =~ "Answer Editor"
