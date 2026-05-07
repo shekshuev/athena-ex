@@ -67,6 +67,36 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
   end
 
   @impl true
+  def handle_event("delete_submission", _params, socket) do
+    sub = socket.assigns.submission
+
+    case Learning.delete_submission_with_rollback(socket.assigns.current_user, sub) do
+      {:ok, _deleted_sub} ->
+        if sub.cohort_id do
+          Phoenix.PubSub.broadcast(
+            Athena.PubSub,
+            "team_progress:#{sub.cohort_id}",
+            :team_progress_updated
+          )
+        else
+          Phoenix.PubSub.broadcast(
+            Athena.PubSub,
+            "user_progress:#{sub.account_id}",
+            :user_progress_updated
+          )
+        end
+
+        {:noreply,
+         socket
+         |> put_flash(:info, gettext("Submission deleted and progress rolled back!"))
+         |> push_navigate(to: socket.assigns.return_to)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to delete submission."))}
+    end
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="max-w-7xl mx-auto pb-20">
@@ -143,7 +173,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
           <% end %>
         </div>
 
-        <div class="w-full lg:w-[400px] shrink-0 bg-base-100 rounded-sm border border-base-300 shadow-sm sticky top-8 flex flex-col overflow-hidden">
+        <div class="w-full lg:w-100 shrink-0 bg-base-100 rounded-sm border border-base-300 shadow-sm sticky top-8 flex flex-col overflow-hidden">
           <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-200 bg-base-200/30">
             <div>
               <div class="text-[10px] font-bold text-base-content/50 uppercase tracking-widest mb-0.5">
@@ -237,6 +267,20 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
             >
               <.icon name="hero-check-circle" class="size-5 mr-2" />
               {gettext("Save & Grade")}
+            </button>
+
+            <button
+              type="button"
+              phx-click="delete_submission"
+              data-confirm={
+                gettext(
+                  "Are you sure? This will delete the submission and lock the next lesson for the student."
+                )
+              }
+              class="btn btn-error btn-sm btn-outline shadow-sm shrink-0"
+            >
+              <.icon name="hero-trash" class="size-4 mr-1" />
+              {gettext("Delete & Rollback")}
             </button>
           </div>
         </div>

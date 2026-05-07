@@ -8,7 +8,7 @@ defmodule Athena.Learning.Submissions do
 
   import Ecto.Query
   alias Athena.{Repo, Content}
-  alias Athena.Learning.{Submission, Enrollment, Cohort, Instructor, CohortInstructor}
+  alias Athena.Learning.{Submission, Enrollment, Cohort, Instructor, CohortInstructor, Progress}
   alias Athena.Content.{Block, Section}
 
   @doc """
@@ -229,5 +229,45 @@ defmodule Athena.Learning.Submissions do
         ]
 
     Repo.all(query)
+  end
+
+  @doc """
+  Deletes a submission and rolls back the student's progress for this block.
+  Enforces ACL: only users with grading.update can do this.
+  """
+  @spec delete_submission_with_rollback(map(), Submission.t()) ::
+          {:ok, Submission.t()} | {:error, any()}
+  def delete_submission_with_rollback(user, %Submission{} = submission) do
+    has_access? =
+      Submission
+      |> where([s], s.id == ^submission.id)
+      |> scope_submissions(user, "grading.update")
+      |> Repo.exists?()
+
+    if has_access? do
+      Ecto.Multi.new()
+      |> Ecto.Multi.delete(:submission, submission)
+      |> Ecto.Multi.run(:revoke, fn repo, _changes ->
+        {deleted_count, _} =
+          Progress.revoke_completed(
+            repo,
+            submission.account_id,
+            submission.block_id,
+            submission.cohort_id
+          )
+
+        {:ok, deleted_count}
+      end)
+      |> Repo.transaction()
+      |> case do
+        {:ok, %{submission: deleted_sub}} ->
+          {:ok, deleted_sub}
+
+        {:error, _failed_op, changeset, _changes} ->
+          {:error, changeset}
+      end
+    else
+      {:error, :unauthorized}
+    end
   end
 end
