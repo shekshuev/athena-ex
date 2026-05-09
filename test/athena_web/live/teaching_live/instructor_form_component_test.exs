@@ -56,7 +56,10 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponentTest do
       })
       |> render_submit()
 
-      assert_patch(lv, ~p"/teaching/instructors")
+      assert_patch(
+        lv,
+        ~p"/teaching/instructors?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10"
+      )
 
       assert render(lv) =~ "Instructor created successfully"
 
@@ -86,7 +89,10 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponentTest do
       })
       |> render_submit()
 
-      assert_patch(lv, ~p"/teaching/instructors")
+      assert_patch(
+        lv,
+        ~p"/teaching/instructors?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10"
+      )
 
       assert render(lv) =~ "Instructor updated successfully"
 
@@ -128,7 +134,11 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponentTest do
       })
       |> render_submit()
 
-      assert_patch(lv, ~p"/teaching/instructors")
+      assert_patch(
+        lv,
+        ~p"/teaching/instructors?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10"
+      )
+
       assert render(lv) =~ "Instructor updated successfully"
 
       {:ok, updated} = Learning.get_instructor(instructor, my_profile.id)

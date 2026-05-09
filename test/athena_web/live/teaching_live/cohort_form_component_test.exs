@@ -64,7 +64,10 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponentTest do
       })
       |> render_submit()
 
-      assert_patch(lv, ~p"/teaching/cohorts")
+      assert_patch(
+        lv,
+        ~p"/teaching/cohorts?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10"
+      )
 
       {:ok, {cohorts, _meta}} = Learning.list_cohorts(current_user, %{})
       assert length(cohorts) == 1
@@ -108,7 +111,10 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponentTest do
       })
       |> render_submit()
 
-      assert_patch(lv, ~p"/teaching/cohorts")
+      assert_patch(
+        lv,
+        ~p"/teaching/cohorts?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10"
+      )
 
       {:ok, updated_cohort} = Learning.get_cohort(current_user, cohort.id)
 

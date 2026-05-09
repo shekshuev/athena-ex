@@ -17,7 +17,7 @@ defmodule Athena.Learning.CohortMembership do
     Flop.Schema,
     filterable: [:inserted_at],
     sortable: [:inserted_at],
-    default_limit: 20,
+    default_limit: 10,
     default_order: %{
       order_by: [:inserted_at],
       order_directions: [:desc]

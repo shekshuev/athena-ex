@@ -75,19 +75,22 @@ defmodule AthenaWeb.TeachingLive.Grading do
 
   @impl true
   def handle_event("update_filters", params, socket) do
-    query_params =
-      %{
-        "status" => params["status"] || "all",
-        "login" => params["login"],
-        "cohort_id" => params["cohort_id"],
-        "date_from" => params["date_from"],
-        "date_to" => params["date_to"],
-        "has_cheats" => params["has_cheats"] || "false",
-        "block_id" => socket.assigns.block_id
-      }
-      |> Enum.reject(fn {_, v} -> v in ["", nil, "false"] end)
-      |> Map.new()
+    overrides = %{
+      "status" => params["status"] || "all",
+      "login" => params["login"],
+      "cohort_id" => params["cohort_id"],
+      "date_from" => params["date_from"],
+      "date_to" => params["date_to"],
+      "has_cheats" => params["has_cheats"] || "false",
+      "page" => 1
+    }
 
+    query_params = build_query_params(socket.assigns, overrides)
+    {:noreply, push_patch(socket, to: ~p"/teaching/grading?#{query_params}")}
+  end
+
+  def handle_event("update_page_size", %{"page_size" => size}, socket) do
+    query_params = build_query_params(socket.assigns, %{"page_size" => size, "page" => 1})
     {:noreply, push_patch(socket, to: ~p"/teaching/grading?#{query_params}")}
   end
 
@@ -97,18 +100,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
   end
 
   def handle_event("clear_block_filter", _params, socket) do
-    query_params =
-      %{
-        "status" => socket.assigns.current_status,
-        "login" => socket.assigns.login,
-        "cohort_id" => socket.assigns.cohort_id,
-        "date_from" => socket.assigns.date_from,
-        "date_to" => socket.assigns.date_to,
-        "has_cheats" => socket.assigns.has_cheats
-      }
-      |> Enum.reject(fn {_, v} -> v in ["", nil, "false"] end)
-      |> Map.new()
-
+    query_params = build_query_params(socket.assigns, %{"block_id" => "", "page" => 1})
     {:noreply, push_patch(socket, to: ~p"/teaching/grading?#{query_params}")}
   end
 
@@ -162,6 +154,41 @@ defmodule AthenaWeb.TeachingLive.Grading do
 
     filters
     |> Enum.with_index(fn filter, index -> {Integer.to_string(index), filter} end)
+    |> Map.new()
+  end
+
+  @doc false
+  defp build_query_params(assigns, overrides) do
+    meta = assigns.meta
+
+    order_by =
+      meta.flop.order_by
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+
+    order_directions =
+      meta.flop.order_directions
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+
+    %{
+      "status" => assigns.current_status,
+      "login" => assigns.login,
+      "cohort_id" => assigns.cohort_id,
+      "date_from" => assigns.date_from,
+      "date_to" => assigns.date_to,
+      "has_cheats" => assigns.has_cheats,
+      "block_id" => assigns.block_id,
+      "page" => meta.current_page,
+      "page_size" => meta.page_size,
+      "order_by" => order_by,
+      "order_directions" => order_directions
+    }
+    |> Map.merge(overrides)
+    |> Enum.reject(fn
+      {_, v} when is_list(v) -> v == []
+      {_, v} -> v in [nil, "", "all", "false"]
+    end)
     |> Map.new()
   end
 
@@ -239,7 +266,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
             </div>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end hidden sm:grid">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end sm:grid">
             <.input type="date" name="date_from" value={@date_from} label={gettext("From Date")} />
             <.input type="date" name="date_to" value={@date_to} label={gettext("To Date")} />
           </div>
@@ -277,8 +304,10 @@ defmodule AthenaWeb.TeachingLive.Grading do
         </p>
       </div>
 
+      <% path_fn = fn overrides -> ~p"/teaching/grading?#{build_query_params(assigns, overrides)}" end %>
+
       <div :if={@has_submissions}>
-        <.table id="submissions" rows={@streams.submissions}>
+        <.table id="submissions" rows={@streams.submissions} meta={@meta} path_fn={path_fn}>
           <:col :let={{_id, sub}} label={gettext("Student")}>
             <% account = @accounts[sub.account_id] %>
             <div class="font-bold">
@@ -296,11 +325,11 @@ defmodule AthenaWeb.TeachingLive.Grading do
             </span>
           </:col>
 
-          <:col :let={{_id, sub}} label={gettext("Status")}>
+          <:col :let={{_id, sub}} label={gettext("Status")} sort="status">
             <.status_badge status={sub.status} />
           </:col>
 
-          <:col :let={{_id, sub}} label={gettext("Score")}>
+          <:col :let={{_id, sub}} label={gettext("Score")} sort="score">
             <div class={[
               "font-mono font-bold",
               sub.status == :needs_review && "text-base-content/30",
@@ -314,7 +343,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
             </div>
           </:col>
 
-          <:col :let={{_id, sub}} label={gettext("Submitted At")}>
+          <:col :let={{_id, sub}} label={gettext("Submitted At")} sort="inserted_at">
             <span class="text-sm font-mono opacity-60">
               {Calendar.strftime(sub.inserted_at, "%d.%m.%Y %H:%M")}
             </span>
@@ -325,7 +354,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
               <.link
                 :if={@block_id == ""}
                 patch={
-                  ~p"/teaching/grading?status=#{@current_status}&login=#{@login}&cohort_id=#{@cohort_id}&date_from=#{@date_from}&date_to=#{@date_to}&has_cheats=#{@has_cheats}&block_id=#{sub.block_id}"
+                  ~p"/teaching/grading?#{build_query_params(assigns, %{"block_id" => sub.block_id, "page" => 1})}"
                 }
                 class="btn btn-sm btn-ghost btn-square text-base-content/50 hover:text-primary"
                 title={gettext("Filter by this assignment")}
@@ -353,14 +382,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
       </div>
 
       <div class="flex justify-end mt-4">
-        <.pagination
-          meta={@meta}
-          path_fn={
-            fn p ->
-              ~p"/teaching/grading?page=#{p}&status=#{@current_status}&login=#{@login}&cohort_id=#{@cohort_id}&date_from=#{@date_from}&date_to=#{@date_to}&has_cheats=#{@has_cheats}&block_id=#{@block_id}"
-            end
-          }
-        />
+        <.pagination :if={@has_submissions} meta={@meta} path_fn={path_fn} />
       </div>
     </div>
     """

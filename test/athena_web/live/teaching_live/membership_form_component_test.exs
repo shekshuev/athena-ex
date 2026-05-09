@@ -48,7 +48,10 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponentTest do
       html = render(lv)
       assert html =~ "Student successfully added"
 
-      assert_patch(lv, ~p"/teaching/cohorts/#{cohort.id}")
+      assert_patch(
+        lv,
+        ~p"/teaching/cohorts/#{cohort.id}?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=20"
+      )
 
       {:ok, {memberships, _meta}} = Learning.list_cohort_memberships(cohort.id)
       assert length(memberships) == 1

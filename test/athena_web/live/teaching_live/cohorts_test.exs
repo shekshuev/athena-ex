@@ -26,7 +26,7 @@ defmodule AthenaWeb.TeachingLive.CohortsTest do
       assert html =~ cohort.name
     end
 
-    test "should handle search functionality", %{conn: conn} do
+    test "should handle search functionality and maintain params", %{conn: conn} do
       insert(:cohort, name: "Frontend Developers")
       insert(:cohort, name: "Backend Masters")
 
@@ -39,21 +39,57 @@ defmodule AthenaWeb.TeachingLive.CohortsTest do
 
       assert html =~ "Frontend Developers"
       refute html =~ "Backend Masters"
+
+      assert_patched(
+        lv,
+        ~p"/teaching/cohorts?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10&search=Frontend"
+      )
+    end
+  end
+
+  describe "Cohorts page (Pagination & Sorting)" do
+    test "changes page size and updates URL", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts")
+
+      lv
+      |> form("form[phx-change='update_page_size']", %{"page_size" => "50"})
+      |> render_change()
+
+      assert_patched(
+        lv,
+        ~p"/teaching/cohorts?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=50"
+      )
+    end
+
+    test "sorts by name when column header is clicked", %{conn: conn} do
+      insert(:cohort, name: "Zulu Cohort")
+      insert(:cohort, name: "Alpha Cohort")
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts")
+
+      lv
+      |> element("a", "Name")
+      |> render_click()
+
+      assert_patched(
+        lv,
+        ~p"/teaching/cohorts?order_by[]=name&order_directions[]=asc&page=1&page_size=10"
+      )
     end
   end
 
   describe "Cohorts page (Create/Edit actions)" do
-    test "should open the create cohort slide-over via URL", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/teaching/cohorts/new")
+    test "should open the create cohort slide-over via URL and preserve params", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/teaching/cohorts/new?page_size=20&search=test")
 
       assert html =~ "Create Cohort"
       assert html =~ "Cohort Name"
     end
 
-    test "should open the edit cohort slide-over via URL", %{conn: conn} do
+    test "should open the edit cohort slide-over via URL and preserve params", %{conn: conn} do
       cohort = insert(:cohort, name: "Target Cohort")
 
-      {:ok, _lv, html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/edit")
+      {:ok, _lv, html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/edit?page_size=50")
 
       assert html =~ "Edit Cohort"
       assert html =~ "Target Cohort"

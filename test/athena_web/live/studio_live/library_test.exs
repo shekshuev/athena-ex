@@ -27,7 +27,7 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
       assert html =~ "hero-wrench-screwdriver"
     end
 
-    test "should handle search functionality", %{conn: conn, admin: admin} do
+    test "should handle search functionality and maintain params", %{conn: conn, admin: admin} do
       insert(:library_block, title: "Python Basics Exam", owner_id: admin.id)
       insert(:library_block, title: "Elixir Advanced", owner_id: admin.id)
 
@@ -40,22 +40,61 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
 
       assert html =~ "Python Basics Exam"
       refute html =~ "Elixir Advanced"
+
+      assert_patched(
+        lv,
+        ~p"/studio/library?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10&search=Python"
+      )
+    end
+  end
+
+  describe "Library page (Pagination & Sorting)" do
+    test "changes page size and updates URL", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/studio/library")
+
+      lv
+      |> form("form[phx-change='update_page_size']", %{"page_size" => "100"})
+      |> render_change()
+
+      assert_patched(
+        lv,
+        ~p"/studio/library?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=100"
+      )
+    end
+
+    test "sorts by title when column header is clicked", %{conn: conn, admin: admin} do
+      insert(:library_block, title: "Zulu Template", owner_id: admin.id)
+      insert(:library_block, title: "Alpha Template", owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library")
+
+      lv
+      |> element("a", "Title")
+      |> render_click()
+
+      assert_patched(
+        lv,
+        ~p"/studio/library?order_by[]=title&order_directions[]=asc&page=1&page_size=10"
+      )
     end
   end
 
   describe "Library page (Create/Edit actions)" do
-    test "should open the create template slide-over via URL", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/studio/library/new")
+    test "should open the create template slide-over via URL and preserve params", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/studio/library/new?page_size=20&search=test")
 
       assert html =~ "Create Template"
       assert html =~ "Title"
       assert html =~ "Tags (comma separated)"
     end
 
-    test "should open the edit metadata slide-over via URL", %{conn: conn, admin: admin} do
+    test "should open the edit metadata slide-over via URL and preserve params", %{
+      conn: conn,
+      admin: admin
+    } do
       block = insert(:library_block, title: "Target Template", owner_id: admin.id)
 
-      {:ok, _lv, html} = live(conn, ~p"/studio/library/#{block.id}/edit")
+      {:ok, _lv, html} = live(conn, ~p"/studio/library/#{block.id}/edit?page_size=10")
 
       assert html =~ "Edit Template"
       assert html =~ "Target Template"

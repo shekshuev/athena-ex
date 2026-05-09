@@ -87,7 +87,10 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
 
       {:ok, lv, _html} = live(conn, ~p"/teaching/grading")
 
-      html = lv |> form("form", %{"status" => "graded"}) |> render_change()
+      html =
+        lv
+        |> form("form[phx-change='update_filters']", %{"status" => "graded"})
+        |> render_change()
 
       assert html =~ "graded_student"
       refute html =~ "needs_review_student"
@@ -103,7 +106,8 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
 
       {:ok, lv, _html} = live(conn, ~p"/teaching/grading")
 
-      html = lv |> form("form", %{"login" => "alice"}) |> render_change()
+      html =
+        lv |> form("form[phx-change='update_filters']", %{"login" => "alice"}) |> render_change()
 
       assert html =~ "alice_smith"
       refute html =~ "bob_jones"
@@ -120,7 +124,10 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
 
       {:ok, lv, _html} = live(conn, ~p"/teaching/grading")
 
-      html = lv |> form("form", %{"cohort_id" => cohort.id}) |> render_change()
+      html =
+        lv
+        |> form("form[phx-change='update_filters']", %{"cohort_id" => cohort.id})
+        |> render_change()
 
       assert html =~ "cohort_boy"
       refute html =~ "solo_boy"
@@ -145,7 +152,10 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
 
       {:ok, lv, _html} = live(conn, ~p"/teaching/grading")
 
-      html = lv |> form("form", %{"has_cheats" => "true"}) |> render_change()
+      html =
+        lv
+        |> form("form[phx-change='update_filters']", %{"has_cheats" => "true"})
+        |> render_change()
 
       assert html =~ "cheater"
       refute html =~ "honest"
@@ -172,7 +182,10 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
 
       html =
         lv
-        |> form("form", %{"date_from" => "2026-05-01", "date_to" => "2026-05-10"})
+        |> form("form[phx-change='update_filters']", %{
+          "date_from" => "2026-05-01",
+          "date_to" => "2026-05-10"
+        })
         |> render_change()
 
       assert html =~ "new_sub"
@@ -197,7 +210,10 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
 
       {:ok, lv, _html} = live(conn, ~p"/teaching/grading")
 
-      html = lv |> form("form", %{"status" => "rejected"}) |> render_change()
+      html =
+        lv
+        |> form("form[phx-change='update_filters']", %{"status" => "rejected"})
+        |> render_change()
 
       assert html =~ "bad_boy"
       refute html =~ "good_boy"
@@ -221,6 +237,37 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
 
       html = lv |> element("button[phx-click='clear_block_filter']") |> render_click()
       assert html =~ "block2_boy"
+    end
+  end
+
+  describe "Grading page (Pagination & Sorting)" do
+    test "changes page size and updates URL", %{conn: conn} do
+      insert(:submission, account_id: insert(:account).id, block_id: insert(:block).id)
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading")
+
+      lv
+      |> form("form[phx-change='update_page_size']", %{"page_size" => "10"})
+      |> render_change()
+
+      assert_patched(
+        lv,
+        ~p"/teaching/grading?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10"
+      )
+    end
+
+    test "sorts by score when column header is clicked", %{conn: conn} do
+      insert(:submission, account_id: insert(:account).id, block_id: insert(:block).id, score: 90)
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading")
+
+      lv
+      |> element("a", "Score")
+      |> render_click()
+
+      assert_patched(
+        lv,
+        ~p"/teaching/grading?order_by[]=score&order_directions[]=asc&page=1&page_size=10"
+      )
     end
   end
 

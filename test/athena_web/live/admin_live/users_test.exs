@@ -5,7 +5,11 @@ defmodule AthenaWeb.AdminLive.UsersTest do
   import Athena.Factory
 
   setup %{conn: conn} do
-    role = insert(:role, permissions: ["admin"])
+    role =
+      insert(:role,
+        permissions: ["admin", "users.read", "users.create", "users.update", "users.delete"]
+      )
+
     admin = insert(:account, role: role)
     conn = init_test_session(conn, %{"account_id" => admin.id})
     %{conn: conn, admin: admin}
@@ -20,7 +24,7 @@ defmodule AthenaWeb.AdminLive.UsersTest do
       assert html =~ admin.login
     end
 
-    test "handles search functionality", %{conn: conn} do
+    test "handles search functionality and maintains params", %{conn: conn} do
       insert(:account, login: "editor_dude")
       insert(:account, login: "viewer_bro")
 
@@ -33,21 +37,57 @@ defmodule AthenaWeb.AdminLive.UsersTest do
 
       assert html =~ "editor_dude"
       refute html =~ "viewer_bro"
+
+      assert_patched(
+        lv,
+        ~p"/admin/users?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10&search=editor"
+      )
+    end
+  end
+
+  describe "Users page (Pagination & Sorting)" do
+    test "changes page size and updates URL", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/admin/users")
+
+      lv
+      |> form("form[phx-change='update_page_size']", %{"page_size" => "50"})
+      |> render_change()
+
+      assert_patched(
+        lv,
+        ~p"/admin/users?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=50"
+      )
+    end
+
+    test "sorts by login when column header is clicked", %{conn: conn} do
+      insert(:account, login: "zulu")
+      insert(:account, login: "alpha")
+
+      {:ok, lv, _html} = live(conn, ~p"/admin/users")
+
+      lv
+      |> element("a", "Login")
+      |> render_click()
+
+      assert_patched(
+        lv,
+        ~p"/admin/users?order_by[]=login&order_directions[]=asc&page=1&page_size=10"
+      )
     end
   end
 
   describe "Users page (Create/Edit actions)" do
-    test "opens the create user slide-over via URL", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/admin/users/new")
+    test "opens the create user slide-over via URL and preserves params", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/admin/users/new?page_size=20&search=test")
 
       assert html =~ "Account Access"
       assert html =~ "Personal Information"
     end
 
-    test "opens the edit user slide-over via URL", %{conn: conn} do
+    test "opens the edit user slide-over via URL and preserves params", %{conn: conn} do
       account = insert(:account, login: "target_user")
 
-      {:ok, _lv, html} = live(conn, ~p"/admin/users/#{account.id}/edit")
+      {:ok, _lv, html} = live(conn, ~p"/admin/users/#{account.id}/edit?page_size=50")
 
       assert html =~ "Edit User"
       assert html =~ "target_user"

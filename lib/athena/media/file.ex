@@ -18,7 +18,7 @@ defmodule Athena.Media.File do
     Flop.Schema,
     filterable: [:original_name, :mime_type, :context, :owner_id],
     sortable: [:original_name, :size, :inserted_at],
-    default_limit: 20,
+    default_limit: 10,
     default_order: %{
       order_by: [:inserted_at],
       order_directions: [:desc]

@@ -89,7 +89,12 @@ defmodule AthenaWeb.StudioLive.Library do
 
   @impl true
   def handle_event("search", %{"search" => search}, socket) do
-    params = %{"search" => search, "page" => 1, "page_size" => socket.assigns.meta.page_size}
+    params = build_query_params(socket.assigns, %{"search" => search, "page" => 1})
+    {:noreply, push_patch(socket, to: ~p"/studio/library?#{params}")}
+  end
+
+  def handle_event("update_page_size", %{"page_size" => size}, socket) do
+    params = build_query_params(socket.assigns, %{"page_size" => size, "page" => 1})
     {:noreply, push_patch(socket, to: ~p"/studio/library?#{params}")}
   end
 
@@ -249,6 +254,32 @@ defmodule AthenaWeb.StudioLive.Library do
     """
   end
 
+  @doc false
+  defp build_query_params(assigns, overrides) do
+    meta = assigns.meta
+
+    order_by =
+      meta.flop.order_by
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+
+    order_directions =
+      meta.flop.order_directions
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+
+    %{
+      "search" => assigns.search,
+      "page" => meta.current_page,
+      "page_size" => meta.page_size,
+      "order_by" => order_by,
+      "order_directions" => order_directions
+    }
+    |> Map.merge(overrides)
+    |> Enum.reject(fn {_, v} -> is_nil(v) or v == "" or v == [] end)
+    |> Map.new()
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -262,7 +293,7 @@ defmodule AthenaWeb.StudioLive.Library do
         </div>
         <.button
           :if={Identity.can?(@current_user, "library.create")}
-          patch={~p"/studio/library/new"}
+          patch={~p"/studio/library/new?#{build_query_params(assigns, %{})}"}
           class="btn btn-primary"
         >
           <.icon name="hero-plus" class="size-5" />
@@ -289,17 +320,19 @@ defmodule AthenaWeb.StudioLive.Library do
         </.form>
       </div>
 
-      <.table id="library-blocks" rows={@streams.library_blocks}>
-        <:col :let={{_id, block}} label={gettext("Title")}>
+      <% path_fn = fn overrides -> ~p"/studio/library?#{build_query_params(assigns, overrides)}" end %>
+
+      <.table id="library-blocks" rows={@streams.library_blocks} meta={@meta} path_fn={path_fn}>
+        <:col :let={{_id, block}} label={gettext("Title")} sort="title">
           <div class="flex flex-col gap-1 items-start">
             <span class="font-bold">{block.title}</span>
             <.access_badges info={block_badges(block, @current_user)} />
           </div>
         </:col>
-        <:col :let={{_id, block}} label={gettext("Type")}>
+        <:col :let={{_id, block}} label={gettext("Type")} sort="type">
           <.type_badge type={block.type} />
         </:col>
-        <:col :let={{_id, block}} label={gettext("Created At")}>
+        <:col :let={{_id, block}} label={gettext("Created At")} sort="inserted_at">
           <span class="text-sm opacity-60">{Calendar.strftime(block.inserted_at, "%d.%m.%Y")}</span>
         </:col>
         <:action :let={{_id, block}}>
@@ -323,7 +356,7 @@ defmodule AthenaWeb.StudioLive.Library do
 
             <.button
               :if={can_edit}
-              patch={~p"/studio/library/#{block.id}/edit"}
+              patch={~p"/studio/library/#{block.id}/edit?#{build_query_params(assigns, %{})}"}
               class="btn btn-ghost btn-xs btn-square"
               title={gettext("Edit Metadata")}
             >
@@ -356,17 +389,14 @@ defmodule AthenaWeb.StudioLive.Library do
       </.table>
 
       <div class="flex justify-end mt-8">
-        <.pagination
-          meta={@meta}
-          path_fn={fn p -> ~p"/studio/library?#{%{"page" => p, "search" => @search}}" end}
-        />
+        <.pagination meta={@meta} path_fn={path_fn} />
       </div>
 
       <.slide_over
         id="library-slideover"
         show={@live_action in [:new, :edit]}
         title={@page_title}
-        on_close={JS.patch(~p"/studio/library")}
+        on_close={JS.patch(~p"/studio/library?#{build_query_params(assigns, %{})}")}
       >
         <.live_component
           :if={@library_block}
@@ -375,7 +405,7 @@ defmodule AthenaWeb.StudioLive.Library do
           action={@live_action}
           library_block={@library_block}
           current_user={@current_user}
-          patch={~p"/studio/library"}
+          patch={~p"/studio/library?#{build_query_params(assigns, %{})}"}
         />
       </.slide_over>
 

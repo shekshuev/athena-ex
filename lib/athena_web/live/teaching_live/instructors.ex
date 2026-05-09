@@ -93,12 +93,12 @@ defmodule AthenaWeb.TeachingLive.Instructors do
           {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_event("search", %{"search" => search}, socket) do
-    params = %{
-      "search" => search,
-      "page" => 1,
-      "page_size" => socket.assigns.meta.page_size
-    }
+    params = build_query_params(socket.assigns, %{"search" => search, "page" => 1})
+    {:noreply, push_patch(socket, to: ~p"/teaching/instructors?#{params}")}
+  end
 
+  def handle_event("update_page_size", %{"page_size" => size}, socket) do
+    params = build_query_params(socket.assigns, %{"page_size" => size, "page" => 1})
     {:noreply, push_patch(socket, to: ~p"/teaching/instructors?#{params}")}
   end
 
@@ -157,7 +157,7 @@ defmodule AthenaWeb.TeachingLive.Instructors do
         </div>
         <.button
           :if={Identity.can?(@current_user, "instructors.create")}
-          patch={~p"/teaching/instructors/new"}
+          patch={~p"/teaching/instructors/new?#{build_query_params(assigns, %{})}"}
           class="btn btn-primary"
         >
           <.icon name="hero-plus" class="size-5" />
@@ -184,16 +184,20 @@ defmodule AthenaWeb.TeachingLive.Instructors do
         </.form>
       </div>
 
-      <.table id="instructors" rows={@streams.instructors}>
+      <% path_fn = fn overrides ->
+        ~p"/teaching/instructors?#{build_query_params(assigns, overrides)}"
+      end %>
+
+      <.table id="instructors" rows={@streams.instructors} meta={@meta} path_fn={path_fn}>
         <:col :let={{_id, instructor}} label={gettext("User")}>
           <span class="font-bold text-primary">
             {if instructor.account, do: instructor.account.login, else: gettext("Unknown")}
           </span>
         </:col>
-        <:col :let={{_id, instructor}} label={gettext("Title")}>
+        <:col :let={{_id, instructor}} label={gettext("Title")} sort="title">
           <span class="font-medium">{instructor.title}</span>
         </:col>
-        <:col :let={{_id, instructor}} label={gettext("Created At")}>
+        <:col :let={{_id, instructor}} label={gettext("Created At")} sort="inserted_at">
           <span class="text-sm opacity-60">
             {Calendar.strftime(instructor.inserted_at, "%d.%m.%Y")}
           </span>
@@ -202,7 +206,9 @@ defmodule AthenaWeb.TeachingLive.Instructors do
           <div class="flex justify-end gap-2">
             <.button
               :if={Identity.can?(@current_user, "instructors.update", instructor)}
-              patch={~p"/teaching/instructors/#{instructor.id}/edit"}
+              patch={
+                ~p"/teaching/instructors/#{instructor.id}/edit?#{build_query_params(assigns, %{})}"
+              }
               class="btn btn-ghost btn-xs btn-square"
               title={gettext("Edit")}
             >
@@ -224,17 +230,14 @@ defmodule AthenaWeb.TeachingLive.Instructors do
       </.table>
 
       <div class="flex justify-end">
-        <.pagination
-          meta={@meta}
-          path_fn={fn p -> ~p"/teaching/instructors?#{%{"page" => p, "search" => @search}}" end}
-        />
+        <.pagination meta={@meta} path_fn={path_fn} />
       </div>
 
       <.slide_over
         id="instructor-slideover"
         show={@live_action in [:new, :edit]}
         title={@page_title}
-        on_close={JS.patch(~p"/teaching/instructors")}
+        on_close={JS.patch(~p"/teaching/instructors?#{build_query_params(assigns, %{})}")}
       >
         <.live_component
           :if={@instructor}
@@ -243,7 +246,7 @@ defmodule AthenaWeb.TeachingLive.Instructors do
           action={@live_action}
           instructor={@instructor}
           current_user={@current_user}
-          patch={~p"/teaching/instructors"}
+          patch={~p"/teaching/instructors?#{build_query_params(assigns, %{})}"}
         />
       </.slide_over>
 
@@ -263,5 +266,31 @@ defmodule AthenaWeb.TeachingLive.Instructors do
       />
     </div>
     """
+  end
+
+  @doc false
+  defp build_query_params(assigns, overrides) do
+    meta = assigns.meta
+
+    order_by =
+      meta.flop.order_by
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+
+    order_directions =
+      meta.flop.order_directions
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+
+    %{
+      "search" => assigns.search,
+      "page" => meta.current_page,
+      "page_size" => meta.page_size,
+      "order_by" => order_by,
+      "order_directions" => order_directions
+    }
+    |> Map.merge(overrides)
+    |> Enum.reject(fn {_, v} -> is_nil(v) or v == "" or v == [] end)
+    |> Map.new()
   end
 end
