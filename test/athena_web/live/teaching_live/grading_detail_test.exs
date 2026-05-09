@@ -206,15 +206,22 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
   end
 
   describe "Deleting Submissions (Rollback)" do
-    test "renders the Delete & Rollback button", %{conn: conn} do
+    test "renders the Delete & Rollback button and opens modal", %{conn: conn} do
       student = insert(:account)
       block = insert(:block, type: :quiz_question, content: %{"question_type" => "open"})
       sub = insert(:submission, account_id: student.id, block_id: block.id)
 
-      {:ok, _lv, html} = live(conn, ~p"/teaching/grading/#{sub.id}")
+      {:ok, lv, html} = live(conn, ~p"/teaching/grading/#{sub.id}")
 
-      assert html =~ "Delete &amp; Rollback"
-      assert html =~ "delete_submission"
+      assert html =~ "Delete &amp; Rollback Submission"
+      assert html =~ "open_delete_modal"
+
+      html =
+        lv
+        |> element("button[phx-click='open_delete_modal']")
+        |> render_click()
+
+      assert html =~ "Delete Submission"
       assert html =~ "Are you sure? This will delete the submission and lock the next lesson"
     end
 
@@ -232,8 +239,10 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
       {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{sub.id}")
 
       lv
-      |> element("button[phx-click='delete_submission']")
+      |> element("button[phx-click='open_delete_modal']")
       |> render_click()
+
+      render_hook(lv, "confirm_delete_submission")
 
       assert_redirect(lv, "/teaching/grading")
 
@@ -259,8 +268,10 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
       {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{sub.id}")
 
       lv
-      |> element("button[phx-click='delete_submission']")
+      |> element("button[phx-click='open_delete_modal']")
       |> render_click()
+
+      render_hook(lv, "confirm_delete_submission")
 
       assert_redirect(lv, "/teaching/grading")
       assert_receive :team_progress_updated
