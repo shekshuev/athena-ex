@@ -34,6 +34,22 @@ defmodule Athena.Learning.Progress do
   end
 
   @doc """
+  Removes the completion record for a block, effectively relocking it for the user/team.
+  """
+  def revoke_completed(repo, account_id, block_id, cohort_id \\ nil) do
+    query =
+      if cohort_id do
+        from bp in BlockProgress, where: bp.cohort_id == ^cohort_id and bp.block_id == ^block_id
+      else
+        from bp in BlockProgress,
+          where:
+            bp.account_id == ^account_id and is_nil(bp.cohort_id) and bp.block_id == ^block_id
+      end
+
+    repo.delete_all(query)
+  end
+
+  @doc """
   Returns a list of completed block IDs scoped to the team or user.
   """
   @spec completed_block_ids(String.t(), String.t(), String.t() | nil) :: [String.t()]

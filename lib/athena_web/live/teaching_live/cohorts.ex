@@ -99,7 +99,12 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
           {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_event("search", %{"search" => search}, socket) do
-    params = %{"search" => search, "page" => 1, "page_size" => socket.assigns.meta.page_size}
+    params = build_query_params(socket.assigns, %{"search" => search, "page" => 1})
+    {:noreply, push_patch(socket, to: ~p"/teaching/cohorts?#{params}")}
+  end
+
+  def handle_event("update_page_size", %{"page_size" => size}, socket) do
+    params = build_query_params(socket.assigns, %{"page_size" => size, "page" => 1})
     {:noreply, push_patch(socket, to: ~p"/teaching/cohorts?#{params}")}
   end
 
@@ -162,7 +167,7 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
         </div>
         <.button
           :if={Identity.can?(@current_user, "cohorts.create")}
-          patch={~p"/teaching/cohorts/new"}
+          patch={~p"/teaching/cohorts/new?#{build_query_params(assigns, %{})}"}
           class="btn btn-primary"
         >
           <.icon name="hero-plus" class="size-5" />
@@ -189,8 +194,10 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
         </.form>
       </div>
 
-      <.table id="cohorts" rows={@streams.cohorts}>
-        <:col :let={{_id, cohort}} label={gettext("Name")}>
+      <% path_fn = fn overrides -> ~p"/teaching/cohorts?#{build_query_params(assigns, overrides)}" end %>
+
+      <.table id="cohorts" rows={@streams.cohorts} meta={@meta} path_fn={path_fn}>
+        <:col :let={{_id, cohort}} label={gettext("Name")} sort="name">
           <span class="font-bold text-primary">{cohort.name}</span>
         </:col>
         <:col :let={{_id, cohort}} label={gettext("Instructors")}>
@@ -206,7 +213,7 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
             <% end %>
           </div>
         </:col>
-        <:col :let={{_id, cohort}} label={gettext("Created")}>
+        <:col :let={{_id, cohort}} label={gettext("Created")} sort="inserted_at">
           <span class="text-sm opacity-60">
             {Calendar.strftime(cohort.inserted_at, "%d.%m.%Y")}
           </span>
@@ -223,7 +230,7 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
 
             <.button
               :if={Identity.can?(@current_user, "cohorts.update", cohort)}
-              patch={~p"/teaching/cohorts/#{cohort.id}/edit"}
+              patch={~p"/teaching/cohorts/#{cohort.id}/edit?#{build_query_params(assigns, %{})}"}
               class="btn btn-ghost btn-xs btn-square"
               title={gettext("Edit")}
             >
@@ -245,17 +252,14 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
       </.table>
 
       <div class="flex justify-end">
-        <.pagination
-          meta={@meta}
-          path_fn={fn p -> ~p"/teaching/cohorts?#{%{"page" => p, "search" => @search}}" end}
-        />
+        <.pagination meta={@meta} path_fn={path_fn} />
       </div>
 
       <.slide_over
         id="cohort-slideover"
         show={@live_action in [:new, :edit]}
         title={@page_title}
-        on_close={JS.patch(~p"/teaching/cohorts")}
+        on_close={JS.patch(~p"/teaching/cohorts?#{build_query_params(assigns, %{})}")}
       >
         <.live_component
           :if={@cohort}
@@ -264,7 +268,7 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
           action={@live_action}
           cohort={@cohort}
           current_user={@current_user}
-          patch={~p"/teaching/cohorts"}
+          patch={~p"/teaching/cohorts?#{build_query_params(assigns, %{})}"}
         />
       </.slide_over>
 
@@ -284,5 +288,31 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
       />
     </div>
     """
+  end
+
+  @doc false
+  defp build_query_params(assigns, overrides) do
+    meta = assigns.meta
+
+    order_by =
+      meta.flop.order_by
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+
+    order_directions =
+      meta.flop.order_directions
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+
+    %{
+      "search" => assigns.search,
+      "page" => meta.current_page,
+      "page_size" => meta.page_size,
+      "order_by" => order_by,
+      "order_directions" => order_directions
+    }
+    |> Map.merge(overrides)
+    |> Enum.reject(fn {_, v} -> is_nil(v) or v == "" or v == [] end)
+    |> Map.new()
   end
 end

@@ -47,7 +47,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_params(params, _url, socket) do
-    flop_params = Map.put(params, "page_size", 20)
+    flop_params = Map.put_new(params, "page_size", 20)
 
     case Learning.list_cohort_memberships(socket.assigns.cohort.id, flop_params) do
       {:ok, {memberships, meta}} ->
@@ -94,6 +94,13 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
+  def handle_event("update_page_size", %{"page_size" => size}, socket) do
+    params = build_query_params(socket.assigns, %{"page_size" => size, "page" => 1})
+
+    {:noreply,
+     push_patch(socket, to: ~p"/teaching/cohorts/#{socket.assigns.cohort.id}?#{params}")}
+  end
+
   def handle_event("delete_click", %{"id" => id}, socket) do
     if Learning.can_manage_cohort_processes?(socket.assigns.current_user, socket.assigns.cohort) do
       membership = Learning.get_cohort_membership!(id)
@@ -211,8 +218,10 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         <div class="flex justify-between items-center">
           <h2 class="text-xl font-display font-bold">{gettext("Assigned Courses")}</h2>
           <.button
-            :if={Learning.Cohorts.can_manage_cohort_processes?(@current_user, @cohort)}
-            patch={~p"/teaching/cohorts/#{@cohort.id}/enroll_course"}
+            :if={Learning.can_manage_cohort_processes?(@current_user, @cohort)}
+            patch={
+              ~p"/teaching/cohorts/#{@cohort.id}/enroll_course?#{build_query_params(assigns, %{})}"
+            }
             class="btn btn-primary btn-sm"
           >
             <.icon name="hero-book-open" class="size-4" />
@@ -244,7 +253,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           <:action :let={{_id, enrollment}}>
             <div class="flex items-center gap-2 justify-end">
               <.link
-                :if={Learning.Cohorts.can_view_cohort_processes?(@current_user, @cohort)}
+                :if={Learning.can_view_cohort_processes?(@current_user, @cohort)}
                 navigate={~p"/teaching/cohorts/#{@cohort.id}/access/#{enrollment.course.id}"}
                 class="btn btn-ghost btn-xs text-primary hover:bg-primary/10"
                 title={gettext("Access Settings")}
@@ -254,7 +263,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
               </.link>
 
               <button
-                :if={Learning.Cohorts.can_manage_cohort_processes?(@current_user, @cohort)}
+                :if={Learning.can_manage_cohort_processes?(@current_user, @cohort)}
                 type="button"
                 phx-click="delete_enrollment_click"
                 phx-value-id={enrollment.id}
@@ -272,8 +281,10 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         <div class="flex justify-between items-center">
           <h2 class="text-xl font-display font-bold">{gettext("Students")}</h2>
           <.button
-            :if={Learning.Cohorts.can_manage_cohort_processes?(@current_user, @cohort)}
-            patch={~p"/teaching/cohorts/#{@cohort.id}/add_student"}
+            :if={Learning.can_manage_cohort_processes?(@current_user, @cohort)}
+            patch={
+              ~p"/teaching/cohorts/#{@cohort.id}/add_student?#{build_query_params(assigns, %{})}"
+            }
             class="btn btn-primary btn-sm"
           >
             <.icon name="hero-user-plus" class="size-4" />
@@ -281,11 +292,15 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           </.button>
         </div>
 
-        <.table id="memberships" rows={@streams.memberships}>
+        <% path_fn = fn overrides ->
+          ~p"/teaching/cohorts/#{@cohort.id}?#{build_query_params(assigns, overrides)}"
+        end %>
+
+        <.table id="memberships" rows={@streams.memberships} meta={@meta} path_fn={path_fn}>
           <:col :let={{_id, membership}} label={gettext("Login")}>
             <span class="font-bold">{membership.account.login}</span>
           </:col>
-          <:col :let={{_id, membership}} label={gettext("Joined At")}>
+          <:col :let={{_id, membership}} label={gettext("Joined At")} sort="inserted_at">
             <span class="text-sm opacity-60">
               {Calendar.strftime(membership.inserted_at, "%d.%m.%Y")}
             </span>
@@ -293,7 +308,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           <:action :let={{_id, membership}}>
             <div class="flex justify-end">
               <.button
-                :if={Learning.Cohorts.can_manage_cohort_processes?(@current_user, @cohort)}
+                :if={Learning.can_manage_cohort_processes?(@current_user, @cohort)}
                 type="button"
                 phx-click="delete_click"
                 phx-value-id={membership.id}
@@ -307,10 +322,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         </.table>
 
         <div class="flex justify-end">
-          <.pagination
-            meta={@meta}
-            path_fn={fn p -> ~p"/teaching/cohorts/#{@cohort.id}?#{%{"page" => p}}" end}
-          />
+          <.pagination meta={@meta} path_fn={path_fn} />
         </div>
       </div>
 
@@ -318,14 +330,14 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         id="membership-slideover"
         show={@live_action == :add_student}
         title={@page_title}
-        on_close={JS.patch(~p"/teaching/cohorts/#{@cohort.id}")}
+        on_close={JS.patch(~p"/teaching/cohorts/#{@cohort.id}?#{build_query_params(assigns, %{})}")}
       >
         <.live_component
           module={MembershipFormComponent}
           id="new-membership"
           cohort_id={@cohort.id}
           current_user={@current_user}
-          patch={~p"/teaching/cohorts/#{@cohort.id}"}
+          patch={~p"/teaching/cohorts/#{@cohort.id}?#{build_query_params(assigns, %{})}"}
         />
       </.slide_over>
 
@@ -333,14 +345,14 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         id="enrollment-slideover"
         show={@live_action == :enroll_course}
         title={@page_title}
-        on_close={JS.patch(~p"/teaching/cohorts/#{@cohort.id}")}
+        on_close={JS.patch(~p"/teaching/cohorts/#{@cohort.id}?#{build_query_params(assigns, %{})}")}
       >
         <.live_component
           module={EnrollmentFormComponent}
           id="new-enrollment"
           cohort_id={@cohort.id}
           current_user={@current_user}
-          patch={~p"/teaching/cohorts/#{@cohort.id}"}
+          patch={~p"/teaching/cohorts/#{@cohort.id}?#{build_query_params(assigns, %{})}"}
         />
       </.slide_over>
 
@@ -371,5 +383,30 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
       />
     </div>
     """
+  end
+
+  @doc false
+  defp build_query_params(assigns, overrides) do
+    meta = assigns.meta
+
+    order_by =
+      meta.flop.order_by
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+
+    order_directions =
+      meta.flop.order_directions
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+
+    %{
+      "page" => meta.current_page,
+      "page_size" => meta.page_size,
+      "order_by" => order_by,
+      "order_directions" => order_directions
+    }
+    |> Map.merge(overrides)
+    |> Enum.reject(fn {_, v} -> is_nil(v) or v == "" or v == [] end)
+    |> Map.new()
   end
 end

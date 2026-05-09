@@ -31,7 +31,7 @@ defmodule AthenaWeb.TeachingLive.InstructorsTest do
       assert html =~ instructor.title
     end
 
-    test "should handle search functionality", %{conn: conn} do
+    test "should handle search functionality and maintain params", %{conn: conn} do
       insert(:instructor, title: "Senior Phoenix Dev")
       insert(:instructor, title: "Junior React Dev")
 
@@ -44,21 +44,60 @@ defmodule AthenaWeb.TeachingLive.InstructorsTest do
 
       assert html =~ "Senior Phoenix Dev"
       refute html =~ "Junior React Dev"
+
+      assert_patched(
+        lv,
+        ~p"/teaching/instructors?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10&search=Phoenix"
+      )
+    end
+  end
+
+  describe "Instructors page (Pagination & Sorting)" do
+    test "changes page size and updates URL", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/teaching/instructors")
+
+      lv
+      |> form("form[phx-change='update_page_size']", %{"page_size" => "50"})
+      |> render_change()
+
+      assert_patched(
+        lv,
+        ~p"/teaching/instructors?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=50"
+      )
+    end
+
+    test "sorts by title when column header is clicked", %{conn: conn} do
+      insert(:instructor, title: "Zulu")
+      insert(:instructor, title: "Alpha")
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/instructors")
+
+      lv
+      |> element("a", "Title")
+      |> render_click()
+
+      assert_patched(
+        lv,
+        ~p"/teaching/instructors?order_by[]=title&order_directions[]=asc&page=1&page_size=10"
+      )
     end
   end
 
   describe "Instructors page (Create/Edit actions)" do
-    test "should open the create instructor slide-over via URL", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/teaching/instructors/new")
+    test "should open the create instructor slide-over via URL and preserve params", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/teaching/instructors/new?page_size=20&search=test")
 
       assert html =~ "Create Instructor"
       assert html =~ "User Account"
     end
 
-    test "should open the edit instructor slide-over via URL", %{conn: conn, admin: admin} do
+    test "should open the edit instructor slide-over via URL and preserve params", %{
+      conn: conn,
+      admin: admin
+    } do
       instructor = insert(:instructor, title: "Target Instructor", owner_id: admin.id)
 
-      {:ok, _lv, html} = live(conn, ~p"/teaching/instructors/#{instructor.id}/edit")
+      {:ok, _lv, html} = live(conn, ~p"/teaching/instructors/#{instructor.id}/edit?page_size=50")
 
       assert html =~ "Edit Instructor"
       assert html =~ "Target Instructor"

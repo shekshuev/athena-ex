@@ -66,7 +66,10 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponentTest do
       })
       |> render_submit()
 
-      assert_patch(lv, ~p"/studio/library")
+      assert_patch(
+        lv,
+        ~p"/studio/library?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10"
+      )
 
       {:ok, {blocks, _meta}} = Content.list_library_blocks(current_user, %{})
       assert length(blocks) == 1
@@ -104,7 +107,10 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponentTest do
       })
       |> render_submit()
 
-      assert_patch(lv, ~p"/studio/library")
+      assert_patch(
+        lv,
+        ~p"/studio/library?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10"
+      )
 
       {:ok, updated_block} = Content.get_library_block(current_user, block.id)
 

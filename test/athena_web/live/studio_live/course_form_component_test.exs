@@ -57,7 +57,10 @@ defmodule AthenaWeb.StudioLive.CourseFormComponentTest do
       })
       |> render_submit()
 
-      assert_patch(lv, ~p"/studio/courses")
+      assert_patch(
+        lv,
+        ~p"/studio/courses?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10"
+      )
 
       {:ok, {courses, _meta}} = Content.list_courses(current_user, %{})
       assert length(courses) == 1
@@ -88,7 +91,10 @@ defmodule AthenaWeb.StudioLive.CourseFormComponentTest do
       })
       |> render_submit()
 
-      assert_patch(lv, ~p"/studio/courses")
+      assert_patch(
+        lv,
+        ~p"/studio/courses?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10"
+      )
 
       {:ok, updated_course} = Content.get_course(current_user, course.id)
 

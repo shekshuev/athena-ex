@@ -32,7 +32,7 @@ defmodule AthenaWeb.LearnLive.Player do
       cohort_id = if cohort, do: cohort.id, else: nil
       team_id = if cohort && cohort.type == :team, do: cohort.id, else: nil
 
-      if connected?(socket), do: subscribe_to_topics(course_id, team_id)
+      if connected?(socket), do: subscribe_to_topics(course_id, team_id, user.id)
 
       overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
       linear_lessons = Content.list_linear_lessons(course_id, user)
@@ -69,9 +69,14 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp subscribe_to_topics(course_id, cohort_id) do
+  defp subscribe_to_topics(course_id, cohort_id, user_id) do
     Phoenix.PubSub.subscribe(Athena.PubSub, "course_content:#{course_id}")
-    if cohort_id, do: Phoenix.PubSub.subscribe(Athena.PubSub, "team_progress:#{cohort_id}")
+
+    if cohort_id do
+      Phoenix.PubSub.subscribe(Athena.PubSub, "team_progress:#{cohort_id}")
+    else
+      Phoenix.PubSub.subscribe(Athena.PubSub, "user_progress:#{user_id}")
+    end
   end
 
   @doc false
@@ -356,6 +361,11 @@ defmodule AthenaWeb.LearnLive.Player do
           {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_info(:team_progress_updated, socket) do
+    handle_info(:refresh_content, socket)
+  end
+
+  @impl true
+  def handle_info(:user_progress_updated, socket) do
     handle_info(:refresh_content, socket)
   end
 

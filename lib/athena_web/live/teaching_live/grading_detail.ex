@@ -30,7 +30,8 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
        account: account,
        block: block,
        form: form,
-       return_to: return_to
+       return_to: return_to,
+       show_delete_modal: false
      )}
   end
 
@@ -63,6 +64,47 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, gettext("Failed to save grade."))}
+    end
+  end
+
+  @impl true
+  def handle_event("open_delete_modal", _, socket) do
+    {:noreply, assign(socket, show_delete_modal: true)}
+  end
+
+  def handle_event("close_delete_modal", _, socket) do
+    {:noreply, assign(socket, show_delete_modal: false)}
+  end
+
+  def handle_event("confirm_delete_submission", _params, socket) do
+    sub = socket.assigns.submission
+
+    case Learning.delete_submission_with_rollback(socket.assigns.current_user, sub) do
+      {:ok, _deleted_sub} ->
+        if sub.cohort_id do
+          Phoenix.PubSub.broadcast(
+            Athena.PubSub,
+            "team_progress:#{sub.cohort_id}",
+            :team_progress_updated
+          )
+        else
+          Phoenix.PubSub.broadcast(
+            Athena.PubSub,
+            "user_progress:#{sub.account_id}",
+            :user_progress_updated
+          )
+        end
+
+        {:noreply,
+         socket
+         |> put_flash(:info, gettext("Submission deleted and progress rolled back!"))
+         |> push_navigate(to: socket.assigns.return_to)}
+
+      {:error, _} ->
+        {:noreply,
+         socket
+         |> assign(show_delete_modal: false)
+         |> put_flash(:error, gettext("Failed to delete submission."))}
     end
   end
 
@@ -143,7 +185,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
           <% end %>
         </div>
 
-        <div class="w-full lg:w-[400px] shrink-0 bg-base-100 rounded-sm border border-base-300 shadow-sm sticky top-8 flex flex-col overflow-hidden">
+        <div class="w-full lg:w-100 shrink-0 bg-base-100 rounded-sm border border-base-300 shadow-sm sticky top-8 flex flex-col overflow-hidden">
           <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-200 bg-base-200/30">
             <div>
               <div class="text-[10px] font-bold text-base-content/50 uppercase tracking-widest mb-0.5">
@@ -216,31 +258,59 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
             </.form>
           </div>
 
-          <div class="p-6 border-t border-base-200 bg-base-200/20 flex gap-4">
-            <button
-              form="grading-form"
-              type="submit"
-              name="action"
-              value="reject"
-              class="btn btn-outline btn-error w-1/3 shadow-sm"
-            >
-              <.icon name="hero-x-mark" class="size-5 mr-1" />
-              {gettext("Reject")}
-            </button>
+          <div class="p-6 border-t border-base-200 bg-base-200/20 flex flex-col gap-4">
+            <div class="flex gap-4">
+              <button
+                form="grading-form"
+                type="submit"
+                name="action"
+                value="reject"
+                class="btn btn-outline btn-error w-1/3 shadow-sm"
+              >
+                <.icon name="hero-x-mark" class="size-5 mr-1" />
+                {gettext("Reject")}
+              </button>
+
+              <button
+                form="grading-form"
+                type="submit"
+                name="action"
+                value="grade"
+                class="btn btn-primary w-2/3 shadow-sm"
+              >
+                <.icon name="hero-check-circle" class="size-5 mr-2" />
+                {gettext("Save & Grade")}
+              </button>
+            </div>
+
+            <div class="divider my-0 opacity-50"></div>
 
             <button
-              form="grading-form"
-              type="submit"
-              name="action"
-              value="grade"
-              class="btn btn-primary w-2/3 shadow-sm"
+              type="button"
+              phx-click="open_delete_modal"
+              class="btn btn-ghost btn-error btn-sm w-full opacity-70 hover:opacity-100"
             >
-              <.icon name="hero-check-circle" class="size-5 mr-2" />
-              {gettext("Save & Grade")}
+              <.icon name="hero-trash" class="size-4 mr-1" />
+              {gettext("Delete & Rollback Submission")}
             </button>
           </div>
         </div>
       </div>
+      <.modal
+        :if={@show_delete_modal}
+        id="delete-submission-modal"
+        show={true}
+        title={gettext("Delete Submission")}
+        description={
+          gettext(
+            "Are you sure? This will delete the submission and may lock the next lesson part for the student."
+          )
+        }
+        confirm_label={gettext("Delete & Rollback")}
+        danger={true}
+        on_cancel={JS.push("close_delete_modal")}
+        on_confirm={JS.push("confirm_delete_submission")}
+      />
     </div>
     """
   end

@@ -44,18 +44,54 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
     end
   end
 
-  describe "CohortDetails page (Add Actions)" do
-    test "should open the add student slide-over via URL", %{conn: conn, admin: admin} do
+  describe "CohortDetails page (Pagination & Sorting for Students)" do
+    test "changes page size and updates URL", %{conn: conn, admin: admin} do
       cohort = insert(:cohort, owner_id: admin.id)
-      {:ok, _lv, html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/add_student")
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}")
+
+      lv
+      |> form("form[phx-change='update_page_size']", %{"page_size" => "50"})
+      |> render_change()
+
+      assert_patched(
+        lv,
+        ~p"/teaching/cohorts/#{cohort.id}?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=50"
+      )
+    end
+
+    test "sorts by inserted_at when column header is clicked", %{conn: conn, admin: admin} do
+      cohort = insert(:cohort, owner_id: admin.id)
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}")
+
+      lv
+      |> element("a", "Joined At")
+      |> render_click()
+
+      assert_patched(
+        lv,
+        ~p"/teaching/cohorts/#{cohort.id}?order_by[]=inserted_at&order_directions[]=asc&page=1&page_size=20"
+      )
+    end
+  end
+
+  describe "CohortDetails page (Add Actions)" do
+    test "should open the add student slide-over via URL and preserve params", %{
+      conn: conn,
+      admin: admin
+    } do
+      cohort = insert(:cohort, owner_id: admin.id)
+      {:ok, _lv, html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/add_student?page_size=50")
 
       assert html =~ "Add Student to Cohort"
       assert html =~ "Search User by Login"
     end
 
-    test "should open the assign course slide-over via URL", %{conn: conn, admin: admin} do
+    test "should open the assign course slide-over via URL and preserve params", %{
+      conn: conn,
+      admin: admin
+    } do
       cohort = insert(:cohort, owner_id: admin.id)
-      {:ok, _lv, html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/enroll_course")
+      {:ok, _lv, html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/enroll_course?page_size=50")
 
       assert html =~ "Assign Course to Cohort"
       assert html =~ "Search Course by Title"

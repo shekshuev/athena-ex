@@ -355,6 +355,8 @@ defmodule AthenaWeb.CoreComponents do
         <:col :let={user} label="username">{user.username}</:col>
       </.table>
   """
+  attr :meta, Flop.Meta, default: nil, doc: "Flop meta for sorting"
+  attr :path_fn, :any, default: nil, doc: "Function that takes a map of params and returns a URL"
   attr :id, :string, required: true
   attr :rows, :list, required: true
   attr :row_id, :any, default: nil, doc: "the function for generating the row id"
@@ -366,6 +368,7 @@ defmodule AthenaWeb.CoreComponents do
 
   slot :col, required: true do
     attr :label, :string
+    attr :sort, :string, doc: "Field name for Flop sorting"
   end
 
   slot :action, doc: "the slot for showing user actions in the last table column"
@@ -377,34 +380,68 @@ defmodule AthenaWeb.CoreComponents do
       end
 
     ~H"""
-    <table class="table table-zebra">
-      <thead>
-        <tr>
-          <th :for={col <- @col}>{col[:label]}</th>
-          <th :if={@action != []}>
-            <span class="sr-only">{gettext("Actions")}</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody id={@id} phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}>
-        <tr :for={row <- @rows} id={@row_id && @row_id.(row)}>
-          <td
-            :for={col <- @col}
-            phx-click={@row_click && @row_click.(row)}
-            class={@row_click && "hover:cursor-pointer"}
-          >
-            {render_slot(col, @row_item.(row))}
-          </td>
-          <td :if={@action != []} class="w-0 font-semibold">
-            <div class="flex gap-4">
-              <%= for action <- @action do %>
-                {render_slot(action, @row_item.(row))}
+    <div class="overflow-x-auto overflow-y-visible">
+      <table class="table table-zebra">
+        <thead>
+          <tr>
+            <th :for={col <- @col}>
+              <%= if col[:sort] && @meta && @path_fn do %>
+                <% current_sort? = Enum.map(@meta.flop.order_by || [], &to_string/1) == [col[:sort]] %>
+                <% direction =
+                  if current_sort? and
+                       Enum.map(@meta.flop.order_directions || [], &to_string/1) == ["asc"],
+                     do: "desc",
+                     else: "asc" %>
+                <.link
+                  patch={@path_fn.(%{"order_by" => [col[:sort]], "order_directions" => [direction]})}
+                  class="flex items-center gap-1 hover:text-primary transition-colors group select-none"
+                >
+                  {col[:label]}
+                  <.icon
+                    :if={current_sort? && direction == "desc"}
+                    name="hero-chevron-up"
+                    class="size-4"
+                  />
+                  <.icon
+                    :if={current_sort? && direction == "asc"}
+                    name="hero-chevron-down"
+                    class="size-4"
+                  />
+                  <.icon
+                    :if={!current_sort?}
+                    name="hero-chevron-up-down"
+                    class="size-4 opacity-0 group-hover:opacity-50 transition-opacity"
+                  />
+                </.link>
+              <% else %>
+                {col[:label]}
               <% end %>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+            </th>
+            <th :if={@action != []}>
+              <span class="sr-only">{gettext("Actions")}</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody id={@id} phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}>
+          <tr :for={row <- @rows} id={@row_id && @row_id.(row)}>
+            <td
+              :for={col <- @col}
+              phx-click={@row_click && @row_click.(row)}
+              class={@row_click && "hover:cursor-pointer"}
+            >
+              {render_slot(col, @row_item.(row))}
+            </td>
+            <td :if={@action != []} class="w-0 font-semibold">
+              <div class="flex gap-4">
+                <%= for action <- @action do %>
+                  {render_slot(action, @row_item.(row))}
+                <% end %>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
     """
   end
 
@@ -660,34 +697,53 @@ defmodule AthenaWeb.CoreComponents do
   end
 
   @doc """
-  Renders pagination using Flop.Meta.
+  Renders pagination and page size selector using Flop.Meta.
   """
   attr :meta, Flop.Meta, required: true
-  attr :path_fn, :any, required: true, doc: "Function that takes a page number and returns a URL"
+
+  attr :path_fn, :any,
+    required: true,
+    doc: "Function that takes a map of params and returns a URL"
 
   def pagination(assigns) do
     ~H"""
-    <div :if={@meta.total_pages > 1} class="join">
-      <.link
-        patch={@path_fn.(@meta.current_page - 1)}
-        class={["join-item btn btn-sm", @meta.current_page <= 1 && "pointer-events-none opacity-50"]}
-        tabindex={if @meta.current_page <= 1, do: -1, else: 0}
-      >
-        «
-      </.link>
-      <button class="join-item btn btn-sm pointer-events-none">
-        {gettext("Page %{current} of %{total}", current: @meta.current_page, total: @meta.total_pages)}
-      </button>
-      <.link
-        patch={@path_fn.(@meta.current_page + 1)}
-        class={[
-          "join-item btn btn-sm",
-          @meta.current_page >= @meta.total_pages && "pointer-events-none opacity-50"
-        ]}
-        tabindex={if @meta.current_page >= @meta.total_pages, do: -1, else: 0}
-      >
-        »
-      </.link>
+    <div class="flex flex-col sm:flex-row items-center justify-between w-full gap-4 mt-4">
+      <div class="flex items-center gap-2">
+        <span class="text-sm text-base-content/60">{gettext("Show")}</span>
+        <form phx-change="update_page_size">
+          <select name="page_size" class="select select-bordered select-sm">
+            <%= for size <- [10, 20, 50, 100] do %>
+              <option value={size} selected={@meta.page_size == size}>{size}</option>
+            <% end %>
+          </select>
+        </form>
+      </div>
+
+      <div :if={@meta.total_pages > 1} class="join">
+        <.link
+          patch={@path_fn.(%{"page" => @meta.current_page - 1})}
+          class={["join-item btn btn-sm", @meta.current_page <= 1 && "pointer-events-none opacity-50"]}
+          tabindex={if @meta.current_page <= 1, do: -1, else: 0}
+        >
+          «
+        </.link>
+        <button class="join-item btn btn-sm pointer-events-none">
+          {gettext("Page %{current} of %{total}",
+            current: @meta.current_page,
+            total: @meta.total_pages
+          )}
+        </button>
+        <.link
+          patch={@path_fn.(%{"page" => @meta.current_page + 1})}
+          class={[
+            "join-item btn btn-sm",
+            @meta.current_page >= @meta.total_pages && "pointer-events-none opacity-50"
+          ]}
+          tabindex={if @meta.current_page >= @meta.total_pages, do: -1, else: 0}
+        >
+          »
+        </.link>
+      </div>
     </div>
     """
   end

@@ -91,16 +91,14 @@ defmodule AthenaWeb.AdminLive.Users do
   @doc """
   Handles UI events such as searching and user deletion confirmations.
   """
-  @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
-          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_event("search", %{"search" => search}, socket) do
-    params = %{
-      "search" => search,
-      "page" => 1,
-      "page_size" => socket.assigns.meta.page_size
-    }
+    params = build_query_params(socket.assigns, %{"search" => search, "page" => 1})
+    {:noreply, push_patch(socket, to: ~p"/admin/users?#{params}")}
+  end
 
+  def handle_event("update_page_size", %{"page_size" => size}, socket) do
+    params = build_query_params(socket.assigns, %{"page_size" => size, "page" => 1})
     {:noreply, push_patch(socket, to: ~p"/admin/users?#{params}")}
   end
 
@@ -156,7 +154,7 @@ defmodule AthenaWeb.AdminLive.Users do
         </div>
         <.button
           :if={Identity.can?(@current_user, "users.create")}
-          patch={~p"/admin/users/new"}
+          patch={~p"/admin/users/new?#{build_query_params(assigns, %{})}"}
           class="btn btn-primary"
         >
           <.icon name="hero-plus" class="size-5" />
@@ -183,30 +181,32 @@ defmodule AthenaWeb.AdminLive.Users do
         </.form>
       </div>
 
-      <.table id="users" rows={@streams.accounts}>
+      <% path_fn = fn overrides -> ~p"/admin/users?#{build_query_params(assigns, overrides)}" end %>
+
+      <.table id="users" rows={@streams.accounts} meta={@meta} path_fn={path_fn}>
         <:col :let={{_id, acc}} label="ID">
           <span class="font-mono text-xs opacity-50">{String.slice(acc.id, 0..7)}</span>
         </:col>
-        <:col :let={{_id, acc}} label={gettext("Login")}>
+        <:col :let={{_id, acc}} label={gettext("Login")} sort="login">
           <span class="font-bold">{acc.login}</span>
         </:col>
         <:col :let={{_id, acc}} label={gettext("Full Name")}>
           {if acc.profile, do: Profile.full_name(acc.profile), else: "—"}
         </:col>
-        <:col :let={{_id, acc}} label={gettext("Status")}>
+        <:col :let={{_id, acc}} label={gettext("Status")} sort="status">
           <.status_badge status={acc.status} />
         </:col>
         <:col :let={{_id, acc}} label={gettext("Role")}>
           <div class="badge badge-outline">{acc.role.name}</div>
         </:col>
-        <:col :let={{_id, acc}} label={gettext("Created At")}>
+        <:col :let={{_id, acc}} label={gettext("Created At")} sort="inserted_at">
           <span class="text-sm opacity-60">{Calendar.strftime(acc.inserted_at, "%d.%m.%Y")}</span>
         </:col>
         <:action :let={{_id, acc}}>
           <div class="flex justify-end gap-2">
             <.button
               :if={Identity.can?(@current_user, "users.update")}
-              patch={~p"/admin/users/#{acc.id}/edit"}
+              patch={~p"/admin/users/#{acc.id}/edit?#{build_query_params(assigns, %{})}"}
               class="btn btn-ghost btn-xs btn-square"
             >
               <.icon name="hero-pencil-square" class="size-4" />
@@ -225,17 +225,14 @@ defmodule AthenaWeb.AdminLive.Users do
       </.table>
 
       <div class="flex justify-end">
-        <.pagination
-          meta={@meta}
-          path_fn={fn p -> ~p"/admin/users?#{%{"page" => p, "search" => @search}}" end}
-        />
+        <.pagination meta={@meta} path_fn={path_fn} />
       </div>
 
       <.slide_over
         id="account-slideover"
         show={@live_action in [:new, :edit]}
         title={@page_title}
-        on_close={JS.patch(~p"/admin/users")}
+        on_close={JS.patch(~p"/admin/users?#{build_query_params(assigns, %{})}")}
       >
         <.live_component
           :if={@account}
@@ -244,7 +241,7 @@ defmodule AthenaWeb.AdminLive.Users do
           action={@live_action}
           account={@account}
           current_user={@current_user}
-          patch={~p"/admin/users"}
+          patch={~p"/admin/users?#{build_query_params(assigns, %{})}"}
         />
       </.slide_over>
 
@@ -277,5 +274,31 @@ defmodule AthenaWeb.AdminLive.Users do
       {Atom.to_string(@status) |> String.replace("_", " ") |> String.capitalize()}
     </span>
     """
+  end
+
+  @doc false
+  defp build_query_params(assigns, overrides) do
+    meta = assigns.meta
+
+    order_by =
+      meta.flop.order_by
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+
+    order_directions =
+      meta.flop.order_directions
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+
+    %{
+      "search" => assigns.search,
+      "page" => meta.current_page,
+      "page_size" => meta.page_size,
+      "order_by" => order_by,
+      "order_directions" => order_directions
+    }
+    |> Map.merge(overrides)
+    |> Enum.reject(fn {_, v} -> is_nil(v) or v == "" or v == [] end)
+    |> Map.new()
   end
 end

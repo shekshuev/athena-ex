@@ -15,7 +15,7 @@ defmodule Athena.Content.LibraryBlock do
     Flop.Schema,
     filterable: [:title, :type, :tags, :owner_id],
     sortable: [:title, :type, :inserted_at],
-    default_limit: 20,
+    default_limit: 10,
     default_order: %{
       order_by: [:inserted_at],
       order_directions: [:desc]

@@ -606,4 +606,99 @@ defmodule Athena.Learning.SubmissionsTest do
       assert submissions == []
     end
   end
+
+  describe "delete_submission_with_rollback/2" do
+    setup do
+      admin_role = insert(:role, permissions: ["grading.update", "courses.read"])
+      admin = insert(:account, role: admin_role)
+      student = insert(:account, role: insert(:role, permissions: []))
+
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section)
+
+      %{admin: admin, student: student, course: course, section: section, block: block}
+    end
+
+    test "deletes submission and rolls back progress if user has permission", %{
+      admin: admin,
+      student: student,
+      section: section,
+      block: block
+    } do
+      submission =
+        insert(:submission, account_id: student.id, block_id: block.id, status: :pending)
+
+      Athena.Learning.Progress.mark_completed(student.id, block.id)
+      assert block.id in Athena.Learning.Progress.completed_block_ids(student.id, section.id)
+
+      assert {:ok, deleted_sub} =
+               Submissions.delete_submission_with_rollback(admin, submission)
+
+      assert deleted_sub.id == submission.id
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Submissions.get_submission!(admin, submission.id)
+      end
+
+      refute block.id in Athena.Learning.Progress.completed_block_ids(student.id, section.id)
+    end
+
+    test "returns unauthorized if user lacks permission", %{
+      student: student,
+      block: block
+    } do
+      submission = insert(:submission, account_id: student.id, block_id: block.id)
+
+      assert {:error, :unauthorized} =
+               Submissions.delete_submission_with_rollback(student, submission)
+    end
+  end
+
+  describe "ACL: own_only policy for delete_submission_with_rollback/2" do
+    setup do
+      role =
+        insert(:role,
+          permissions: ["grading.update", "courses.read"],
+          policies: %{
+            "grading.update" => ["own_only"],
+            "courses.read" => ["own_only"]
+          }
+        )
+
+      instructor = insert(:account, role: role)
+      student = insert(:account, role: insert(:role, permissions: []))
+
+      %{instructor: instructor, student: student}
+    end
+
+    test "allows delete if instructor owns the course", %{
+      instructor: instructor,
+      student: student
+    } do
+      course = insert(:course, owner_id: instructor.id)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section)
+
+      submission = insert(:submission, account_id: student.id, block_id: block.id)
+
+      assert {:ok, _deleted} =
+               Submissions.delete_submission_with_rollback(instructor, submission)
+    end
+
+    test "returns unauthorized if instructor does NOT own the course", %{
+      instructor: instructor,
+      student: student
+    } do
+      other_admin = insert(:account)
+      course = insert(:course, owner_id: other_admin.id)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section)
+
+      submission = insert(:submission, account_id: student.id, block_id: block.id)
+
+      assert {:error, :unauthorized} =
+               Submissions.delete_submission_with_rollback(instructor, submission)
+    end
+  end
 end

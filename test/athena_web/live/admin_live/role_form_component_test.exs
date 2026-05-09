@@ -55,7 +55,11 @@ defmodule AthenaWeb.AdminLive.RoleFormComponentTest do
       })
       |> render_submit()
 
-      assert_patch(lv, ~p"/admin/roles")
+      assert_patch(
+        lv,
+        ~p"/admin/roles?order_by[]=name&order_directions[]=asc&page=1&page_size=10"
+      )
+
       assert {:ok, role} = Roles.get_role_by_name("Super Content Manager")
       assert "courses.create" in role.permissions
       assert "own_only" in role.policies["courses.read"]
@@ -75,7 +79,10 @@ defmodule AthenaWeb.AdminLive.RoleFormComponentTest do
       })
       |> render_submit()
 
-      assert_patch(lv, ~p"/admin/roles")
+      assert_patch(
+        lv,
+        ~p"/admin/roles?order_by[]=name&order_directions[]=asc&page=1&page_size=10"
+      )
 
       {:ok, updated_role} = Roles.get_role_by_name("New Awesome Name")
       assert "users.update" in updated_role.permissions

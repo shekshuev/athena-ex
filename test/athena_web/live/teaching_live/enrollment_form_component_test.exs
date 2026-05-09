@@ -54,7 +54,10 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponentTest do
       |> form("#enrollment-form")
       |> render_submit()
 
-      assert_patch(lv, ~p"/teaching/cohorts/#{cohort.id}")
+      assert_patch(
+        lv,
+        ~p"/teaching/cohorts/#{cohort.id}?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=20"
+      )
 
       {:ok, {enrollments, _meta}} = Learning.list_cohort_enrollments(admin, cohort.id, %{})
       assert length(enrollments) == 1

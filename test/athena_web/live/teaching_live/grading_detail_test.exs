@@ -204,4 +204,83 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
       end
     end
   end
+
+  describe "Deleting Submissions (Rollback)" do
+    test "renders the Delete & Rollback button and opens modal", %{conn: conn} do
+      student = insert(:account)
+      block = insert(:block, type: :quiz_question, content: %{"question_type" => "open"})
+      sub = insert(:submission, account_id: student.id, block_id: block.id)
+
+      {:ok, lv, html} = live(conn, ~p"/teaching/grading/#{sub.id}")
+
+      assert html =~ "Delete &amp; Rollback Submission"
+      assert html =~ "open_delete_modal"
+
+      html =
+        lv
+        |> element("button[phx-click='open_delete_modal']")
+        |> render_click()
+
+      assert html =~ "Delete Submission"
+
+      assert html =~
+               "Are you sure? This will delete the submission and may lock the next lesson part for the student."
+    end
+
+    test "deletes individual submission, broadcasts to user, and redirects", %{
+      conn: conn,
+      admin: admin
+    } do
+      student = insert(:account)
+      block = insert(:block, type: :quiz_question, content: %{"question_type" => "open"})
+
+      sub = insert(:submission, account_id: student.id, block_id: block.id, cohort_id: nil)
+
+      Phoenix.PubSub.subscribe(Athena.PubSub, "user_progress:#{student.id}")
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{sub.id}")
+
+      lv
+      |> element("button[phx-click='open_delete_modal']")
+      |> render_click()
+
+      render_hook(lv, "confirm_delete_submission")
+
+      assert_redirect(lv, "/teaching/grading")
+
+      assert_receive :user_progress_updated
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Athena.Learning.Submissions.get_submission!(admin, sub.id)
+      end
+    end
+
+    test "deletes team submission, broadcasts to team, and redirects", %{
+      conn: conn,
+      admin: admin
+    } do
+      student = insert(:account)
+      team = insert(:cohort, type: :team)
+      block = insert(:block, type: :quiz_question, content: %{"question_type" => "open"})
+
+      sub = insert(:submission, account_id: student.id, block_id: block.id, cohort_id: team.id)
+
+      Phoenix.PubSub.subscribe(Athena.PubSub, "team_progress:#{team.id}")
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{sub.id}")
+
+      lv
+      |> element("button[phx-click='open_delete_modal']")
+      |> render_click()
+
+      render_hook(lv, "confirm_delete_submission")
+
+      assert_redirect(lv, "/teaching/grading")
+      assert_receive :team_progress_updated
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Athena.Learning.Submissions.get_submission!(admin, sub.id)
+      end
+    end
+  end
 end

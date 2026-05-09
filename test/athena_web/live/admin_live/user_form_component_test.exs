@@ -47,7 +47,10 @@ defmodule AthenaWeb.AdminLive.UserFormComponentTest do
       })
       |> render_submit()
 
-      assert_patch(lv, ~p"/admin/users")
+      assert_patch(
+        lv,
+        ~p"/admin/users?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10"
+      )
 
       assert {:ok, account} = Identity.get_account_by_login("new_manager")
       account = Athena.Repo.preload(account, :profile)
@@ -82,7 +85,10 @@ defmodule AthenaWeb.AdminLive.UserFormComponentTest do
       })
       |> render_submit()
 
-      assert_patch(lv, ~p"/admin/users")
+      assert_patch(
+        lv,
+        ~p"/admin/users?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10"
+      )
 
       {:ok, updated_account} = Identity.get_account(account.id)
       updated_account = Athena.Repo.preload(updated_account, :profile)

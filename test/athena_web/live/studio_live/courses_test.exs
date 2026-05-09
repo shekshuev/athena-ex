@@ -26,7 +26,7 @@ defmodule AthenaWeb.StudioLive.CoursesTest do
       assert html =~ course.title
     end
 
-    test "should handle search functionality", %{conn: conn} do
+    test "should handle search functionality and maintain params", %{conn: conn} do
       insert(:course, title: "Phoenix LiveView Guide")
       insert(:course, title: "PostgreSQL Basics")
 
@@ -39,6 +39,11 @@ defmodule AthenaWeb.StudioLive.CoursesTest do
 
       assert html =~ "Phoenix LiveView Guide"
       refute html =~ "PostgreSQL Basics"
+
+      assert_patched(
+        lv,
+        ~p"/studio/courses?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10&search=Phoenix"
+      )
     end
 
     test "search functionality is case-insensitive", %{conn: conn} do
@@ -75,18 +80,49 @@ defmodule AthenaWeb.StudioLive.CoursesTest do
     end
   end
 
+  describe "Courses page (Pagination & Sorting)" do
+    test "changes page size and updates URL", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses")
+
+      lv
+      |> form("form[phx-change='update_page_size']", %{"page_size" => "50"})
+      |> render_change()
+
+      assert_patched(
+        lv,
+        ~p"/studio/courses?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=50"
+      )
+    end
+
+    test "sorts by title when column header is clicked", %{conn: conn} do
+      insert(:course, title: "Zulu Course")
+      insert(:course, title: "Alpha Course")
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses")
+
+      lv
+      |> element("a", "Title")
+      |> render_click()
+
+      assert_patched(
+        lv,
+        ~p"/studio/courses?order_by[]=title&order_directions[]=asc&page=1&page_size=10"
+      )
+    end
+  end
+
   describe "Courses page (Create/Edit actions)" do
-    test "should open the create course slide-over via URL", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/studio/courses/new")
+    test "should open the create course slide-over via URL and preserve params", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/studio/courses/new?page_size=50&search=test")
 
       assert html =~ "Course Settings"
       assert html =~ "Visibility Status"
     end
 
-    test "should open the edit course slide-over via URL", %{conn: conn} do
+    test "should open the edit course slide-over via URL and preserve params", %{conn: conn} do
       course = insert(:course, title: "Target Course")
 
-      {:ok, _lv, html} = live(conn, ~p"/studio/courses/#{course.id}/edit")
+      {:ok, _lv, html} = live(conn, ~p"/studio/courses/#{course.id}/edit?page_size=50")
 
       assert html =~ "Edit Course"
       assert html =~ "Target Course"

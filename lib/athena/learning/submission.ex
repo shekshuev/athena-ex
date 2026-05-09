@@ -12,6 +12,7 @@ defmodule Athena.Learning.Submission do
     Flop.Schema,
     filterable: [:status, :score, :account_id, :cohort_id, :inserted_at, :has_cheats, :block_id],
     sortable: [:inserted_at, :status, :score],
+    default_limit: 10,
     default_order: %{order_by: [:inserted_at], order_directions: [:desc]},
     custom_fields: [
       has_cheats: [

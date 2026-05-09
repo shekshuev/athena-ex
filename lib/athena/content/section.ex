@@ -20,7 +20,7 @@ defmodule Athena.Content.Section do
     Flop.Schema,
     filterable: [:title, :course_id, :parent_id],
     sortable: [:title, :order, :inserted_at],
-    default_limit: 50,
+    default_limit: 10,
     default_order: %{
       order_by: [:order, :inserted_at],
       order_directions: [:asc, :desc]

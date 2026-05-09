@@ -93,17 +93,12 @@ defmodule AthenaWeb.AdminLive.Roles do
           {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_event("search", %{"search" => search}, socket) do
-    params =
-      %{
-        "search" => search,
-        "page" => 1,
-        "page_size" => socket.assigns.meta.page_size,
-        "order_by" => socket.assigns.meta.flop.order_by,
-        "order_directions" => socket.assigns.meta.flop.order_directions
-      }
-      |> Enum.reject(fn {_, v} -> v in [nil, "", []] end)
-      |> Map.new()
+    params = build_query_params(socket.assigns, %{"search" => search, "page" => 1})
+    {:noreply, push_patch(socket, to: ~p"/admin/roles?#{params}")}
+  end
 
+  def handle_event("update_page_size", %{"page_size" => size}, socket) do
+    params = build_query_params(socket.assigns, %{"page_size" => size, "page" => 1})
     {:noreply, push_patch(socket, to: ~p"/admin/roles?#{params}")}
   end
 
@@ -131,7 +126,7 @@ defmodule AthenaWeb.AdminLive.Roles do
          |> put_flash(:info, gettext("Role deleted successfully"))
          |> stream_delete(:roles, role)
          |> assign(role_to_delete: nil)
-         |> push_patch(to: ~p"/admin/roles")}
+         |> push_patch(to: ~p"/admin/roles?#{build_query_params(socket.assigns, %{})}")}
 
       {:error, :role_in_use} ->
         {:noreply,
@@ -166,7 +161,7 @@ defmodule AthenaWeb.AdminLive.Roles do
         </div>
         <.button
           :if={Identity.can?(@current_user, "roles.create")}
-          patch={~p"/admin/roles/new"}
+          patch={~p"/admin/roles/new?#{build_query_params(assigns, %{})}"}
           class="btn btn-primary"
         >
           <.icon name="hero-plus" class="size-5" />
@@ -193,11 +188,13 @@ defmodule AthenaWeb.AdminLive.Roles do
         </.form>
       </div>
 
-      <.table id="roles" rows={@streams.roles}>
+      <% path_fn = fn overrides -> ~p"/admin/roles?#{build_query_params(assigns, overrides)}" end %>
+
+      <.table id="roles" rows={@streams.roles} meta={@meta} path_fn={path_fn}>
         <:col :let={{_id, role}} label="ID">
           <span class="font-mono text-xs opacity-50">{String.slice(role.id, 0..7)}</span>
         </:col>
-        <:col :let={{_id, role}} label={gettext("Name")}>
+        <:col :let={{_id, role}} label={gettext("Name")} sort="name">
           <span class="font-bold">{role.name}</span>
         </:col>
         <:col :let={{_id, role}} label={gettext("Access Level")}>
@@ -213,14 +210,14 @@ defmodule AthenaWeb.AdminLive.Roles do
             </span>
           </div>
         </:col>
-        <:col :let={{_id, role}} label={gettext("Created At")}>
+        <:col :let={{_id, role}} label={gettext("Created At")} sort="inserted_at">
           <span class="text-sm opacity-60">{Calendar.strftime(role.inserted_at, "%d.%m.%Y")}</span>
         </:col>
         <:action :let={{_id, role}}>
           <div class="flex justify-end gap-2">
             <.button
               :if={Identity.can?(@current_user, "roles.update")}
-              patch={~p"/admin/roles/#{role.id}/edit"}
+              patch={~p"/admin/roles/#{role.id}/edit?#{build_query_params(assigns, %{})}"}
               class="btn btn-ghost btn-xs btn-square"
             >
               <.icon name="hero-pencil-square" class="size-4" />
@@ -239,32 +236,14 @@ defmodule AthenaWeb.AdminLive.Roles do
       </.table>
 
       <div class="flex justify-end">
-        <.pagination
-          meta={@meta}
-          path_fn={
-            fn page ->
-              params =
-                %{
-                  "search" => @search,
-                  "page" => page,
-                  "page_size" => @meta.page_size,
-                  "order_by" => @meta.flop.order_by,
-                  "order_directions" => @meta.flop.order_directions
-                }
-                |> Enum.reject(fn {_, v} -> v in [nil, "", []] end)
-                |> Map.new()
-
-              ~p"/admin/roles?#{params}"
-            end
-          }
-        />
+        <.pagination meta={@meta} path_fn={path_fn} />
       </div>
 
       <.slide_over
         id="role-slideover"
         show={@live_action in [:new, :edit]}
         title={@page_title}
-        on_close={JS.patch(~p"/admin/roles")}
+        on_close={JS.patch(~p"/admin/roles?#{build_query_params(assigns, %{})}")}
       >
         <.live_component
           :if={@role}
@@ -273,7 +252,7 @@ defmodule AthenaWeb.AdminLive.Roles do
           action={@live_action}
           role={@role}
           current_user={@current_user}
-          patch={~p"/admin/roles"}
+          patch={~p"/admin/roles?#{build_query_params(assigns, %{})}"}
         />
       </.slide_over>
 
@@ -291,5 +270,31 @@ defmodule AthenaWeb.AdminLive.Roles do
       />
     </div>
     """
+  end
+
+  @doc false
+  defp build_query_params(assigns, overrides) do
+    meta = assigns.meta
+
+    order_by =
+      meta.flop.order_by
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+
+    order_directions =
+      meta.flop.order_directions
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+
+    %{
+      "search" => assigns.search,
+      "page" => meta.current_page,
+      "page_size" => meta.page_size,
+      "order_by" => order_by,
+      "order_directions" => order_directions
+    }
+    |> Map.merge(overrides)
+    |> Enum.reject(fn {_, v} -> is_nil(v) or v == "" or v == [] end)
+    |> Map.new()
   end
 end
