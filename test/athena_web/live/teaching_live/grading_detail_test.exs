@@ -222,7 +222,9 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
         |> render_click()
 
       assert html =~ "Delete Submission"
-      assert html =~ "Are you sure? This will delete the submission and lock the next lesson"
+
+      assert html =~
+               "Are you sure? This will delete the submission and may lock the next lesson part for the student."
     end
 
     test "deletes individual submission, broadcasts to user, and redirects", %{

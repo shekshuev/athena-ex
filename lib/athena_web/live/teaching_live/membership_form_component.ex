@@ -74,6 +74,10 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
         {:noreply,
          socket
          |> put_flash(:info, gettext("Student successfully added to the cohort."))
+         |> assign(:selected_account, nil)
+         |> assign(:search_query, "")
+         |> assign(:search_results, [])
+         |> assign(:error_msg, nil)
          |> push_patch(to: patch)}
 
       {:error, changeset} ->
