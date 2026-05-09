@@ -4,6 +4,7 @@ defmodule Athena.Learning.ProgressTest do
   alias Athena.Learning.Progress
   alias Athena.Learning.BlockProgress
   alias Athena.Content.CompletionRule
+  alias Athena.Repo
   import Athena.Factory
 
   setup do
@@ -35,6 +36,43 @@ defmodule Athena.Learning.ProgressTest do
       assert progress.block_id == block.id
       assert progress.cohort_id == team.id
       assert {:ok, %BlockProgress{}} = Progress.mark_completed(user.id, block.id, team.id)
+    end
+  end
+
+  describe "revoke_completed/4" do
+    test "removes individual block progress without affecting team progress", %{
+      user: user,
+      team: team
+    } do
+      section = insert(:section)
+      block = insert(:block, section: section)
+
+      Progress.mark_completed(user.id, block.id)
+      Progress.mark_completed(user.id, block.id, team.id)
+
+      assert block.id in Progress.completed_block_ids(user.id, section.id)
+      assert block.id in Progress.completed_block_ids(user.id, section.id, team.id)
+
+      assert {1, nil} = Progress.revoke_completed(Repo, user.id, block.id)
+
+      refute block.id in Progress.completed_block_ids(user.id, section.id)
+      assert block.id in Progress.completed_block_ids(user.id, section.id, team.id)
+    end
+
+    test "removes team block progress without affecting individual progress", %{
+      user: user,
+      team: team
+    } do
+      section = insert(:section)
+      block = insert(:block, section: section)
+
+      Progress.mark_completed(user.id, block.id)
+      Progress.mark_completed(user.id, block.id, team.id)
+
+      assert {1, nil} = Progress.revoke_completed(Repo, user.id, block.id, team.id)
+
+      refute block.id in Progress.completed_block_ids(user.id, section.id, team.id)
+      assert block.id in Progress.completed_block_ids(user.id, section.id)
     end
   end
 

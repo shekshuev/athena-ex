@@ -204,4 +204,70 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
       end
     end
   end
+
+  describe "Deleting Submissions (Rollback)" do
+    test "renders the Delete & Rollback button", %{conn: conn} do
+      student = insert(:account)
+      block = insert(:block, type: :quiz_question, content: %{"question_type" => "open"})
+      sub = insert(:submission, account_id: student.id, block_id: block.id)
+
+      {:ok, _lv, html} = live(conn, ~p"/teaching/grading/#{sub.id}")
+
+      assert html =~ "Delete &amp; Rollback"
+      assert html =~ "delete_submission"
+      assert html =~ "Are you sure? This will delete the submission and lock the next lesson"
+    end
+
+    test "deletes individual submission, broadcasts to user, and redirects", %{
+      conn: conn,
+      admin: admin
+    } do
+      student = insert(:account)
+      block = insert(:block, type: :quiz_question, content: %{"question_type" => "open"})
+
+      sub = insert(:submission, account_id: student.id, block_id: block.id, cohort_id: nil)
+
+      Phoenix.PubSub.subscribe(Athena.PubSub, "user_progress:#{student.id}")
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{sub.id}")
+
+      lv
+      |> element("button[phx-click='delete_submission']")
+      |> render_click()
+
+      assert_redirect(lv, "/teaching/grading")
+
+      assert_receive :user_progress_updated
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Athena.Learning.Submissions.get_submission!(admin, sub.id)
+      end
+    end
+
+    test "deletes team submission, broadcasts to team, and redirects", %{
+      conn: conn,
+      admin: admin
+    } do
+      student = insert(:account)
+      team = insert(:cohort, type: :team)
+      block = insert(:block, type: :quiz_question, content: %{"question_type" => "open"})
+
+      sub = insert(:submission, account_id: student.id, block_id: block.id, cohort_id: team.id)
+
+      Phoenix.PubSub.subscribe(Athena.PubSub, "team_progress:#{team.id}")
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{sub.id}")
+
+      lv
+      |> element("button[phx-click='delete_submission']")
+      |> render_click()
+
+      assert_redirect(lv, "/teaching/grading")
+      assert_receive :team_progress_updated
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Athena.Learning.Submissions.get_submission!(admin, sub.id)
+      end
+    end
+  end
 end

@@ -263,6 +263,35 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       assert_redirect(lv, "/learn/courses/#{course.id}")
     end
+
+    test "relocks content dynamically when a submission is deleted and progress is rolled back",
+         %{
+           conn: conn,
+           course: course,
+           user: user
+         } do
+      s1 = insert(:section, course: course)
+
+      gate_block =
+        insert(:block, section: s1, order: 10, completion_rule: %CompletionRule{type: :button})
+
+      insert(:block, section: s1, order: 20, content: %{"text" => "You passed the gate!"})
+
+      Athena.Learning.mark_completed(user.id, gate_block.id)
+
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+      assert html =~ "You passed the gate!"
+      refute html =~ "Continue"
+
+      Athena.Learning.Progress.revoke_completed(Athena.Repo, user.id, gate_block.id)
+
+      send(lv.pid, :user_progress_updated)
+
+      html_after = render(lv)
+
+      refute html_after =~ "You passed the gate!"
+      assert html_after =~ "Continue"
+    end
   end
 
   describe "Quiz Submissions" do
