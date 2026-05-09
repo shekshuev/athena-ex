@@ -218,7 +218,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         <div class="flex justify-between items-center">
           <h2 class="text-xl font-display font-bold">{gettext("Assigned Courses")}</h2>
           <.button
-            :if={Learning.Cohorts.can_manage_cohort_processes?(@current_user, @cohort)}
+            :if={Learning.can_manage_cohort_processes?(@current_user, @cohort)}
             patch={
               ~p"/teaching/cohorts/#{@cohort.id}/enroll_course?#{build_query_params(assigns, %{})}"
             }
@@ -253,7 +253,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           <:action :let={{_id, enrollment}}>
             <div class="flex items-center gap-2 justify-end">
               <.link
-                :if={Learning.Cohorts.can_view_cohort_processes?(@current_user, @cohort)}
+                :if={Learning.can_view_cohort_processes?(@current_user, @cohort)}
                 navigate={~p"/teaching/cohorts/#{@cohort.id}/access/#{enrollment.course.id}"}
                 class="btn btn-ghost btn-xs text-primary hover:bg-primary/10"
                 title={gettext("Access Settings")}
@@ -263,7 +263,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
               </.link>
 
               <button
-                :if={Learning.Cohorts.can_manage_cohort_processes?(@current_user, @cohort)}
+                :if={Learning.can_manage_cohort_processes?(@current_user, @cohort)}
                 type="button"
                 phx-click="delete_enrollment_click"
                 phx-value-id={enrollment.id}
@@ -281,7 +281,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         <div class="flex justify-between items-center">
           <h2 class="text-xl font-display font-bold">{gettext("Students")}</h2>
           <.button
-            :if={Learning.Cohorts.can_manage_cohort_processes?(@current_user, @cohort)}
+            :if={Learning.can_manage_cohort_processes?(@current_user, @cohort)}
             patch={
               ~p"/teaching/cohorts/#{@cohort.id}/add_student?#{build_query_params(assigns, %{})}"
             }
@@ -308,7 +308,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           <:action :let={{_id, membership}}>
             <div class="flex justify-end">
               <.button
-                :if={Learning.Cohorts.can_manage_cohort_processes?(@current_user, @cohort)}
+                :if={Learning.can_manage_cohort_processes?(@current_user, @cohort)}
                 type="button"
                 phx-click="delete_click"
                 phx-value-id={membership.id}
