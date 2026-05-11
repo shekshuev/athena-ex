@@ -5,10 +5,13 @@ import Config
 # The MIX_TEST_PARTITION environment variable can be used
 # to provide built-in test partitioning in CI environment.
 # Run `mix help test` for more information.
+
+external_host = System.get_env("DEV_EXTERNAL_HOST", "localhost")
+
 config :athena, Athena.Repo,
   username: "postgres",
   password: "postgres",
-  hostname: "localhost",
+  hostname: external_host,
   database: "athena_test#{System.get_env("MIX_TEST_PARTITION")}",
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2,
@@ -47,7 +50,7 @@ config :ex_aws,
   secret_access_key: "minioadmin",
   s3: [
     scheme: "http://",
-    host: "localhost",
+    host: external_host,
     port: 9000
   ]
 
