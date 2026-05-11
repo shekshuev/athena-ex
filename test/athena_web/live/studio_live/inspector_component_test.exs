@@ -126,7 +126,13 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       block = %{
         base_block
         | type: :code,
-          content: %{"language" => "elixir", "execution_mode" => "run"}
+          content: %{
+            "language" => "python3",
+            "time_limit" => 1.0,
+            "memory_limit" => 65536,
+            "initial_code" => "",
+            "solution_code" => ""
+          }
       }
 
       html =
@@ -139,7 +145,8 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "code Block"
       assert html =~ "Execution Settings"
       assert html =~ "Programming Language"
-      assert html =~ "Execution Mode"
+      assert html =~ "Time Limit"
+      assert html =~ "Memory"
 
       assert html =~ "Require Submission"
       assert html =~ "Pass Auto-Grade"

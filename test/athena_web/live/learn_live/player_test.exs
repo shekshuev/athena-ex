@@ -61,7 +61,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         section: s1,
         type: :code,
         order: 50,
-        content: %{"language" => "elixir", "code" => "IO.puts(:hello_world)"}
+        content: %{"language" => "python", "initial_code" => "print(1)"}
       )
 
       {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
@@ -72,8 +72,8 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       assert html =~ ~s(src="http://s3.com/vid.mp4")
       assert html =~ ~s(poster="http://s3.com/poster.jpg")
       assert html =~ "doc.pdf"
-      assert html =~ "IO.puts(:hello_world)"
-      assert html =~ "elixir"
+      assert html =~ "print(1)"
+      assert html =~ "python"
     end
 
     test "renders quiz_question blocks correctly (all types)", %{conn: conn, course: course} do
@@ -781,6 +781,138 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       Phoenix.PubSub.broadcast(Athena.PubSub, "team_progress:#{team.id}", :team_progress_updated)
 
       assert render(lv) =~ "Team Unlockable!"
+    end
+  end
+
+  describe "Code Submissions & Real-time Results" do
+    test "submits code and reacts to async result via PubSub", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :code, content: %{"language" => "python3"})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      lv
+      |> form("#code-form-#{block.id}")
+      |> render_submit(%{
+        "block_id" => block.id,
+        "answer" => %{"code" => "print(1)"}
+      })
+
+      assert render(lv) =~ "Checking..."
+
+      submission =
+        insert(:submission,
+          account_id: user.id,
+          block_id: block.id,
+          status: :accepted,
+          score: 100,
+          feedback:
+            Jason.encode!([
+              %{"status" => "accepted", "time" => 0.1, "is_hidden" => false}
+            ])
+        )
+
+      send(lv.pid, {:submission_updated, submission})
+
+      html = render(lv)
+      assert html =~ "ACCEPTED"
+      assert html =~ "Accepted"
+      refute html =~ "Checking..."
+    end
+
+    test "respects hidden test cases and masks their details", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :code)
+
+      feedback = [
+        %{
+          "status" => "wrong_answer",
+          "input" => "SECRET_INPUT",
+          "expected" => "SECRET_OUT",
+          "stdout" => "ERR",
+          "is_hidden" => true,
+          "time" => 0.1
+        },
+        %{
+          "status" => "wrong_answer",
+          "input" => "PUBLIC_IN",
+          "expected" => "PUBLIC_OUT",
+          "stdout" => "WRONG",
+          "is_hidden" => false,
+          "time" => 0.1
+        }
+      ]
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :wrong_answer,
+        feedback: Jason.encode!(feedback)
+      )
+
+      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ "Hidden Test"
+      refute html =~ "SECRET_INPUT"
+      refute html =~ "SECRET_OUT"
+
+      assert html =~ "PUBLIC_IN"
+      assert html =~ "PUBLIC_OUT"
+      assert html =~ "GOT:"
+    end
+
+    test "code gate: unlocks next block only after successful execution", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      gate_block =
+        insert(:block,
+          section: s1,
+          type: :code,
+          order: 10,
+          completion_rule: %CompletionRule{type: :pass_auto_grade, min_score: 100}
+        )
+
+      insert(:block, section: s1, order: 20, content: %{"text" => "Waterfall Content"})
+
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      refute html =~ "Waterfall Content"
+
+      bad_sub =
+        insert(:submission,
+          account_id: user.id,
+          block_id: gate_block.id,
+          status: :wrong_answer,
+          score: 0
+        )
+
+      send(lv.pid, {:submission_updated, bad_sub})
+
+      refute render(lv) =~ "Waterfall Content"
+
+      good_sub =
+        insert(:submission,
+          account_id: user.id,
+          block_id: gate_block.id,
+          status: :accepted,
+          score: 100
+        )
+
+      send(lv.pid, {:submission_updated, good_sub})
+
+      assert render(lv) =~ "Waterfall Content"
     end
   end
 end

@@ -8,6 +8,16 @@ defmodule Athena.Content.CodeChallenge do
 
   alias Athena.Content.TestCase
 
+  @derive {Jason.Encoder,
+           only: [
+             :language,
+             :time_limit,
+             :memory_limit,
+             :initial_code,
+             :solution_code,
+             :test_cases
+           ]}
+
   @type t :: %__MODULE__{
           language: String.t(),
           time_limit: float(),

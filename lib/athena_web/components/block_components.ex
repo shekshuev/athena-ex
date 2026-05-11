@@ -32,7 +32,12 @@ defmodule AthenaWeb.BlockComponents do
         <% :attachment -> %>
           <.render_attachment block={@block} mode={@mode} />
         <% :code -> %>
-          <.render_code block={@block} mode={@mode} />
+          <.render_code
+            block={@block}
+            mode={@mode}
+            answers={@answers}
+            submission={@submission}
+          />
         <% :quiz_question -> %>
           <.render_quiz_question
             block={@block}
@@ -162,22 +167,90 @@ defmodule AthenaWeb.BlockComponents do
   end
 
   defp render_code(assigns) do
+    code =
+      if assigns.mode == :edit do
+        assigns.block.content["initial_code"] || ""
+      else
+        extract_code_answer(assigns) || assigns.block.content["initial_code"] || ""
+      end
+
+    lang = assigns.block.content["language"] || "python3"
+
+    assigns =
+      assigns
+      |> assign(:code, code)
+      |> assign(:cm_lang, map_cm_lang(lang))
+      |> assign(:readonly, assigns.mode not in [:edit, :play])
+
     ~H"""
-    <div class="overflow-hidden rounded-sm border border-base-300 bg-base-300/20">
-      <div class="bg-base-300 px-4 py-2 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <div class="size-3 rounded-full bg-error"></div>
-          <div class="size-3 rounded-full bg-warning"></div>
-          <div class="size-3 rounded-full bg-success"></div>
+    <label class="label flex justify-between">
+      <span class="label-text font-bold text-xs uppercase text-base-content/70">
+        {@block.content["language"] || "python3"}
+      </span>
+      <span :if={@mode == :edit} class="label-text font-bold text-xs uppercase text-base-content/70">
+        {gettext("Initial Code (Template)")}
+      </span>
+    </label>
+    <div class="overflow-hidden rounded-sm border border-base-300 shadow-inner bg-[#282c34]">
+      <div class="relative w-full">
+        <form :if={@mode == :edit} phx-change="update_block_meta" phx-target={assigns[:target]}>
+          <input type="hidden" name="block[id]" value={@block.id} />
+          <input
+            type="hidden"
+            id={"code-input-#{@block.id}"}
+            name="block[content][initial_code]"
+            value={@code}
+          />
+        </form>
+
+        <%= if @mode == :play do %>
+          <input
+            type="hidden"
+            id={"code-input-#{@block.id}"}
+            name="answer[code]"
+            value={@code}
+          />
+        <% end %>
+
+        <div
+          id={"code-editor-#{@mode}-#{@block.id}"}
+          phx-hook="CodeEditor"
+          data-language={@cm_lang}
+          data-readonly={to_string(@readonly)}
+          data-code={@code}
+          data-input-id={"code-input-#{@block.id}"}
+          phx-update="ignore"
+          class="w-full text-sm font-mono outline-none"
+        >
         </div>
-        <span class="text-xs font-mono text-base-content/50 uppercase">
-          {@block.content["language"] || "code"}
-        </span>
       </div>
-      <pre class="p-4 text-sm font-mono overflow-x-auto text-base-content/80">{@block.content["code"]}</pre>
     </div>
     """
   end
+
+  defp map_cm_lang("cpp"), do: "cpp"
+  defp map_cm_lang("sql"), do: "sql"
+  defp map_cm_lang(_), do: "python"
+
+  defp extract_code_answer(assigns) do
+    answer = Map.get(assigns[:answers] || %{}, assigns.block.id)
+
+    do_extract_code(answer) || do_extract_code(assigns[:submission])
+  end
+
+  defp do_extract_code(%Athena.Learning.Submission{content: content}),
+    do: do_extract_code(content)
+
+  defp do_extract_code(%Athena.Learning.SubmissionContent{} = content) do
+    Map.get(content, :code) || Map.get(content, :text_answer)
+  end
+
+  defp do_extract_code(%{} = map) when not is_struct(map) do
+    map["code"] || map[:code] || map["text_answer"] || map[:text_answer]
+  end
+
+  defp do_extract_code(val) when is_binary(val), do: val
+  defp do_extract_code(_), do: nil
 
   defp render_quiz_question(assigns) do
     q_type = assigns.block.content["question_type"] || "open"
@@ -548,6 +621,155 @@ defmodule AthenaWeb.BlockComponents do
             <.icon name="hero-cloud-arrow-up" class="size-4 mr-1" />
             {if @block.content["url"], do: gettext("Replace Media"), else: gettext("Upload Media")}
           </button>
+        </div>
+      <% end %>
+
+      <%= if @block.type == :code do %>
+        <div class="mt-2 p-6 bg-base-100 ring-1 ring-base-300 rounded-sm shadow-lg border-t-4 border-t-primary animate-in slide-in-from-top-2 duration-200">
+          <div class="flex items-center justify-between mb-6 border-b border-base-200 pb-2">
+            <div class="text-xs font-bold uppercase tracking-widest text-primary">
+              {gettext("Sandbox Configuration")}
+            </div>
+            <button
+              type="button"
+              phx-click="run_instructor_test"
+              phx-value-id={@block.id}
+              phx-target={assigns[:target]}
+              class="btn btn-sm btn-primary shadow-sm"
+            >
+              <.icon name="hero-play" class="size-4 mr-1" /> {gettext("Test Solution")}
+            </button>
+          </div>
+
+          <form
+            phx-change="update_block_meta"
+            phx-target={assigns[:target]}
+            id={"code-config-form-#{@block.id}"}
+          >
+            <input type="hidden" name="block[id]" value={@block.id} />
+
+            <div class="mb-6 relative">
+              <label class="label">
+                <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                  {gettext("Reference Solution (Hidden from students)")}
+                </span>
+              </label>
+
+              <input
+                type="hidden"
+                id={"solution-input-#{@block.id}"}
+                name="block[content][solution_code]"
+                value={@block.content["solution_code"]}
+              />
+
+              <div class="overflow-hidden rounded-sm border border-base-300 shadow-inner bg-[#282c34]">
+                <div
+                  id={"solution-editor-#{@block.id}"}
+                  phx-hook="CodeEditor"
+                  data-language={map_cm_lang(@block.content["language"])}
+                  data-readonly="false"
+                  data-code={@block.content["solution_code"]}
+                  data-input-id={"solution-input-#{@block.id}"}
+                  phx-update="ignore"
+                  class="w-full text-sm font-mono outline-none"
+                >
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between mb-2 mt-8">
+              <label class="label">
+                <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                  {gettext("Test Cases")}
+                </span>
+              </label>
+              <button
+                type="button"
+                phx-click="add_test_case"
+                phx-value-id={@block.id}
+                phx-target={assigns[:target]}
+                class="btn btn-xs btn-ghost text-primary"
+              >
+                <.icon name="hero-plus" class="size-3 mr-1" /> {gettext("Add Case")}
+              </button>
+            </div>
+
+            <div class="space-y-3">
+              <% raw_cases = @block.content["test_cases"] || []
+
+              test_cases =
+                if is_map(raw_cases) do
+                  raw_cases
+                  |> Enum.sort_by(fn {k, _} -> String.to_integer(k) end)
+                  |> Enum.map(fn {_, v} -> v end)
+                else
+                  raw_cases
+                end %>
+
+              <%= for {tc, index} <- Enum.with_index(test_cases) do %>
+                <div class="flex gap-2 items-start bg-base-200/50 p-2 rounded border border-base-300 relative group">
+                  <input
+                    type="hidden"
+                    name={"block[content][test_cases][#{index}][id]"}
+                    value={tc["id"]}
+                  />
+
+                  <div class="flex-1">
+                    <textarea
+                      name={"block[content][test_cases][#{index}][input]"}
+                      class="textarea textarea-bordered w-full font-mono text-xs h-16 resize-none"
+                      placeholder="stdin"
+                    >{tc["input"]}</textarea>
+                  </div>
+                  <div class="flex-1">
+                    <textarea
+                      name={"block[content][test_cases][#{index}][expected_output]"}
+                      class="textarea textarea-bordered w-full font-mono text-xs h-16 resize-none"
+                      placeholder="stdout"
+                    >{tc["expected_output"]}</textarea>
+                  </div>
+                  <div class="w-20">
+                    <input
+                      type="number"
+                      name={"block[content][test_cases][#{index}][weight]"}
+                      value={tc["weight"]}
+                      class="input input-bordered input-sm w-full text-center"
+                      placeholder="Weight %"
+                    />
+
+                    <div class="mt-2 text-center" title="Hide test data from students">
+                      <label class="cursor-pointer flex items-center justify-center gap-1 text-[10px]">
+                        <input
+                          type="hidden"
+                          name={"block[content][test_cases][#{index}][is_hidden]"}
+                          value="false"
+                        />
+                        <input
+                          type="checkbox"
+                          name={"block[content][test_cases][#{index}][is_hidden]"}
+                          value="true"
+                          checked={tc["is_hidden"] in [true, "true"]}
+                          class="checkbox checkbox-xs"
+                        />
+                        <.icon name="hero-eye-slash" class="size-3 text-base-content/60" />
+                      </label>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    phx-click="remove_test_case"
+                    phx-value-block_id={@block.id}
+                    phx-value-tc_id={tc["id"]}
+                    phx-target={assigns[:target]}
+                    class="btn btn-ghost btn-xs text-error absolute -right-2 -top-2 bg-base-100 shadow-sm rounded-full border border-base-200"
+                  >
+                    <.icon name="hero-x-mark" class="size-3" />
+                  </button>
+                </div>
+              <% end %>
+            </div>
+          </form>
         </div>
       <% end %>
     </div>

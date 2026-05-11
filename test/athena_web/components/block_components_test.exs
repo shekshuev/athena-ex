@@ -234,8 +234,8 @@ defmodule AthenaWeb.BlockComponentsTest do
         insert(:block,
           type: :code,
           content: %{
-            "language" => "elixir",
-            "code" => "defmodule Athena do\n  IO.puts(\"Hello\")\nend"
+            "language" => "python",
+            "initial_code" => "def main():\n  print(\"Hello\")\nend"
           }
         )
 
@@ -250,8 +250,8 @@ defmodule AthenaWeb.BlockComponentsTest do
         <.content_block block={@block} mode={:play} />
         """)
 
-      assert html =~ "elixir"
-      assert html =~ "defmodule Athena do"
+      assert html =~ "python"
+      assert html =~ "def main()"
       refute html =~ "ring-1"
       assert html =~ "mb-10"
     end
@@ -264,7 +264,7 @@ defmodule AthenaWeb.BlockComponentsTest do
         <.content_block block={@block} mode={:edit} active={true} />
         """)
 
-      assert html =~ "elixir"
+      assert html =~ "python"
       assert html =~ "ring-primary"
       assert html =~ "ring-2"
     end
@@ -277,7 +277,7 @@ defmodule AthenaWeb.BlockComponentsTest do
         <.content_block block={@block} mode={:review} />
         """)
 
-      assert html =~ "defmodule Athena do"
+      assert html =~ "def main():"
       refute html =~ "ring-primary"
       assert html =~ "mb-10"
     end

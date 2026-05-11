@@ -91,17 +91,31 @@ defmodule Athena.Learning.Submissions do
   end
 
   @doc """
-  Creates a new submission, forcing the account_id to the current user to prevent spoofing.
+  Creates a new submission, forces the account_id, and enqueues execution if it's a code block.
+  Uses Ecto.Multi to guarantee that the job is queued ONLY if the submission is saved.
   """
-  @spec create_submission(map(), map()) :: {:ok, Submission.t()} | {:error, Ecto.Changeset.t()}
+  @spec create_submission(map(), map()) :: {:ok, Submission.t()} | {:error, any()}
   def create_submission(user, attrs) do
-    safe_attrs =
-      attrs
-      |> Map.put("account_id", user.id)
+    safe_attrs = Map.put(attrs, "account_id", user.id)
 
-    %Submission{}
-    |> Submission.changeset(safe_attrs)
-    |> Repo.insert()
+    Ecto.Multi.new()
+    |> Ecto.Multi.insert(:submission, Submission.changeset(%Submission{}, safe_attrs))
+    |> Ecto.Multi.run(:enqueue_job, fn repo, %{submission: submission} ->
+      block = repo.get(Block, submission.block_id)
+
+      if block && block.type == :code do
+        %{submission_id: submission.id}
+        |> Athena.Execution.Worker.new()
+        |> Oban.insert()
+      else
+        {:ok, :skipped_execution}
+      end
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{submission: submission}} -> {:ok, submission}
+      {:error, _failed_op, changeset, _changes} -> {:error, changeset}
+    end
   end
 
   @doc """

@@ -167,6 +167,33 @@ defmodule AthenaWeb.StudioLive.Builder do
   end
 
   @impl true
+  def handle_info({:instructor_test_result, result}, socket) do
+    socket =
+      if result.status == :accepted do
+        put_flash(
+          socket,
+          :info,
+          gettext("Success! Reference solution passed all tests (Score: %{score})",
+            score: result.score
+          )
+        )
+      else
+        put_flash(
+          socket,
+          :error,
+          gettext("Test Failed! Status: %{status}. Check your code or test cases.",
+            status: result.status
+          )
+        )
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_info({ref, _result}, socket) when is_reference(ref), do: {:noreply, socket}
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket), do: {:noreply, socket}
+
+  @impl true
   def handle_params(_params, _url, socket) do
     {:noreply, socket}
   end
@@ -461,7 +488,14 @@ defmodule AthenaWeb.StudioLive.Builder do
     if can_edit?(socket) do
       attrs = %{
         "type" => "code",
-        "content" => %{"code" => "IO.puts(:hello)"},
+        "content" => %{
+          "language" => "python3",
+          "time_limit" => 1.0,
+          "memory_limit" => 65536,
+          "initial_code" => "",
+          "solution_code" => "",
+          "test_cases" => []
+        },
         "section_id" => socket.assigns.active_section_id,
         "after_id" => clean_after_id(params["after_id"])
       }
@@ -1078,6 +1112,110 @@ defmodule AthenaWeb.StudioLive.Builder do
     else
       {:noreply, socket}
     end
+  end
+
+  @impl true
+  def handle_event("add_test_case", %{"id" => block_id}, socket) do
+    if can_edit?(socket) do
+      block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+      content_map = normalize_content(block.content || %{})
+      test_cases = Map.get(content_map, "test_cases", [])
+
+      new_tc = %{
+        "id" => Ecto.UUID.generate(),
+        "input" => "",
+        "expected_output" => "",
+        "weight" => if(test_cases == [], do: 100, else: 0),
+        "is_hidden" => false
+      }
+
+      new_content = Map.put(content_map, "test_cases", test_cases ++ [new_tc])
+
+      case Content.update_block(socket.assigns.current_user, block, %{"content" => new_content}) do
+        {:ok, updated_block} ->
+          Phoenix.PubSub.broadcast(
+            Athena.PubSub,
+            "builder:#{socket.assigns.course.id}",
+            :refresh_tree
+          )
+
+          {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+
+        _ ->
+          {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("remove_test_case", %{"block_id" => block_id, "tc_id" => tc_id}, socket) do
+    if can_edit?(socket) do
+      block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+      content_map = normalize_content(block.content || %{})
+      test_cases = Map.get(content_map, "test_cases", [])
+
+      new_tc_list = Enum.reject(test_cases, fn tc -> Map.get(tc, "id") == tc_id end)
+      new_content = Map.put(content_map, "test_cases", new_tc_list)
+
+      case Content.update_block(socket.assigns.current_user, block, %{"content" => new_content}) do
+        {:ok, updated_block} ->
+          Phoenix.PubSub.broadcast(
+            Athena.PubSub,
+            "builder:#{socket.assigns.course.id}",
+            :refresh_tree
+          )
+
+          {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+
+        _ ->
+          {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("run_instructor_test", %{"id" => block_id}, socket) do
+    with true <- can_edit?(socket),
+         block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == block_id)) do
+      code = block.content["solution_code"] || ""
+      test_cases = block.content["test_cases"] || []
+
+      dispatch_test_run(socket, block, code, test_cases)
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  defp dispatch_test_run(socket, _block, "", _test_cases) do
+    {:noreply, put_flash(socket, :error, gettext("Please write a Reference Solution first!"))}
+  end
+
+  defp dispatch_test_run(socket, _block, _code, []) do
+    {:noreply, put_flash(socket, :warning, gettext("Add at least one Test Case before testing."))}
+  end
+
+  defp dispatch_test_run(socket, block, code, _test_cases) do
+    challenge =
+      Ecto.Changeset.apply_changes(
+        Athena.Content.CodeChallenge.changeset(
+          %Athena.Content.CodeChallenge{},
+          block.content
+        )
+      )
+
+    parent_pid = self()
+
+    Task.async(fn ->
+      box_id = System.unique_integer([:positive, :monotonic]) |> rem(1000)
+      result = Athena.Execution.Verifier.verify(code, challenge, box_id)
+      send(parent_pid, {:instructor_test_result, result})
+    end)
+
+    {:noreply, put_flash(socket, :info, gettext("Testing reference solution... Please wait."))}
   end
 
   @impl true

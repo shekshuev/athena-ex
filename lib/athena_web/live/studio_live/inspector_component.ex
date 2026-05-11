@@ -312,17 +312,36 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
               <.input
                 type="select"
                 name="block[content][language]"
-                value={@block.content["language"] || "python"}
+                value={@block.content["language"] || "python3"}
                 label={gettext("Programming Language")}
-                options={[{"Python", "python"}, {"SQL", "sql"}, {"Elixir", "elixir"}]}
+                options={[{"Python 3", "python3"}, {"C++ (GCC)", "cpp"}]}
               />
-              <.input
-                type="select"
-                name="block[content][execution_mode]"
-                value={@block.content["execution_mode"] || "run"}
-                label={gettext("Execution Mode")}
-                options={[{"Run Code", "run"}, {"Unit Tests", "test"}]}
-              />
+              <div class="flex gap-4">
+                <div class="flex-1">
+                  <.input
+                    type="number"
+                    name="block[content][time_limit]"
+                    value={@block.content["time_limit"] || 1.0}
+                    label={gettext("Time Limit (s)")}
+                    step="0.1"
+                    min="0.1"
+                    max="15.0"
+                    phx-debounce="500"
+                  />
+                </div>
+                <div class="flex-1">
+                  <.input
+                    type="number"
+                    name="block[content][memory_limit]"
+                    value={@block.content["memory_limit"] || 65536}
+                    label={gettext("Memory (KB)")}
+                    step="1024"
+                    min="16384"
+                    max="524288"
+                    phx-debounce="500"
+                  />
+                </div>
+              </div>
             </div>
             <div class="divider my-4"></div>
           <% end %>

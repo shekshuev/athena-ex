@@ -5,12 +5,14 @@ defmodule Athena.Content.TestCase do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @derive {Jason.Encoder, only: [:input, :expected_output, :is_hidden, :weight]}
+
   @primary_key false
   embedded_schema do
     field :input, :string, default: ""
     field :expected_output, :string, default: ""
-    field :is_hidden, :boolean, default: false 
-    field :weight, :integer, default: 10 
+    field :is_hidden, :boolean, default: false
+    field :weight, :integer, default: 10
   end
 
   def changeset(schema, attrs) do

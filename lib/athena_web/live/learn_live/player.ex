@@ -100,6 +100,12 @@ defmodule AthenaWeb.LearnLive.Player do
     submissions =
       Learning.get_latest_submissions(ctx.user.id, Enum.map(blocks, & &1.id), ctx.team_id)
 
+    if connected?(socket) do
+      for block <- blocks, block.type == :code do
+        Phoenix.PubSub.subscribe(Athena.PubSub, "submission:#{ctx.user.id}:#{block.id}")
+      end
+    end
+
     socket =
       socket
       |> assign(:page_title, section.title)
@@ -191,6 +197,35 @@ defmodule AthenaWeb.LearnLive.Player do
 
       block ->
         handle_quiz_submission(socket, block, params["answer"])
+    end
+  end
+
+  @impl true
+  def handle_event("submit_code", params, socket) do
+    block_id = params["block_id"]
+    code = get_in(params, ["answer", "code"]) || ""
+
+    user = socket.assigns.current_user
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
+    if block do
+      sub_attrs = %{
+        "block_id" => block.id,
+        "cohort_id" => socket.assigns.team_id,
+        "status" => :pending,
+        "content" => %{"type" => :code, "code" => code}
+      }
+
+      case Learning.create_submission(user, sub_attrs) do
+        {:ok, submission} ->
+          submissions = Map.put(socket.assigns.submissions, block_id, submission)
+          {:noreply, assign(socket, submissions: submissions)}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, gettext("Failed to submit code."))}
+      end
+    else
+      {:noreply, socket}
     end
   end
 
@@ -424,6 +459,23 @@ defmodule AthenaWeb.LearnLive.Player do
     end
   end
 
+  @impl true
+  def handle_info({:submission_updated, submission}, socket) do
+    submissions = Map.put(socket.assigns.submissions, submission.block_id, submission)
+    block = Enum.find(socket.assigns.blocks, &(&1.id == submission.block_id))
+
+    socket = assign(socket, submissions: submissions)
+
+    socket =
+      if gate_passed?(block.completion_rule, submission) do
+        unlock_next_content(socket, block.id)
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
   defp gate?(block), do: block.completion_rule && block.completion_rule.type != :none
 
   defp all_blocks_completed?(visible_blocks, completed_ids) do
@@ -482,8 +534,6 @@ defmodule AthenaWeb.LearnLive.Player do
       <div class="space-y-10">
         <%= for block <- @visible_blocks do %>
           <% submission = Map.get(@submissions || %{}, block.id) %>
-          <% is_submitted = submission && submission.status in [:graded, :needs_review, :rejected] %>
-          <% _mode = if is_submitted, do: :review, else: :play %>
 
           <div
             id={"block-wrapper-#{block.id}"}
@@ -556,7 +606,7 @@ defmodule AthenaWeb.LearnLive.Player do
                       <div
                         :if={submission.status == :graded}
                         class={[
-                          "font-bold flex items-center gap-1 text-lg",
+                          "font-bold flex items-center gap-1",
                           if(is_passed, do: "text-success", else: "text-error")
                         ]}
                       >
@@ -572,14 +622,14 @@ defmodule AthenaWeb.LearnLive.Player do
 
                       <div
                         :if={submission.status == :rejected}
-                        class="font-bold flex items-center gap-1 text-error text-lg"
+                        class="font-bold flex items-center gap-1 text-error"
                       >
                         <.icon name="hero-x-circle-solid" class="size-6" /> {gettext("Rejected")}
                       </div>
 
                       <div
                         :if={submission.status == :needs_review}
-                        class="font-bold flex items-center gap-1 text-info text-lg"
+                        class="font-bold flex items-center gap-1 text-info"
                       >
                         <.icon name="hero-clock" class="size-6" /> {gettext("Pending Review")}
                       </div>
@@ -617,6 +667,116 @@ defmodule AthenaWeb.LearnLive.Player do
                           </button>
                         <% true -> %>
                       <% end %>
+                    </div>
+                  <% end %>
+                </div>
+              <% :code -> %>
+                <div class="space-y-4">
+                  <form phx-submit="submit_code" id={"code-form-#{block.id}"}>
+                    <input type="hidden" name="block_id" value={block.id} />
+
+                    <.content_block
+                      block={block}
+                      mode={
+                        if submission && to_string(submission.status) in ["pending", "processing"],
+                          do: :review,
+                          else: :play
+                      }
+                      submission={submission}
+                      answers={@submissions}
+                    />
+
+                    <div class="mt-4 flex items-center justify-between">
+                      <div class="flex items-center gap-3">
+                        <button
+                          type="submit"
+                          class="btn btn-primary"
+                          disabled={
+                            submission && to_string(submission.status) in ["pending", "processing"]
+                          }
+                        >
+                          <%= if submission && to_string(submission.status) in ["pending", "processing"] do %>
+                            <span class="loading loading-spinner loading-xs"></span>
+                            {gettext("Checking...")}
+                          <% else %>
+                            {gettext("Run & Submit")}
+                          <% end %>
+                        </button>
+
+                        <%= if submission && to_string(submission.status) not in ["pending", "processing"] do %>
+                          <div class={[
+                            "font-black uppercase tracking-tighter text-lg animate-in zoom-in duration-300",
+                            if(to_string(submission.status) == "accepted",
+                              do: "text-success",
+                              else: "text-error"
+                            )
+                          ]}>
+                            {submission.status}
+                          </div>
+                        <% end %>
+                      </div>
+
+                      <div
+                        :if={submission && to_string(submission.status) == "accepted"}
+                        class="text-success flex items-center gap-1 font-bold"
+                      >
+                        <.icon name="hero-check-badge" class="size-6" />
+                        {gettext("Accepted")}
+                      </div>
+                    </div>
+                  </form>
+
+                  <%= if submission && submission.feedback && to_string(submission.status) not in ["pending", "processing"] do %>
+                    <div class="bg-base-300/20 rounded-sm border border-base-300 overflow-hidden">
+                      <table class="table table-xs w-full font-mono">
+                        <thead class="bg-base-300/50 uppercase tracking-widest text-[10px]">
+                          <tr>
+                            <th class="w-12">#</th>
+                            <th class="w-32">{gettext("Result")}</th>
+                            <th>{gettext("Details")}</th>
+                            <th class="text-right">{gettext("Time")}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <%= for {res, idx} <- Enum.with_index(Jason.decode!(submission.feedback)) do %>
+                            <tr class="border-base-300">
+                              <td class="opacity-40">{idx + 1}</td>
+                              <td class={
+                                if res["status"] == "accepted",
+                                  do: "text-success font-bold",
+                                  else: "text-error font-bold"
+                              }>
+                                {String.upcase(res["status"])}
+                              </td>
+                              <td>
+                                <%= if res["is_hidden"] do %>
+                                  <span class="opacity-30 italic flex items-center gap-1 text-[10px]">
+                                    <.icon name="hero-eye-slash" class="size-3" />
+                                    {gettext("Hidden Test")}
+                                  </span>
+                                <% else %>
+                                  <%= if res["status"] != "accepted" do %>
+                                    <div class="text-[10px] space-y-1">
+                                      <div class="flex gap-1">
+                                        <span class="font-bold opacity-40">IN:</span><span>{res["input"]}</span>
+                                      </div>
+                                      <div class="flex gap-1">
+                                        <span class="font-bold text-error/60">GOT:</span><span class="text-error">{res["stdout"]}</span>
+                                      </div>
+                                      <div class="flex gap-1 border-t border-base-300 pt-1">
+                                        <span class="font-bold text-success/60">EXP:</span><span class="text-success">{res["expected"]}</span>
+                                      </div>
+                                    </div>
+                                  <% else %>
+                                    <span class="opacity-20 text-[10px]">---</span>
+                                  <% end %>
+                                <% end %>
+                              </td>
+                              <td class="text-right opacity-50 text-[10px]">{res["time"]}s</td>
+                            </tr>
+                          <% end %>
+                        </tbody>
+                      </table>
                     </div>
                   <% end %>
                 </div>
