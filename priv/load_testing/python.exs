@@ -8,8 +8,8 @@ alias Phoenix.PubSub
 
 Logger.configure(level: :warning)
 
-concurrency = 100
-total_requests = 1000
+concurrency = 500
+total_requests = 5000
 
 {os_fam, os_name} = :os.type()
 cores = System.schedulers_online()
@@ -116,6 +116,7 @@ durations = Enum.map(results, & &1.duration) |> Enum.sort()
 successes = Enum.count(results, &(&1.status == :accepted))
 avg = if length(durations) > 0, do: Enum.sum(durations) / length(durations), else: 0
 tps = (total_requests / (total_ms / 1000)) |> Float.round(2)
+total_sec = Float.round(total_ms / 1000, 2)
 
 throughput_str = "#{tps} req/sec"
 avg_lat_str = "#{Float.round(avg, 2)} ms"
@@ -125,6 +126,7 @@ p95_val =
 
 p95_lat_str = "#{p95_val} ms"
 accepted_str = "#{successes} / #{total_requests}"
+total_time_str = "#{total_sec} sec"
 
 IO.puts("""
 \n
@@ -136,6 +138,7 @@ IO.puts("""
 +-----------------------------------------------------------+
 | ATHENA ENGINE FINAL REPORT                                |
 +-----------------------------------------------------------+
+| Total Time:    #{String.pad_trailing(total_time_str, 42)} |
 | Throughput:    #{String.pad_trailing(throughput_str, 42)} |
 | Avg Latency:   #{String.pad_trailing(avg_lat_str, 42)} |
 | P95 Latency:   #{String.pad_trailing(p95_lat_str, 42)} |
