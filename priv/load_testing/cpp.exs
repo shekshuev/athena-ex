@@ -18,7 +18,8 @@ suffix = :erlang.unique_integer([:positive])
 role = Repo.all(Role) |> List.first()
 admin = Repo.all(Account) |> List.first()
 
-course = Repo.insert!(%Course{title: "STRESS-#{suffix}", status: :published, owner_id: admin.id})
+course =
+  Repo.insert!(%Course{title: "STRESS-CPP-#{suffix}", status: :published, owner_id: admin.id})
 
 section =
   Repo.insert!(%Section{
@@ -33,7 +34,7 @@ block =
     section_id: section.id,
     type: :code,
     content: %{
-      "language" => "python3",
+      "language" => "cpp",
       "test_cases" => [
         %{"id" => "tc1", "input" => "1", "expected_output" => "1\n", "weight" => 100}
       ]
@@ -44,12 +45,24 @@ IO.write("Creating students accounts... ")
 
 students =
   Enum.map(1..total_requests, fn i ->
-    Repo.insert!(%Account{login: "st-#{suffix}-#{i}", password_hash: "noop", role_id: role.id})
+    Repo.insert!(%Account{
+      login: "st-cpp-#{suffix}-#{i}",
+      password_hash: "noop",
+      role_id: role.id
+    })
   end)
 
 IO.puts("Done.")
 
 IO.puts("\nTest started: #{total_requests} requests...")
+
+payload = """
+#include <iostream>
+int main() {
+    std::cout << 1 << std::endl;
+    return 0;
+}
+"""
 
 simulate = fn student ->
   t0 = System.monotonic_time()
@@ -59,7 +72,7 @@ simulate = fn student ->
   sub_attrs = %{
     "block_id" => block.id,
     "status" => :pending,
-    "content" => %{"type" => :code, "code" => "print(1)"}
+    "content" => %{"type" => :code, "code" => payload}
   }
 
   case Learning.create_submission(student, sub_attrs) do
@@ -91,13 +104,14 @@ simulate = fn student ->
           _other_msg ->
             recursive_wait.(recursive_wait)
         after
-          60_000 -> %{status: :timeout, duration: 60_000}
+          60_000 ->
+            %{status: :timeout, duration: 60_000}
         end
       end
 
       fn_wait.(fn_wait)
 
-    {:error, _} ->
+    {:error, _changeset} ->
       %{status: :error, duration: 0}
   end
 end
@@ -136,7 +150,7 @@ IO.puts("""
 | OS:            #{String.pad_trailing("#{os_fam} #{os_name}", 42)} |
 | Cores:         #{String.pad_trailing("#{cores}", 42)} |
 +-----------------------------------------------------------+
-| ATHENA ENGINE FINAL REPORT                                |
+| ATHENA ENGINE FINAL REPORT (C++)                          |
 +-----------------------------------------------------------+
 | Total Time:    #{String.pad_trailing(total_time_str, 42)} |
 | Throughput:    #{String.pad_trailing(throughput_str, 42)} |
