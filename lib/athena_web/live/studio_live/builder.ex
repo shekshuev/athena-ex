@@ -1210,7 +1210,7 @@ defmodule AthenaWeb.StudioLive.Builder do
     parent_pid = self()
 
     Task.async(fn ->
-      box_id = System.unique_integer([:positive, :monotonic]) |> rem(1000)
+      box_id = System.unique_integer([:positive, :monotonic]) |> rem(10000)
       result = Athena.Execution.Verifier.verify(code, challenge, box_id)
       send(parent_pid, {:instructor_test_result, result})
     end)

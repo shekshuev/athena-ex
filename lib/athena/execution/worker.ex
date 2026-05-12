@@ -23,7 +23,7 @@ defmodule Athena.Execution.Worker do
 
     code = submission.content["code"] || ""
 
-    box_id = System.unique_integer([:positive, :monotonic]) |> rem(1000)
+    box_id = System.unique_integer([:positive, :monotonic]) |> rem(10000)
 
     result = Verifier.verify(code, challenge, box_id)
 
