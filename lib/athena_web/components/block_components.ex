@@ -183,45 +183,61 @@ defmodule AthenaWeb.BlockComponents do
       |> assign(:readonly, assigns.mode not in [:edit, :play])
 
     ~H"""
-    <label class="label flex justify-between">
-      <span class="label-text font-bold text-xs uppercase text-base-content/70">
-        {@block.content["language"] || "python3"}
-      </span>
-      <span :if={@mode == :edit} class="label-text font-bold text-xs uppercase text-base-content/70">
-        {gettext("Initial Code (Template)")}
-      </span>
-    </label>
-    <div class="overflow-hidden rounded-sm border border-base-300 shadow-inner bg-[#282c34]">
-      <div class="relative w-full">
-        <form :if={@mode == :edit} phx-change="update_block_meta" phx-target={assigns[:target]}>
-          <input type="hidden" name="block[id]" value={@block.id} />
-          <input
-            type="hidden"
-            id={"code-input-#{@block.id}"}
-            name="block[content][initial_code]"
-            value={@code}
-          />
-        </form>
-
-        <%= if @mode == :play do %>
-          <input
-            type="hidden"
-            id={"code-input-#{@block.id}"}
-            name="answer[code]"
-            value={@code}
-          />
-        <% end %>
-
+    <div class="relative w-full">
+      <div class="editor-wrapper group relative outline-none mb-6" tabindex="-1">
+        <.tiptap_toolbar mode={@mode} />
         <div
-          id={"code-editor-#{@mode}-#{@block.id}"}
-          phx-hook="CodeEditor"
-          data-language={@cm_lang}
-          data-readonly={to_string(@readonly)}
-          data-code={@code}
-          data-input-id={"code-input-#{@block.id}"}
+          id={"tiptap-code-#{@mode}-#{@block.id}"}
+          phx-hook="TiptapEditor"
+          data-id={@block.id}
+          data-readonly={to_string(@mode != :edit)}
           phx-update="ignore"
-          class="w-full text-sm font-mono outline-none"
+          data-content={Jason.encode!(@block.content["body"] || %{})}
+          class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed"
         >
+        </div>
+      </div>
+
+      <label class="label flex justify-between">
+        <span class="label-text font-bold text-xs uppercase text-base-content/70">
+          {@block.content["language"] || "python3"}
+        </span>
+        <span :if={@mode == :edit} class="label-text font-bold text-xs uppercase text-base-content/70">
+          {gettext("Initial Code (Template)")}
+        </span>
+      </label>
+      <div class="overflow-hidden rounded-sm border border-base-300 shadow-inner bg-[#282c34]">
+        <div class="relative w-full">
+          <form id={"code-form-#{@block.id}"} :if={@mode == :edit} phx-change="update_block_meta" phx-target={assigns[:target]}>
+            <input type="hidden" name="block[id]" value={@block.id} />
+            <input
+              type="hidden"
+              id={"code-input-#{@block.id}"}
+              name="block[content][initial_code]"
+              value={@code}
+            />
+          </form>
+
+          <%= if @mode == :play do %>
+            <input
+              type="hidden"
+              id={"code-input-#{@block.id}"}
+              name="answer[code]"
+              value={@code}
+            />
+          <% end %>
+
+          <div
+            id={"code-editor-#{@mode}-#{@block.id}"}
+            phx-hook="CodeEditor"
+            data-language={@cm_lang}
+            data-readonly={to_string(@readonly)}
+            data-code={@code}
+            data-input-id={"code-input-#{@block.id}"}
+            phx-update="ignore"
+            class="w-full text-sm font-mono outline-none"
+          >
+          </div>
         </div>
       </div>
     </div>

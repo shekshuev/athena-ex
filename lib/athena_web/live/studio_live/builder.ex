@@ -494,6 +494,7 @@ defmodule AthenaWeb.StudioLive.Builder do
           "memory_limit" => 65536,
           "initial_code" => "",
           "solution_code" => "",
+          "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
           "test_cases" => []
         },
         "section_id" => socket.assigns.active_section_id,
@@ -697,6 +698,7 @@ defmodule AthenaWeb.StudioLive.Builder do
         case block.type do
           :attachment -> Map.put(content_map, "description", text_content)
           :quiz_question -> Map.put(content_map, "body", text_content)
+          :code -> Map.put(content_map, "body", text_content)
           _ -> text_content
         end
 

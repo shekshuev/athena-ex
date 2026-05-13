@@ -15,7 +15,8 @@ defmodule Athena.Content.CodeChallenge do
              :memory_limit,
              :initial_code,
              :solution_code,
-             :test_cases
+             :test_cases,
+             :body
            ]}
 
   @type t :: %__MODULE__{
@@ -24,6 +25,7 @@ defmodule Athena.Content.CodeChallenge do
           memory_limit: integer(),
           initial_code: String.t(),
           solution_code: String.t(),
+          body: map(),
           test_cases: [TestCase.t()] | Ecto.Schema.embeds_many()
         }
 
@@ -35,6 +37,7 @@ defmodule Athena.Content.CodeChallenge do
 
     field :initial_code, :string, default: ""
     field :solution_code, :string, default: ""
+    field :body, :map, default: %{}
 
     embeds_many :test_cases, TestCase, on_replace: :delete
   end
@@ -46,7 +49,7 @@ defmodule Athena.Content.CodeChallenge do
   @spec changeset(t() | Ecto.Changeset.t(), map()) :: Ecto.Changeset.t()
   def changeset(schema, attrs) do
     schema
-    |> cast(attrs, [:language, :time_limit, :memory_limit, :initial_code, :solution_code])
+    |> cast(attrs, [:language, :time_limit, :memory_limit, :initial_code, :solution_code, :body])
     |> cast_embed(:test_cases, with: &TestCase.changeset/2)
     |> validate_required([:language, :time_limit, :memory_limit])
     |> validate_number(:time_limit, greater_than: 0.0, less_than_or_equal_to: 15.0)
