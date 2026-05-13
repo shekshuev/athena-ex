@@ -242,7 +242,6 @@
         <label class="btn btn-ghost btn-sm btn-circle swap swap-rotate opacity-70 hover:opacity-100">
           <input
             type="checkbox"
-            class="theme-controller"
             value="dark"
             onchange="window.dispatchEvent(new CustomEvent('phx:set-theme', {detail: {theme: this.checked ? 'dark' : 'light'}}))"
           />
