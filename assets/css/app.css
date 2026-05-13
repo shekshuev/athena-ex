@@ -524,3 +524,12 @@
     display: flex;
   }
 }
+
+.cm-editor .cm-cursor {
+  border-left-width: 2px !important;
+  border-left-color: #528bff !important;
+}
+
+.cm-editor .cm-dropCursor {
+  border-left-width: 2px !important;
+}
