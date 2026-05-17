@@ -11,19 +11,9 @@ defmodule AthenaWeb.StudioLive.Builder do
   alias Athena.Content
   alias Athena.Content.Block
   alias Athena.Identity
+  alias Athena.Media.Config, as: MediaConfig
 
   on_mount {AthenaWeb.Hooks.Permission, "courses.read"}
-
-  @allowed_image_types ~w(.jpg .jpeg .png .gif .webp)
-  @allowed_video_types ~w(.mp4 .mov .webm)
-  @allowed_attachment_types ~w(.pdf .doc .docx .xls .xlsx .ppt .pptx .txt .zip .rar .7z)
-
-  @image_types_str @allowed_image_types
-                   |> Enum.map_join(", ", fn "." <> ext -> String.upcase(ext) end)
-  @video_types_str @allowed_video_types
-                   |> Enum.map_join(", ", fn "." <> ext -> String.upcase(ext) end)
-  @attachment_types_str @allowed_attachment_types
-                        |> Enum.map_join(", ", fn "." <> ext -> String.upcase(ext) end)
 
   @doc """
   Initializes the LiveView, loading the course, its section tree, and blocks
@@ -1231,9 +1221,9 @@ defmodule AthenaWeb.StudioLive.Builder do
       |> assign(
         active_section: active_section,
         active_block: active_block,
-        image_types_str: @image_types_str,
-        video_types_str: @video_types_str,
-        attachment_types_str: @attachment_types_str,
+        image_types_str: MediaConfig.format_extensions("image"),
+        video_types_str: MediaConfig.format_extensions("video"),
+        attachment_types_str: MediaConfig.format_extensions("attachment"),
         block_mode: if(assigns.role in [:owner, :writer], do: :edit, else: :preview)
       )
 
