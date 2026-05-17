@@ -303,14 +303,15 @@ defmodule AthenaWeb.BlockComponents do
           class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed mb-6"
         >
         </div>
+
+        <%= if @mode == :review && @block.content["general_explanation"] not in [nil, ""] do %>
+          <div class="text-sm mb-2 text-base-content/70">
+            {@block.content["general_explanation"]}
+          </div>
+        <% end %>
       </div>
 
       <div class="pl-4">
-        <%= if @mode == :review do %>
-          <div class="text-[10px] font-black uppercase tracking-widest text-base-content/40 mb-3">
-            {gettext("Student's Answer:")}
-          </div>
-        <% end %>
         <.render_quiz_inputs
           block={@block}
           mode={@mode}
@@ -427,21 +428,8 @@ defmodule AthenaWeb.BlockComponents do
             <span class="text-base font-medium">{opt["text"]}</span>
             <%= if @mode == :review do %>
               <div
-                :if={is_correct}
-                class="text-xs font-bold text-success uppercase tracking-widest mt-1"
-              >
-                {gettext("Correct Option")}
-              </div>
-              <div
-                :if={is_selected && not is_correct}
-                class="text-xs font-bold text-error uppercase tracking-widest mt-1"
-              >
-                {gettext("Student's Choice")}
-              </div>
-
-              <div
                 :if={opt["explanation"] not in [nil, ""]}
-                class="text-sm mt-2 text-base-content/70 italic border-l-2 border-base-300 pl-3"
+                class="text-sm mt-2 text-base-content/70"
               >
                 {opt["explanation"]}
               </div>

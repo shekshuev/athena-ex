@@ -355,7 +355,6 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> form("#quiz-form-#{block.id}", %{"answer" => opt1_id})
         |> render_submit()
 
-      assert html =~ "Always pick the right one."
       assert html =~ "Retry Answer"
       refute html =~ "Submit Answer"
     end
@@ -806,10 +805,11 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
           block_id: block.id,
           status: :accepted,
           score: 100,
-          feedback:
-            Jason.encode!([
+          content: %{
+            "execution_results" => [
               %{"status" => "accepted", "time" => 0.1, "is_hidden" => false}
-            ])
+            ]
+          }
         )
 
       send(lv.pid, {:submission_updated, submission})
@@ -850,7 +850,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         account_id: user.id,
         block_id: block.id,
         status: :wrong_answer,
-        feedback: Jason.encode!(feedback)
+        content: %{"execution_results" => feedback}
       )
 
       {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
@@ -915,8 +915,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
     test "code block displays attempts and changes button to 'Locked' when attempts are exhausted",
          %{
            conn: conn,
-           course: course,
-           user: user
+           course: course
          } do
       s1 = insert(:section, course: course)
 
@@ -939,7 +938,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       {:ok, failed_sub} =
         Athena.Learning.system_update_submission(submission, %{
-          "status" => "wrong_answer",
+          "status" => :wrong_answer,
           "score" => 0
         })
 
@@ -954,8 +953,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
     test "code block remains active if student has attempts left", %{
       conn: conn,
-      course: course,
-      user: user
+      course: course
     } do
       s1 = insert(:section, course: course)
 
@@ -990,8 +988,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
     test "code block locks instantly upon accepted solution regardless of remaining attempts", %{
       conn: conn,
-      course: course,
-      user: user
+      course: course
     } do
       s1 = insert(:section, course: course)
 

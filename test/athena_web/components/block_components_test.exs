@@ -341,9 +341,6 @@ defmodule AthenaWeb.BlockComponentsTest do
         """)
 
       assert html =~ " disabled"
-      assert html =~ "Student&#39;s Answer:"
-      assert html =~ "Student&#39;s Choice"
-      assert html =~ "Correct Option"
       assert html =~ "bg-error/10"
       assert html =~ "ring-success"
     end
@@ -360,7 +357,6 @@ defmodule AthenaWeb.BlockComponentsTest do
       assert html =~ " disabled"
       assert html =~ "pointer-events-none"
       assert html =~ "cursor-default"
-      refute html =~ "Student&#39;s Answer:"
     end
   end
 
@@ -411,7 +407,6 @@ defmodule AthenaWeb.BlockComponentsTest do
         )
 
       assert html =~ " disabled"
-      assert html =~ "Correct Option"
       assert html =~ "bg-success/10"
       assert html =~ "ring-success"
     end
@@ -467,7 +462,6 @@ defmodule AthenaWeb.BlockComponentsTest do
         """)
 
       assert html =~ "Student submitted text"
-      assert html =~ "Student&#39;s Answer:"
       assert html =~ " disabled"
     end
   end

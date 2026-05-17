@@ -27,17 +27,31 @@ defmodule Athena.Execution.Worker do
 
     result = Verifier.verify(code, challenge, box_id)
 
+    clean_test_results =
+      Enum.map(result.test_results, fn tr ->
+        Map.new(tr, fn {k, v} ->
+          {to_string(k), if(is_atom(v) and not is_boolean(v), do: to_string(v), else: v)}
+        end)
+      end)
+
+    new_content = Map.put(submission.content || %{}, "execution_results", clean_test_results)
+
     attrs = %{
       status: result.status,
       score: result.score,
-      feedback: Jason.encode!(result.test_results)
+      content: new_content
     }
 
-    {:ok, updated_sub} = Submissions.system_update_submission(submission, attrs)
+    case Submissions.system_update_submission(submission, attrs) do
+      {:ok, updated_sub} ->
+        broadcast_update(updated_sub)
+        :ok
 
-    broadcast_update(updated_sub)
-
-    :ok
+      {:error, changeset} ->
+        require Logger
+        Logger.error("Failed to update submission: #{inspect(changeset.errors)}")
+        :error
+    end
   end
 
   defp broadcast_update(submission) do
