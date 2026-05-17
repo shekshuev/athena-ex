@@ -23,13 +23,18 @@ defmodule Athena do
       Content.LibraryBlock,
       Content.Section,
       Content.Course,
+      Content.CodeChallenge,
       Media,
+      Media.Config,
       Learning,
       Learning.Cohort,
       Learning.CohortMembership,
       Learning.Enrollment,
       Learning.BlockProgress,
       Learning.Instructor,
-      Learning.CohortInstructor
+      Learning.CohortInstructor,
+      Learning.Submission,
+      Learning.SubmissionContent,
+      Execution
     ]
 end

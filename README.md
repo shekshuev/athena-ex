@@ -1,16 +1,17 @@
 # Athena LMS
 
 Athena is a modular Learning Management System (LMS) built as a unified Elixir monolith.
-The project is under active development and not production-ready yet.
 
-> **Work in progress.** Most of the system is not production-ready yet.
+> **Status: Active Development / Beta.** Athena is currently being used in real-world educational scenarios. While core features are stable and production-tested, internal APIs and schemas may evolve as we continue to scale.
 
 ## Features
 
-- **Role-Based Access Control (RBAC):** Students, Instructors, Admins.
-- **Code Runner:** Secure execution of student code via [isolate](https://github.com/ioi/isolate).
-- **Course Studio:** Instructor tools for creating and managing content.
-- **Modern UI:** Clean, reactive, and responsive interface built with Phoenix LiveView, Tailwind CSS, and daisyUI.
+- **Dynamic Course Builder:** Drag-and-drop syllabus editor with reusable library blocks, templates, and rich-text WYSIWYG editing powered by Tiptap.
+- **Advanced Progression Engine:** Granular control over student paths with completion rules (button clicks, auto-grading gates) and time-based access locks (Waterline progression).
+- **Interactive Quizzes & Exams:** Support for single/multiple choice, exact match (CTF flags), and open essays with instructor review. Includes built-in anti-cheat mechanisms (e.g., window blur detection).
+- **Code Execution Sandbox:** Secure, multi-language code runner backed by [isolate](https://github.com/ioi/isolate) with fine-grained time and memory limits, and hidden test cases.
+- **Team & Cohort Management:** Shared team progress, isolated cohort schedules, and strict Role-Based Access Control (RBAC) across Students, Instructors, and Admins.
+- **Direct S3 Media Uploads:** Native, presigned URL integration with MinIO/AWS S3 for fast, secure file handling and massive attachments.
 
 ## Tech Stack
 
@@ -18,8 +19,9 @@ The project is under active development and not production-ready yet.
 
 - **Language:** Elixir 1.18+
 - **Framework:** Phoenix 1.8+
-- **Frontend:** Phoenix LiveView (Server-side rendering with real-time updates)
+- **Frontend:** Phoenix LiveView (Server-side rendering with real-time PubSub updates)
 - **Database:** PostgreSQL + Ecto
+- **Background Jobs:** Oban
 - **Caching:** In-memory ETS via Cachex
 - **Auth:** Custom session-based authentication with Argon2 hashing
 - **UI Components:** Tailwind CSS, daisyUI, Heroicons
@@ -117,8 +119,12 @@ Triggered on PRs and pushes to `main` and `develop`.
 
 ## Code Runner Note
 
-> The code execution feature relies on [isolate](https://github.com/ioi/isolate), which utilizes Linux kernel features (cgroups, namespaces).
+> The code execution feature relies on [isolate](https://github.com/ioi/isolate), which utilizes Linux kernel features (cgroups, namespaces) to provide a truly secure sandbox, preventing malicious system calls and enforcing strict resource constraints.
 >
 > **On Linux:** Ensure `isolate` is installed and you have sudo rights (or configured sudoers).
 >
 > **On macOS/Windows:** You cannot run the code execution engine natively. Development involving code execution should be done inside a Linux VM or Docker container.
+
+## Contributing
+
+We welcome contributions! Please check out our open issues or submit a PR. For major architectural changes, please open an issue first to discuss.

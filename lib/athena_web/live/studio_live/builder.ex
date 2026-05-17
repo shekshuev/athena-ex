@@ -11,6 +11,7 @@ defmodule AthenaWeb.StudioLive.Builder do
   alias Athena.Content
   alias Athena.Content.Block
   alias Athena.Identity
+  alias Athena.Execution
   alias Athena.Media.Config, as: MediaConfig
 
   on_mount {AthenaWeb.Hooks.Permission, "courses.read"}
@@ -1204,7 +1205,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
     Task.async(fn ->
       box_id = System.unique_integer([:positive, :monotonic]) |> rem(10000)
-      result = Athena.Execution.Verifier.verify(code, challenge, box_id)
+      result = Execution.verify(code, challenge, box_id)
       send(parent_pid, {:instructor_test_result, result})
     end)
 
