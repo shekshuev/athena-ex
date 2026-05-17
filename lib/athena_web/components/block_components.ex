@@ -699,7 +699,7 @@ defmodule AthenaWeb.BlockComponents do
                   phx-hook="CodeEditor"
                   data-language={map_cm_lang(@block.content["language"])}
                   data-readonly="false"
-                  data-code={@block.content["solution_code"]}
+                  data-code={@block.content["solution_code"] || ""}
                   data-input-id={"solution-input-#{@block.id}"}
                   phx-update="ignore"
                   class="w-full text-sm font-mono outline-none"

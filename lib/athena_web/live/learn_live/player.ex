@@ -478,12 +478,7 @@ defmodule AthenaWeb.LearnLive.Player do
     submissions = Map.put(socket.assigns.submissions, submission.block_id, submission)
     block = Enum.find(socket.assigns.blocks, &(&1.id == submission.block_id))
 
-    current_attempts = Map.get(socket.assigns.attempts_map || %{}, submission.block_id, 0)
-
-    attempts_map =
-      Map.put(socket.assigns.attempts_map || %{}, submission.block_id, current_attempts + 1)
-
-    socket = assign(socket, submissions: submissions, attempts_map: attempts_map)
+    socket = assign(socket, submissions: submissions)
 
     socket =
       if gate_passed?(block.completion_rule, submission) do
@@ -555,7 +550,13 @@ defmodule AthenaWeb.LearnLive.Player do
           <% submission = Map.get(@submissions || %{}, block.id) %>
 
           <% attempts = Map.get(@attempts_map || %{}, block.id, 0) %>
-          <% max_attempts = block.content["max_attempts"] %>
+          <% raw_max = block.content["max_attempts"] %>
+          <% max_attempts =
+            case raw_max do
+              v when is_integer(v) -> v
+              v when is_binary(v) and v != "" -> String.to_integer(v)
+              _ -> nil
+            end %>
           <% attempts_exhausted = not is_nil(max_attempts) and attempts >= max_attempts %>
 
           <% sub_status_str = if submission, do: to_string(submission.status), else: "" %>
@@ -698,15 +699,6 @@ defmodule AthenaWeb.LearnLive.Player do
                               {gettext("Run & Submit")}
                           <% end %>
                         </button>
-
-                        <%= if submission && not is_pending do %>
-                          <div class={[
-                            "font-black uppercase tracking-tighter text-lg animate-in zoom-in duration-300",
-                            if(is_passed, do: "text-success", else: "text-error")
-                          ]}>
-                            {submission.status}
-                          </div>
-                        <% end %>
                       </div>
 
                       <div :if={max_attempts} class="text-right">

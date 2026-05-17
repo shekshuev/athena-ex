@@ -16,7 +16,8 @@ defmodule Athena.Content.CodeChallenge do
              :initial_code,
              :solution_code,
              :test_cases,
-             :body
+             :body,
+             :max_attempts
            ]}
 
   @type t :: %__MODULE__{

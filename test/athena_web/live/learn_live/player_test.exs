@@ -815,7 +815,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       send(lv.pid, {:submission_updated, submission})
 
       html = render(lv)
-      assert html =~ "accepted"
+      assert html =~ "ACCEPTED"
       refute html =~ "Checking..."
     end
 
@@ -908,6 +908,120 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       send(lv.pid, {:submission_updated, good_sub})
 
       assert render(lv) =~ "Waterfall Content"
+    end
+  end
+
+  describe "Max Attempts Constraints - Code Blocks" do
+    test "code block displays attempts and changes button to 'Locked' when attempts are exhausted",
+         %{
+           conn: conn,
+           course: course,
+           user: user
+         } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :code,
+          content: %{"language" => "python3", "max_attempts" => 1, "test_cases" => []}
+        )
+
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+      assert html =~ "Attempts: 0 / 1"
+      assert html =~ "Run &amp; Submit"
+
+      lv
+      |> form("#code-form-#{block.id}")
+      |> render_submit(%{"block_id" => block.id, "answer" => %{"code" => "print(1)"}})
+
+      submission = Athena.Repo.one!(Athena.Learning.Submission)
+
+      {:ok, failed_sub} =
+        Athena.Learning.system_update_submission(submission, %{
+          "status" => "wrong_answer",
+          "score" => 0
+        })
+
+      send(lv.pid, {:submission_updated, failed_sub})
+      html = render(lv)
+
+      assert html =~ "Attempts: 1 / 1"
+      assert html =~ "Locked"
+      assert html =~ "disabled"
+      refute html =~ "Run &amp; Submit"
+    end
+
+    test "code block remains active if student has attempts left", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :code,
+          content: %{"language" => "python3", "max_attempts" => 3, "test_cases" => []}
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      lv
+      |> form("#code-form-#{block.id}")
+      |> render_submit(%{"block_id" => block.id, "answer" => %{"code" => "print(1)"}})
+
+      submission = Athena.Repo.one!(Athena.Learning.Submission)
+
+      {:ok, failed_sub} =
+        Athena.Learning.system_update_submission(submission, %{
+          "status" => "wrong_answer",
+          "score" => 0
+        })
+
+      send(lv.pid, {:submission_updated, failed_sub})
+      html = render(lv)
+
+      assert html =~ "Attempts: 1 / 3"
+      assert html =~ "Run &amp; Submit"
+      refute html =~ "Locked"
+    end
+
+    test "code block locks instantly upon accepted solution regardless of remaining attempts", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :code,
+          content: %{"language" => "python3", "max_attempts" => 5, "test_cases" => []}
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      lv
+      |> form("#code-form-#{block.id}")
+      |> render_submit(%{"block_id" => block.id, "answer" => %{"code" => "print(1)"}})
+
+      submission = Athena.Repo.one!(Athena.Learning.Submission)
+
+      {:ok, success_sub} =
+        Athena.Learning.system_update_submission(submission, %{
+          "status" => "accepted",
+          "score" => 100
+        })
+
+      send(lv.pid, {:submission_updated, success_sub})
+      html = render(lv)
+
+      assert html =~ "Attempts: 1 / 5"
+      assert html =~ "Locked"
+      assert html =~ "disabled"
     end
   end
 end
