@@ -15,6 +15,13 @@ defmodule Athena.Content.TestCase do
     field :weight, :integer, default: 10
   end
 
+  @type t :: %__MODULE__{
+          input: String.t(),
+          expected_output: String.t(),
+          is_hidden: boolean(),
+          weight: integer() | nil
+        }
+
   def changeset(schema, attrs) do
     schema
     |> cast(attrs, [:input, :expected_output, :is_hidden, :weight])

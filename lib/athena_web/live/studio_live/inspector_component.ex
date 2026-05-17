@@ -190,6 +190,18 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                 {gettext("Question Settings")}
               </div>
 
+              <div class="mt-4">
+                <.input
+                  type="number"
+                  name="block[content][max_attempts]"
+                  value={@block.content["max_attempts"]}
+                  label={gettext("Max Attempts")}
+                  placeholder={gettext("Leave empty for unlimited")}
+                  min="1"
+                  phx-debounce="500"
+                />
+              </div>
+
               <.input
                 type="select"
                 name="block[content][question_type]"
@@ -341,6 +353,17 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                     phx-debounce="500"
                   />
                 </div>
+              </div>
+              <div class="mt-2">
+                <.input
+                  type="number"
+                  name="block[content][max_attempts]"
+                  value={@block.content["max_attempts"]}
+                  label={gettext("Max Attempts")}
+                  placeholder={gettext("Leave empty for unlimited")}
+                  min="1"
+                  phx-debounce="500"
+                />
               </div>
             </div>
             <div class="divider my-4"></div>

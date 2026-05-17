@@ -119,7 +119,7 @@ defmodule Athena.Learning.Submissions do
   end
 
   @doc """
-  Updates a submission manually (e.g. manual grading by an instructor). 
+  Updates a submission manually (e.g. manual grading by an instructor).
   Enforces ACL: only users with grading.update can do this.
   """
   @spec update_submission(map(), Submission.t(), map()) ::
@@ -283,5 +283,25 @@ defmodule Athena.Learning.Submissions do
     else
       {:error, :unauthorized}
     end
+  end
+
+  @doc """
+  Returns a map of %{block_id => attempts_count} for a given user/team and list of blocks.
+  """
+  def count_attempts(account_id, block_ids, cohort_id \\ nil) do
+    query =
+      if cohort_id do
+        from s in Athena.Learning.Submission,
+          where: s.cohort_id == ^cohort_id and s.block_id in ^block_ids
+      else
+        from s in Athena.Learning.Submission,
+          where: s.account_id == ^account_id and is_nil(s.cohort_id) and s.block_id in ^block_ids
+      end
+
+    query
+    |> group_by([s], s.block_id)
+    |> select([s], {s.block_id, count(s.id)})
+    |> Repo.all()
+    |> Enum.into(%{})
   end
 end

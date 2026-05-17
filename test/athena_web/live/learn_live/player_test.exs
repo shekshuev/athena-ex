@@ -314,7 +314,6 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
-      refute html =~ "Correct!"
       refute html =~ "Hidden in plain sight."
 
       html =
@@ -322,9 +321,8 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> form("#quiz-form-#{block.id}", %{"answer" => "flag{123}"})
         |> render_submit()
 
-      assert html =~ "Correct!"
       assert html =~ "Hidden in plain sight."
-      assert html =~ "Submitted"
+      assert html =~ "Locked"
       refute html =~ "Submit Answer"
     end
 
@@ -357,9 +355,8 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> form("#quiz-form-#{block.id}", %{"answer" => opt1_id})
         |> render_submit()
 
-      assert html =~ "Incorrect."
       assert html =~ "Always pick the right one."
-      assert html =~ "Submitted"
+      assert html =~ "Retry Answer"
       refute html =~ "Submit Answer"
     end
 
@@ -376,8 +373,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> form("#quiz-form-#{block.id}", %{"answer" => "This is my essay."})
         |> render_submit()
 
-      assert html =~ "Pending Review"
-      assert html =~ "Submitted"
+      assert html =~ "Locked"
       refute html =~ "Submit Answer"
     end
 
@@ -407,7 +403,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> form("#quiz-form-#{quiz_block.id}", %{"answer" => "42"})
         |> render_submit()
 
-      assert html =~ "Correct!"
+      assert html =~ "Locked"
       assert html =~ "Secret Content"
     end
 
@@ -437,7 +433,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> form("#quiz-form-#{quiz_block.id}", %{"answer" => "wrong"})
         |> render_submit()
 
-      assert html =~ "Incorrect."
+      assert html =~ "Retry Answer"
       assert html =~ "Secret Content"
     end
 
@@ -486,9 +482,9 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
-      assert html =~ "Rejected"
       assert html =~ "Instructor Feedback"
       assert html =~ "Copied from ChatGPT. Disqualified."
+      assert html =~ "Locked"
       refute html =~ "Submit Answer"
     end
   end
@@ -819,8 +815,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       send(lv.pid, {:submission_updated, submission})
 
       html = render(lv)
-      assert html =~ "ACCEPTED"
-      assert html =~ "Accepted"
+      assert html =~ "accepted"
       refute html =~ "Checking..."
     end
 

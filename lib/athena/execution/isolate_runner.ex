@@ -73,14 +73,15 @@ defmodule Athena.Execution.IsolateRunner do
   Stage 2: Runs the compiled binary with a specific input.
   Can be called multiple times for different test cases.
   """
-  @spec run_execution(String.t(), Context.t()) :: {:ok, map()} | {:error, atom()}
+  @spec run_execution(String.t() | nil, Context.t()) :: {:ok, map()} | {:error, atom()}
   def run_execution(input, %Context{} = ctx) do
-    write_stdin(input, ctx)
-
-    with {:ok, meta} <- execute(ctx) do
+    with :ok <- write_stdin(input, ctx),
+         {:ok, meta} <- execute(ctx) do
       stdout = read_box_file(ctx, "stdout.txt")
       stderr = read_box_file(ctx, "stderr.txt")
       {:ok, %{meta: meta, stdout: stdout, stderr: stderr}}
+    else
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -102,8 +103,11 @@ defmodule Athena.Execution.IsolateRunner do
 
   defp write_stdin(input, ctx) do
     stdin_path = Path.join(ctx.box_dir, "stdin.txt")
-    File.write!(stdin_path, input || "")
-    :ok
+
+    case File.write(stdin_path, input || "") do
+      :ok -> :ok
+      {:error, _} -> {:error, :write_failed}
+    end
   end
 
   @doc false
@@ -199,12 +203,16 @@ defmodule Athena.Execution.IsolateRunner do
         "--"
       ] ++ String.split(ctx.lang_config.run_cmd)
 
-    System.cmd(@isolate_bin, args)
+    {_output, exit_code} = System.cmd(@isolate_bin, args)
 
-    meta = parse_meta(meta_path)
-    File.rm(meta_path)
-
-    {:ok, meta}
+    if exit_code >= 2 do
+      File.rm(meta_path)
+      {:error, :system_failure}
+    else
+      meta = parse_meta(meta_path)
+      File.rm(meta_path)
+      {:ok, meta}
+    end
   end
 
   @doc false

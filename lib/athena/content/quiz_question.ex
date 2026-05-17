@@ -41,7 +41,7 @@ defmodule Athena.Content.QuizQuestion do
     field :body, :map
     field :correct_answer, :string
     field :case_sensitive, :boolean, default: false
-
+    field :max_attempts, :integer
     embeds_many :options, Option
 
     field :general_explanation, :string
@@ -53,14 +53,23 @@ defmodule Athena.Content.QuizQuestion do
           correct_answer: String.t() | nil,
           case_sensitive: boolean(),
           options: [Option.t()] | nil,
+          max_attempts: integer() | nil,
           general_explanation: String.t() | nil
         }
 
   def changeset(schema, attrs) do
     schema
-    |> cast(attrs, [:question_type, :body, :correct_answer, :case_sensitive, :general_explanation])
+    |> cast(attrs, [
+      :question_type,
+      :body,
+      :correct_answer,
+      :case_sensitive,
+      :general_explanation,
+      :max_attempts
+    ])
     |> cast_embed(:options, with: &Option.changeset/2)
     |> validate_required([:question_type, :body])
+    |> validate_number(:max_attempts, greater_than: 0)
     |> validate_type_logic()
   end
 

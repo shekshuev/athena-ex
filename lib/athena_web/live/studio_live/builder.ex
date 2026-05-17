@@ -514,7 +514,8 @@ defmodule AthenaWeb.StudioLive.Builder do
         "content" => %{
           "question_type" => "open",
           "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
-          "options" => []
+          "options" => [],
+          "max_attempts" => nil
         },
         "section_id" => socket.assigns.active_section_id,
         "after_id" => clean_after_id(params["after_id"])

@@ -23,10 +23,11 @@ defmodule Athena.Content.CodeChallenge do
           language: String.t(),
           time_limit: float(),
           memory_limit: integer(),
+          max_attempts: integer() | nil,
           initial_code: String.t(),
           solution_code: String.t(),
           body: map(),
-          test_cases: [TestCase.t()] | Ecto.Schema.embeds_many()
+          test_cases: [TestCase.t()]
         }
 
   @primary_key false
@@ -34,6 +35,7 @@ defmodule Athena.Content.CodeChallenge do
     field :language, :string, default: "python3"
     field :time_limit, :float, default: 1.0
     field :memory_limit, :integer, default: 65536
+    field :max_attempts, :integer
 
     field :initial_code, :string, default: ""
     field :solution_code, :string, default: ""
@@ -49,10 +51,19 @@ defmodule Athena.Content.CodeChallenge do
   @spec changeset(t() | Ecto.Changeset.t(), map()) :: Ecto.Changeset.t()
   def changeset(schema, attrs) do
     schema
-    |> cast(attrs, [:language, :time_limit, :memory_limit, :initial_code, :solution_code, :body])
+    |> cast(attrs, [
+      :language,
+      :time_limit,
+      :memory_limit,
+      :initial_code,
+      :solution_code,
+      :body,
+      :max_attempts
+    ])
     |> cast_embed(:test_cases, with: &TestCase.changeset/2)
     |> validate_required([:language, :time_limit, :memory_limit])
     |> validate_number(:time_limit, greater_than: 0.0, less_than_or_equal_to: 15.0)
     |> validate_number(:memory_limit, greater_than: 16384, less_than_or_equal_to: 524_288)
+    |> validate_number(:max_attempts, greater_than: 0)
   end
 end

@@ -10,14 +10,15 @@ defmodule AthenaWeb.BlockComponents do
   use AthenaWeb, :html
 
   @doc """
-  Main entry point for rendering any block.
-  Routes to specific renderers based on block type.
+    Main entry point for rendering any block.
+    Routes to specific renderers based on block type.
   """
   attr :block, :map, required: true
   attr :mode, :atom, required: true, values: [:edit, :play, :review, :preview]
   attr :answers, :map, default: %{}
   attr :submission, :map, default: nil
   attr :active, :boolean, default: false
+  attr :attempts_count, :integer, default: 0
 
   def content_block(assigns) do
     ~H"""
@@ -37,6 +38,7 @@ defmodule AthenaWeb.BlockComponents do
             mode={@mode}
             answers={@answers}
             submission={@submission}
+            attempts_count={@attempts_count}
           />
         <% :quiz_question -> %>
           <.render_quiz_question
@@ -44,6 +46,7 @@ defmodule AthenaWeb.BlockComponents do
             mode={@mode}
             answers={@answers}
             submission={@submission}
+            attempts_count={@attempts_count}
           />
         <% :quiz_exam -> %>
           <.render_quiz_exam block={@block} mode={@mode} submission={@submission} />
@@ -176,11 +179,13 @@ defmodule AthenaWeb.BlockComponents do
 
     lang = assigns.block.content["language"] || "python3"
 
+    readonly = assigns.mode not in [:edit, :play]
+
     assigns =
       assigns
       |> assign(:code, code)
       |> assign(:cm_lang, map_cm_lang(lang))
-      |> assign(:readonly, assigns.mode not in [:edit, :play])
+      |> assign(:readonly, readonly)
 
     ~H"""
     <div class="relative w-full">
@@ -206,9 +211,15 @@ defmodule AthenaWeb.BlockComponents do
           {gettext("Initial Code (Template)")}
         </span>
       </label>
+
       <div class="overflow-hidden rounded-sm border border-base-300 shadow-inner bg-[#282c34]">
         <div class="relative w-full">
-          <form id={"code-form-#{@block.id}"} :if={@mode == :edit} phx-change="update_block_meta" phx-target={assigns[:target]}>
+          <form
+            :if={@mode == :edit}
+            id={"code-form-#{@block.id}"}
+            phx-change="update_block_meta"
+            phx-target={assigns[:target]}
+          >
             <input type="hidden" name="block[id]" value={@block.id} />
             <input
               type="hidden"
@@ -317,7 +328,11 @@ defmodule AthenaWeb.BlockComponents do
     live_answer = Map.get(assigns.answers || %{}, assigns.block.id)
 
     if live_answer do
-      live_answer
+      if is_struct(live_answer, Athena.Learning.Submission) do
+        extract_from_submission(live_answer, q_type)
+      else
+        live_answer
+      end
     else
       extract_from_submission(assigns[:submission], q_type)
     end
