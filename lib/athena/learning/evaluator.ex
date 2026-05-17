@@ -43,7 +43,7 @@ defmodule Athena.Learning.Evaluator do
 
     {score, status} = calculate_score(question_data, submission.content)
 
-    %{status: status, score: score, feedback: question_data.general_explanation}
+    %{status: status, score: score}
   end
 
   defp evaluate_exam(submission) do

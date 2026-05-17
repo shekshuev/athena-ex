@@ -170,7 +170,11 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                     _ -> %{"selected_choices" => ans}
                   end
 
-                fake_submission = %{content: fake_sub_content} %>
+                fake_submission = %{
+                  content: fake_sub_content,
+                  status: @submission.status,
+                  score: @submission.score
+                } %>
 
                 <.content_block block={fake_block} mode={:review} submission={fake_submission} />
               </div>

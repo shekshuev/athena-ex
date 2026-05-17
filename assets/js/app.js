@@ -1,3 +1,8 @@
+import { cpp } from "@codemirror/lang-cpp";
+import { python } from "@codemirror/lang-python";
+import { sql } from "@codemirror/lang-sql";
+import { EditorState } from "@codemirror/state";
+import { oneDark } from "@codemirror/theme-one-dark";
 import { Editor } from "@tiptap/core";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Color from "@tiptap/extension-color";
@@ -18,6 +23,7 @@ import TextAlign from "@tiptap/extension-text-align";
 import TextStyle from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
+import { EditorView, basicSetup } from "codemirror";
 import { common, createLowlight } from "lowlight";
 import { Socket } from "phoenix";
 import { hooks as colocatedHooks } from "phoenix-colocated/athena";
@@ -28,6 +34,7 @@ import tippy from "tippy.js";
 import "tippy.js/dist/tippy.css";
 import ImageResize from "tiptap-extension-resize-image";
 import topbar from "../vendor/topbar";
+
 const lowlight = createLowlight(common);
 
 const ResizableImage = ImageResize.extend({
@@ -82,6 +89,53 @@ Hooks.TippyTooltip = {
     if (this.instance) {
       this.instance.destroy();
     }
+  },
+};
+
+Hooks.CodeEditor = {
+  mounted() {
+    const isReadOnly = this.el.dataset.readonly === "true";
+    const language = this.el.dataset.language;
+
+    let langExtension = python();
+    if (language === "cpp") langExtension = cpp();
+    if (language === "sql") langExtension = sql();
+
+    let extensions = [
+      basicSetup,
+      langExtension,
+      oneDark,
+      EditorView.theme({
+        "&": { height: "300px", fontSize: "14px" },
+        ".cm-scroller": { overflow: "auto" },
+      }),
+      EditorView.updateListener.of((update) => {
+        if (update.docChanged && !isReadOnly) {
+          const code = update.state.doc.toString();
+          const inputId = this.el.dataset.inputId;
+          if (inputId) {
+            const hiddenInput = document.getElementById(inputId);
+            if (hiddenInput) {
+              hiddenInput.value = code;
+              hiddenInput.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+          }
+        }
+      }),
+    ];
+
+    if (isReadOnly) {
+      extensions.push(EditorState.readOnly.of(true));
+    }
+
+    this.editor = new EditorView({
+      doc: this.el.dataset.code || "",
+      extensions: extensions,
+      parent: this.el,
+    });
+  },
+  destroyed() {
+    if (this.editor) this.editor.destroy();
   },
 };
 

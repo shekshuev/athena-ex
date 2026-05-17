@@ -126,7 +126,13 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       block = %{
         base_block
         | type: :code,
-          content: %{"language" => "elixir", "execution_mode" => "run"}
+          content: %{
+            "language" => "python3",
+            "time_limit" => 1.0,
+            "memory_limit" => 65_536,
+            "initial_code" => "",
+            "solution_code" => ""
+          }
       }
 
       html =
@@ -139,7 +145,8 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "code Block"
       assert html =~ "Execution Settings"
       assert html =~ "Programming Language"
-      assert html =~ "Execution Mode"
+      assert html =~ "Time Limit"
+      assert html =~ "Memory"
 
       assert html =~ "Require Submission"
       assert html =~ "Pass Auto-Grade"
@@ -402,6 +409,55 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "None (Scroll past)"
       assert html =~ "Require Submission"
       assert html =~ "Pass Auto-Grade"
+    end
+
+    test "renders max_attempts input for code blocks", %{block: base_block} do
+      block = %{
+        base_block
+        | type: :code,
+          content: %{
+            "language" => "python3",
+            "time_limit" => 1.0,
+            "memory_limit" => 65_536,
+            "initial_code" => "",
+            "solution_code" => "",
+            "max_attempts" => 5
+          }
+      }
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block
+        )
+
+      assert html =~ "Max Attempts"
+      assert html =~ ~s(name="block[content][max_attempts]")
+      assert html =~ ~s(value="5")
+    end
+
+    test "renders max_attempts input for quiz question blocks", %{block: base_block} do
+      block = %{
+        base_block
+        | type: :quiz_question,
+          content: %{
+            "question_type" => "open",
+            "general_explanation" => "Think hard!",
+            "max_attempts" => 3
+          }
+      }
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block
+        )
+
+      assert html =~ "Max Attempts"
+      assert html =~ ~s(name="block[content][max_attempts]")
+      assert html =~ ~s(value="3")
     end
   end
 end

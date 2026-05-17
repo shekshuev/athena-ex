@@ -1,10 +1,12 @@
 import Config
 
+external_host = System.get_env("DEV_EXTERNAL_HOST", "localhost")
+
 # Configure your database
 config :athena, Athena.Repo,
   username: "postgres",
   password: "postgres",
-  hostname: "localhost",
+  hostname: external_host,
   database: "athena_dev",
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
@@ -20,7 +22,7 @@ config :athena, Athena.Repo,
 config :athena, AthenaWeb.Endpoint,
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
-  http: [ip: {127, 0, 0, 1}],
+  http: [ip: {0, 0, 0, 0}, port: 4000],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
@@ -98,8 +100,9 @@ config :ex_aws,
   secret_access_key: "minioadmin",
   s3: [
     scheme: "http://",
-    host: "localhost",
+    host: external_host,
     port: 9000
   ]
 
+config :athena, Athena.Media, bucket: "athena"
 config :athena, Athena.Media, bucket: "athena"

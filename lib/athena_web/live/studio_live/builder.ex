@@ -11,19 +11,10 @@ defmodule AthenaWeb.StudioLive.Builder do
   alias Athena.Content
   alias Athena.Content.Block
   alias Athena.Identity
+  alias Athena.Execution
+  alias Athena.Media.Config, as: MediaConfig
 
   on_mount {AthenaWeb.Hooks.Permission, "courses.read"}
-
-  @allowed_image_types ~w(.jpg .jpeg .png .gif .webp)
-  @allowed_video_types ~w(.mp4 .mov .webm)
-  @allowed_attachment_types ~w(.pdf .doc .docx .xls .xlsx .ppt .pptx .txt .zip .rar .7z)
-
-  @image_types_str @allowed_image_types
-                   |> Enum.map_join(", ", fn "." <> ext -> String.upcase(ext) end)
-  @video_types_str @allowed_video_types
-                   |> Enum.map_join(", ", fn "." <> ext -> String.upcase(ext) end)
-  @attachment_types_str @allowed_attachment_types
-                        |> Enum.map_join(", ", fn "." <> ext -> String.upcase(ext) end)
 
   @doc """
   Initializes the LiveView, loading the course, its section tree, and blocks
@@ -165,6 +156,33 @@ defmodule AthenaWeb.StudioLive.Builder do
        |> put_flash(:info, gettext("Media uploaded successfully!"))}
     end
   end
+
+  @impl true
+  def handle_info({:instructor_test_result, result}, socket) do
+    socket =
+      if result.status == :accepted do
+        put_flash(
+          socket,
+          :info,
+          gettext("Success! Reference solution passed all tests (Score: %{score})",
+            score: result.score
+          )
+        )
+      else
+        put_flash(
+          socket,
+          :error,
+          gettext("Test Failed! Status: %{status}. Check your code or test cases.",
+            status: result.status
+          )
+        )
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_info({ref, _result}, socket) when is_reference(ref), do: {:noreply, socket}
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket), do: {:noreply, socket}
 
   @impl true
   def handle_params(_params, _url, socket) do
@@ -461,7 +479,15 @@ defmodule AthenaWeb.StudioLive.Builder do
     if can_edit?(socket) do
       attrs = %{
         "type" => "code",
-        "content" => %{"code" => "IO.puts(:hello)"},
+        "content" => %{
+          "language" => "python3",
+          "time_limit" => 1.0,
+          "memory_limit" => 65_536,
+          "initial_code" => "",
+          "solution_code" => "",
+          "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+          "test_cases" => []
+        },
         "section_id" => socket.assigns.active_section_id,
         "after_id" => clean_after_id(params["after_id"])
       }
@@ -479,7 +505,8 @@ defmodule AthenaWeb.StudioLive.Builder do
         "content" => %{
           "question_type" => "open",
           "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
-          "options" => []
+          "options" => [],
+          "max_attempts" => nil
         },
         "section_id" => socket.assigns.active_section_id,
         "after_id" => clean_after_id(params["after_id"])
@@ -663,6 +690,7 @@ defmodule AthenaWeb.StudioLive.Builder do
         case block.type do
           :attachment -> Map.put(content_map, "description", text_content)
           :quiz_question -> Map.put(content_map, "body", text_content)
+          :code -> Map.put(content_map, "body", text_content)
           _ -> text_content
         end
 
@@ -1081,6 +1109,110 @@ defmodule AthenaWeb.StudioLive.Builder do
   end
 
   @impl true
+  def handle_event("add_test_case", %{"id" => block_id}, socket) do
+    if can_edit?(socket) do
+      block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+      content_map = normalize_content(block.content || %{})
+      test_cases = Map.get(content_map, "test_cases", [])
+
+      new_tc = %{
+        "id" => Ecto.UUID.generate(),
+        "input" => "",
+        "expected_output" => "",
+        "weight" => if(test_cases == [], do: 100, else: 0),
+        "is_hidden" => false
+      }
+
+      new_content = Map.put(content_map, "test_cases", test_cases ++ [new_tc])
+
+      case Content.update_block(socket.assigns.current_user, block, %{"content" => new_content}) do
+        {:ok, updated_block} ->
+          Phoenix.PubSub.broadcast(
+            Athena.PubSub,
+            "builder:#{socket.assigns.course.id}",
+            :refresh_tree
+          )
+
+          {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+
+        _ ->
+          {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("remove_test_case", %{"block_id" => block_id, "tc_id" => tc_id}, socket) do
+    if can_edit?(socket) do
+      block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+      content_map = normalize_content(block.content || %{})
+      test_cases = Map.get(content_map, "test_cases", [])
+
+      new_tc_list = Enum.reject(test_cases, fn tc -> Map.get(tc, "id") == tc_id end)
+      new_content = Map.put(content_map, "test_cases", new_tc_list)
+
+      case Content.update_block(socket.assigns.current_user, block, %{"content" => new_content}) do
+        {:ok, updated_block} ->
+          Phoenix.PubSub.broadcast(
+            Athena.PubSub,
+            "builder:#{socket.assigns.course.id}",
+            :refresh_tree
+          )
+
+          {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+
+        _ ->
+          {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("run_instructor_test", %{"id" => block_id}, socket) do
+    with true <- can_edit?(socket),
+         block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == block_id)) do
+      code = block.content["solution_code"] || ""
+      test_cases = block.content["test_cases"] || []
+
+      dispatch_test_run(socket, block, code, test_cases)
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  defp dispatch_test_run(socket, _block, "", _test_cases) do
+    {:noreply, put_flash(socket, :error, gettext("Please write a Reference Solution first!"))}
+  end
+
+  defp dispatch_test_run(socket, _block, _code, []) do
+    {:noreply, put_flash(socket, :warning, gettext("Add at least one Test Case before testing."))}
+  end
+
+  defp dispatch_test_run(socket, block, code, _test_cases) do
+    challenge =
+      Ecto.Changeset.apply_changes(
+        Athena.Content.CodeChallenge.changeset(
+          %Athena.Content.CodeChallenge{},
+          block.content
+        )
+      )
+
+    parent_pid = self()
+
+    Task.async(fn ->
+      box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
+      result = Execution.verify(code, challenge, box_id)
+      send(parent_pid, {:instructor_test_result, result})
+    end)
+
+    {:noreply, put_flash(socket, :info, gettext("Testing reference solution... Please wait."))}
+  end
+
+  @impl true
   def render(assigns) do
     active_section = find_section_in_tree(assigns.sections, assigns.active_section_id)
     active_block = Enum.find(assigns.blocks, &(&1.id == assigns.active_block_id))
@@ -1090,9 +1222,9 @@ defmodule AthenaWeb.StudioLive.Builder do
       |> assign(
         active_section: active_section,
         active_block: active_block,
-        image_types_str: @image_types_str,
-        video_types_str: @video_types_str,
-        attachment_types_str: @attachment_types_str,
+        image_types_str: MediaConfig.format_extensions("image"),
+        video_types_str: MediaConfig.format_extensions("video"),
+        attachment_types_str: MediaConfig.format_extensions("attachment"),
         block_mode: if(assigns.role in [:owner, :writer], do: :edit, else: :preview)
       )
 

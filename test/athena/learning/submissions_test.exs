@@ -701,4 +701,52 @@ defmodule Athena.Learning.SubmissionsTest do
                Submissions.delete_submission_with_rollback(instructor, submission)
     end
   end
+
+  describe "count_attempts/3" do
+    test "returns a map of attempt counts per block for individual submissions" do
+      account_id = Ecto.UUID.generate()
+      other_account_id = Ecto.UUID.generate()
+      block_1_id = Ecto.UUID.generate()
+      block_2_id = Ecto.UUID.generate()
+
+      insert(:submission, account_id: account_id, block_id: block_1_id, cohort_id: nil)
+      insert(:submission, account_id: account_id, block_id: block_1_id, cohort_id: nil)
+      insert(:submission, account_id: account_id, block_id: block_1_id, cohort_id: nil)
+
+      insert(:submission, account_id: account_id, block_id: block_2_id, cohort_id: nil)
+
+      insert(:submission, account_id: other_account_id, block_id: block_1_id, cohort_id: nil)
+
+      result = Submissions.count_attempts(account_id, [block_1_id, block_2_id])
+
+      assert map_size(result) == 2
+      assert result[block_1_id] == 3
+      assert result[block_2_id] == 1
+    end
+
+    test "returns a map of attempt counts per block for team submissions (cohort scope)" do
+      student_a = Ecto.UUID.generate()
+      student_b = Ecto.UUID.generate()
+      team = insert(:cohort, type: :team)
+      other_team = insert(:cohort, type: :team)
+      block_id = Ecto.UUID.generate()
+
+      insert(:submission, account_id: student_a, block_id: block_id, cohort_id: team.id)
+      insert(:submission, account_id: student_b, block_id: block_id, cohort_id: team.id)
+
+      insert(:submission, account_id: student_a, block_id: block_id, cohort_id: other_team.id)
+
+      result = Submissions.count_attempts(student_a, [block_id], team.id)
+
+      assert map_size(result) == 1
+      assert result[block_id] == 2
+    end
+
+    test "returns an empty map if no submissions exist for the specified blocks" do
+      account_id = Ecto.UUID.generate()
+      block_id = Ecto.UUID.generate()
+
+      assert %{} == Submissions.count_attempts(account_id, [block_id])
+    end
+  end
 end

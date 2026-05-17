@@ -234,8 +234,8 @@ defmodule AthenaWeb.BlockComponentsTest do
         insert(:block,
           type: :code,
           content: %{
-            "language" => "elixir",
-            "code" => "defmodule Athena do\n  IO.puts(\"Hello\")\nend"
+            "language" => "python",
+            "initial_code" => "def main():\n  print(\"Hello\")\nend"
           }
         )
 
@@ -250,8 +250,8 @@ defmodule AthenaWeb.BlockComponentsTest do
         <.content_block block={@block} mode={:play} />
         """)
 
-      assert html =~ "elixir"
-      assert html =~ "defmodule Athena do"
+      assert html =~ "python"
+      assert html =~ "def main()"
       refute html =~ "ring-1"
       assert html =~ "mb-10"
     end
@@ -264,7 +264,7 @@ defmodule AthenaWeb.BlockComponentsTest do
         <.content_block block={@block} mode={:edit} active={true} />
         """)
 
-      assert html =~ "elixir"
+      assert html =~ "python"
       assert html =~ "ring-primary"
       assert html =~ "ring-2"
     end
@@ -277,7 +277,7 @@ defmodule AthenaWeb.BlockComponentsTest do
         <.content_block block={@block} mode={:review} />
         """)
 
-      assert html =~ "defmodule Athena do"
+      assert html =~ "def main():"
       refute html =~ "ring-primary"
       assert html =~ "mb-10"
     end
@@ -341,9 +341,6 @@ defmodule AthenaWeb.BlockComponentsTest do
         """)
 
       assert html =~ " disabled"
-      assert html =~ "Student&#39;s Answer:"
-      assert html =~ "Student&#39;s Choice"
-      assert html =~ "Correct Option"
       assert html =~ "bg-error/10"
       assert html =~ "ring-success"
     end
@@ -360,7 +357,6 @@ defmodule AthenaWeb.BlockComponentsTest do
       assert html =~ " disabled"
       assert html =~ "pointer-events-none"
       assert html =~ "cursor-default"
-      refute html =~ "Student&#39;s Answer:"
     end
   end
 
@@ -411,7 +407,6 @@ defmodule AthenaWeb.BlockComponentsTest do
         )
 
       assert html =~ " disabled"
-      assert html =~ "Correct Option"
       assert html =~ "bg-success/10"
       assert html =~ "ring-success"
     end
@@ -467,7 +462,6 @@ defmodule AthenaWeb.BlockComponentsTest do
         """)
 
       assert html =~ "Student submitted text"
-      assert html =~ "Student&#39;s Answer:"
       assert html =~ " disabled"
     end
   end

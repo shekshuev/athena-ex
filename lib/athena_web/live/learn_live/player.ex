@@ -100,6 +100,15 @@ defmodule AthenaWeb.LearnLive.Player do
     submissions =
       Learning.get_latest_submissions(ctx.user.id, Enum.map(blocks, & &1.id), ctx.team_id)
 
+    attempts =
+      Learning.count_attempts(ctx.user.id, Enum.map(blocks, & &1.id), ctx.team_id)
+
+    if connected?(socket) do
+      for block <- blocks, block.type == :code do
+        Phoenix.PubSub.subscribe(Athena.PubSub, "submission:#{ctx.user.id}:#{block.id}")
+      end
+    end
+
     socket =
       socket
       |> assign(:page_title, section.title)
@@ -116,6 +125,7 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:course_map_open, false)
       |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
       |> assign(:submissions, submissions)
+      |> assign(:attempts_map, attempts)
       |> assign(:overrides, ctx.overrides)
       |> assign(:block_counts, ctx.block_counts)
 
@@ -194,6 +204,41 @@ defmodule AthenaWeb.LearnLive.Player do
     end
   end
 
+  @impl true
+  def handle_event("submit_code", params, socket) do
+    block_id = params["block_id"]
+    code = get_in(params, ["answer", "code"]) || ""
+
+    user = socket.assigns.current_user
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
+    if block do
+      sub_attrs = %{
+        "block_id" => block.id,
+        "cohort_id" => socket.assigns.team_id,
+        "status" => :pending,
+        "content" => %{"type" => :code, "code" => code}
+      }
+
+      case Learning.create_submission(user, sub_attrs) do
+        {:ok, submission} ->
+          submissions = Map.put(socket.assigns.submissions, block_id, submission)
+
+          current_attempts = Map.get(socket.assigns.attempts_map || %{}, block_id, 0)
+
+          attempts_map =
+            Map.put(socket.assigns.attempts_map || %{}, block_id, current_attempts + 1)
+
+          {:noreply, assign(socket, submissions: submissions, attempts_map: attempts_map)}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, gettext("Failed to submit code."))}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
   @doc false
   defp start_exam_for_block(socket, block) do
     user = socket.assigns.current_user
@@ -258,9 +303,17 @@ defmodule AthenaWeb.LearnLive.Player do
         broadcast_team_progress(socket.assigns.team_id, socket.assigns.course.id)
 
         submissions = Map.put(socket.assigns.submissions || %{}, block.id, final_sub)
-        socket = assign(socket, submissions: submissions)
 
-        {:noreply, process_gate_after_submission(socket, block, final_sub)}
+        current_attempts = Map.get(socket.assigns.attempts_map || %{}, block.id, 0)
+        new_attempts = current_attempts + 1
+        attempts_map = Map.put(socket.assigns.attempts_map || %{}, block.id, new_attempts)
+
+        socket = assign(socket, submissions: submissions, attempts_map: attempts_map)
+        socket = process_gate_after_submission(socket, block, final_sub)
+
+        {flash_type, flash_msg} = build_quiz_flash(final_sub, block, new_attempts)
+
+        {:noreply, put_flash(socket, flash_type, flash_msg)}
 
       {:error, changeset} ->
         error_msg =
@@ -269,6 +322,29 @@ defmodule AthenaWeb.LearnLive.Player do
           |> Enum.map_join(", ", fn {msg, _} -> msg end)
 
         {:noreply, put_flash(socket, :error, error_msg)}
+    end
+  end
+
+  @doc false
+  defp build_quiz_flash(final_sub, block, new_attempts) do
+    max_attempts = extract_max_attempts(block.content["max_attempts"])
+
+    cond do
+      final_sub.status == :needs_review ->
+        {:info, gettext("Answer submitted. Waiting for instructor review.")}
+
+      final_sub.score == 100 ->
+        {:info, gettext("Correct!")}
+
+      max_attempts != nil and new_attempts >= max_attempts ->
+        {:error, gettext("Incorrect. No attempts left.")}
+
+      max_attempts != nil ->
+        attempts_left = max_attempts - new_attempts
+        {:error, gettext("Incorrect. %{count} attempt(s) remaining.", count: attempts_left)}
+
+      true ->
+        {:error, gettext("Incorrect. Please try again.")}
     end
   end
 
@@ -424,6 +500,61 @@ defmodule AthenaWeb.LearnLive.Player do
     end
   end
 
+  @impl true
+  def handle_info({:submission_updated, submission}, socket) do
+    submissions = Map.put(socket.assigns.submissions, submission.block_id, submission)
+    block = Enum.find(socket.assigns.blocks, &(&1.id == submission.block_id))
+
+    socket = assign(socket, submissions: submissions)
+
+    socket =
+      if gate_passed?(block.completion_rule, submission) do
+        unlock_next_content(socket, block.id)
+      else
+        socket
+      end
+
+    socket =
+      if submission.status in [:pending, :processing] do
+        socket
+      else
+        attempts = Map.get(socket.assigns.attempts_map || %{}, block.id, 0)
+        {flash_type, flash_msg} = build_code_flash(submission, block, attempts)
+        put_flash(socket, flash_type, flash_msg)
+      end
+
+    {:noreply, socket}
+  end
+
+  @doc false
+  defp build_code_flash(submission, block, attempts) do
+    max_attempts = extract_max_attempts(block.content["max_attempts"])
+
+    cond do
+      to_string(submission.status) == "accepted" ->
+        {:info, gettext("Success! Code passed all tests.")}
+
+      max_attempts != nil and attempts >= max_attempts ->
+        {:error, gettext("Execution failed. No attempts left.")}
+
+      max_attempts != nil ->
+        attempts_left = max_attempts - attempts
+
+        {:error,
+         gettext("Execution failed. %{count} attempt(s) remaining.", count: attempts_left)}
+
+      true ->
+        {:error, gettext("Execution failed. Check the details below.")}
+    end
+  end
+
+  @doc false
+  defp extract_max_attempts(nil), do: nil
+  defp extract_max_attempts(""), do: nil
+  defp extract_max_attempts(val) when is_integer(val), do: val
+  defp extract_max_attempts(val) when is_binary(val), do: String.to_integer(val)
+  defp extract_max_attempts(_), do: nil
+
   defp gate?(block), do: block.completion_rule && block.completion_rule.type != :none
 
   defp all_blocks_completed?(visible_blocks, completed_ids) do
@@ -482,8 +613,27 @@ defmodule AthenaWeb.LearnLive.Player do
       <div class="space-y-10">
         <%= for block <- @visible_blocks do %>
           <% submission = Map.get(@submissions || %{}, block.id) %>
-          <% is_submitted = submission && submission.status in [:graded, :needs_review, :rejected] %>
-          <% _mode = if is_submitted, do: :review, else: :play %>
+
+          <% attempts = Map.get(@attempts_map || %{}, block.id, 0) %>
+          <% raw_max = block.content["max_attempts"] %>
+          <% max_attempts =
+            case raw_max do
+              v when is_integer(v) -> v
+              v when is_binary(v) and v != "" -> String.to_integer(v)
+              _ -> nil
+            end %>
+          <% attempts_exhausted = not is_nil(max_attempts) and attempts >= max_attempts %>
+
+          <% sub_status_str = if submission, do: to_string(submission.status), else: "" %>
+          <% sub_score = if submission, do: submission.score, else: 0 %>
+
+          <% is_passed =
+            sub_status_str == "accepted" or (sub_status_str == "graded" and sub_score == 100) %>
+          <% is_pending = sub_status_str in ["pending", "processing"] %>
+          <% is_review_needed = sub_status_str in ["rejected", "needs_review"] %>
+
+          <% is_locked = is_passed or attempts_exhausted or is_review_needed %>
+          <% mode = if is_locked, do: :review, else: :play %>
 
           <div
             id={"block-wrapper-#{block.id}"}
@@ -491,45 +641,24 @@ defmodule AthenaWeb.LearnLive.Player do
           >
             <%= case block.type do %>
               <% :quiz_question -> %>
-                <% is_pass_auto_grade =
-                  block.completion_rule && block.completion_rule.type == :pass_auto_grade %>
-                <% is_passed = quiz_passed?(block, submission) %>
-
-                <% is_locked =
-                  cond do
-                    is_nil(submission) -> false
-                    submission.status == :rejected -> true
-                    submission.status == :needs_review -> true
-                    is_passed -> true
-                    is_pass_auto_grade -> false
-                    block.completion_rule && block.completion_rule.type == :submit -> false
-                    true -> true
-                  end %>
-
-                <% mode = if is_locked, do: :review, else: :play %>
-
                 <form phx-submit="submit_quiz" id={"quiz-form-#{block.id}"}>
                   <input type="hidden" name="block_id" value={block.id} />
 
-                  <.content_block block={block} mode={mode} submission={submission} />
-
-                  <div
-                    :if={
-                      is_locked && submission && block.content["general_explanation"] not in [nil, ""]
-                    }
-                    class="mt-4 mb-4 p-4 bg-info/10 text-info-content rounded-xl text-sm border border-info/20"
-                  >
-                    <strong>{gettext("Explanation:")}</strong> {block.content["general_explanation"]}
-                  </div>
+                  <.content_block
+                    block={block}
+                    mode={mode}
+                    submission={submission}
+                    answers={@submissions}
+                  />
 
                   <div
                     :if={submission && submission.feedback not in [nil, ""]}
                     class={[
-                      "mt-4 mb-4 p-5 rounded-xl text-sm border",
+                      "mt-4 mb-4 rounded-sm text-sm",
                       submission.status == :rejected &&
-                        "bg-error/10 text-error-content border-error/20",
+                        "text-error",
                       submission.status != :rejected &&
-                        "bg-warning/10 text-warning-content border-warning/20"
+                        "text-info"
                     ]}
                   >
                     <strong class="flex items-center gap-1 mb-2">
@@ -546,44 +675,20 @@ defmodule AthenaWeb.LearnLive.Player do
                       disabled={is_locked}
                     >
                       {cond do
-                        is_locked -> gettext("Submitted")
+                        is_locked -> gettext("Locked")
                         submission != nil -> gettext("Retry Answer")
                         true -> gettext("Submit Answer")
                       end}
                     </button>
 
-                    <%= if submission do %>
-                      <div
-                        :if={submission.status == :graded}
-                        class={[
-                          "font-bold flex items-center gap-1 text-lg",
-                          if(is_passed, do: "text-success", else: "text-error")
-                        ]}
-                      >
-                        <%= if is_passed do %>
-                          <.icon name="hero-check-circle-solid" class="size-6" /> {gettext("Correct!")}
-                        <% else %>
-                          <.icon name="hero-x-circle-solid" class="size-6" />
-                          {if is_locked,
-                            do: gettext("Incorrect."),
-                            else: gettext("Incorrect. Try again.")}
-                        <% end %>
-                      </div>
-
-                      <div
-                        :if={submission.status == :rejected}
-                        class="font-bold flex items-center gap-1 text-error text-lg"
-                      >
-                        <.icon name="hero-x-circle-solid" class="size-6" /> {gettext("Rejected")}
-                      </div>
-
-                      <div
-                        :if={submission.status == :needs_review}
-                        class="font-bold flex items-center gap-1 text-info text-lg"
-                      >
-                        <.icon name="hero-clock" class="size-6" /> {gettext("Pending Review")}
-                      </div>
-                    <% end %>
+                    <div :if={max_attempts} class="text-right">
+                      <span class={[
+                        "text-xs font-bold uppercase tracking-widest",
+                        if(attempts_exhausted, do: "text-error", else: "text-base-content/50")
+                      ]}>
+                        {gettext("Attempts:")} {attempts} / {max_attempts}
+                      </span>
+                    </div>
                   </div>
                 </form>
               <% :quiz_exam -> %>
@@ -620,6 +725,132 @@ defmodule AthenaWeb.LearnLive.Player do
                     </div>
                   <% end %>
                 </div>
+              <% :code -> %>
+                <div class="space-y-4">
+                  <form phx-submit="submit_code" id={"code-form-#{block.id}"}>
+                    <input type="hidden" name="block_id" value={block.id} />
+
+                    <.content_block
+                      block={block}
+                      mode={mode}
+                      submission={submission}
+                      answers={@submissions}
+                    />
+
+                    <div class="mt-4 flex items-center justify-between">
+                      <div class="flex items-center gap-3">
+                        <button
+                          type="submit"
+                          class="btn btn-primary"
+                          disabled={is_locked or is_pending}
+                        >
+                          <%= cond do %>
+                            <% is_locked -> %>
+                              <.icon name="hero-lock-closed" class="size-4 mr-1" /> {gettext("Locked")}
+                            <% is_pending -> %>
+                              <span class="loading loading-spinner loading-xs"></span> {gettext(
+                                "Checking..."
+                              )}
+                            <% true -> %>
+                              {gettext("Run & Submit")}
+                          <% end %>
+                        </button>
+                      </div>
+
+                      <div :if={max_attempts} class="text-right">
+                        <span class={[
+                          "text-xs font-bold uppercase tracking-widest",
+                          if(attempts_exhausted, do: "text-error", else: "text-base-content/50")
+                        ]}>
+                          {gettext("Attempts:")} {attempts} / {max_attempts}
+                        </span>
+                      </div>
+                    </div>
+
+                    <% execution_results =
+                      if submission do
+                        content_map =
+                          if is_struct(submission.content),
+                            do: Map.from_struct(submission.content),
+                            else: submission.content || %{}
+
+                        Map.get(content_map, "execution_results") ||
+                          Map.get(content_map, :execution_results) || []
+                      else
+                        []
+                      end %>
+
+                    <%= if submission && execution_results != [] && not is_pending do %>
+                      <div class="mt-4 bg-base-300/20 rounded-sm border border-base-300 overflow-hidden">
+                        <table class="table table-xs w-full font-mono">
+                          <thead class="bg-base-300/50 uppercase tracking-widest text-[10px]">
+                            <tr>
+                              <th class="w-12">#</th>
+                              <th class="w-32">{gettext("Result")}</th>
+                              <th>{gettext("Details")}</th>
+                              <th class="text-right">{gettext("Time")}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <%= for {res, idx} <- Enum.with_index(execution_results) do %>
+                              <tr class="border-base-300">
+                                <td class="opacity-40">{idx + 1}</td>
+                                <td class={
+                                  if res["status"] == "accepted",
+                                    do: "text-success font-bold",
+                                    else: "text-error font-bold"
+                                }>
+                                  {String.upcase(res["status"])}
+                                </td>
+                                <td>
+                                  <%= if res["is_hidden"] do %>
+                                    <span class="opacity-30 italic flex items-center gap-1 text-[10px]">
+                                      <.icon name="hero-eye-slash" class="size-3" />
+                                      {gettext("Hidden Test")}
+                                    </span>
+                                  <% else %>
+                                    <%= if res["status"] != "accepted" do %>
+                                      <div class="text-[10px] space-y-1">
+                                        <div class="flex gap-1">
+                                          <span class="font-bold opacity-40">IN:</span><span>{res["input"]}</span>
+                                        </div>
+                                        <div class="flex gap-1">
+                                          <span class="font-bold text-error/60">GOT:</span><span class="text-error">{res["stdout"]}</span>
+                                        </div>
+                                        <div class="flex gap-1 border-t border-base-300 pt-1">
+                                          <span class="font-bold text-success/60">EXP:</span><span class="text-success">{res["expected"]}</span>
+                                        </div>
+                                      </div>
+                                    <% else %>
+                                      <span class="opacity-20 text-[10px]">---</span>
+                                    <% end %>
+                                  <% end %>
+                                </td>
+                                <td class="text-right opacity-50 text-[10px]">{res["time"]}s</td>
+                              </tr>
+                            <% end %>
+                          </tbody>
+                        </table>
+                      </div>
+                    <% end %>
+
+                    <%= if submission && submission.feedback not in [nil, ""] && not is_pending do %>
+                      <div class={[
+                        "mt-4 mb-4 rounded-sm text-sm",
+                        submission.status == :rejected &&
+                          "text-error",
+                        submission.status != :rejected &&
+                          "text-info"
+                      ]}>
+                        <strong class="flex items-center gap-1 mb-2">
+                          <.icon name="hero-chat-bubble-bottom-center-text" class="size-4" />
+                          {gettext("Instructor Feedback")}
+                        </strong>
+                        <p class="whitespace-pre-wrap leading-relaxed">{submission.feedback}</p>
+                      </div>
+                    <% end %>
+                  </form>
+                </div>
               <% _ -> %>
                 <.content_block block={block} mode={:play} />
             <% end %>
@@ -643,10 +874,7 @@ defmodule AthenaWeb.LearnLive.Player do
             {gettext("Next Lesson")} <.icon name="hero-arrow-right" class="size-5 ml-2" />
           </.link>
         <% else %>
-          <.link
-            navigate={~p"/learn/courses/#{@course.id}"}
-            class="btn btn-ghost"
-          >
+          <.link navigate={~p"/learn/courses/#{@course.id}"} class="btn btn-ghost">
             {gettext("Back to Syllabus")}
           </.link>
         <% end %>

@@ -91,21 +91,35 @@ defmodule Athena.Learning.Submissions do
   end
 
   @doc """
-  Creates a new submission, forcing the account_id to the current user to prevent spoofing.
+  Creates a new submission, forces the account_id, and enqueues execution if it's a code block.
+  Uses Ecto.Multi to guarantee that the job is queued ONLY if the submission is saved.
   """
-  @spec create_submission(map(), map()) :: {:ok, Submission.t()} | {:error, Ecto.Changeset.t()}
+  @spec create_submission(map(), map()) :: {:ok, Submission.t()} | {:error, any()}
   def create_submission(user, attrs) do
-    safe_attrs =
-      attrs
-      |> Map.put("account_id", user.id)
+    safe_attrs = Map.put(attrs, "account_id", user.id)
 
-    %Submission{}
-    |> Submission.changeset(safe_attrs)
-    |> Repo.insert()
+    Ecto.Multi.new()
+    |> Ecto.Multi.insert(:submission, Submission.changeset(%Submission{}, safe_attrs))
+    |> Ecto.Multi.run(:enqueue_job, fn repo, %{submission: submission} ->
+      block = repo.get(Block, submission.block_id)
+
+      if block && block.type == :code do
+        %{submission_id: submission.id}
+        |> Athena.Execution.Worker.new()
+        |> Oban.insert()
+      else
+        {:ok, :skipped_execution}
+      end
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{submission: submission}} -> {:ok, submission}
+      {:error, _failed_op, changeset, _changes} -> {:error, changeset}
+    end
   end
 
   @doc """
-  Updates a submission manually (e.g. manual grading by an instructor). 
+  Updates a submission manually (e.g. manual grading by an instructor).
   Enforces ACL: only users with grading.update can do this.
   """
   @spec update_submission(map(), Submission.t(), map()) ::
@@ -269,5 +283,25 @@ defmodule Athena.Learning.Submissions do
     else
       {:error, :unauthorized}
     end
+  end
+
+  @doc """
+  Returns a map of %{block_id => attempts_count} for a given user/team and list of blocks.
+  """
+  def count_attempts(account_id, block_ids, cohort_id \\ nil) do
+    query =
+      if cohort_id do
+        from s in Athena.Learning.Submission,
+          where: s.cohort_id == ^cohort_id and s.block_id in ^block_ids
+      else
+        from s in Athena.Learning.Submission,
+          where: s.account_id == ^account_id and is_nil(s.cohort_id) and s.block_id in ^block_ids
+      end
+
+    query
+    |> group_by([s], s.block_id)
+    |> select([s], {s.block_id, count(s.id)})
+    |> Repo.all()
+    |> Enum.into(%{})
   end
 end

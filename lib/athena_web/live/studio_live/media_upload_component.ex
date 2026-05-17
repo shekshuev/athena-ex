@@ -8,28 +8,16 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
 
   @impl true
   def update(assigns, socket) do
-    {accept, max_entries, max_size, accept_str} =
-      case assigns.upload_type do
-        "video" ->
-          {~w(.mp4 .mov .webm), 1, 500 * 1024 * 1024, ".MP4, .MOV, .WEBM (Max 500MB)"}
-
-        "attachment" ->
-          {~w(.pdf .doc .docx .xls .xlsx .ppt .pptx .txt .zip .rar .7z), 10, 50 * 1024 * 1024,
-           "Docs, PDFs, Archives (Max 50MB, 10 files)"}
-
-        _ ->
-          {~w(.jpg .jpeg .png .gif .webp), 1, 10 * 1024 * 1024,
-           ".JPG, .PNG, .GIF, .WEBP (Max 10MB)"}
-      end
+    settings = Media.Config.upload_settings(assigns.upload_type)
 
     {:ok,
      socket
      |> assign(assigns)
-     |> assign(accept_str: accept_str)
+     |> assign(accept_str: settings.description)
      |> allow_upload(:media,
-       accept: accept,
-       max_entries: max_entries,
-       max_file_size: max_size,
+       accept: settings.accept,
+       max_entries: settings.max_entries,
+       max_file_size: settings.max_size,
        external: &presign_upload/2
      )}
   end

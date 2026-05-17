@@ -55,7 +55,24 @@ media_cron = System.get_env("MEDIA_CLEANUP_CRON") || "0 * * * *"
 
 config :athena, Oban,
   repo: Athena.Repo,
-  queues: [default: 10]
+  queues: [
+    default: 10,
+    code_execution: System.schedulers_online() * 2
+  ]
+
+config :mime, :types, %{
+  "video/x-matroska" => ["mkv"],
+  "video/x-msvideo" => ["avi"],
+  "audio/flac" => ["flac"],
+  "audio/mpeg" => ["mp3"],
+  "audio/wav" => ["wav"],
+  "application/x-rar-compressed" => ["rar"],
+  "application/x-7z-compressed" => ["7z"]
+}
+
+config :mime, :extensions, %{
+  "rar" => "application/x-rar-compressed"
+}
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

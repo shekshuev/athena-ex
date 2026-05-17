@@ -68,21 +68,21 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponentTest do
       {:ok, _view, html} = render_dummy(conn, admin, course, "image")
 
       assert html =~ "Upload Media"
-      assert html =~ ".JPG, .PNG, .GIF, .WEBP"
-      assert html =~ "Max 10MB"
+      assert html =~ "Images"
+      assert html =~ "Max 25MB"
     end
 
     test "renders correctly for videos", %{conn: conn, admin: admin, course: course} do
       {:ok, _view, html} = render_dummy(conn, admin, course, "video")
 
       assert html =~ ".MP4, .MOV, .WEBM"
-      assert html =~ "Max 500MB"
+      assert html =~ "Max 1GB"
     end
 
     test "renders correctly for attachments", %{conn: conn, admin: admin, course: course} do
       {:ok, _view, html} = render_dummy(conn, admin, course, "attachment")
 
-      assert html =~ "Docs, PDFs, Archives"
+      assert html =~ "Docs, PDFs, Archives, Audio"
       assert html =~ "10 files"
     end
   end

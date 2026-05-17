@@ -9,7 +9,14 @@ defmodule Athena.Content.Block do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Athena.Content.{QuizQuestion, QuizExam, Section, AccessRules, CompletionRule}
+  alias Athena.Content.{
+    QuizQuestion,
+    QuizExam,
+    Section,
+    AccessRules,
+    CompletionRule,
+    CodeChallenge
+  }
 
   @type t :: %__MODULE__{}
 
@@ -69,6 +76,7 @@ defmodule Athena.Content.Block do
       case type do
         :quiz_question -> QuizQuestion.changeset(struct(QuizQuestion), content_map)
         :quiz_exam -> QuizExam.changeset(struct(QuizExam), content_map)
+        :code -> CodeChallenge.changeset(struct(CodeChallenge), content_map)
         _ -> nil
       end
 

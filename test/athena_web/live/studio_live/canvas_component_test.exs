@@ -59,7 +59,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       code_block = %Block{
         id: "block-456",
         type: :code,
-        content: %{"language" => "elixir", "code" => "IO.puts(:ok)"}
+        content: %{"language" => "python", "initial_code" => "print(1)"}
       }
 
       html =
@@ -70,8 +70,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           mode: :edit
         )
 
-      assert html =~ "elixir"
-      assert html =~ "IO.puts(:ok)"
+      assert html =~ "python"
+      assert html =~ "print(1)"
     end
 
     test "renders image block placeholder when no url is set" do
@@ -248,6 +248,83 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
 
       assert html =~ "Answer Editor"
       assert html =~ "Student will see a text area to write their open answer."
+    end
+
+    test "renders sandbox configuration panel with tests and solution WHEN ACTIVE" do
+      code_block = %Block{
+        id: "block-code-1",
+        type: :code,
+        content: %{
+          "language" => "python3",
+          "initial_code" => "print(1)",
+          "solution_code" => "print(1) # reference",
+          "test_cases" => [
+            %{"id" => "tc-1", "input" => "in", "expected_output" => "out", "weight" => 100}
+          ]
+        }
+      }
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [code_block],
+          active_block_id: "block-code-1",
+          mode: :edit
+        )
+
+      assert html =~ "Sandbox Configuration"
+      assert html =~ "Reference Solution"
+      assert html =~ "print(1) # reference"
+      assert html =~ "Test Solution"
+      assert html =~ "Add Case"
+
+      assert html =~ "stdin"
+      assert html =~ "stdout"
+      assert html =~ "tc-1"
+      assert html =~ "100"
+    end
+
+    test "handles empty test cases list gracefully in code editor" do
+      code_block = %Block{
+        id: "block-code-empty",
+        type: :code,
+        content: %{"test_cases" => []}
+      }
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [code_block],
+          active_block_id: "block-code-empty",
+          mode: :edit
+        )
+
+      assert html =~ "Add Case"
+      assert html =~ ~s(id="code-config-form-block-code-empty")
+    end
+
+    test "correctly normalizes test_cases from map to list for rendering" do
+      code_block = %Block{
+        id: "block-code-map",
+        type: :code,
+        content: %{
+          "test_cases" => %{
+            "0" => %{"id" => "id-0", "input" => "1", "expected_output" => "1", "weight" => "100"},
+            "1" => %{"id" => "id-1", "input" => "2", "expected_output" => "2", "weight" => "0"}
+          }
+        }
+      }
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [code_block],
+          active_block_id: "block-code-map",
+          mode: :edit
+        )
+
+      assert html =~ "Weight %"
+      assert html =~ "id-0"
     end
   end
 
