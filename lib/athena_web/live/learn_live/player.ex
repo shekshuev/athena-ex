@@ -308,36 +308,10 @@ defmodule AthenaWeb.LearnLive.Player do
         new_attempts = current_attempts + 1
         attempts_map = Map.put(socket.assigns.attempts_map || %{}, block.id, new_attempts)
 
-        raw_max = block.content["max_attempts"]
-
-        max_attempts =
-          case raw_max do
-            v when is_integer(v) -> v
-            v when is_binary(v) and v != "" -> String.to_integer(v)
-            _ -> nil
-          end
-
         socket = assign(socket, submissions: submissions, attempts_map: attempts_map)
         socket = process_gate_after_submission(socket, block, final_sub)
 
-        {flash_type, flash_msg} =
-          cond do
-            final_sub.status == :needs_review ->
-              {:info, gettext("Answer submitted. Waiting for instructor review.")}
-
-            final_sub.score == 100 ->
-              {:info, gettext("Correct!")}
-
-            max_attempts != nil and new_attempts >= max_attempts ->
-              {:error, gettext("Incorrect. No attempts left.")}
-
-            max_attempts != nil ->
-              attempts_left = max_attempts - new_attempts
-              {:error, gettext("Incorrect. %{count} attempt(s) remaining.", count: attempts_left)}
-
-            true ->
-              {:error, gettext("Incorrect. Please try again.")}
-          end
+        {flash_type, flash_msg} = build_quiz_flash(final_sub, block, new_attempts)
 
         {:noreply, put_flash(socket, flash_type, flash_msg)}
 
@@ -348,6 +322,29 @@ defmodule AthenaWeb.LearnLive.Player do
           |> Enum.map_join(", ", fn {msg, _} -> msg end)
 
         {:noreply, put_flash(socket, :error, error_msg)}
+    end
+  end
+
+  @doc false
+  defp build_quiz_flash(final_sub, block, new_attempts) do
+    max_attempts = extract_max_attempts(block.content["max_attempts"])
+
+    cond do
+      final_sub.status == :needs_review ->
+        {:info, gettext("Answer submitted. Waiting for instructor review.")}
+
+      final_sub.score == 100 ->
+        {:info, gettext("Correct!")}
+
+      max_attempts != nil and new_attempts >= max_attempts ->
+        {:error, gettext("Incorrect. No attempts left.")}
+
+      max_attempts != nil ->
+        attempts_left = max_attempts - new_attempts
+        {:error, gettext("Incorrect. %{count} attempt(s) remaining.", count: attempts_left)}
+
+      true ->
+        {:error, gettext("Incorrect. Please try again.")}
     end
   end
 
@@ -518,42 +515,45 @@ defmodule AthenaWeb.LearnLive.Player do
       end
 
     socket =
-      if submission.status not in [:pending, :processing] do
-        attempts = Map.get(socket.assigns.attempts_map || %{}, block.id, 0)
-        raw_max = block.content["max_attempts"]
-
-        max_attempts =
-          case raw_max do
-            v when is_integer(v) -> v
-            v when is_binary(v) and v != "" -> String.to_integer(v)
-            _ -> nil
-          end
-
-        {flash_type, flash_msg} =
-          cond do
-            to_string(submission.status) == "accepted" ->
-              {:info, gettext("Success! Code passed all tests.")}
-
-            max_attempts != nil and attempts >= max_attempts ->
-              {:error, gettext("Execution failed. No attempts left.")}
-
-            max_attempts != nil ->
-              attempts_left = max_attempts - attempts
-
-              {:error,
-               gettext("Execution failed. %{count} attempt(s) remaining.", count: attempts_left)}
-
-            true ->
-              {:error, gettext("Execution failed. Check the details below.")}
-          end
-
-        put_flash(socket, flash_type, flash_msg)
-      else
+      if submission.status in [:pending, :processing] do
         socket
+      else
+        attempts = Map.get(socket.assigns.attempts_map || %{}, block.id, 0)
+        {flash_type, flash_msg} = build_code_flash(submission, block, attempts)
+        put_flash(socket, flash_type, flash_msg)
       end
 
     {:noreply, socket}
   end
+
+  @doc false
+  defp build_code_flash(submission, block, attempts) do
+    max_attempts = extract_max_attempts(block.content["max_attempts"])
+
+    cond do
+      to_string(submission.status) == "accepted" ->
+        {:info, gettext("Success! Code passed all tests.")}
+
+      max_attempts != nil and attempts >= max_attempts ->
+        {:error, gettext("Execution failed. No attempts left.")}
+
+      max_attempts != nil ->
+        attempts_left = max_attempts - attempts
+
+        {:error,
+         gettext("Execution failed. %{count} attempt(s) remaining.", count: attempts_left)}
+
+      true ->
+        {:error, gettext("Execution failed. Check the details below.")}
+    end
+  end
+
+  @doc false
+  defp extract_max_attempts(nil), do: nil
+  defp extract_max_attempts(""), do: nil
+  defp extract_max_attempts(val) when is_integer(val), do: val
+  defp extract_max_attempts(val) when is_binary(val), do: String.to_integer(val)
+  defp extract_max_attempts(_), do: nil
 
   defp gate?(block), do: block.completion_rule && block.completion_rule.type != :none
 

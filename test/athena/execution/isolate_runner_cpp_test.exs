@@ -13,7 +13,7 @@ defmodule Athena.Execution.IsolateRunnerCppTest do
       box_id: box_id,
       lang_config: LanguageConfig.get("cpp"),
       time_limit: 1.0,
-      memory_limit: 65536
+      memory_limit: 65_536
     }
 
     %{ctx: ctx}
@@ -102,7 +102,7 @@ defmodule Athena.Execution.IsolateRunnerCppTest do
       assert result.meta["status"] in ["SG", "RE"]
 
       if result.meta["cg-mem"] do
-        assert String.to_integer(result.meta["cg-mem"]) > 50000
+        assert String.to_integer(result.meta["cg-mem"]) > 50_000
       end
     end
   end

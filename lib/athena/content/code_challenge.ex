@@ -35,7 +35,7 @@ defmodule Athena.Content.CodeChallenge do
   embedded_schema do
     field :language, :string, default: "python3"
     field :time_limit, :float, default: 1.0
-    field :memory_limit, :integer, default: 65536
+    field :memory_limit, :integer, default: 65_536
     field :max_attempts, :integer
 
     field :initial_code, :string, default: ""
@@ -64,7 +64,7 @@ defmodule Athena.Content.CodeChallenge do
     |> cast_embed(:test_cases, with: &TestCase.changeset/2)
     |> validate_required([:language, :time_limit, :memory_limit])
     |> validate_number(:time_limit, greater_than: 0.0, less_than_or_equal_to: 15.0)
-    |> validate_number(:memory_limit, greater_than: 16384, less_than_or_equal_to: 524_288)
+    |> validate_number(:memory_limit, greater_than: 16_384, less_than_or_equal_to: 524_288)
     |> validate_number(:max_attempts, greater_than: 0)
   end
 end

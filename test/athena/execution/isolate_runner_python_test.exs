@@ -13,7 +13,7 @@ defmodule Athena.Execution.IsolateRunnerPythonTest do
       box_id: box_id,
       lang_config: LanguageConfig.get("python3"),
       time_limit: 1.0,
-      memory_limit: 65536
+      memory_limit: 65_536
     }
 
     %{ctx: ctx}
@@ -67,13 +67,13 @@ defmodule Athena.Execution.IsolateRunnerPythonTest do
     end
 
     test "catches Memory Limit Exceeded (MLE / OOM)", %{ctx: ctx} do
-      tight_mem_ctx = %{ctx | memory_limit: 16384}
+      tight_mem_ctx = %{ctx | memory_limit: 16_384}
       code = "a = ' ' * (100 * 1024 * 1024)"
 
       assert {:ok, result} = IsolateRunner.run_test(code, nil, tight_mem_ctx)
       assert result.meta["status"] in ["SG", "RE"]
 
-      assert String.to_integer(result.meta["cg-mem"]) > 10000
+      assert String.to_integer(result.meta["cg-mem"]) > 10_000
     end
   end
 

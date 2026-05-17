@@ -9,7 +9,14 @@ defmodule Athena.Content.Block do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Athena.Content.{QuizQuestion, QuizExam, Section, AccessRules, CompletionRule, CodeChallenge}
+  alias Athena.Content.{
+    QuizQuestion,
+    QuizExam,
+    Section,
+    AccessRules,
+    CompletionRule,
+    CodeChallenge
+  }
 
   @type t :: %__MODULE__{}
 

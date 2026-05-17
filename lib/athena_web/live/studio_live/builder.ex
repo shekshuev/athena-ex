@@ -482,7 +482,7 @@ defmodule AthenaWeb.StudioLive.Builder do
         "content" => %{
           "language" => "python3",
           "time_limit" => 1.0,
-          "memory_limit" => 65536,
+          "memory_limit" => 65_536,
           "initial_code" => "",
           "solution_code" => "",
           "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
@@ -1204,7 +1204,7 @@ defmodule AthenaWeb.StudioLive.Builder do
     parent_pid = self()
 
     Task.async(fn ->
-      box_id = System.unique_integer([:positive, :monotonic]) |> rem(10000)
+      box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
       result = Execution.verify(code, challenge, box_id)
       send(parent_pid, {:instructor_test_result, result})
     end)

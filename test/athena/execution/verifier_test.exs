@@ -12,7 +12,7 @@ defmodule Athena.Execution.VerifierTest do
     python_challenge = %CodeChallenge{
       language: "python3",
       time_limit: 1.0,
-      memory_limit: 65536,
+      memory_limit: 65_536,
       test_cases: [
         %TestCase{input: "A", expected_output: "A_out", weight: 50},
         %TestCase{input: "B", expected_output: "B_out", weight: 50}
@@ -22,7 +22,7 @@ defmodule Athena.Execution.VerifierTest do
     cpp_challenge = %CodeChallenge{
       language: "cpp",
       time_limit: 1.0,
-      memory_limit: 65536,
+      memory_limit: 65_536,
       test_cases: [
         %TestCase{input: "10 20", expected_output: "30", weight: 40},
         %TestCase{input: "5 -5", expected_output: "0", weight: 60}

@@ -1,4 +1,12 @@
 defmodule Athena.Execution.Worker do
+  @moduledoc """
+  An Oban worker responsible for asynchronous code challenge execution.
+
+  Fetches the submission and its associated code block, manages the lifecycle
+  states (`:processing`, then final execution status), invokes the verification
+  sandbox, and broadcasts real-time updates to the frontend via Phoenix PubSub.
+  """
+
   use Oban.Worker,
     queue: :code_execution,
     max_attempts: 1
@@ -23,7 +31,7 @@ defmodule Athena.Execution.Worker do
 
     code = submission.content["code"] || ""
 
-    box_id = System.unique_integer([:positive, :monotonic]) |> rem(10000)
+    box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
 
     result = Verifier.verify(code, challenge, box_id)
 

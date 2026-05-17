@@ -129,7 +129,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
           content: %{
             "language" => "python3",
             "time_limit" => 1.0,
-            "memory_limit" => 65536,
+            "memory_limit" => 65_536,
             "initial_code" => "",
             "solution_code" => ""
           }
@@ -418,7 +418,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
           content: %{
             "language" => "python3",
             "time_limit" => 1.0,
-            "memory_limit" => 65536,
+            "memory_limit" => 65_536,
             "initial_code" => "",
             "solution_code" => "",
             "max_attempts" => 5

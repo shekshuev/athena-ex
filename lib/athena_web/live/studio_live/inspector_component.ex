@@ -345,7 +345,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                   <.input
                     type="number"
                     name="block[content][memory_limit]"
-                    value={@block.content["memory_limit"] || 65536}
+                    value={@block.content["memory_limit"] || 65_536}
                     label={gettext("Memory (KB)")}
                     step="1024"
                     min="16384"
