@@ -2,16 +2,20 @@ version: "3.8"
 
 services:
   athena_web:
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
     image: ghcr.io/shekshuev/athena-ex:latest
     container_name: athena_web
     restart: always
     env_file:
       - .env
+    environment:
+      - SERVER_ROLE=default
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=web@127.0.0.1
+      - RELEASE_COOKIE=${RELEASE_COOKIE}
     ports:
       - "${WEB_PORT_EXTERNAL:-80}:4000"
+      - "${EPMD_PORT_EXTERNAL:-4369}:4369"
+      - "${GOSSIP_PORT_EXTERNAL:-45892}:45892/udp"
     depends_on:
       - postgres
       - minio
@@ -24,6 +28,8 @@ services:
     restart: always
     env_file:
       - .env
+    ports:
+      - "${POSTGRES_PORT_EXTERNAL:-5432}:5432"
     volumes:
       - postgres_prod_data:/var/lib/postgresql/data
     networks:

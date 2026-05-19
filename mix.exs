@@ -4,7 +4,7 @@ defmodule Athena.MixProject do
   def project do
     [
       app: :athena,
-      version: "0.7.0",
+      version: "0.7.1",
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
@@ -85,7 +85,8 @@ defmodule Athena.MixProject do
       {:ex_aws_s3, "~> 2.5"},
       {:hackney, "~> 1.18"},
       {:sweet_xml, "~> 0.7"},
-      {:ecto_ltree, "~> 0.3.0"}
+      {:ecto_ltree, "~> 0.3.0"},
+      {:libcluster, "~> 3.5.0"}
     ]
   end
 

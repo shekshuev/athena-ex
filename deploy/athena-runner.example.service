@@ -1,0 +1,27 @@
+[Unit]
+Description=Athena Code Runner Node
+After=network.target
+
+[Service]
+User=nobody
+Group=nogroup
+
+WorkingDirectory=/opt/athena_runner
+
+# Роль сервера
+Environment="SERVER_ROLE=runner"
+Environment="RELEASE_DISTRIBUTION=name"
+Environment="RELEASE_NODE=runner@127.0.0.1"
+Environment="DATABASE_URL=ecto://athena_prod_user:StrongDBPassword!@127.0.0.1:5432/athena_prod"
+
+EnvironmentFile=/opt/athena_runner/.env
+
+ExecStart=/opt/athena_runner/bin/athena start
+ExecStop=/opt/athena_runner/bin/athena stop
+
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

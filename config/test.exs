@@ -44,7 +44,7 @@ config :phoenix_live_view,
 config :phoenix,
   sort_verified_routes_query_params: true
 
-# Config for local MinIO 
+# Config for local MinIO
 config :ex_aws,
   access_key_id: "minioadmin",
   secret_access_key: "minioadmin",
@@ -60,3 +60,5 @@ config :athena, Oban,
   testing: :manual,
   queues: false,
   plugins: false
+
+config :athena, :server_role, "all"
