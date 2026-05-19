@@ -9,7 +9,7 @@ defmodule Athena.Application do
 
   @impl true
   def start(_type, _args) do
-    server_role = Application.get_env(:athena, :server_role) || "default"
+    server_role = Application.get_env(:athena, :server_role)
 
     topologies = Application.get_env(:libcluster, :topologies)
 
@@ -26,14 +26,13 @@ defmodule Athena.Application do
   end
 
   @doc false
-  defp children_for_role("runner") do
-    [
+  defp children_for_role("runner"),
+    do: [
       {Task.Supervisor, name: {:via, :global, :code_runner}}
     ]
-  end
 
-  defp children_for_role("default") do
-    [
+  defp children_for_role("default"),
+    do: [
       AthenaWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:athena, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Athena.PubSub},
@@ -42,7 +41,8 @@ defmodule Athena.Application do
       {Cachex, name: :account_cache},
       AthenaWeb.Endpoint
     ]
-  end
+
+  defp children_for_role(_), do: children_for_role("runner") ++ children_for_role("default")
 
   # Tell Phoenix to update the endpoint configuration
   # whenever the application is updated.

@@ -25,16 +25,17 @@ config :athena, AthenaWeb.Endpoint,
 
 config :athena, :default_locale, System.get_env("DEFAULT_LOCALE") || "en"
 
-is_runner = System.get_env("SERVER_ROLE") == "runner"
+server_role = System.get_env("SERVER_ROLE")
 
 queues =
-  if is_runner do
-    [code_execution: System.schedulers_online() * 2]
-  else
-    [default: 10]
+  server_role
+  |> case do
+    "runner" -> [code_execution: System.schedulers_online() * 2]
+    "default" -> [default: 10]
+    _ -> [code_execution: System.schedulers_online() * 2, default: 10]
   end
 
-config :athena, :server_role, System.get_env("SERVER_ROLE")
+config :athena, :server_role, server_role
 
 config :athena, Oban,
   repo: Athena.Repo,
@@ -110,7 +111,7 @@ if config_env() == :prod do
     public_host: System.get_env("MINIO_PUBLIC_HOST"),
     public_port: System.get_env("MINIO_PORT_EXTERNAL")
 
-  if config_env() != :test and not is_runner do
+  if config_env() != :test and server_role != "runner" do
     media_cron = System.get_env("MEDIA_CLEANUP_CRON") || "0 * * * *"
 
     config :athena, Oban,
