@@ -125,6 +125,35 @@ Triggered on PRs and pushes to `main` and `develop`.
 >
 > **On macOS/Windows:** You cannot run the code execution engine natively. Development involving code execution should be done inside a Linux VM or Docker container.
 
+### Deployment Roles & Hybrid Architecture
+
+Because the `isolate` code execution engine requires deep Linux kernel access (cgroups v2, namespaces) that Docker restricts, Athena is designed to be deployed in a "hybrid" distributed mode without splitting the monolithic codebase.
+
+You can control the behavior of the application using the `SERVER_ROLE` environment variable:
+
+- **`default` (Web Node):** Serves the Phoenix LiveView UI, handles HTTP requests, and manages background tasks like media cleanup. This node is completely safe to run inside a standard Docker container.
+- **`runner` (Code Execution Worker):** A headless node that listens strictly for code execution jobs and interfaces with the native `isolate` binary. This node **must** be run directly on a bare-metal Linux host or a fully privileged VM.
+
+The nodes automatically discover and connect to each other using `libcluster` (via Gossip) and share state via Oban and PostgreSQL.
+
+#### Running the Hybrid Setup
+
+To start the nodes, ensure both share the same database connection and `ERLANG_COOKIE`.
+
+1. Start the Web Node (e.g., inside Docker):
+
+```bash
+SERVER_ROLE=default iex --name web@127.0.0.1 --cookie super_secret -S mix phx.server
+```
+
+2. Start the Runner Node (on the bare-metal host with `isolate` installed):
+
+```bash
+SERVER_ROLE=runner iex --name runner@127.0.0.1 --cookie super_secret -S mix
+```
+
+_Note: If no `SERVER_ROLE` is provided, Athena will boot in a combined mode (starting both the web endpoint and the runner supervisor). This is primarily useful for local development or testing on a Linux machine._
+
 ## Contributing
 
 We welcome contributions! Please check out our open issues or submit a PR. For major architectural changes, please open an issue first to discuss.
