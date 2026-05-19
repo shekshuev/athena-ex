@@ -25,6 +25,21 @@ config :athena, AthenaWeb.Endpoint,
 
 config :athena, :default_locale, System.get_env("DEFAULT_LOCALE") || "en"
 
+is_runner = System.get_env("SERVER_ROLE") == "runner"
+
+queues =
+  if is_runner do
+    [code_execution: System.schedulers_online() * 2]
+  else
+    [default: 10]
+  end
+
+config :athena, :server_role, System.get_env("SERVER_ROLE")
+
+config :athena, Oban,
+  repo: Athena.Repo,
+  queues: queues
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||
@@ -95,7 +110,7 @@ if config_env() == :prod do
     public_host: System.get_env("MINIO_PUBLIC_HOST"),
     public_port: System.get_env("MINIO_PORT_EXTERNAL")
 
-  if config_env() != :test do
+  if config_env() != :test and not is_runner do
     media_cron = System.get_env("MEDIA_CLEANUP_CRON") || "0 * * * *"
 
     config :athena, Oban,

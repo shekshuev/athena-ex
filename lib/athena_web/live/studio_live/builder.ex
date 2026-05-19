@@ -1201,15 +1201,18 @@ defmodule AthenaWeb.StudioLive.Builder do
         )
       )
 
-    parent_pid = self()
+    runner = {:via, :global, :code_runner}
 
-    Task.async(fn ->
-      box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
-      result = Execution.verify(code, challenge, box_id)
-      send(parent_pid, {:instructor_test_result, result})
-    end)
+    if :global.whereis_name(:code_runner) != :undefined do
+      Task.Supervisor.async(runner, fn ->
+        box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
+        Execution.verify(code, challenge, box_id)
+      end)
 
-    {:noreply, put_flash(socket, :info, gettext("Testing reference solution... Please wait."))}
+      {:noreply, put_flash(socket, :info, gettext("Testing reference solution... Please wait."))}
+    else
+      {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
+    end
   end
 
   @impl true

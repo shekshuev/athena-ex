@@ -60,6 +60,17 @@ config :athena, Oban,
     code_execution: System.schedulers_online() * 2
   ]
 
+config :libcluster,
+  topologies: [
+    example: [
+      strategy: Cluster.Strategy.Gossip,
+      config: [
+        port: 45892,
+        if_addr: "0.0.0.0"
+      ]
+    ]
+  ]
+
 config :mime, :types, %{
   "video/x-matroska" => ["mkv"],
   "video/x-msvideo" => ["avi"],

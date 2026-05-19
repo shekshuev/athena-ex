@@ -9,25 +9,39 @@ defmodule Athena.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [
+    server_role = Application.get_env(:athena, :server_role) || "default"
+
+    topologies = Application.get_env(:libcluster, :topologies)
+
+    children =
+      [
+        Athena.Repo,
+        {Oban, Application.fetch_env!(:athena, Oban)},
+        {Cluster.Supervisor, [topologies, [name: Athena.ClusterSupervisor]]}
+      ] ++ children_for_role(server_role)
+
+    opts = [strategy: :one_for_one, name: Athena.Supervisor]
+
+    Supervisor.start_link(children, opts)
+  end
+
+  @doc false
+  defp children_for_role("runner") do
+    [
+      {Task.Supervisor, name: {:via, :global, :code_runner}}
+    ]
+  end
+
+  defp children_for_role("default") do
+    [
       AthenaWeb.Telemetry,
-      Athena.Repo,
       {DNSCluster, query: Application.get_env(:athena, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Athena.PubSub},
-      # Start a worker by calling: Athena.Worker.start_link(arg)
-      # {Athena.Worker, arg},
-      # Start to serve requests, typically the last entry
-      {Oban, Application.fetch_env!(:athena, Oban)},
       Athena.Media.EventListener,
       Athena.Content.Listener,
       {Cachex, name: :account_cache},
       AthenaWeb.Endpoint
     ]
-
-    # See https://hexdocs.pm/elixir/Supervisor.html
-    # for other strategies and supported options
-    opts = [strategy: :one_for_one, name: Athena.Supervisor]
-    Supervisor.start_link(children, opts)
   end
 
   # Tell Phoenix to update the endpoint configuration
