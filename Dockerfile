@@ -12,8 +12,8 @@
 #   - Ex: docker.io/hexpm/elixir:1.19.5-erlang-28.3.1-debian-trixie-20260406-slim
 #
 ARG ELIXIR_VERSION=1.19.5
-ARG OTP_VERSION=28.3.1
-ARG DEBIAN_VERSION=trixie-20260406-slim
+ARG OTP_VERSION=27.3.4.10
+ARG DEBIAN_VERSION=bullseye-20260518-slim
 ARG COMMIT_SHA="dev"
 
 
