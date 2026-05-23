@@ -74,6 +74,17 @@ defmodule AthenaWeb.AdminLive.UsersTest do
         ~p"/admin/users?order_by[]=login&order_directions[]=asc&page=1&page_size=10"
       )
     end
+
+    test "clears cache when clear cache button is clicked", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/admin/users")
+
+      html =
+        lv
+        |> element("button[phx-click='clear_cache']")
+        |> render_click()
+
+      assert html =~ "Account cache cleared successfully"
+    end
   end
 
   describe "Users page (Create/Edit actions)" do

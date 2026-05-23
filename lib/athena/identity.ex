@@ -11,6 +11,7 @@ defmodule Athena.Identity do
   defdelegate authenticate(login, password), to: Accounts
   defdelegate register_admin_user(user, account_attrs, profile_attrs), to: Accounts
   defdelegate update_admin_user(user, account, account_attrs, profile_attrs), to: Accounts
+  defdelegate clear_cache(), to: Accounts
 
   def soft_delete_account(account) do
     Accounts.soft_delete_account(account)

@@ -381,4 +381,86 @@ defmodule Athena.Identity.AccountsTest do
       assert ids == []
     end
   end
+
+  describe "get_account/2 with cache and preload reload" do
+    test "reloads account from DB if requested preload associations are not loaded in cache" do
+      role = insert(:role, permissions: ["users.read"])
+      account = insert(:account, role: role)
+
+      cached_account = Athena.Repo.get!(Account, account.id)
+      assert %Ecto.Association.NotLoaded{} = cached_account.role
+
+      Cachex.put(:account_cache, account.id, cached_account)
+
+      {:ok, fetched_account} = Accounts.get_account(account.id, preload: [:role])
+
+      assert %Athena.Identity.Role{} = fetched_account.role
+      assert fetched_account.role.id == role.id
+      assert "users.read" in fetched_account.role.permissions
+    end
+
+    test "returns cached account without reload if requested preload associations are already loaded" do
+      role = insert(:role, permissions: ["users.read"])
+      account = insert(:account, role: role)
+
+      loaded_account = Athena.Repo.preload(account, [:role])
+      Cachex.put(:account_cache, account.id, loaded_account)
+
+      {:ok, fetched_account} = Accounts.get_account(account.id, preload: [:role])
+
+      assert %Athena.Identity.Role{} = fetched_account.role
+      assert fetched_account.role.id == role.id
+      assert fetched_account.id == loaded_account.id
+    end
+
+    test "reloads account when multiple preloads are requested but some are missing" do
+      role = insert(:role, permissions: ["users.read"])
+      account = insert(:account, role: role)
+      profile = insert(:profile, owner: account)
+
+      cached_account = Athena.Repo.get!(Account, account.id)
+      assert %Ecto.Association.NotLoaded{} = cached_account.role
+      assert %Ecto.Association.NotLoaded{} = cached_account.profile
+
+      Cachex.put(:account_cache, account.id, cached_account)
+
+      {:ok, fetched_account} = Accounts.get_account(account.id, preload: [:role, :profile])
+
+      assert %Athena.Identity.Role{} = fetched_account.role
+      assert fetched_account.role.id == role.id
+
+      assert %Athena.Identity.Profile{} = fetched_account.profile
+      assert fetched_account.profile.id == profile.id
+    end
+
+    test "works correctly without preload option" do
+      account = insert(:account)
+
+      cached_account = Athena.Repo.get!(Account, account.id)
+      Cachex.put(:account_cache, account.id, cached_account)
+
+      {:ok, fetched_account} = Accounts.get_account(account.id)
+
+      assert fetched_account.id == account.id
+      assert fetched_account.login == account.login
+    end
+  end
+
+  describe "clear_cache/0" do
+    test "clears all accounts from cache", %{admin: admin} do
+      account1 = insert(:account, login: "cache_user_1")
+      account2 = insert(:account, login: "cache_user_2")
+
+      Cachex.put(:account_cache, account1.id, admin)
+      Cachex.put(:account_cache, account2.id, admin)
+
+      assert {:ok, ^admin} = Cachex.get(:account_cache, account1.id)
+      assert {:ok, ^admin} = Cachex.get(:account_cache, account2.id)
+
+      assert {:ok, _} = Accounts.clear_cache()
+
+      assert {:ok, nil} = Cachex.get(:account_cache, account1.id)
+      assert {:ok, nil} = Cachex.get(:account_cache, account2.id)
+    end
+  end
 end

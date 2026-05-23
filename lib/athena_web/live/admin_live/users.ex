@@ -97,6 +97,20 @@ defmodule AthenaWeb.AdminLive.Users do
     {:noreply, push_patch(socket, to: ~p"/admin/users?#{params}")}
   end
 
+  def handle_event("clear_cache", _params, socket) do
+    case Identity.clear_cache() do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, gettext("Account cache cleared successfully"))}
+
+      {:error, _} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("Failed to clear account cache"))}
+    end
+  end
+
   def handle_event("update_page_size", %{"page_size" => size}, socket) do
     params = build_query_params(socket.assigns, %{"page_size" => size, "page" => 1})
     {:noreply, push_patch(socket, to: ~p"/admin/users?#{params}")}
@@ -152,14 +166,24 @@ defmodule AthenaWeb.AdminLive.Users do
           <h1 class="text-2xl font-display font-bold text-base-content">{gettext("Users")}</h1>
           <p class="text-base-content/60">{gettext("Manage system accounts and user profiles.")}</p>
         </div>
-        <.button
-          :if={Identity.can?(@current_user, "users.create")}
-          patch={~p"/admin/users/new?#{build_query_params(assigns, %{})}"}
-          class="btn btn-primary"
-        >
-          <.icon name="hero-plus" class="size-5" />
-          {gettext("Create User")}
-        </.button>
+        <div class="flex gap-2">
+          <.button
+            type="button"
+            phx-click="clear_cache"
+            class="btn btn-outline btn-warning"
+          >
+            <.icon name="hero-arrow-path" class="size-5" />
+            {gettext("Clear Cache")}
+          </.button>
+          <.button
+            :if={Identity.can?(@current_user, "users.create")}
+            patch={~p"/admin/users/new?#{build_query_params(assigns, %{})}"}
+            class="btn btn-primary"
+          >
+            <.icon name="hero-plus" class="size-5" />
+            {gettext("Create User")}
+          </.button>
+        </div>
       </div>
 
       <div class="flex gap-4">

@@ -2,11 +2,11 @@ defmodule Athena.Identity.Accounts do
   @moduledoc """
   Internal business logic for the Account entity.
 
-  This module handles database interactions, authentication, and secure 
-  password management. It is designed to be used exclusively through 
+  This module handles database interactions, authentication, and secure
+  password management. It is designed to be used exclusively through
   the public API of the `Athena.Identity` context.
 
-  **Note:** Since this application uses Phoenix LiveView and standard 
+  **Note:** Since this application uses Phoenix LiveView and standard
   server-side sessions, JWT generation and validation are not required.
   """
 
@@ -122,8 +122,10 @@ defmodule Athena.Identity.Accounts do
     * `{:ok, %Account{}}` if found.
     * `{:error, :not_found}` if the account does not exist.
   """
-  @spec get_account(String.t()) :: {:ok, Account.t()} | {:error, :not_found}
+  @spec get_account(String.t(), keyword()) :: {:ok, Account.t()} | {:error, :not_found}
   def get_account(id, opts \\ []) do
+    preloads = Keyword.get(opts, :preload, [])
+
     case Cachex.get(:account_cache, id) do
       {:ok, nil} ->
         case Repo.get(Account, id) do
@@ -138,7 +140,21 @@ defmodule Athena.Identity.Accounts do
         end
 
       {:ok, %Account{} = account} ->
-        {:ok, account}
+        needs_reload =
+          Enum.any?(preloads, fn assoc ->
+            case Map.get(account, assoc) do
+              %Ecto.Association.NotLoaded{} -> true
+              _ -> false
+            end
+          end)
+
+        if needs_reload do
+          account = maybe_preload_account(account, opts)
+          Cachex.put(:account_cache, id, account, ttl: :timer.minutes(5))
+          {:ok, account}
+        else
+          {:ok, account}
+        end
     end
   end
 
@@ -214,7 +230,7 @@ defmodule Athena.Identity.Accounts do
   @doc """
   Authenticates a user by their login and password.
 
-  Uses `Argon2.verify_pass/2` to check the hash. It also safely handles 
+  Uses `Argon2.verify_pass/2` to check the hash. It also safely handles
   non-existent users via `Argon2.no_user_verify/0` to prevent timing attacks.
 
   ## Security & Brute-force Protection
@@ -374,5 +390,15 @@ defmodule Athena.Identity.Accounts do
     |> where([a], ilike(a.login, ^search_term))
     |> select([a], a.id)
     |> Repo.all()
+  end
+
+  @doc """
+  Clears the entire account cache.
+
+  Useful for debugging or forcing a reload of all user data from the database.
+  """
+  @spec clear_cache() :: {:ok, boolean()} | {:error, any()}
+  def clear_cache() do
+    Cachex.clear(:account_cache)
   end
 end
