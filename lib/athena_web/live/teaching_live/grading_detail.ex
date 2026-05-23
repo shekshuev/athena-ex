@@ -17,22 +17,28 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
 
     submission = Learning.get_submission!(socket.assigns.current_user, id)
 
-    {:ok, account} = Identity.get_account(submission.account_id)
-    {:ok, block} = Content.get_block(submission.block_id)
+    with {:ok, account} <- Identity.get_account(submission.account_id),
+         {:ok, block} <- Content.get_block(submission.block_id) do
+      form = to_form(%{"score" => submission.score, "feedback" => submission.feedback || ""})
 
-    form = to_form(%{"score" => submission.score, "feedback" => submission.feedback || ""})
-
-    {:ok,
-     socket
-     |> assign(
-       page_title: gettext("Grade Submission"),
-       submission: submission,
-       account: account,
-       block: block,
-       form: form,
-       return_to: return_to,
-       show_delete_modal: false
-     )}
+      {:ok,
+       socket
+       |> assign(
+         page_title: gettext("Grade Submission"),
+         submission: submission,
+         account: account,
+         block: block,
+         form: form,
+         return_to: return_to,
+         show_delete_modal: false
+       )}
+    else
+      {:error, :not_found} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("Submission data is no longer available."))
+         |> push_navigate(to: return_to)}
+    end
   end
 
   @impl true
@@ -115,7 +121,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
       <div class="flex items-center gap-4 mb-8 border-b border-base-200 pb-6">
         <.link
           navigate={@return_to}
-          class="btn btn-ghost btn-sm btn-square rounded-md hover:bg-base-200"
+          class="btn btn-ghost btn-sm btn-square rounded-sm hover:bg-base-200"
         >
           <.icon name="hero-arrow-left" class="size-5" />
         </.link>
@@ -180,7 +186,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
               </div>
             </div>
           <% else %>
-            <div class="p-6 bg-base-100 border border-base-200 rounded-xl shadow-sm">
+            <div class="p-6 bg-base-100 border border-base-200 rounded-sm shadow-sm">
               <div class="flex items-center justify-between mb-6 pb-4 border-b border-base-100">
                 <h2 class="text-lg font-bold">{gettext("Question Content")}</h2>
               </div>
