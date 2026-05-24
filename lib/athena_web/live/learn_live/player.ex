@@ -209,33 +209,39 @@ defmodule AthenaWeb.LearnLive.Player do
     block_id = params["block_id"]
     code = get_in(params, ["answer", "code"]) || ""
 
-    user = socket.assigns.current_user
-    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
-
-    if block do
-      sub_attrs = %{
-        "block_id" => block.id,
-        "cohort_id" => socket.assigns.team_id,
-        "status" => :pending,
-        "content" => %{"type" => :code, "code" => code}
-      }
-
-      case Learning.create_submission(user, sub_attrs) do
-        {:ok, submission} ->
-          submissions = Map.put(socket.assigns.submissions, block_id, submission)
-
-          current_attempts = Map.get(socket.assigns.attempts_map || %{}, block_id, 0)
-
-          attempts_map =
-            Map.put(socket.assigns.attempts_map || %{}, block_id, current_attempts + 1)
-
-          {:noreply, assign(socket, submissions: submissions, attempts_map: attempts_map)}
-
-        {:error, _} ->
-          {:noreply, put_flash(socket, :error, gettext("Failed to submit code."))}
-      end
+    with block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == block_id)),
+         true <- code_runner_available?() do
+      process_code_submission(socket, block, code)
     else
-      {:noreply, socket}
+      nil ->
+        {:noreply, socket}
+
+      false ->
+        {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
+    end
+  end
+
+  @doc false
+  defp code_runner_available?, do: :global.whereis_name(:code_runner) != :undefined
+
+  @doc false
+  defp process_code_submission(socket, block, code) do
+    sub_attrs = %{
+      "block_id" => block.id,
+      "cohort_id" => socket.assigns.team_id,
+      "status" => :pending,
+      "content" => %{"type" => :code, "code" => code}
+    }
+
+    case Learning.create_submission(socket.assigns.current_user, sub_attrs) do
+      {:ok, submission} ->
+        submissions = Map.put(socket.assigns.submissions, block.id, submission)
+        current_attempts = Map.get(socket.assigns.attempts_map || %{}, block.id, 0)
+        attempts_map = Map.put(socket.assigns.attempts_map || %{}, block.id, current_attempts + 1)
+        {:noreply, assign(socket, submissions: submissions, attempts_map: attempts_map)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to submit code."))}
     end
   end
 

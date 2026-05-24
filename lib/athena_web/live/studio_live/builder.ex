@@ -63,7 +63,8 @@ defmodule AthenaWeb.StudioLive.Builder do
          active_upload_block_id: nil,
          upload_type: nil,
          library_insert_after_id: nil,
-         pending_uploads: %{}
+         pending_uploads: %{},
+         running_tests: %{}
        )}
     else
       _ ->
@@ -158,30 +159,43 @@ defmodule AthenaWeb.StudioLive.Builder do
   end
 
   @impl true
-  def handle_info({:instructor_test_result, result}, socket) do
+  def handle_info({ref, result}, socket) when is_map_key(socket.assigns.running_tests, ref) do
+    {_block_id, updated_tests} = Map.pop(socket.assigns.running_tests, ref)
+    Process.demonitor(ref, [:flush])
+
     socket =
       if result.status == :accepted do
         put_flash(
           socket,
           :info,
-          gettext("Success! Reference solution passed all tests (Score: %{score})",
-            score: result.score
-          )
+          gettext("Success! Block tests passed (Score: %{score})", score: result.score)
         )
       else
         put_flash(
           socket,
           :error,
-          gettext("Test Failed! Status: %{status}. Check your code or test cases.",
-            status: result.status
-          )
+          gettext("Test Failed! Status: %{status}.", status: result.status)
         )
       end
 
-    {:noreply, socket}
+    {:noreply, assign(socket, :running_tests, updated_tests)}
   end
 
+  @impl true
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, socket)
+      when is_map_key(socket.assigns.running_tests, ref) do
+    {_block_id, updated_tests} = Map.pop(socket.assigns.running_tests, ref)
+
+    {:noreply,
+     socket
+     |> put_flash(:error, gettext("Test execution failed or runner disconnected."))
+     |> assign(:running_tests, updated_tests)}
+  end
+
+  @impl true
   def handle_info({ref, _result}, socket) when is_reference(ref), do: {:noreply, socket}
+
+  @impl true
   def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket), do: {:noreply, socket}
 
   @impl true
@@ -1204,12 +1218,18 @@ defmodule AthenaWeb.StudioLive.Builder do
     runner = {:via, :global, :code_runner}
 
     if :global.whereis_name(:code_runner) != :undefined do
-      Task.Supervisor.async(runner, fn ->
-        box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
-        Execution.verify(code, challenge, box_id)
-      end)
+      task =
+        Task.Supervisor.async(runner, fn ->
+          box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
+          Execution.verify(code, challenge, box_id)
+        end)
 
-      {:noreply, put_flash(socket, :info, gettext("Testing reference solution... Please wait."))}
+      updated_tests = Map.put(socket.assigns.running_tests, task.ref, block.id)
+
+      {:noreply,
+       socket
+       |> assign(:running_tests, updated_tests)
+       |> put_flash(:info, gettext("Testing reference solution... Please wait."))}
     else
       {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
     end

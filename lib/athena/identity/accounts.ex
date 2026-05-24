@@ -128,34 +128,50 @@ defmodule Athena.Identity.Accounts do
 
     case Cachex.get(:account_cache, id) do
       {:ok, nil} ->
-        case Repo.get(Account, id) do
-          nil ->
-            {:error, :not_found}
-
-          account ->
-            account = maybe_preload_account(account, opts)
-            Cachex.put(:account_cache, id, account, ttl: :timer.minutes(5))
-
-            {:ok, account}
-        end
+        fetch_from_db_and_cache(id, opts)
 
       {:ok, %Account{} = account} ->
-        needs_reload =
-          Enum.any?(preloads, fn assoc ->
-            case Map.get(account, assoc) do
-              %Ecto.Association.NotLoaded{} -> true
-              _ -> false
-            end
-          end)
+        ensure_preloaded_and_cached(account, preloads, id, opts)
 
-        if needs_reload do
-          account = maybe_preload_account(account, opts)
-          Cachex.put(:account_cache, id, account, ttl: :timer.minutes(5))
-          {:ok, account}
-        else
-          {:ok, account}
-        end
+      _ ->
+        {:error, :not_found}
     end
+  end
+
+  @doc false
+  defp fetch_from_db_and_cache(id, opts) do
+    case Repo.get(Account, id) do
+      nil ->
+        {:error, :not_found}
+
+      account ->
+        account = maybe_preload_account(account, opts)
+        cache_account(id, account)
+        {:ok, account}
+    end
+  end
+
+  @doc false
+  defp ensure_preloaded_and_cached(account, preloads, id, opts) do
+    if needs_preload?(account, preloads) do
+      account = maybe_preload_account(account, opts)
+      cache_account(id, account)
+      {:ok, account}
+    else
+      {:ok, account}
+    end
+  end
+
+  @doc false
+  defp needs_preload?(account, preloads) do
+    Enum.any?(preloads, fn assoc ->
+      match?(%Ecto.Association.NotLoaded{}, Map.get(account, assoc))
+    end)
+  end
+
+  @doc false
+  defp cache_account(id, account) do
+    Cachex.put(:account_cache, id, account, ttl: :timer.minutes(5))
   end
 
   @doc false
@@ -397,7 +413,7 @@ defmodule Athena.Identity.Accounts do
 
   Useful for debugging or forcing a reload of all user data from the database.
   """
-  @spec clear_cache() :: {:ok, boolean()} | {:error, any()}
+  @spec clear_cache() :: {:ok, non_neg_integer()} | {:error, any()}
   def clear_cache() do
     Cachex.clear(:account_cache)
   end
