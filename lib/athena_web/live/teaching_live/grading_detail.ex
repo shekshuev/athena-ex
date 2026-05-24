@@ -33,8 +33,8 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
          show_delete_modal: false
        )}
     else
-      {:error, :not_found} ->
-        {:noreply,
+      _ ->
+        {:ok,
          socket
          |> put_flash(:error, gettext("Submission data is no longer available."))
          |> push_navigate(to: return_to)}
