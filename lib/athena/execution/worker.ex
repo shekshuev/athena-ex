@@ -16,6 +16,10 @@ defmodule Athena.Execution.Worker do
   alias Athena.Content.{Block, CodeChallenge}
   alias Athena.Execution.Verifier
 
+  # max execution time
+  # TODO: add to docs!
+  @timeout 60_000
+
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"submission_id" => id}}) do
     submission = Repo.get!(Submission, id)
@@ -30,10 +34,56 @@ defmodule Athena.Execution.Worker do
       Ecto.Changeset.apply_changes(CodeChallenge.changeset(%CodeChallenge{}, challenge_attrs))
 
     code = submission.content["code"] || ""
-
     box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
 
-    result = Verifier.verify(code, challenge, box_id)
+    result =
+      if :global.whereis_name(:code_runner) != :undefined do
+        task =
+          Task.Supervisor.async({:via, :global, :code_runner}, fn ->
+            Verifier.verify(code, challenge, box_id)
+          end)
+
+        try do
+          Task.await(task, @timeout)
+        catch
+          :exit, reason ->
+            require Logger
+            Logger.error("Remote execution failed: #{inspect(reason)}")
+
+            %Verifier.Result{
+              status: :rejected,
+              score: 0,
+              test_results: [
+                %{
+                  status: :error,
+                  expected: "",
+                  stdout: "Runner node crashed or timed out.",
+                  input: "",
+                  time: 0.0,
+                  is_hidden: false
+                }
+              ]
+            }
+        end
+      else
+        require Logger
+        Logger.error("Runner node is not connected during worker execution!")
+
+        %Verifier.Result{
+          status: :rejected,
+          score: 0,
+          test_results: [
+            %{
+              status: :error,
+              expected: "",
+              stdout: "Runner node is not connected!",
+              input: "",
+              time: 0.0,
+              is_hidden: false
+            }
+          ]
+        }
+      end
 
     clean_test_results =
       Enum.map(result.test_results, fn tr ->

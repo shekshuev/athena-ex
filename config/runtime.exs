@@ -31,11 +31,24 @@ queues =
   server_role
   |> case do
     "runner" -> [code_execution: System.schedulers_online() * 2]
-    "default" -> [default: 10]
+    "default" -> [code_execution: System.schedulers_online() * 2]
     _ -> [code_execution: System.schedulers_online() * 2, default: 10]
   end
 
 config :athena, :server_role, server_role
+
+if server_role in ["default", "runner"] do
+  config :libcluster,
+    topologies: [
+      example: [
+        strategy: Cluster.Strategy.Gossip,
+        config: [
+          port: 45892,
+          if_addr: "0.0.0.0"
+        ]
+      ]
+    ]
+end
 
 config :athena, Oban,
   repo: Athena.Repo,
@@ -60,56 +73,61 @@ if config_env() == :prod do
     socket_options: maybe_ipv6,
     types: Athena.PostgresTypes
 
-  if System.get_env("FORCE_SSL") == "true" do
-    config :athena, AthenaWeb.Endpoint,
-      force_ssl: [
-        rewrite_on: [:x_forwarded_proto],
-        exclude: [
-          hosts: ["localhost", "127.0.0.1"]
+  if server_role != "runner" do
+    if System.get_env("FORCE_SSL") == "true" do
+      config :athena, AthenaWeb.Endpoint,
+        force_ssl: [
+          rewrite_on: [:x_forwarded_proto],
+          exclude: [
+            hosts: ["localhost", "127.0.0.1"]
+          ]
         ]
-      ]
+    end
+
+    # The secret key base is used to sign/encrypt cookies and other secrets.
+    # A default value is used in config/dev.exs and config/test.exs but you
+    # want to use a different value for prod and you most likely don't want
+    # to check this value into version control, so we use an environment
+    # variable instead.
+    secret_key_base =
+      System.get_env("SECRET_KEY_BASE") ||
+        raise """
+        environment variable SECRET_KEY_BASE is missing.
+        You can generate one by calling: mix phx.gen.secret
+        """
+
+    host = System.get_env("PHX_HOST") || "example.com"
+
+    config :athena, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
+
+    config :athena, AthenaWeb.Endpoint,
+      url: [host: host, port: 443, scheme: "https"],
+      http: [
+        # Enable IPv6 and bind on all interfaces.
+        # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
+        # See the documentation on https://hexdocs.pm/bandit/Bandit.html#t:options/0
+        # for details about using IPv6 vs IPv4 and loopback vs public addresses.
+        ip: {0, 0, 0, 0, 0, 0, 0, 0}
+      ],
+      secret_key_base: secret_key_base
   end
 
-  # The secret key base is used to sign/encrypt cookies and other secrets.
-  # A default value is used in config/dev.exs and config/test.exs but you
-  # want to use a different value for prod and you most likely don't want
-  # to check this value into version control, so we use an environment
-  # variable instead.
-  secret_key_base =
-    System.get_env("SECRET_KEY_BASE") ||
-      raise """
-      environment variable SECRET_KEY_BASE is missing.
-      You can generate one by calling: mix phx.gen.secret
-      """
+  if server_role != "runner" do
+    config :ex_aws,
+      access_key_id: System.get_env("MINIO_ACCESS_KEY") || raise("MINIO_ACCESS_KEY is missing"),
+      secret_access_key:
+        System.get_env("MINIO_SECRET_KEY") || raise("MINIO_SECRET_KEY is missing"),
+      s3: [
+        scheme: System.get_env("MINIO_SCHEME") || "https://",
+        host: System.get_env("MINIO_HOST") || raise("MINIO_HOST is missing"),
+        port: String.to_integer(System.get_env("MINIO_PORT") || "443")
+      ]
 
-  host = System.get_env("PHX_HOST") || "example.com"
-
-  config :athena, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
-
-  config :athena, AthenaWeb.Endpoint,
-    url: [host: host, port: 443, scheme: "https"],
-    http: [
-      # Enable IPv6 and bind on all interfaces.
-      # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
-      # See the documentation on https://hexdocs.pm/bandit/Bandit.html#t:options/0
-      # for details about using IPv6 vs IPv4 and loopback vs public addresses.
-      ip: {0, 0, 0, 0, 0, 0, 0, 0}
-    ],
-    secret_key_base: secret_key_base
-
-  config :ex_aws,
-    access_key_id: System.get_env("MINIO_ACCESS_KEY") || raise("MINIO_ACCESS_KEY is missing"),
-    secret_access_key: System.get_env("MINIO_SECRET_KEY") || raise("MINIO_SECRET_KEY is missing"),
-    s3: [
-      scheme: System.get_env("MINIO_SCHEME") || "https://",
-      host: System.get_env("MINIO_HOST") || raise("MINIO_HOST is missing"),
-      port: String.to_integer(System.get_env("MINIO_PORT") || "443")
-    ]
-
-  config :athena, Athena.Media,
-    bucket: System.get_env("MINIO_BUCKET"),
-    public_host: System.get_env("MINIO_PUBLIC_HOST"),
-    public_port: System.get_env("MINIO_PORT_EXTERNAL")
+    config :athena, Athena.Media,
+      bucket: System.get_env("MINIO_BUCKET"),
+      public_host: System.get_env("MINIO_PUBLIC_HOST"),
+      public_port: System.get_env("MINIO_PORT_EXTERNAL")
+  end
 
   if config_env() != :test and server_role != "runner" do
     media_cron = System.get_env("MEDIA_CLEANUP_CRON") || "0 * * * *"

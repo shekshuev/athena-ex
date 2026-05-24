@@ -11,19 +11,23 @@ defmodule Athena.Application do
   def start(_type, _args) do
     server_role = Application.get_env(:athena, :server_role)
 
-    topologies = Application.get_env(:libcluster, :topologies)
+    topologies = Application.get_env(:libcluster, :topologies) || []
 
     children =
-      [
-        Athena.Repo,
-        {Oban, Application.fetch_env!(:athena, Oban)},
-        {Cluster.Supervisor, [topologies, [name: Athena.ClusterSupervisor]]}
-      ] ++ children_for_role(server_role)
+      cluster_children(topologies) ++ children_for_role(server_role)
 
     opts = [strategy: :one_for_one, name: Athena.Supervisor]
 
     Supervisor.start_link(children, opts)
   end
+
+  @doc false
+  defp cluster_children([]), do: []
+
+  defp cluster_children(topologies),
+    do: [
+      {Cluster.Supervisor, [topologies, [name: Athena.ClusterSupervisor]]}
+    ]
 
   @doc false
   defp children_for_role("runner"),
@@ -33,6 +37,8 @@ defmodule Athena.Application do
 
   defp children_for_role("default"),
     do: [
+      Athena.Repo,
+      {Oban, Application.fetch_env!(:athena, Oban)},
       AthenaWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:athena, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Athena.PubSub},

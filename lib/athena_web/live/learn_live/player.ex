@@ -213,26 +213,30 @@ defmodule AthenaWeb.LearnLive.Player do
     block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
 
     if block do
-      sub_attrs = %{
-        "block_id" => block.id,
-        "cohort_id" => socket.assigns.team_id,
-        "status" => :pending,
-        "content" => %{"type" => :code, "code" => code}
-      }
+      if :global.whereis_name(:code_runner) != :undefined do
+        sub_attrs = %{
+          "block_id" => block.id,
+          "cohort_id" => socket.assigns.team_id,
+          "status" => :pending,
+          "content" => %{"type" => :code, "code" => code}
+        }
 
-      case Learning.create_submission(user, sub_attrs) do
-        {:ok, submission} ->
-          submissions = Map.put(socket.assigns.submissions, block_id, submission)
+        case Learning.create_submission(user, sub_attrs) do
+          {:ok, submission} ->
+            submissions = Map.put(socket.assigns.submissions, block_id, submission)
 
-          current_attempts = Map.get(socket.assigns.attempts_map || %{}, block_id, 0)
+            current_attempts = Map.get(socket.assigns.attempts_map || %{}, block_id, 0)
 
-          attempts_map =
-            Map.put(socket.assigns.attempts_map || %{}, block_id, current_attempts + 1)
+            attempts_map =
+              Map.put(socket.assigns.attempts_map || %{}, block_id, current_attempts + 1)
 
-          {:noreply, assign(socket, submissions: submissions, attempts_map: attempts_map)}
+            {:noreply, assign(socket, submissions: submissions, attempts_map: attempts_map)}
 
-        {:error, _} ->
-          {:noreply, put_flash(socket, :error, gettext("Failed to submit code."))}
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, gettext("Failed to submit code."))}
+        end
+      else
+        {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
       end
     else
       {:noreply, socket}

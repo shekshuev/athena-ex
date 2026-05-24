@@ -51,26 +51,6 @@ config :phoenix, :json_library, Jason
 
 config :flop, repo: Athena.Repo
 
-media_cron = System.get_env("MEDIA_CLEANUP_CRON") || "0 * * * *"
-
-config :athena, Oban,
-  repo: Athena.Repo,
-  queues: [
-    default: 10,
-    code_execution: System.schedulers_online() * 2
-  ]
-
-config :libcluster,
-  topologies: [
-    example: [
-      strategy: Cluster.Strategy.Gossip,
-      config: [
-        port: 45892,
-        if_addr: "0.0.0.0"
-      ]
-    ]
-  ]
-
 config :mime, :types, %{
   "video/x-matroska" => ["mkv"],
   "video/x-msvideo" => ["avi"],
