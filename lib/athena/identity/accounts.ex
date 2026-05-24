@@ -413,7 +413,7 @@ defmodule Athena.Identity.Accounts do
 
   Useful for debugging or forcing a reload of all user data from the database.
   """
-  @spec clear_cache() :: {:ok, boolean()} | {:error, any()}
+  @spec clear_cache() :: {:ok, non_neg_integer()} | {:error, any()}
   def clear_cache() do
     Cachex.clear(:account_cache)
   end
