@@ -5,6 +5,14 @@ defmodule Athena.Execution.Worker do
   Fetches the submission and its associated code block, manages the lifecycle
   states (`:processing`, then final execution status), invokes the verification
   sandbox, and broadcasts real-time updates to the frontend via Phoenix PubSub.
+
+  ## Configuration
+
+  The maximum execution time for a single challenge is controlled by the
+  `@timeout` module attribute (default: 60_000 ms / 1 minute). If you need
+  to tweak it globally, override it via application config:
+
+      config :athena, Athena.Execution.Worker, timeout: 90_000
   """
 
   use Oban.Worker,
@@ -16,9 +24,7 @@ defmodule Athena.Execution.Worker do
   alias Athena.Content.{Block, CodeChallenge}
   alias Athena.Execution.Verifier
 
-  # max execution time
-  # TODO: add to docs!
-  @timeout 60_000
+  @timeout Application.compile_env(:athena, [Athena.Execution.Worker, :timeout], 60_000)
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"submission_id" => id}}) do
