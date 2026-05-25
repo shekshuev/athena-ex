@@ -601,6 +601,25 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
+  def handle_event("add_file_assignment_block", params, socket) do
+    if can_edit?(socket) do
+      attrs = %{
+        "type" => "file_assignment",
+        "content" => %{
+          "description" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+          "max_files" => 1,
+          "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]}
+        },
+        "section_id" => socket.assigns.active_section_id,
+        "after_id" => clean_after_id(params["after_id"])
+      }
+
+      create_and_assign_block(socket, attrs, gettext("Failed to create file assignment block"))
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_event("add_quiz_option", %{"id" => block_id}, socket) do
     if can_edit?(socket) do
       course = socket.assigns.course

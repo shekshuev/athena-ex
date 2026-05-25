@@ -15,7 +15,8 @@ defmodule Athena.Content.Block do
     Section,
     AccessRules,
     CompletionRule,
-    CodeChallenge
+    CodeChallenge,
+    FileAssignment
   }
 
   @type t :: %__MODULE__{}
@@ -35,7 +36,8 @@ defmodule Athena.Content.Block do
   }
 
   schema "blocks" do
-    field :type, Ecto.Enum, values: ~w(text code quiz_question quiz_exam video image attachment)a
+    field :type, Ecto.Enum,
+      values: ~w(text code quiz_question quiz_exam video image attachment file_assignment)a
 
     field :content, :map, default: %{}
     field :order, :integer, default: 0
@@ -77,6 +79,7 @@ defmodule Athena.Content.Block do
         :quiz_question -> QuizQuestion.changeset(struct(QuizQuestion), content_map)
         :quiz_exam -> QuizExam.changeset(struct(QuizExam), content_map)
         :code -> CodeChallenge.changeset(struct(CodeChallenge), content_map)
+        :file_assignment -> FileAssignment.changeset(struct(FileAssignment), content_map)
         _ -> nil
       end
 

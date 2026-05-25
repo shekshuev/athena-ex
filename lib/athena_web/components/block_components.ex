@@ -50,6 +50,12 @@ defmodule AthenaWeb.BlockComponents do
           />
         <% :quiz_exam -> %>
           <.render_quiz_exam block={@block} mode={@mode} submission={@submission} />
+        <% :file_assignment -> %>
+          <.render_file_assignment
+            block={@block}
+            mode={@mode}
+            submission={@submission}
+          />
         <% _ -> %>
           <div class="p-4 text-warning italic border border-warning/20 bg-warning/5 rounded-sm">
             {gettext("Unknown block type: %{type}", type: @block.type)}
@@ -471,6 +477,160 @@ defmodule AthenaWeb.BlockComponents do
     </div>
     """
   end
+
+  defp render_file_assignment(assigns) do
+    body_content = assigns.block.content["body"] || %{}
+    max_files = assigns.block.content["max_files"] || 1
+
+    assigns =
+      assigns
+      |> assign(:body_content, body_content)
+      |> assign(:max_files, max_files)
+      |> assign(:file_urls, extract_file_urls(assigns))
+      |> assign(:has_submitted, !is_nil(assigns.submission))
+      |> assign(:is_pending, is_pending_review?(assigns.submission))
+
+    ~H"""
+    <div class="space-y-6">
+      <div class="editor-wrapper group relative outline-none">
+        <.tiptap_toolbar mode={@mode} />
+        <div
+          :if={@mode in [:edit, :preview]}
+          id={"tiptap-body-#{@mode}-#{@block.id}"}
+          phx-hook="TiptapEditor"
+          data-id={@block.id}
+          data-readonly={to_string(@mode != :edit)}
+          phx-update="ignore"
+          data-content={Jason.encode!(@body_content)}
+          class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed"
+        >
+        </div>
+      </div>
+
+      <div :if={@mode == :play} class="space-y-4">
+        <div
+          :if={!@has_submitted}
+          class="border-2 border-dashed border-base-300 rounded-sm p-8 text-center bg-base-200/30"
+        >
+          <.icon name="hero-cloud-arrow-up" class="size-12 mx-auto text-base-content/40 mb-4" />
+          <p class="text-base-content/70 mb-2">
+            {gettext("Upload up to %{max} file(s)", max: @max_files)}
+          </p>
+          <p class="text-xs text-base-content/50 mb-4">
+            {Athena.Media.Config.format_extensions("file_assignment")}
+          </p>
+          <div
+            id={"file-upload-#{@block.id}"}
+            phx-hook="FileUpload"
+            data-max-files={@max_files}
+            data-block-id={@block.id}
+          >
+            <button type="button" class="btn btn-primary btn-sm">
+              <.icon name="hero-document-plus" class="size-4 mr-2" />
+              {gettext("Select Files")}
+            </button>
+          </div>
+          <div id={"file-list-#{@block.id}"} class="mt-4 space-y-2"></div>
+        </div>
+
+        <div
+          :if={@has_submitted && !@is_pending}
+          class="p-6 bg-success/10 border border-success/30 rounded-sm"
+        >
+          <div class="flex items-center gap-3 text-success">
+            <.icon name="hero-check-circle-solid" class="size-6" />
+            <span class="font-bold">{gettext("Submission graded")}</span>
+          </div>
+          <div :if={@submission.feedback} class="mt-2 text-sm text-base-content/80">
+            {@submission.feedback}
+          </div>
+        </div>
+
+        <div
+          :if={@has_submitted && @is_pending}
+          class="p-6 bg-warning/10 border border-warning/30 rounded-sm"
+        >
+          <div class="flex items-center gap-3 text-warning">
+            <.icon name="hero-clock-solid" class="size-6" />
+            <span class="font-bold">{gettext("Awaiting review")}</span>
+          </div>
+          <p class="text-sm text-base-content/60 mt-2">
+            {gettext("Your submission is pending instructor review.")}
+          </p>
+        </div>
+
+        <div :if={@file_urls != []} class="mt-4 space-y-2">
+          <h4 class="text-sm font-bold uppercase text-base-content/70">
+            {gettext("Submitted files:")}
+          </h4>
+          <a
+            :for={url <- @file_urls}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex items-center gap-3 p-3 bg-base-100 rounded-sm border border-base-200 hover:border-primary/40 transition-all"
+          >
+            <.icon name="hero-document-arrow-down" class="size-5 text-primary" />
+            <span class="text-sm font-medium truncate">{Path.basename(url)}</span>
+          </a>
+        </div>
+
+        <button
+          :if={!@has_submitted}
+          phx-click="submit_file_assignment"
+          phx-value-block_id={@block.id}
+          class="btn btn-primary w-full mt-4 shadow-lg"
+        >
+          <.icon name="hero-paper-airplane" class="size-4 mr-2" />
+          {gettext("Submit Assignment")}
+        </button>
+      </div>
+
+      <div :if={@mode == :review} class="space-y-4">
+        <div :if={@file_urls != []} class="space-y-2">
+          <h4 class="text-sm font-bold uppercase text-base-content/70">
+            {gettext("Student submitted files:")}
+          </h4>
+          <a
+            :for={url <- @file_urls}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex items-center gap-3 p-3 bg-base-100 rounded-sm border border-base-200 hover:border-primary/40 transition-all"
+          >
+            <.icon name="hero-document-arrow-down" class="size-5 text-primary" />
+            <span class="text-sm font-medium truncate">{Path.basename(url)}</span>
+          </a>
+        </div>
+        <div :if={@submission.feedback} class="p-4 bg-base-100 rounded-sm border border-base-200">
+          <h4 class="text-sm font-bold uppercase text-base-content/70 mb-2">
+            {gettext("Instructor feedback:")}
+          </h4>
+          <p class="text-base-content/80">{@submission.feedback}</p>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  @doc false
+  defp extract_file_urls(assigns) do
+    cond do
+      assigns.submission && assigns.submission.content["file_urls"] ->
+        assigns.submission.content["file_urls"]
+
+      assigns.submission && assigns.submission.content[:file_urls] ->
+        assigns.submission.content[:file_urls]
+
+      true ->
+        []
+    end
+  end
+
+  @doc false
+  defp is_pending_review?(%{status: status}) when status in [:pending, :needs_review], do: true
+  defp is_pending_review?(_), do: false
+  defp is_pending_review?(nil), do: false
 
   @doc """
   Contextual editor panels for specific block types (Quiz options, File manager).

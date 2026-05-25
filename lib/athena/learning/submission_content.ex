@@ -10,7 +10,7 @@ defmodule Athena.Learning.SubmissionContent do
   @derive Jason.Encoder
   embedded_schema do
     field :type, Ecto.Enum,
-      values: [:text, :code, :quiz_question, :quiz_exam, :video, :image, :attachment]
+      values: ~w(text code quiz_question quiz_exam video image attachment file_assignment)a
 
     field :text_answer, :string
     field :code_language, :string
@@ -106,6 +106,18 @@ defmodule Athena.Learning.SubmissionContent do
     |> put_change(:code_language, nil)
     |> put_change(:file_urls, [])
     |> put_change(:selected_choices, [])
+  end
+
+  defp validate_by_type(changeset, :file_assignment) do
+    changeset
+    |> validate_length(:file_urls,
+      min: 1,
+      message: dgettext_noop("errors", "at least one file is required")
+    )
+    |> put_change(:text_answer, nil)
+    |> put_change(:code_language, nil)
+    |> put_change(:selected_choices, [])
+    |> put_change(:exam_answers, [])
   end
 
   defp validate_by_type(changeset, _other_type) do

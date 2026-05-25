@@ -6,7 +6,7 @@ defmodule Athena.Content.LibraryBlock do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Athena.Content.{QuizQuestion, QuizExam}
+  alias Athena.Content.{QuizQuestion, QuizExam, CodeChallenge, FileAssignment}
 
   @type t :: %__MODULE__{}
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -26,7 +26,7 @@ defmodule Athena.Content.LibraryBlock do
     field :title, :string
 
     field :type, Ecto.Enum,
-      values: [:text, :code, :quiz_question, :quiz_exam, :video, :image, :attachment]
+      values: ~w(text code quiz_question quiz_exam video image attachment file_assignment)a
 
     field :content, :map, default: %{}
     field :tags, {:array, :string}, default: []
@@ -57,6 +57,8 @@ defmodule Athena.Content.LibraryBlock do
     |> case do
       :quiz_question -> QuizQuestion.changeset(%QuizQuestion{}, content_map)
       :quiz_exam -> QuizExam.changeset(%QuizExam{}, content_map)
+      :code -> CodeChallenge.changeset(struct(CodeChallenge), content_map)
+      :file_assignment -> FileAssignment.changeset(%FileAssignment{}, content_map)
       _ -> nil
     end
     |> case do
