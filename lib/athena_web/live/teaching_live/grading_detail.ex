@@ -143,9 +143,9 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
 
               <div
                 :for={{q, index} <- Enum.with_index(@submission.content["questions"] || [])}
-                class="p-6 bg-base-100 border border-base-200  shadow-sm relative group hover:border-primary/30 transition-all"
+                class="p-6 bg-base-100 border border-base-200 relative group hover:border-primary/30 transition-all"
               >
-                <div class="absolute -top-3 -left-3 size-7 bg-base-200 text-base-content/70 font-bold rounded-sm flex items-center justify-center border border-base-300 shadow-sm text-xs group-hover:bg-primary group-hover:text-primary-content group-hover:border-primary transition-colors">
+                <div class="absolute -top-3 -left-3 size-7 bg-base-200 text-base-content/70 font-bold rounded-sm flex items-center justify-center border border-base-300 text-xs group-hover:bg-primary group-hover:text-primary-content group-hover:border-primary transition-colors">
                   {index + 1}
                 </div>
 
@@ -186,7 +186,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
               </div>
             </div>
           <% else %>
-            <div class="p-6 bg-base-100 border border-base-200 rounded-sm shadow-sm">
+            <div class="p-6 bg-base-100 border border-base-200 rounded-sm">
               <div class="flex items-center justify-between mb-6 pb-4 border-b border-base-100">
                 <h2 class="text-lg font-bold">{gettext("Question Content")}</h2>
               </div>
@@ -195,7 +195,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
           <% end %>
         </div>
 
-        <div class="w-full lg:w-100 shrink-0 bg-base-100 rounded-sm border border-base-300 shadow-sm sticky top-8 flex flex-col overflow-hidden">
+        <div class="w-full lg:w-100 shrink-0 bg-base-100 rounded-sm border border-base-300 sticky top-8 flex flex-col overflow-hidden">
           <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-200 bg-base-200/30">
             <div>
               <div class="text-[10px] font-bold text-base-content/50 uppercase tracking-widest mb-0.5">
@@ -275,7 +275,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                 type="submit"
                 name="action"
                 value="reject"
-                class="btn btn-outline btn-error w-1/3 shadow-sm"
+                class="btn btn-outline btn-error w-1/3"
               >
                 <.icon name="hero-x-mark" class="size-5 mr-1" />
                 {gettext("Reject")}
@@ -286,7 +286,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                 type="submit"
                 name="action"
                 value="grade"
-                class="btn btn-primary w-2/3 shadow-sm"
+                class="btn btn-primary w-2/3"
               >
                 <.icon name="hero-check-circle" class="size-5 mr-2" />
                 {gettext("Save & Grade")}

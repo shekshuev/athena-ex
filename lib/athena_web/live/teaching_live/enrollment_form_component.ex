@@ -3,7 +3,7 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponent do
   A LiveComponent for assigning a course to a cohort.
 
   Features a real-time autocomplete search for active courses.
-  Delegates database operations to the `Athena.Learning` context 
+  Delegates database operations to the `Athena.Learning` context
   and course searching to the `Athena.Content` context.
   """
   use AthenaWeb, :live_component
@@ -143,7 +143,7 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponent do
 
             <ul
               :if={@search_results != []}
-              class="absolute top-18 left-0 w-full bg-base-100 shadow-2xl border border-base-200 rounded-lg z-50 max-h-60 overflow-y-auto"
+              class="absolute top-18 left-0 w-full bg-base-100 border border-base-200 rounded-lg z-50 max-h-60 overflow-y-auto"
             >
               <%= for course <- @search_results do %>
                 <li

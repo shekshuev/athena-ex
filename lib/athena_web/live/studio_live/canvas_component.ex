@@ -105,7 +105,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         phx-click="add_text_block"
         phx-value-after_id={@after_id}
-        class="btn btn-ghost rounded-sm bg-base-100 shadow-sm border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
+        class="btn btn-ghost rounded-sm bg-base-100 border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-document-text" class="size-6 opacity-70" />
         <span>{gettext("Text")}</span>
@@ -114,7 +114,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         phx-click="add_image_block"
         phx-value-after_id={@after_id}
-        class="btn btn-ghost rounded-sm bg-base-100 shadow-sm border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
+        class="btn btn-ghost rounded-sm bg-base-100 border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-photo" class="size-6 opacity-70" />
         <span>{gettext("Image")}</span>
@@ -123,7 +123,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         phx-click="add_video_block"
         phx-value-after_id={@after_id}
-        class="btn btn-ghost rounded-sm bg-base-100 shadow-sm border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
+        class="btn btn-ghost rounded-sm bg-base-100 border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-video-camera" class="size-6 opacity-70" />
         <span>{gettext("Video")}</span>
@@ -132,7 +132,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         phx-click="add_attachment_block"
         phx-value-after_id={@after_id}
-        class="btn btn-ghost rounded-sm bg-base-100 shadow-sm border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
+        class="btn btn-ghost rounded-sm bg-base-100 border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-paper-clip" class="size-6 opacity-70" />
         <span>{gettext("Files")}</span>
@@ -141,7 +141,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         phx-click="add_quiz_question_block"
         phx-value-after_id={@after_id}
-        class="btn btn-ghost rounded-sm bg-base-100 shadow-sm border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
+        class="btn btn-ghost rounded-sm bg-base-100 border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-question-mark-circle" class="size-6 opacity-70" />
         <span>{gettext("Question")}</span>
@@ -150,7 +150,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         phx-click="add_quiz_exam_block"
         phx-value-after_id={@after_id}
-        class="btn btn-ghost rounded-sm bg-base-100 shadow-sm border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
+        class="btn btn-ghost rounded-sm bg-base-100 border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-academic-cap" class="size-6 opacity-70" />
         <span>{gettext("Exam")}</span>
@@ -159,7 +159,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         phx-click="add_code_block"
         phx-value-after_id={@after_id}
-        class="btn btn-ghost rounded-sm bg-base-100 shadow-sm border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
+        class="btn btn-ghost rounded-sm bg-base-100 border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-code-bracket" class="size-6 opacity-70" />
         <span>{gettext("Code")}</span>
@@ -168,7 +168,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         phx-click="add_file_assignment_block"
         phx-value-after_id={@after_id}
-        class="btn btn-ghost rounded-sm bg-base-100 shadow-sm border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
+        class="btn btn-ghost rounded-sm bg-base-100 border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-folder-plus" class="size-6 opacity-70" />
         <span>{gettext("Assignment")}</span>
@@ -177,7 +177,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         phx-click="open_library_picker"
         phx-value-after_id={@after_id}
-        class="btn rounded-sm btn-primary/10 text-primary hover:btn-primary shadow-sm border border-primary/20 flex-col h-auto py-4 gap-2 font-black"
+        class="btn rounded-sm btn-primary/10 text-primary hover:btn-primary border border-primary/20 flex-col h-auto py-4 gap-2 font-black"
       >
         <.icon name="hero-bookmark-square" class="size-6" />
         <span>{gettext("Library")}</span>
@@ -188,7 +188,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
 
   defp add_content_panel(%{variant: "inline"} = assigns) do
     ~H"""
-    <div class="flex items-center gap-1 p-1.5 bg-base-100 border border-base-300 rounded-sm shadow-lg">
+    <div class="flex items-center gap-1 p-1.5 bg-base-100 border border-base-300 rounded-sm">
       <.button
         id={"inline-add-text-#{@after_id}"}
         phx-hook="TippyTooltip"

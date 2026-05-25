@@ -41,21 +41,20 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
     {:noreply, cancel_upload(socket, :media, ref)}
   end
 
-  @impl true
   def handle_event("save", _params, socket) do
     user_id = socket.assigns.current_user.id
     upload_type = socket.assigns.upload_type
     block_id = socket.assigns.block_id
 
+    file_context =
+      case upload_type do
+        "file_assignment" -> "submission"
+        _ -> "course_material"
+      end
+
     results =
       consume_uploaded_entries(socket, :media, fn meta, entry ->
         file_info = %{name: entry.client_name, type: entry.client_type, size: entry.client_size}
-
-        context =
-          case upload_type do
-            "file_assignment" -> "student_submission"
-            _ -> "course_material"
-          end
 
         file_attrs = %{
           "bucket" => meta.bucket,
@@ -63,22 +62,23 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
           "original_name" => file_info.name,
           "mime_type" => file_info.type,
           "size" => file_info.size,
-          "context" => context,
+          "context" => file_context,
           "owner_id" => user_id
         }
 
         case Media.create_file(file_attrs) do
           {:ok, _file} ->
             {:ok,
-             %{
-               "url" => meta.url_for_saved_entry,
-               "name" => file_info.name,
-               "size" => file_info.size,
-               "mime" => file_info.type
-             }}
+             {:ok,
+              %{
+                "url" => meta.url_for_saved_entry,
+                "name" => file_info.name,
+                "size" => file_info.size,
+                "mime" => file_info.type
+              }}}
 
           {:error, err} ->
-            {:error, err}
+            {:ok, {:error, err}}
         end
       end)
 
@@ -145,7 +145,7 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
               >
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-3 min-w-0">
-                    <div class="p-2 bg-base-100 rounded-lg shadow-sm text-base-content/50 shrink-0">
+                    <div class="p-2 bg-base-100 rounded-lg text-base-content/50 shrink-0">
                       <.icon
                         name={if @upload_type == "video", do: "hero-video-camera", else: "hero-photo"}
                         class="size-5"
@@ -201,7 +201,7 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
               </button>
               <button
                 type="submit"
-                class="btn btn-primary shadow-lg shadow-primary/20"
+                class="btn btn-primary"
                 disabled={not has_entries or is_uploading or has_errors}
               >
                 <.icon name="hero-arrow-up-tray" class="size-4 mr-2" />

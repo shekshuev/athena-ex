@@ -288,7 +288,7 @@ Hooks.TiptapEditor = {
       ResizableImage.configure({
         inline: false,
         HTMLAttributes: {
-          class: "rounded-sm shadow-sm my-4 mx-auto",
+          class: "rounded-sm my-4 mx-auto",
         },
       }),
     ];

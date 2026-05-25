@@ -98,7 +98,7 @@ defmodule AthenaWeb.AuthLive.ForcePasswordChange do
   def render(assigns) do
     ~H"""
     <div class="w-full h-[calc(100vh-100px)] flex flex-col items-center justify-center p-4">
-      <div class="card w-full max-w-md bg-base-100 shadow-xl border border-base-300">
+      <div class="card w-full max-w-md bg-base-100 border border-base-300">
         <div class="card-body gap-6">
           <div class="text-center">
             <div class="inline-flex items-center justify-center p-3 bg-warning/10 rounded-full mb-4">

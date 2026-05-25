@@ -262,7 +262,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
 
           <ul
             :if={@search_results != []}
-            class="absolute top-full mt-2 left-0 w-full bg-base-100 shadow-2xl border border-base-200 rounded-lg z-50 max-h-60 overflow-y-auto"
+            class="absolute top-full mt-2 left-0 w-full bg-base-100 border border-base-200 rounded-lg z-50 max-h-60 overflow-y-auto"
           >
             <%= for inst <- @search_results do %>
               <% login = if inst.account, do: inst.account.login, else: gettext("Unknown") %>

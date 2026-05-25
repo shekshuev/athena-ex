@@ -327,6 +327,19 @@ defmodule AthenaWeb.LearnLive.Player do
     end
   end
 
+  def handle_event(
+        "remove_pending_file",
+        %{"block_id" => block_id, "url" => url},
+        socket
+      ) do
+    pending = Map.get(socket.assigns, :pending_file_urls, %{})
+    current = Map.get(pending, block_id, [])
+    updated = List.delete(current, url)
+    updated_pending = Map.put(pending, block_id, updated)
+
+    {:noreply, assign(socket, :pending_file_urls, updated_pending)}
+  end
+
   @doc false
   defp code_runner_available?, do: :global.whereis_name(:code_runner) != :undefined
 
@@ -644,9 +657,14 @@ defmodule AthenaWeb.LearnLive.Player do
          {:saved, _block_id, "file_assignment", results}},
         socket
       ) do
+    {successes, errors} =
+      Enum.split_with(results, fn
+        {:ok, _} -> true
+        _ -> false
+      end)
+
     file_urls =
-      results
-      |> Enum.filter(&match?({:ok, _}, &1))
+      successes
       |> Enum.map(fn {:ok, file_map} -> file_map["url"] end)
       |> Enum.reject(&is_nil/1)
 
@@ -656,13 +674,22 @@ defmodule AthenaWeb.LearnLive.Player do
     current = Map.get(pending, block_id, [])
     updated_pending = Map.put(pending, block_id, current ++ file_urls)
 
-    {:noreply,
-     socket
-     |> assign(:pending_file_urls, updated_pending)
-     |> assign(:show_media_modal, false)
-     |> assign(:active_upload_block_id, nil)
-     |> assign(:upload_type, nil)
-     |> put_flash(:info, gettext("File(s) ready to submit"))}
+    socket =
+      socket
+      |> assign(:pending_file_urls, updated_pending)
+      |> assign(:show_media_modal, false)
+      |> assign(:active_upload_block_id, nil)
+      |> assign(:upload_type, nil)
+
+    socket =
+      if errors != [] do
+        error_count = length(errors)
+        put_flash(socket, :error, gettext("Failed to save %{count} file(s)", count: error_count))
+      else
+        put_flash(socket, :info, gettext("File(s) ready to submit"))
+      end
+
+    {:noreply, socket}
   end
 
   def handle_info(
@@ -817,7 +844,7 @@ defmodule AthenaWeb.LearnLive.Player do
                   <div class="mt-6 flex items-center justify-between">
                     <button
                       type="submit"
-                      class="btn btn-primary shadow-lg shadow-primary/20"
+                      class="btn btn-primary"
                       disabled={is_locked}
                     >
                       {cond do
@@ -861,7 +888,7 @@ defmodule AthenaWeb.LearnLive.Player do
                           <button
                             phx-click="continue_exam"
                             phx-value-block_id={block.id}
-                            class="btn btn-primary btn-lg px-12 shadow-lg shadow-primary/20"
+                            class="btn btn-primary btn-lg px-12"
                           >
                             {gettext("Continue Exam")}
                             <.icon name="hero-arrow-right" class="size-5 ml-2" />
@@ -995,6 +1022,53 @@ defmodule AthenaWeb.LearnLive.Player do
                         <p class="whitespace-pre-wrap leading-relaxed">{submission.feedback}</p>
                       </div>
                     <% end %>
+                  </form>
+                </div>
+              <% :file_assignment -> %>
+                <div class="space-y-4">
+                  <form phx-submit="submit_file_assignment" id={"file-assignment-form-#{block.id}"}>
+                    <input type="hidden" name="block_id" value={block.id} />
+
+                    <.content_block
+                      block={block}
+                      mode={mode}
+                      submission={submission}
+                      pending_file_urls={@pending_file_urls}
+                    />
+
+                    <div
+                      :if={submission && submission.feedback not in [nil, ""]}
+                      class={[
+                        "mt-4 mb-4 rounded-sm text-sm",
+                        submission.status == :rejected && "text-error",
+                        submission.status != :rejected && "text-info"
+                      ]}
+                    >
+                      <strong class="flex items-center gap-1 mb-2">
+                        <.icon name="hero-chat-bubble-bottom-center-text" class="size-4" />
+                        {gettext("Instructor Feedback")}
+                      </strong>
+                      <p class="whitespace-pre-wrap leading-relaxed">{submission.feedback}</p>
+                    </div>
+
+                    <div
+                      :if={mode == :play && submission == nil}
+                      class="mt-6 flex items-center justify-between"
+                    >
+                      <button
+                        type="submit"
+                        class="btn btn-primary"
+                        disabled={Map.get(@pending_file_urls, block.id, []) == []}
+                      >
+                        {cond do
+                          Map.get(@pending_file_urls, block.id, []) == [] ->
+                            gettext("Select Files First")
+
+                          true ->
+                            gettext("Submit Assignment")
+                        end}
+                      </button>
+                    </div>
                   </form>
                 </div>
               <% _ -> %>
@@ -1132,7 +1206,7 @@ defmodule AthenaWeb.LearnLive.Player do
         <button
           phx-click="complete_gate"
           phx-value-block-id={@block.id}
-          class="btn btn-primary px-10 shadow-lg shadow-primary/20"
+          class="btn btn-primary px-10"
         >
           {@block.completion_rule.button_text || gettext("Continue")}
         </button>

@@ -378,12 +378,11 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                 label={gettext("Max Files Allowed")}
                 min="1"
                 max="20"
+                step="1"
                 phx-debounce="500"
               />
               <div class="text-xs text-base-content/50 leading-relaxed -mt-2">
-                {gettext(
-                  "Students upload files for manual review. The body text below describes the task."
-                )}
+                {gettext("Students upload files for manual review. Allowed range: 1–20 files.")}
               </div>
             </div>
             <div class="divider my-4"></div>

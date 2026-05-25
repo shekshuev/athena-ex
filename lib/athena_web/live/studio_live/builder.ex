@@ -120,41 +120,67 @@ defmodule AthenaWeb.StudioLive.Builder do
     block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
     content_map = normalize_content(block.content || %{})
 
-    if media_type == "tiptap_image" do
-      file_map = List.first(results)
+    successful_results =
+      results
+      |> Enum.filter(&match?({:ok, _}, &1))
+      |> Enum.map(fn {:ok, map} -> map end)
 
-      {:noreply,
-       socket
-       |> assign(show_media_modal: false, active_upload_block_id: nil, upload_type: nil)
-       |> push_event("insert_media", %{
-         block_id: block_id,
-         url: file_map["url"],
-         type: "tiptap_image"
-       })
-       |> put_flash(:info, gettext("Image inserted into text!"))}
+    if media_type == "tiptap_image" do
+      file_map = List.first(successful_results)
+
+      if file_map do
+        {:noreply,
+         socket
+         |> assign(show_media_modal: false, active_upload_block_id: nil, upload_type: nil)
+         |> push_event("insert_media", %{
+           block_id: block_id,
+           url: file_map["url"],
+           type: "tiptap_image"
+         })
+         |> put_flash(:info, gettext("Image inserted into text!"))}
+      else
+        {:noreply,
+         socket
+         |> assign(show_media_modal: false, active_upload_block_id: nil, upload_type: nil)
+         |> put_flash(:error, gettext("Failed to upload image"))}
+      end
     else
       new_content =
         case media_type do
           "attachment" ->
-            Map.put(content_map, "files", Map.get(content_map, "files", []) ++ results)
+            Map.put(content_map, "files", Map.get(content_map, "files", []) ++ successful_results)
 
           _ ->
-            file_map = List.first(results)
-            Map.put(content_map, "url", file_map["url"])
+            file_map = List.first(successful_results)
+            if file_map, do: Map.put(content_map, "url", file_map["url"]), else: content_map
         end
 
       {:ok, updated_block} =
         Content.update_block(socket.assigns.current_user, block, %{"content" => new_content})
 
-      {:noreply,
-       socket
-       |> assign(
-         blocks: replace_block(socket.assigns.blocks, updated_block),
-         show_media_modal: false,
-         active_upload_block_id: nil,
-         upload_type: nil
-       )
-       |> put_flash(:info, gettext("Media uploaded successfully!"))}
+      error_count = length(results) - length(successful_results)
+
+      socket =
+        socket
+        |> assign(
+          blocks: replace_block(socket.assigns.blocks, updated_block),
+          show_media_modal: false,
+          active_upload_block_id: nil,
+          upload_type: nil
+        )
+
+      socket =
+        if error_count > 0 do
+          put_flash(
+            socket,
+            :error,
+            gettext("Failed to save %{count} file(s)", count: error_count)
+          )
+        else
+          put_flash(socket, :info, gettext("Media uploaded successfully!"))
+        end
+
+      {:noreply, socket}
     end
   end
 
@@ -606,7 +632,6 @@ defmodule AthenaWeb.StudioLive.Builder do
       attrs = %{
         "type" => "file_assignment",
         "content" => %{
-          "description" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
           "max_files" => 1,
           "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]}
         },
@@ -724,6 +749,7 @@ defmodule AthenaWeb.StudioLive.Builder do
           :attachment -> Map.put(content_map, "description", text_content)
           :quiz_question -> Map.put(content_map, "body", text_content)
           :code -> Map.put(content_map, "body", text_content)
+          :file_assignment -> Map.put(content_map, "body", text_content)
           _ -> text_content
         end
 
@@ -1353,7 +1379,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             type="button"
             phx-click="move_section"
             phx-value-target_id="root"
-            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-md flex items-center gap-2 text-sm transition-colors font-medium mb-2 border-b border-base-200 pb-3 bg-transparent border-none shadow-none text-base-content"
+            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-md flex items-center gap-2 text-sm transition-colors font-medium mb-2 border-b border-base-200 pb-3 bg-transparent border-none text-base-content"
           >
             <.icon name="hero-home" class="size-4 text-primary" />
             <span class="truncate">{gettext("Course Root (Top Level)")}</span>
@@ -1374,7 +1400,7 @@ defmodule AthenaWeb.StudioLive.Builder do
           <.button
             type="button"
             phx-click="jump_to_root"
-            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-md flex items-center gap-2 text-sm transition-colors font-medium mb-2 border-b border-base-200 pb-3 bg-transparent border-none shadow-none text-base-content"
+            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-md flex items-center gap-2 text-sm transition-colors font-medium mb-2 border-b border-base-200 pb-3 bg-transparent border-none text-base-content"
           >
             <.icon name="hero-home" class="size-4 text-primary" />
             <span class="truncate">{gettext("View Root Level")}</span>
@@ -1438,7 +1464,7 @@ defmodule AthenaWeb.StudioLive.Builder do
           <div class="flex-1 overflow-y-auto p-6 space-y-4">
             <div
               :for={lib_block <- @library_blocks}
-              class="p-5 bg-base-100 border border-base-300 rounded-xl hover:border-primary/50 transition-colors flex flex-col gap-3 shadow-sm"
+              class="p-5 bg-base-100 border border-base-300 rounded-xl hover:border-primary/50 transition-colors flex flex-col gap-3"
             >
               <div class="flex justify-between items-start">
                 <h4 class="font-bold text-lg leading-tight">{lib_block.title}</h4>
@@ -1564,7 +1590,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             type="button"
             phx-click="move_section"
             phx-value-target_id={section.id}
-            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-md flex items-center gap-2 text-sm transition-colors group bg-transparent border-none shadow-none text-base-content font-normal"
+            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-md flex items-center gap-2 text-sm transition-colors group bg-transparent border-none text-base-content font-normal"
             style={"padding-left: #{(@level * 1.5) + 0.75}rem;"}
           >
             <.icon
@@ -1600,7 +1626,7 @@ defmodule AthenaWeb.StudioLive.Builder do
           phx-click="jump_to_section"
           phx-value-id={section.id}
           class={[
-            "w-full justify-start px-3 py-2 rounded-md flex items-center gap-2 text-sm transition-colors group bg-transparent border-none shadow-none font-normal",
+            "w-full justify-start px-3 py-2 rounded-md flex items-center gap-2 text-sm transition-colors group bg-transparent border-none font-normal",
             @active_section_id == section.id && "bg-primary/10 text-primary font-bold",
             @active_section_id != section.id && "hover:bg-base-200 text-base-content/80"
           ]}

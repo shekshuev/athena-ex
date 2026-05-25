@@ -9,10 +9,18 @@ defmodule Athena.Content.FileAssignment do
   use Ecto.Schema
   import Ecto.Changeset
 
-  @type t :: %__MODULE__{}
+  @derive {Jason.Encoder,
+           only: [
+             :max_files,
+             :body
+           ]}
+
+  @type t :: %__MODULE__{
+          max_files: integer() | nil,
+          body: map() | nil
+        }
 
   embedded_schema do
-    field :description, :map, default: %{}
     field :max_files, :integer, default: 1
     field :body, :map
   end
@@ -20,8 +28,8 @@ defmodule Athena.Content.FileAssignment do
   @doc false
   def changeset(file_assignment, attrs) do
     file_assignment
-    |> cast(attrs, [:description, :max_files, :body])
-    |> validate_required([:description, :max_files])
+    |> cast(attrs, [:max_files, :body])
+    |> validate_required([:max_files])
     |> validate_number(:max_files, greater_than_or_equal_to: 1, less_than_or_equal_to: 20)
   end
 end

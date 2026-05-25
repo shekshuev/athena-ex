@@ -19,6 +19,7 @@ defmodule AthenaWeb.BlockComponents do
   attr :submission, :map, default: nil
   attr :active, :boolean, default: false
   attr :attempts_count, :integer, default: 0
+  attr :pending_file_urls, :map, default: %{}
 
   def content_block(assigns) do
     ~H"""
@@ -55,6 +56,7 @@ defmodule AthenaWeb.BlockComponents do
             block={@block}
             mode={@mode}
             submission={@submission}
+            pending_file_urls={@pending_file_urls}
           />
         <% _ -> %>
           <div class="p-4 text-warning italic border border-warning/20 bg-warning/5 rounded-sm">
@@ -482,13 +484,19 @@ defmodule AthenaWeb.BlockComponents do
     body_content = assigns.block.content["body"] || %{}
     max_files = assigns.block.content["max_files"] || 1
 
+    pending_urls = Map.get(assigns.pending_file_urls, assigns.block.id, [])
+    can_submit = pending_urls != []
+
     assigns =
       assigns
+      |> assign_new(:pending_file_urls, fn -> %{} end)
       |> assign(:body_content, body_content)
       |> assign(:max_files, max_files)
       |> assign(:file_urls, extract_file_urls(assigns))
       |> assign(:has_submitted, !is_nil(assigns.submission))
       |> assign(:is_pending, is_pending_review?(assigns.submission))
+      |> assign(:pending_urls, pending_urls)
+      |> assign(:can_submit, can_submit)
 
     ~H"""
     <div class="space-y-6">
@@ -507,53 +515,61 @@ defmodule AthenaWeb.BlockComponents do
         </div>
       </div>
 
-      <div
-        :if={!@has_submitted}
-        class="border-2 border-dashed border-base-300 rounded-sm p-8 text-center bg-base-200/30"
-      >
-        <.icon name="hero-cloud-arrow-up" class="size-12 mx-auto text-base-content/40 mb-4" />
-        <p class="text-base-content/70 mb-2">
-          {gettext("Upload up to %{max} file(s)", max: @max_files)}
-        </p>
-        <p class="text-xs text-base-content/50 mb-4">
-          {Athena.Media.Config.format_extensions("file_assignment")}
-        </p>
+      <%= if @mode == :edit do %>
+        <div class="text-sm text-base-content/50 italic bg-base-200/50 p-4 rounded-sm border border-dashed border-base-300">
+          {gettext("Student will be able to upload up to %{max} file(s).", max: @max_files)}
+        </div>
+      <% end %>
 
-        <button
-          type="button"
-          phx-click="request_media_upload"
-          phx-value-block_id={@block.id}
-          phx-value-media_type="file_assignment"
-          class="btn btn-primary btn-sm"
-        >
-          <.icon name="hero-document-plus" class="size-4 mr-2" />
-          {gettext("Select Files")}
-        </button>
-
+      <div :if={@mode == :play && !@has_submitted} class="pl-4 space-y-3">
         <div
-          :if={@pending_file_urls && Map.get(@pending_file_urls, @block.id, []) != []}
-          class="mt-4 space-y-2"
+          :if={length(@pending_urls) < @max_files}
+          class="border-2 border-dashed border-base-300 rounded-sm p-6 text-center bg-base-200/30"
         >
-          <h4 class="text-sm font-bold uppercase text-base-content/70">
-            {gettext("Selected files:")}
-          </h4>
-          <div
-            :for={url <- Map.get(@pending_file_urls, @block.id, [])}
-            class="flex items-center gap-2 text-sm"
+          <.icon name="hero-cloud-arrow-up" class="size-8 mx-auto text-base-content/40 mb-2" />
+          <p class="text-sm text-base-content/70 mb-2">
+            {gettext("Upload up to %{max} file(s)", max: @max_files)}
+          </p>
+          <p class="text-xs text-base-content/50 mb-3">
+            {Athena.Media.Config.format_extensions("file_assignment")}
+          </p>
+          <button
+            type="button"
+            phx-click="request_media_upload"
+            phx-value-block_id={@block.id}
+            phx-value-media_type="file_assignment"
+            class="btn btn-primary btn-sm"
           >
-            <.icon name="hero-document-check" class="size-4 text-success" />
-            <span class="truncate">{Path.basename(url)}</span>
-          </div>
+            <.icon name="hero-document-plus" class="size-4 mr-2" />
+            {gettext("Select Files")}
+          </button>
         </div>
 
-        <div id={"file-list-#{@block.id}"} class="mt-4 space-y-2"></div>
+        <div :if={@pending_urls != []} class="space-y-2">
+          <div
+            :for={url <- @pending_urls}
+            class="flex items-center justify-between gap-3 p-3 bg-base-200/50 border border-base-300 rounded-sm"
+          >
+            <div class="flex items-center gap-2 min-w-0">
+              <.icon name="hero-document-check" class="size-4 text-success shrink-0" />
+              <span class="text-sm truncate flex-1 font-medium">{Path.basename(url)}</span>
+            </div>
+            <button
+              type="button"
+              phx-click="remove_pending_file"
+              phx-value-block_id={@block.id}
+              phx-value-url={url}
+              class="btn btn-ghost btn-xs btn-square text-error shrink-0"
+              title={gettext("Remove")}
+            >
+              <.icon name="hero-trash" class="size-4" />
+            </button>
+          </div>
+        </div>
       </div>
 
       <div :if={@mode == :review} class="space-y-4">
         <div :if={@file_urls != []} class="space-y-2">
-          <h4 class="text-sm font-bold uppercase text-base-content/70">
-            {gettext("Student submitted files:")}
-          </h4>
           <a
             :for={url <- @file_urls}
             href={url}
@@ -564,12 +580,6 @@ defmodule AthenaWeb.BlockComponents do
             <.icon name="hero-document-arrow-down" class="size-5 text-primary" />
             <span class="text-sm font-medium truncate">{Path.basename(url)}</span>
           </a>
-        </div>
-        <div :if={@submission.feedback} class="p-4 bg-base-100 rounded-sm border border-base-200">
-          <h4 class="text-sm font-bold uppercase text-base-content/70 mb-2">
-            {gettext("Instructor feedback:")}
-          </h4>
-          <p class="text-base-content/80">{@submission.feedback}</p>
         </div>
       </div>
     </div>
@@ -593,7 +603,6 @@ defmodule AthenaWeb.BlockComponents do
   @doc false
   defp is_pending_review?(%{status: status}) when status in [:pending, :needs_review], do: true
   defp is_pending_review?(_), do: false
-  defp is_pending_review?(nil), do: false
 
   @doc """
   Contextual editor panels for specific block types (Quiz options, File manager).

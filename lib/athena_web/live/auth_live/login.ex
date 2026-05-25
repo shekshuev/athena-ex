@@ -112,7 +112,7 @@ defmodule AthenaWeb.AuthLive.Login do
   def render(assigns) do
     ~H"""
     <div class="w-full h-[calc(100vh-100px)] flex flex-col items-center justify-center p-4">
-      <div class="card w-full max-w-md bg-base-100 shadow-xl border border-base-300">
+      <div class="card w-full max-w-md bg-base-100 border border-base-300">
         <div class="card-body gap-6">
           <div class="text-center">
             <div class="inline-flex items-center justify-center p-3 bg-primary/10 rounded-full mb-4">
@@ -125,7 +125,7 @@ defmodule AthenaWeb.AuthLive.Login do
           </div>
 
           <%= if @error_message do %>
-            <div role="alert" class="alert alert-error text-sm font-bold shadow-none rounded-md">
+            <div role="alert" class="alert alert-error text-sm font-bold rounded-md">
               <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
               <span>{@error_message}</span>
             </div>
