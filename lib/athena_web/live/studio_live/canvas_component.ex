@@ -96,7 +96,6 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
   end
 
   @doc false
-  # "inline" or "bottom"
   attr :variant, :string, required: true
   attr :after_id, :string, default: nil
 
@@ -164,6 +163,15 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       >
         <.icon name="hero-code-bracket" class="size-6 opacity-70" />
         <span>{gettext("Code")}</span>
+      </.button>
+
+      <.button
+        phx-click="add_file_assignment_block"
+        phx-value-after_id={@after_id}
+        class="btn btn-ghost rounded-sm bg-base-100 shadow-sm border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
+      >
+        <.icon name="hero-folder-plus" class="size-6 opacity-70" />
+        <span>{gettext("Assignment")}</span>
       </.button>
 
       <.button
@@ -256,6 +264,17 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary hover:bg-primary/10"
       >
         <.icon name="hero-code-bracket" class="size-5" />
+      </.button>
+
+      <.button
+        id={"inline-add-assignment-#{@after_id}"}
+        phx-hook="TippyTooltip"
+        data-tippy-content={gettext("File Assignment")}
+        phx-click="add_file_assignment_block"
+        phx-value-after_id={@after_id}
+        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary hover:bg-primary/10"
+      >
+        <.icon name="hero-folder-plus" class="size-5" />
       </.button>
 
       <div class="divider divider-horizontal mx-0 w-1"></div>

@@ -27,6 +27,15 @@ defmodule Athena.Media.Config do
     }
   end
 
+  def upload_settings("file_assignment") do
+    %{
+      accept: ~w(.pdf .doc .docx .txt .zip .rar .py .cpp .c .h .js .ts .json .csv),
+      max_entries: 20,
+      max_size: 50 * @mb,
+      description: gettext("Assignments: docs, code, archives (Max 50MB each)")
+    }
+  end
+
   def upload_settings(_) do
     %{
       accept: ~w(.jpg .jpeg .png .gif .webp .svg .bmp .tiff),

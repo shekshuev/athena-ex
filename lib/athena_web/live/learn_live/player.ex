@@ -72,6 +72,8 @@ defmodule AthenaWeb.LearnLive.Player do
   defp subscribe_to_topics(course_id, cohort_id, user_id) do
     Phoenix.PubSub.subscribe(Athena.PubSub, "course_content:#{course_id}")
 
+    Phoenix.PubSub.subscribe(Athena.PubSub, "media_upload:#{user_id}")
+
     if cohort_id do
       Phoenix.PubSub.subscribe(Athena.PubSub, "team_progress:#{cohort_id}")
     else
@@ -128,6 +130,10 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:attempts_map, attempts)
       |> assign(:overrides, ctx.overrides)
       |> assign(:block_counts, ctx.block_counts)
+      |> assign(:show_media_modal, false)
+      |> assign(:active_upload_block_id, nil)
+      |> assign(:upload_type, nil)
+      |> assign(:pending_file_urls, %{})
 
     {:ok, schedule_next_unlock(socket, course.id)}
   end
@@ -201,6 +207,106 @@ defmodule AthenaWeb.LearnLive.Player do
 
       block ->
         handle_quiz_submission(socket, block, params["answer"])
+    end
+  end
+
+  @impl true
+  def handle_event(
+        "request_media_upload",
+        %{"block_id" => block_id, "media_type" => "file_assignment"},
+        socket
+      ) do
+    with {:ok, block} <- Athena.Content.get_block(block_id),
+         true <- block.type == :file_assignment do
+      {:noreply,
+       socket
+       |> assign(:show_media_modal, true)
+       |> assign(:active_upload_block_id, block_id)
+       |> assign(:upload_type, "file_assignment")
+       |> assign(
+         :pending_file_urls,
+         Map.get(socket.assigns, :pending_file_urls, %{}) |> Map.put(block_id, [])
+       )}
+    else
+      _ -> {:noreply, put_flash(socket, :error, gettext("Invalid block for file upload"))}
+    end
+  end
+
+  def handle_event("cancel_media_upload", _, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_media_modal, false)
+     |> assign(:active_upload_block_id, nil)
+     |> assign(:upload_type, nil)}
+  end
+
+  def handle_event(
+        "media_upload_clipboard_success",
+        %{"block_id" => block_id, "final_url" => url},
+        socket
+      ) do
+    pending = Map.get(socket.assigns, :pending_file_urls, %{})
+    current_urls = Map.get(pending, block_id, [])
+
+    max_files =
+      case Athena.Content.get_block(block_id) do
+        {:ok, %{content: %{"max_files" => n}}} when is_integer(n) -> n
+        _ -> 1
+      end
+
+    if length(current_urls) < max_files do
+      updated_pending = Map.put(pending, block_id, current_urls ++ [url])
+      {:noreply, assign(socket, :pending_file_urls, updated_pending)}
+    else
+      {:noreply, put_flash(socket, :error, gettext("Maximum number of files reached"))}
+    end
+  end
+
+  def handle_event("submit_file_assignment", %{"block_id" => block_id}, socket) do
+    file_urls =
+      socket.assigns.pending_file_urls
+      |> Map.get(block_id, [])
+      |> Enum.reject(&(&1 == ""))
+
+    if file_urls == [] do
+      {:noreply, put_flash(socket, :error, gettext("Please upload at least one file"))}
+    else
+      sub_attrs = %{
+        "block_id" => block_id,
+        "account_id" => socket.assigns.current_user.id,
+        "cohort_id" => socket.assigns.team_id,
+        "status" => :pending,
+        "content" => %{
+          type: :file_assignment,
+          file_urls: file_urls
+        }
+      }
+
+      case Athena.Learning.create_submission(socket.assigns.current_user, sub_attrs) do
+        {:ok, submission} ->
+          if socket.assigns.team_id do
+            Phoenix.PubSub.broadcast(
+              Athena.PubSub,
+              "team_progress:#{socket.assigns.team_id}",
+              :team_progress_updated
+            )
+          end
+
+          new_submissions = Map.put(socket.assigns.submissions || %{}, block_id, submission)
+          new_pending = Map.update!(socket.assigns.pending_file_urls, block_id, fn _ -> [] end)
+
+          {:noreply,
+           socket
+           |> assign(:submissions, new_submissions)
+           |> assign(:pending_file_urls, new_pending)
+           |> put_flash(:info, gettext("Assignment submitted!"))}
+
+        {:error, changeset} ->
+          error_msg =
+            changeset.errors |> Keyword.values() |> Enum.map_join(", ", fn {msg, _} -> msg end)
+
+          {:noreply, put_flash(socket, :error, error_msg)}
+      end
     end
   end
 
@@ -529,6 +635,40 @@ defmodule AthenaWeb.LearnLive.Player do
         put_flash(socket, flash_type, flash_msg)
       end
 
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(
+        {AthenaWeb.StudioLive.MediaUploadComponent,
+         {:saved, _block_id, "file_assignment", results}},
+        socket
+      ) do
+    file_urls =
+      results
+      |> Enum.filter(&match?({:ok, _}, &1))
+      |> Enum.map(fn {:ok, file_map} -> file_map["url"] end)
+      |> Enum.reject(&is_nil/1)
+
+    block_id = socket.assigns.active_upload_block_id
+
+    pending = Map.get(socket.assigns, :pending_file_urls, %{})
+    current = Map.get(pending, block_id, [])
+    updated_pending = Map.put(pending, block_id, current ++ file_urls)
+
+    {:noreply,
+     socket
+     |> assign(:pending_file_urls, updated_pending)
+     |> assign(:show_media_modal, false)
+     |> assign(:active_upload_block_id, nil)
+     |> assign(:upload_type, nil)
+     |> put_flash(:info, gettext("File(s) ready to submit"))}
+  end
+
+  def handle_info(
+        {AthenaWeb.StudioLive.MediaUploadComponent, {:saved, _block_id, _type, _results}},
+        socket
+      ) do
     {:noreply, socket}
   end
 
@@ -902,6 +1042,18 @@ defmodule AthenaWeb.LearnLive.Player do
           />
         </div>
       </.modal>
+
+      <%= if @show_media_modal do %>
+        <.live_component
+          module={AthenaWeb.StudioLive.MediaUploadComponent}
+          id="media-uploader-player"
+          block_id={@active_upload_block_id}
+          upload_type={@upload_type}
+          current_user={@current_user}
+          course_id={@course.id}
+          context="student_submission"
+        />
+      <% end %>
     </div>
     """
   end

@@ -51,13 +51,19 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
       consume_uploaded_entries(socket, :media, fn meta, entry ->
         file_info = %{name: entry.client_name, type: entry.client_type, size: entry.client_size}
 
+        context =
+          case upload_type do
+            "file_assignment" -> "student_submission"
+            _ -> "course_material"
+          end
+
         file_attrs = %{
           "bucket" => meta.bucket,
           "key" => meta.key,
           "original_name" => file_info.name,
           "mime_type" => file_info.type,
           "size" => file_info.size,
-          "context" => "course_material",
+          "context" => context,
           "owner_id" => user_id
         }
 
