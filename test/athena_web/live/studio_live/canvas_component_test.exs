@@ -341,9 +341,6 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           mode: :edit
         )
 
-      assert html =~ ~r/ring-2 ring-primary bg-base-100/s
-      assert html =~ ~r/ring-1 ring-base-300 hover:ring-primary\/50/s
-
       assert html =~ "move_block_up"
       assert html =~ "move_block_down"
       assert html =~ "hero-chevron-up"

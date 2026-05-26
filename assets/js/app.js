@@ -1,7 +1,7 @@
 import { cpp } from "@codemirror/lang-cpp";
 import { python } from "@codemirror/lang-python";
 import { sql } from "@codemirror/lang-sql";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { Editor } from "@tiptap/core";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
@@ -96,15 +96,21 @@ Hooks.CodeEditor = {
   mounted() {
     const isReadOnly = this.el.dataset.readonly === "true";
     const language = this.el.dataset.language;
+    const container = this.el.parentElement;
 
     let langExtension = python();
     if (language === "cpp") langExtension = cpp();
     if (language === "sql") langExtension = sql();
 
+    const themeCompartment = new Compartment();
+
+    const isDark = () =>
+      document.documentElement.getAttribute("data-theme") === "dark";
+
     let extensions = [
       basicSetup,
       langExtension,
-      oneDark,
+      themeCompartment.of(isDark() ? oneDark : []),
       EditorView.theme({
         "&": { height: "300px", fontSize: "14px" },
         ".cm-scroller": { overflow: "auto" },
@@ -133,9 +139,28 @@ Hooks.CodeEditor = {
       extensions: extensions,
       parent: this.el,
     });
+
+    this.applyCmTheme = () => {
+      const dark = isDark();
+      this.editor.dispatch({
+        effects: themeCompartment.reconfigure(dark ? oneDark : []),
+      });
+    };
+
+    window.addEventListener("phx:set-theme", this.applyCmTheme);
+
+    this.observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.attributeName === "data-theme") this.applyCmTheme();
+      }
+    });
+    this.observer.observe(document.documentElement, { attributes: true });
   },
+
   destroyed() {
     if (this.editor) this.editor.destroy();
+    window.removeEventListener("phx:set-theme", this.applyCmTheme);
+    if (this.observer) this.observer.disconnect();
   },
 };
 

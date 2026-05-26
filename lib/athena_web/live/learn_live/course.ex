@@ -19,7 +19,18 @@ defmodule AthenaWeb.LearnLive.Course do
   @impl true
   def mount(%{"id" => course_id} = params, _session, socket) do
     user = socket.assigns.current_user
-    cohort_id = if params["cohort_id"] == "", do: nil, else: params["cohort_id"]
+
+    cohort_id =
+      case params["cohort_id"] do
+        v when v not in [nil, ""] ->
+          v
+
+        _ ->
+          case Learning.get_user_cohort_for_course(user.id, course_id) do
+            nil -> nil
+            cohort -> cohort.id
+          end
+      end
 
     with true <- Learning.has_access?(user.id, course_id),
          {:ok, course} <- Content.get_course(course_id) do
@@ -28,8 +39,8 @@ defmodule AthenaWeb.LearnLive.Course do
       end
 
       overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
-      full_tree = Content.get_course_tree(course_id, user)
-      linear_sections = Content.list_linear_lessons(course_id, user)
+      full_tree = Content.get_course_tree(course_id, user, overrides)
+      linear_sections = Content.list_linear_lessons(course_id, user, overrides)
       block_counts = Content.count_blocks_by_course(course_id)
 
       accessible_ids =
@@ -84,8 +95,8 @@ defmodule AthenaWeb.LearnLive.Course do
     course_id = socket.assigns.course.id
 
     overrides = Learning.get_student_overrides(user.id, course_id, socket.assigns.cohort_id)
-    full_tree = Content.get_course_tree(course_id, user)
-    linear_sections = Content.list_linear_lessons(course_id, user)
+    full_tree = Content.get_course_tree(course_id, user, overrides)
+    linear_sections = Content.list_linear_lessons(course_id, user, overrides)
     block_counts = Content.count_blocks_by_course(course_id)
     accessible_ids = Learning.accessible_section_ids(user, course_id, linear_sections, overrides)
     waterline_id = List.last(accessible_ids)

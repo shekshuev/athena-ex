@@ -3,7 +3,7 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
   A LiveComponent for adding a student to a cohort.
 
   Features a real-time autocomplete search for user accounts by login.
-  Delegates database operations to the `Athena.Learning` context 
+  Delegates database operations to the `Athena.Learning` context
   and account searching to the `Athena.Identity` context.
   """
   use AthenaWeb, :live_component
@@ -80,8 +80,11 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
          |> assign(:error_msg, nil)
          |> push_patch(to: patch)}
 
-      {:error, changeset} ->
+      {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, error_msg: parse_error_msg(changeset))}
+
+      {:error, msg} when is_binary(msg) ->
+        {:noreply, assign(socket, error_msg: msg)}
     end
   end
 

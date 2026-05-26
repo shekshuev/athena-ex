@@ -452,4 +452,174 @@ defmodule Athena.Learning.EnrollmentsTest do
       refute Enrollments.has_access?(student.id, course.id)
     end
   end
+
+  describe "enroll_cohort/4 — student overlap prevention" do
+    test "allows enrolling an empty cohort to a course", %{admin: admin} do
+      cohort = insert(:cohort, owner_id: admin.id)
+      course = insert(:course, owner_id: admin.id)
+
+      assert {:ok, %Enrollment{}} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
+    end
+
+    test "allows enrolling a cohort when its students have no prior access to the course", %{
+      admin: admin
+    } do
+      cohort = insert(:cohort, owner_id: admin.id)
+      course = insert(:course, owner_id: admin.id)
+      student = insert(:account)
+
+      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort.id, student.id)
+      assert {:ok, %Enrollment{}} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
+    end
+
+    test "REJECTS enrollment if student already has individual access to the course", %{
+      admin: admin
+    } do
+      cohort = insert(:cohort, owner_id: admin.id)
+      course = insert(:course, title: "Phoenix Live", owner_id: admin.id)
+      student = insert(:account, login: "john_doe")
+
+      %Enrollment{}
+      |> Enrollment.changeset(%{account_id: student.id, course_id: course.id, status: :active})
+      |> Repo.insert!()
+
+      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort.id, student.id)
+      assert {:error, msg} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
+      assert msg =~ "Cannot enroll"
+      assert msg =~ "john_doe"
+      assert msg =~ "already have access"
+    end
+
+    test "REJECTS enrollment if student is already in another enrolled cohort", %{admin: admin} do
+      course = insert(:course, title: "Elixir Mastery", owner_id: admin.id)
+      student = insert(:account, login: "jane_smith")
+
+      cohort_a = insert(:cohort, owner_id: admin.id)
+      cohort_b = insert(:cohort, owner_id: admin.id)
+
+      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort_a.id, student.id)
+      assert {:ok, _} = Enrollments.enroll_cohort(admin, cohort_a.id, course.id)
+
+      %Athena.Learning.CohortMembership{}
+      |> Athena.Learning.CohortMembership.changeset(%{
+        cohort_id: cohort_b.id,
+        account_id: student.id
+      })
+      |> Repo.insert!()
+
+      assert {:error, msg} = Enrollments.enroll_cohort(admin, cohort_b.id, course.id)
+      assert msg =~ "jane_smith"
+      assert msg =~ "Cannot enroll"
+      assert msg =~ "already have access"
+    end
+
+    test "lists ALL conflicting students in the error message", %{admin: admin} do
+      course = insert(:course, owner_id: admin.id)
+      student_1 = insert(:account, login: "alice")
+      student_2 = insert(:account, login: "bob")
+      _student_3 = insert(:account, login: "charlie")
+
+      _cohort_a = insert(:cohort, owner_id: admin.id)
+      cohort_b = insert(:cohort, owner_id: admin.id)
+
+      for student <- [student_1, student_2] do
+        %Enrollment{}
+        |> Enrollment.changeset(%{
+          account_id: student.id,
+          course_id: course.id,
+          status: :active
+        })
+        |> Repo.insert!()
+      end
+
+      for student <- [student_1, student_2] do
+        assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort_b.id, student.id)
+      end
+
+      assert {:error, msg} = Enrollments.enroll_cohort(admin, cohort_b.id, course.id)
+      assert msg =~ "alice"
+      assert msg =~ "bob"
+      refute msg =~ "charlie"
+    end
+
+    test "IGNORES dropped individual enrollments when checking overlaps", %{admin: admin} do
+      course = insert(:course, owner_id: admin.id)
+      student = insert(:account)
+      cohort = insert(:cohort, owner_id: admin.id)
+
+      %Enrollment{}
+      |> Enrollment.changeset(%{
+        account_id: student.id,
+        course_id: course.id,
+        status: :dropped
+      })
+      |> Repo.insert!()
+
+      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort.id, student.id)
+
+      assert {:ok, %Enrollment{}} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
+    end
+
+    test "IGNORES dropped cohort enrollments on the same course", %{admin: admin} do
+      course = insert(:course, owner_id: admin.id)
+      student = insert(:account)
+
+      cohort_a = insert(:cohort, owner_id: admin.id)
+      cohort_b = insert(:cohort, owner_id: admin.id)
+
+      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort_a.id, student.id)
+      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort_b.id, student.id)
+
+      {:ok, enrollment_a} = Enrollments.enroll_cohort(admin, cohort_a.id, course.id)
+      Enrollments.update_enrollment(admin, enrollment_a, %{status: :dropped})
+
+      assert {:ok, %Enrollment{}} = Enrollments.enroll_cohort(admin, cohort_b.id, course.id)
+    end
+
+    test "does not block enrollment if student has access to DIFFERENT courses", %{admin: admin} do
+      course_x = insert(:course, title: "Course X", owner_id: admin.id)
+      course_y = insert(:course, title: "Course Y", owner_id: admin.id)
+      student = insert(:account)
+
+      cohort_a = insert(:cohort, owner_id: admin.id)
+      cohort_b = insert(:cohort, owner_id: admin.id)
+
+      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort_a.id, student.id)
+      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort_b.id, student.id)
+      assert {:ok, _} = Enrollments.enroll_cohort(admin, cohort_a.id, course_x.id)
+      assert {:ok, %Enrollment{}} = Enrollments.enroll_cohort(admin, cohort_b.id, course_y.id)
+    end
+
+    test "re-enrolling the SAME cohort to the same course hits unique constraint, not overlap check",
+         %{admin: admin} do
+      cohort = insert(:cohort, owner_id: admin.id)
+      course = insert(:course, owner_id: admin.id)
+      student = insert(:account)
+
+      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort.id, student.id)
+      assert {:ok, _} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
+
+      assert {:error, %Ecto.Changeset{}} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
+    end
+
+    test "does not block if student was in another cohort on the course but is no longer", %{
+      admin: admin
+    } do
+      course = insert(:course, owner_id: admin.id)
+      student = insert(:account)
+
+      cohort_a = insert(:cohort, owner_id: admin.id)
+      cohort_b = insert(:cohort, owner_id: admin.id)
+
+      {:ok, membership_a} =
+        Athena.Learning.Cohorts.add_student_to_cohort(cohort_a.id, student.id)
+
+      assert {:ok, _} = Enrollments.enroll_cohort(admin, cohort_a.id, course.id)
+
+      Athena.Learning.Cohorts.remove_student_from_cohort(membership_a)
+
+      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort_b.id, student.id)
+      assert {:ok, %Enrollment{}} = Enrollments.enroll_cohort(admin, cohort_b.id, course.id)
+    end
+  end
 end

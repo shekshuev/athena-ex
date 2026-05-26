@@ -23,8 +23,8 @@ defmodule AthenaWeb.BlockComponentsTest do
 
       assert html =~ "tiptap-edit-#{block.id}"
       assert html =~ "Some amazing text content"
-      assert html =~ "ring-primary"
-      assert html =~ "ring-2"
+      assert html =~ "border-primary"
+      assert html =~ "border-2"
     end
 
     test "renders text block in :play mode", %{block: block} do
@@ -105,8 +105,8 @@ defmodule AthenaWeb.BlockComponentsTest do
         """)
 
       assert html =~ "test.com/img.png"
-      assert html =~ "ring-1"
-      assert html =~ "hover:ring-primary/50"
+      assert html =~ "border-base-300"
+      assert html =~ "hover:border-primary/50"
     end
 
     test "renders placeholder if url is missing in :review mode", %{empty_block: empty_block} do
@@ -156,8 +156,8 @@ defmodule AthenaWeb.BlockComponentsTest do
         """)
 
       assert html =~ "test.com/vid.mp4"
-      assert html =~ "ring-primary"
-      assert html =~ "ring-2"
+      assert html =~ "border-primary"
+      assert html =~ "border-2"
     end
 
     test "renders placeholder if url is missing in :review mode", %{empty_block: empty_block} do
@@ -210,8 +210,8 @@ defmodule AthenaWeb.BlockComponentsTest do
         """)
 
       assert html =~ "CheatSheet.pdf"
-      assert html =~ "ring-primary"
-      assert html =~ "ring-2"
+      assert html =~ "border-primary"
+      assert html =~ "border-2"
     end
 
     test "renders files in :review mode without edit borders", %{block: block} do
@@ -265,8 +265,8 @@ defmodule AthenaWeb.BlockComponentsTest do
         """)
 
       assert html =~ "python"
-      assert html =~ "ring-primary"
-      assert html =~ "ring-2"
+      assert html =~ "border-primary"
+      assert html =~ "border-2"
     end
 
     test "renders code block cleanly in :review mode", %{block: block} do
@@ -313,7 +313,7 @@ defmodule AthenaWeb.BlockComponentsTest do
       assert html =~ "Correct Opt"
       assert html =~ "radio"
       assert html =~ " disabled"
-      assert html =~ "ring-primary"
+      assert html =~ "border-primary"
       assert html =~ "pointer-events-none"
     end
 
@@ -342,7 +342,7 @@ defmodule AthenaWeb.BlockComponentsTest do
 
       assert html =~ " disabled"
       assert html =~ "bg-error/10"
-      assert html =~ "ring-success"
+      assert html =~ "border-success"
     end
 
     test "renders in :preview mode with disabled inputs and pointer-events-none", %{block: block} do
@@ -408,7 +408,7 @@ defmodule AthenaWeb.BlockComponentsTest do
 
       assert html =~ " disabled"
       assert html =~ "bg-success/10"
-      assert html =~ "ring-success"
+      assert html =~ "border-success"
     end
   end
 
@@ -543,7 +543,7 @@ defmodule AthenaWeb.BlockComponentsTest do
       assert html =~ "Final Exam"
       assert html =~ "15 Questions"
       assert html =~ "60 Min"
-      assert html =~ "ring-primary"
+      assert html =~ "border-primary"
       refute html =~ "Start Exam"
     end
 

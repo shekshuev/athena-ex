@@ -9,7 +9,7 @@
   >
     <button
       phx-click={JS.toggle_class("is-collapsed", to: "#main-sidebar")}
-      class="absolute -right-3 top-10 z-60 hidden lg:flex btn btn-circle btn-xs btn-primary shadow-lg border-2 border-base-100 items-center justify-center"
+      class="absolute -right-3 top-10 z-60 hidden lg:flex btn btn-square btn-xs btn-primary border border-base-300 items-center justify-center"
     >
       <.icon
         name="hero-chevron-left"
@@ -31,7 +31,7 @@
     </div>
 
     <nav class="flex-1 overflow-y-auto overflow-x-hidden px-3 mt-4 space-y-1">
-      <ul class="menu p-0 w-full gap-1">
+      <ul class="menu menu-sm p-0 w-full gap-1">
         <li>
           <.link navigate={~p"/dashboard"} class="flex items-center">
             <div class="flex items-center gap-2">
@@ -273,7 +273,7 @@
     <header class="h-16 flex items-center justify-between px-4 border-b border-base-300 lg:hidden shrink-0">
       <button
         phx-click={JS.toggle_class("is-mobile-open", to: "#main-sidebar")}
-        class="btn btn-square btn-ghost"
+        class="btn btn-square btn-ghost min-h-11 h-11 w-11"
       >
         <.icon name="hero-bars-3" class="size-6" />
       </button>
@@ -284,7 +284,7 @@
       <div class="size-10"></div>
     </header>
 
-    <main class="flex-1 overflow-y-auto p-4 sm:p-8">
+    <main class="flex-1 overflow-y-auto p-4 pb-20 sm:p-8">
       <div class="max-w-7xl mx-auto">
         <.flash_group flash={@flash} />
         {@inner_content}
@@ -294,7 +294,7 @@
 
   <div
     phx-click={JS.remove_class("is-mobile-open", to: "#main-sidebar")}
-    class="fixed inset-0 z-40 bg-black/50 hidden peer-[.is-mobile-open]:block lg:hidden"
+    class="fixed inset-0 z-40 bg-black/60 hidden peer-[.is-mobile-open]:block lg:hidden"
   >
   </div>
 </div>

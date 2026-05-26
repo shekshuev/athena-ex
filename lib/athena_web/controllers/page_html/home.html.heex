@@ -1,31 +1,30 @@
-<div class="hero flex-1 py-12 px-4 sm:px-8">
-  <div class="hero-content flex-col lg:flex-row-reverse w-full max-w-7xl justify-between gap-12">
-    <div class="relative lg:w-1/2 flex justify-center">
-      <img
-        src="/images/athena-light.png"
-        alt="Athena Platform"
-        class="dark:hidden max-h-[500px] object-contain mask-[radial-gradient(closest-side,black_20%,transparent_100%)]"
-      />
-      <img
-        src="/images/athena-dark.png"
-        alt="Athena Platform"
-        class="hidden dark:block max-h-[500px] object-contain mask-[radial-gradient(closest-side,black_20%,transparent_100%)]"
-      />
+<div class="flex-1 py-12 px-4 sm:px-6 lg:px-8">
+  <div class="flex flex-col lg:flex-row-reverse w-full max-w-7xl mx-auto items-center gap-10 lg:gap-16">
+    <div class="w-full lg:w-1/2 flex justify-center lg:justify-end">
+      <div class="relative w-full max-w-md lg:max-w-lg">
+        <img
+          src="/images/athena.png"
+          class="w-full h-auto object-contain rounded-b-sm dark:invert dark:hue-rotate-180"
+        />
+      </div>
     </div>
 
-    <div class="lg:w-1/2 text-left">
-      <h1 class="text-4xl sm:text-5xl md:text-7xl font-bold uppercase tracking-tight leading-tight">
+    <div class="w-full lg:w-1/2 flex flex-col justify-center text-left">
+      <h1 class="font-display text-4xl sm:text-5xl lg:text-6xl font-black uppercase tracking-tighter leading-[1.1] text-base-content">
         {gettext("Transform Learning with Athena")}
       </h1>
-      <p class="py-6 text-lg opacity-60 leading-relaxed max-w-xl">
+      <p class="mt-6 text-base sm:text-lg text-base-content/60 leading-relaxed max-w-xl">
         {gettext(
           "A modern, modular LMS built for speed, flexibility, and ultimate learning experience."
         )}
       </p>
-      <div class="flex flex-wrap gap-4 mt-4">
-        <a href="/auth/login" class="btn btn-primary btn-lg font-bold uppercase px-8">
+      <div class="flex flex-wrap gap-4 mt-8">
+        <a
+          href="/auth/login"
+          class="btn btn-primary btn-lg font-bold uppercase min-h-12 h-12 px-8"
+        >
           {gettext("Get Started")}
-          <.icon name="hero-bolt" class="w-5 h-5" />
+          <.icon name="hero-bolt" class="size-5" />
         </a>
       </div>
     </div>

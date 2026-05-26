@@ -103,10 +103,102 @@ defmodule Athena.Learning.Enrollments do
         {:error, gettext("Cannot assign an Academic Group to a Competition.")}
 
       true ->
-        %Enrollment{}
-        |> Enrollment.changeset(%{cohort_id: cohort.id, course_id: course.id, status: status})
-        |> Repo.insert()
+        case check_student_overlap(cohort.id, course.id) do
+          [] ->
+            %Enrollment{}
+            |> Enrollment.changeset(%{cohort_id: cohort.id, course_id: course.id, status: status})
+            |> Repo.insert()
+
+          overlapping_students ->
+            logins =
+              overlapping_students
+              |> Enum.map_join(", ", & &1.login)
+
+            {:error,
+             dgettext(
+               "errors",
+               "Cannot enroll: the following students already have access to this course: %{logins}",
+               logins: logins
+             )}
+        end
     end
+  end
+
+  @doc false
+  defp check_student_overlap(cohort_id, course_id) do
+    case fetch_cohort_student_ids(cohort_id) do
+      [] ->
+        []
+
+      student_ids ->
+        student_ids
+        |> find_all_overlaps(course_id, cohort_id)
+        |> fetch_overlapping_accounts()
+    end
+  end
+
+  @doc false
+  defp fetch_cohort_student_ids(cohort_id) do
+    from(cm in CohortMembership,
+      where: cm.cohort_id == ^cohort_id,
+      select: cm.account_id
+    )
+    |> Repo.all()
+  end
+
+  @doc false
+  defp find_all_overlaps(student_ids, course_id, cohort_id) do
+    individual = find_individual_overlaps(student_ids, course_id)
+    via_cohorts = find_cohort_overlaps(student_ids, course_id, cohort_id)
+
+    Enum.uniq(individual ++ via_cohorts)
+  end
+
+  @doc false
+  defp find_individual_overlaps(student_ids, course_id) do
+    from(e in Enrollment,
+      where:
+        e.course_id == ^course_id and
+          e.account_id in ^student_ids and
+          e.status != :dropped,
+      select: e.account_id
+    )
+    |> Repo.all()
+  end
+
+  @doc false
+  defp find_cohort_overlaps(student_ids, course_id, current_cohort_id) do
+    other_cohort_ids =
+      from(e in Enrollment,
+        where:
+          e.course_id == ^course_id and
+            e.status != :dropped and
+            not is_nil(e.cohort_id) and
+            e.cohort_id != ^current_cohort_id,
+        select: e.cohort_id,
+        distinct: true
+      )
+      |> Repo.all()
+
+    case other_cohort_ids do
+      [] ->
+        []
+
+      ids ->
+        from(cm in CohortMembership,
+          where: cm.cohort_id in ^ids and cm.account_id in ^student_ids,
+          select: cm.account_id
+        )
+        |> Repo.all()
+    end
+  end
+
+  @doc false
+  defp fetch_overlapping_accounts([]), do: []
+
+  defp fetch_overlapping_accounts(ids) do
+    from(a in Athena.Identity.Account, where: a.id in ^ids)
+    |> Repo.all()
   end
 
   @doc """

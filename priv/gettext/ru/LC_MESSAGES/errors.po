@@ -222,3 +222,8 @@ msgstr "для кода необходимо указать язык"
 #, elixir-autogen, elixir-format
 msgid "please provide an answer or select a choice"
 msgstr "пожалуйста, введите ответ или выберите вариант"
+
+#: lib/athena/learning/enrollments.ex:118
+#, elixir-autogen, elixir-format
+msgid "Cannot enroll: the following students already have access to this course: %{logins}"
+msgstr "Невозможно зачислить: следующие студенты уже имеют доступ к этому курсу: %{logins}"

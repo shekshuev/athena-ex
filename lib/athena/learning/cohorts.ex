@@ -9,8 +9,17 @@ defmodule Athena.Learning.Cohorts do
 
   import Ecto.Query
   alias Athena.Repo
-  alias Athena.Learning.{Cohort, Instructor, CohortMembership, CohortInstructor, Instructors}
-  alias Athena.Identity
+
+  alias Athena.Learning.{
+    Cohort,
+    Instructor,
+    CohortMembership,
+    CohortInstructor,
+    Instructors,
+    Enrollment
+  }
+
+  alias Athena.{Identity, Content}
 
   @doc """
   Retrieves a paginated list of cohorts, scoped by user permissions.
@@ -198,12 +207,90 @@ defmodule Athena.Learning.Cohorts do
     |> enrich_memberships_with_accounts()
   end
 
+  # вверху модуля, где алиасы
+  alias Athena.Learning.{
+    Cohort,
+    Instructor,
+    CohortMembership,
+    CohortInstructor,
+    Instructors,
+    Enrollment
+  }
+
+  alias Athena.{Identity, Content}
+
   @doc """
   Adds a student account to a cohort.
+
+  Prevents enrollment if the student already has access to any course
+  that this cohort is currently enrolled in (via another cohort or individual enrollment).
   """
   @spec add_student_to_cohort(String.t(), String.t()) ::
-          {:ok, CohortMembership.t()} | {:error, Ecto.Changeset.t()}
+          {:ok, CohortMembership.t()}
+          | {:error, Ecto.Changeset.t()}
+          | {:error, String.t()}
   def add_student_to_cohort(cohort_id, account_id) do
+    enrolled_course_ids =
+      from(e in Enrollment,
+        where: e.cohort_id == ^cohort_id and e.status != :dropped,
+        select: e.course_id
+      )
+      |> Repo.all()
+
+    if enrolled_course_ids == [] do
+      do_insert_membership(cohort_id, account_id)
+    else
+      overlapping_course_ids =
+        find_overlapping_courses(account_id, enrolled_course_ids, cohort_id)
+
+      if overlapping_course_ids == [] do
+        do_insert_membership(cohort_id, account_id)
+      else
+        course_titles =
+          from(c in Content.Course,
+            where: c.id in ^overlapping_course_ids,
+            select: c.title
+          )
+          |> Repo.all()
+          |> Enum.join(", ")
+
+        {:error,
+         "Cannot add student: they already have access to course(s): #{course_titles} through other enrollment(s)"}
+      end
+    end
+  end
+
+  @doc false
+  defp find_overlapping_courses(account_id, course_ids, current_cohort_id) do
+    individual_courses =
+      from(e in Enrollment,
+        where:
+          e.account_id == ^account_id and
+            e.course_id in ^course_ids and
+            e.status != :dropped,
+        select: e.course_id
+      )
+      |> Repo.all()
+
+    other_cohort_courses =
+      from(cm in CohortMembership,
+        join: e in Enrollment,
+        on: e.cohort_id == cm.cohort_id,
+        where:
+          cm.account_id == ^account_id and
+            cm.cohort_id != ^current_cohort_id and
+            e.course_id in ^course_ids and
+            e.status != :dropped,
+        select: e.course_id,
+        distinct: true
+      )
+      |> Repo.all()
+
+    Enum.uniq(individual_courses ++ other_cohort_courses)
+  end
+
+  @doc false
+  defp do_insert_membership(cohort_id, account_id) do
     %CohortMembership{}
     |> CohortMembership.changeset(%{cohort_id: cohort_id, account_id: account_id})
     |> Repo.insert()

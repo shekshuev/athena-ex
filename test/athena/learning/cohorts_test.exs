@@ -346,4 +346,182 @@ defmodule Athena.Learning.CohortsTest do
       assert options == []
     end
   end
+
+  describe "add_student_to_cohort/2 — overlap prevention" do
+    test "allows adding student when cohort has no course enrollments" do
+      cohort = insert(:cohort)
+      account = insert(:account)
+
+      assert {:ok, %CohortMembership{}} = Cohorts.add_student_to_cohort(cohort.id, account.id)
+    end
+
+    test "allows adding student when they have no access to cohort's courses" do
+      cohort = insert(:cohort)
+      course = insert(:course, status: :published)
+      account = insert(:account)
+
+      insert(:enrollment, cohort: cohort, course_id: course.id, account_id: nil, status: :active)
+
+      assert {:ok, %CohortMembership{}} = Cohorts.add_student_to_cohort(cohort.id, account.id)
+    end
+
+    test "REJECTS student already in another cohort enrolled on the same course" do
+      course = insert(:course, title: "Elixir Mastery", status: :published)
+      account = insert(:account)
+
+      cohort_a = insert(:cohort)
+      cohort_b = insert(:cohort)
+
+      insert(:enrollment,
+        cohort: cohort_a,
+        course_id: course.id,
+        account_id: nil,
+        status: :active
+      )
+
+      insert(:enrollment,
+        cohort: cohort_b,
+        course_id: course.id,
+        account_id: nil,
+        status: :active
+      )
+
+      assert {:ok, _} = Cohorts.add_student_to_cohort(cohort_a.id, account.id)
+
+      assert {:error, msg} = Cohorts.add_student_to_cohort(cohort_b.id, account.id)
+      assert msg =~ "Cannot add student"
+      assert msg =~ "Elixir Mastery"
+      assert msg =~ "through other enrollment"
+    end
+
+    test "REJECTS student with individual enrollment on cohort's course" do
+      course = insert(:course, title: "Phoenix Deep Dive", status: :published)
+      account = insert(:account)
+      cohort = insert(:cohort)
+
+      insert(:enrollment,
+        cohort: nil,
+        course_id: course.id,
+        account_id: account.id,
+        status: :active
+      )
+
+      insert(:enrollment, cohort: cohort, course_id: course.id, account_id: nil, status: :active)
+
+      assert {:error, msg} = Cohorts.add_student_to_cohort(cohort.id, account.id)
+      assert msg =~ "Phoenix Deep Dive"
+    end
+
+    test "lists all conflicting courses in error message" do
+      course1 = insert(:course, title: "Course Alpha", status: :published)
+      course2 = insert(:course, title: "Course Beta", status: :published)
+      account = insert(:account)
+
+      cohort_a = insert(:cohort)
+      cohort_b = insert(:cohort)
+
+      insert(:enrollment,
+        cohort: cohort_a,
+        course_id: course1.id,
+        account_id: nil,
+        status: :active
+      )
+
+      insert(:enrollment,
+        cohort: cohort_a,
+        course_id: course2.id,
+        account_id: nil,
+        status: :active
+      )
+
+      insert(:enrollment,
+        cohort: cohort_b,
+        course_id: course1.id,
+        account_id: nil,
+        status: :active
+      )
+
+      insert(:enrollment,
+        cohort: cohort_b,
+        course_id: course2.id,
+        account_id: nil,
+        status: :active
+      )
+
+      assert {:ok, _} = Cohorts.add_student_to_cohort(cohort_a.id, account.id)
+
+      assert {:error, msg} = Cohorts.add_student_to_cohort(cohort_b.id, account.id)
+      assert msg =~ "Course Alpha"
+      assert msg =~ "Course Beta"
+    end
+
+    test "IGNORES dropped enrollments when checking overlaps" do
+      course = insert(:course, title: "Dropped Course", status: :published)
+      account = insert(:account)
+
+      cohort_a = insert(:cohort)
+      cohort_b = insert(:cohort)
+
+      insert(:enrollment,
+        cohort: cohort_a,
+        course_id: course.id,
+        account_id: nil,
+        status: :dropped
+      )
+
+      insert(:enrollment,
+        cohort: nil,
+        course_id: course.id,
+        account_id: account.id,
+        status: :dropped
+      )
+
+      insert(:enrollment,
+        cohort: cohort_b,
+        course_id: course.id,
+        account_id: nil,
+        status: :active
+      )
+
+      assert {:ok, %CohortMembership{}} = Cohorts.add_student_to_cohort(cohort_b.id, account.id)
+    end
+
+    test "allows re-adding student to the SAME cohort (no self-conflict)" do
+      course = insert(:course, status: :published)
+      account = insert(:account)
+      cohort = insert(:cohort)
+
+      insert(:enrollment, cohort: cohort, course_id: course.id, account_id: nil, status: :active)
+      assert {:ok, _} = Cohorts.add_student_to_cohort(cohort.id, account.id)
+
+      assert {:error, %Ecto.Changeset{}} = Cohorts.add_student_to_cohort(cohort.id, account.id)
+    end
+
+    test "does not affect students not in the conflicting course" do
+      course_x = insert(:course, title: "Course X", status: :published)
+      course_y = insert(:course, title: "Course Y", status: :published)
+
+      account = insert(:account)
+      cohort_a = insert(:cohort)
+      cohort_b = insert(:cohort)
+
+      insert(:enrollment,
+        cohort: cohort_a,
+        course_id: course_x.id,
+        account_id: nil,
+        status: :active
+      )
+
+      insert(:enrollment,
+        cohort: cohort_b,
+        course_id: course_y.id,
+        account_id: nil,
+        status: :active
+      )
+
+      assert {:ok, _} = Cohorts.add_student_to_cohort(cohort_a.id, account.id)
+
+      assert {:ok, %CohortMembership{}} = Cohorts.add_student_to_cohort(cohort_b.id, account.id)
+    end
+  end
 end

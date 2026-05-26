@@ -35,7 +35,7 @@ defmodule AthenaWeb.LearnLive.Player do
       if connected?(socket), do: subscribe_to_topics(course_id, team_id, user.id)
 
       overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
-      linear_lessons = Content.list_linear_lessons(course_id, user)
+      linear_lessons = Content.list_linear_lessons(course_id, user, overrides)
       block_counts = Content.count_blocks_by_course(course_id)
 
       accessible_ids =
@@ -89,7 +89,7 @@ defmodule AthenaWeb.LearnLive.Player do
       |> Enum.sort_by(& &1.order)
 
     completed_ids = Learning.completed_block_ids(ctx.user.id, section_id, ctx.team_id)
-    tree = Content.get_course_tree(course.id, ctx.user)
+    tree = Content.get_course_tree(course.id, ctx.user, ctx.overrides)
 
     current_index = Enum.find_index(linear_lessons, fn s -> s.id == section_id end)
 
@@ -460,7 +460,7 @@ defmodule AthenaWeb.LearnLive.Player do
     current_section_id = socket.assigns.section.id
 
     overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
-    linear_lessons = Content.list_linear_lessons(course_id, user)
+    linear_lessons = Content.list_linear_lessons(course_id, user, overrides)
     block_counts = Content.count_blocks_by_course(course_id)
 
     accessible_ids =
@@ -475,7 +475,7 @@ defmodule AthenaWeb.LearnLive.Player do
       completed_ids = Learning.completed_block_ids(user.id, current_section_id, team_id)
       submissions = Learning.get_latest_submissions(user.id, Enum.map(blocks, & &1.id), team_id)
 
-      tree = Content.get_course_tree(course_id, user)
+      tree = Content.get_course_tree(course_id, user, overrides)
 
       current_index = Enum.find_index(linear_lessons, fn s -> s.id == current_section_id end)
       next_section = Enum.at(linear_lessons, current_index + 1)

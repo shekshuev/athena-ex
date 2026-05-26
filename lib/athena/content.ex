@@ -61,8 +61,8 @@ defmodule Athena.Content do
 
   defdelegate get_section(user, id), to: Sections
   defdelegate get_section(id), to: Sections
-  defdelegate get_course_tree(course_id, user_or_mode \\ :all), to: Sections
-  defdelegate list_linear_lessons(course_id, user_or_mode \\ :all), to: Sections
+  defdelegate get_course_tree(course_id, user_or_mode \\ :all, overrides \\ []), to: Sections
+  defdelegate list_linear_lessons(course_id, user_or_mode \\ :all, overrides \\ []), to: Sections
 
   def create_section(user, attrs),
     do: Sections.create_section(user, attrs) |> notify_subscribers()
