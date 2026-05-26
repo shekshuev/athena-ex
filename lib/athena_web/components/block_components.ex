@@ -541,7 +541,7 @@ defmodule AthenaWeb.BlockComponents do
             phx-click="request_media_upload"
             phx-value-block_id={@block.id}
             phx-value-media_type="file_assignment"
-            class="btn btn-primary btn-sm"
+            class="btn btn-primary min-h-11 h-11 px-6"
           >
             <.icon name="hero-document-plus" class="size-4 mr-2" />
             {gettext("Select Files")}
@@ -570,7 +570,7 @@ defmodule AthenaWeb.BlockComponents do
               phx-click="remove_pending_file"
               phx-value-block_id={@block.id}
               phx-value-url={url}
-              class="btn btn-ghost btn-xs btn-square text-error shrink-0"
+              class="btn btn-ghost btn-sm btn-square min-h-8 h-8 w-8 text-error shrink-0"
               title={gettext("Remove")}
             >
               <.icon name="hero-trash" class="size-4" />
@@ -586,7 +586,7 @@ defmodule AthenaWeb.BlockComponents do
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            class="flex items-center gap-3 p-3 bg-base-100 rounded-sm border border-base-200 hover:border-primary/40 transition-all"
+            class="flex items-center gap-3 p-3 bg-base-100 rounded-sm border border-base-200 hover:bg-base-200/50 hover:border-primary/40 transition-all"
           >
             <.icon name="hero-document-arrow-down" class="size-5 text-primary" />
             <span class="text-sm font-medium truncate">{Path.basename(url)}</span>
