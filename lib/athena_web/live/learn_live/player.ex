@@ -218,15 +218,16 @@ defmodule AthenaWeb.LearnLive.Player do
       ) do
     with {:ok, block} <- Athena.Content.get_block(block_id),
          true <- block.type == :file_assignment do
+      max_files = block.content["max_files"] || 1
+      current_count = length(Map.get(socket.assigns.pending_file_urls, block_id, []))
+
       {:noreply,
        socket
        |> assign(:show_media_modal, true)
        |> assign(:active_upload_block_id, block_id)
        |> assign(:upload_type, "file_assignment")
-       |> assign(
-         :pending_file_urls,
-         Map.get(socket.assigns, :pending_file_urls, %{}) |> Map.put(block_id, [])
-       )}
+       |> assign(:max_files_for_upload, max_files)
+       |> assign(:current_file_count_for_upload, current_count)}
     else
       _ -> {:noreply, put_flash(socket, :error, gettext("Invalid block for file upload"))}
     end
@@ -1120,12 +1121,14 @@ defmodule AthenaWeb.LearnLive.Player do
       <%= if @show_media_modal do %>
         <.live_component
           module={AthenaWeb.StudioLive.MediaUploadComponent}
-          id="media-uploader-player"
+          id={"media-uploader-player-#{@active_upload_block_id}"}
           block_id={@active_upload_block_id}
           upload_type={@upload_type}
           current_user={@current_user}
           course_id={@course.id}
           context="student_submission"
+          max_files={@max_files_for_upload}
+          current_file_count={@current_file_count_for_upload}
         />
       <% end %>
     </div>

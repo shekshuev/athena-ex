@@ -10,13 +10,18 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
   def update(assigns, socket) do
     settings = Media.Config.upload_settings(assigns.upload_type)
 
+    max_files = Map.get(assigns, :max_files, settings.max_entries)
+    current_count = Map.get(assigns, :current_file_count, 0)
+    remaining = max(1, max_files - current_count)
+
     {:ok,
      socket
      |> assign(assigns)
      |> assign(accept_str: settings.description)
+     |> assign(max_entries: remaining)
      |> allow_upload(:media,
        accept: settings.accept,
-       max_entries: settings.max_entries,
+       max_entries: remaining,
        max_file_size: settings.max_size,
        external: &presign_upload/2
      )}
@@ -87,10 +92,22 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
     {:noreply, socket}
   end
 
+  @impl true
+  def handle_event("clear_all_entries", _params, socket) do
+    socket =
+      Enum.reduce(socket.assigns.uploads.media.entries, socket, fn entry, acc ->
+        cancel_upload(acc, :media, entry.ref)
+      end)
+
+    {:noreply, socket}
+  end
+
   @doc false
   defp error_to_string(:too_large), do: gettext("File is too large")
   defp error_to_string(:not_accepted), do: gettext("Unacceptable file type")
-  defp error_to_string(:too_many_files), do: gettext("Too many files")
+  defp error_to_string(:too_many_files), do: gettext("Too many files — remove some and try again")
+  defp error_to_string(:external_client_failure), do: gettext("Upload failed on client side")
+  defp error_to_string({:writer_fail, _}), do: gettext("Upload writer failed")
   defp error_to_string(_), do: gettext("Upload error")
 
   @impl true
@@ -160,6 +177,28 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
                       </div>
                     </div>
                   </div>
+
+                  <% has_too_many =
+                    Enum.any?(@uploads.media.entries, fn entry ->
+                      :too_many_files in upload_errors(@uploads.media, entry)
+                    end) %>
+
+                  <div
+                    :if={has_too_many}
+                    class="mt-4 p-4 bg-error/10 border border-error/30 rounded-lg text-error text-sm font-bold flex items-start gap-3"
+                  >
+                    <.icon name="hero-exclamation-triangle" class="size-5 shrink-0 mt-0.5" />
+                    <div>
+                      <div class="font-black mb-1">{gettext("Too many files selected")}</div>
+                      <div class="text-xs font-medium opacity-80">
+                        {gettext(
+                          "Maximum allowed: %{max}. Please cancel some entries below to continue.",
+                          max: @max_entries
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   <div class="flex items-center gap-4 shrink-0">
                     <span class="text-sm font-black text-primary">{entry.progress}%</span>
                     <button
@@ -199,6 +238,18 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
               <button type="button" phx-click="cancel_media_upload" class="btn btn-ghost">
                 {gettext("Cancel")}
               </button>
+
+              <button
+                :if={has_errors}
+                type="button"
+                phx-click="clear_all_entries"
+                phx-target={@myself}
+                class="btn btn-warning btn-outline"
+              >
+                <.icon name="hero-arrow-path" class="size-4 mr-1" />
+                {gettext("Clear Selection")}
+              </button>
+
               <button
                 type="submit"
                 class="btn btn-primary"

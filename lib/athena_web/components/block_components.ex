@@ -521,14 +521,17 @@ defmodule AthenaWeb.BlockComponents do
         </div>
       <% end %>
 
+      <% pending_count = length(@pending_urls) %>
+      <% remaining = @max_files - pending_count %>
+
       <div :if={@mode == :play && !@has_submitted} class="pl-4 space-y-3">
         <div
-          :if={length(@pending_urls) < @max_files}
+          :if={remaining > 0}
           class="border-2 border-dashed border-base-300 rounded-sm p-6 text-center bg-base-200/30"
         >
           <.icon name="hero-cloud-arrow-up" class="size-8 mx-auto text-base-content/40 mb-2" />
-          <p class="text-sm text-base-content/70 mb-2">
-            {gettext("Upload up to %{max} file(s)", max: @max_files)}
+          <p class="text-sm text-base-content/70 mb-1">
+            {gettext("You can upload %{count} more file(s)", count: remaining)}
           </p>
           <p class="text-xs text-base-content/50 mb-3">
             {Athena.Media.Config.format_extensions("file_assignment")}
@@ -543,6 +546,14 @@ defmodule AthenaWeb.BlockComponents do
             <.icon name="hero-document-plus" class="size-4 mr-2" />
             {gettext("Select Files")}
           </button>
+        </div>
+
+        <div
+          :if={pending_count > 0}
+          class="text-xs text-base-content/60 font-medium flex items-center gap-2"
+        >
+          <.icon name="hero-document-check" class="size-4 text-success" />
+          {gettext("%{count} of %{max} file(s) selected", count: pending_count, max: @max_files)}
         </div>
 
         <div :if={@pending_urls != []} class="space-y-2">
