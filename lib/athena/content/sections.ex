@@ -44,7 +44,7 @@ defmodule Athena.Content.Sections do
   end
 
   @doc """
-  Creates a new section. 
+  Creates a new section.
 
   The `path` is automatically computed based on the `parent_id`.
   """
@@ -99,7 +99,7 @@ defmodule Athena.Content.Sections do
   @doc """
   Deletes a section physically from the database.
 
-  Due to the `on_delete: :delete_all` constraint in the migration, 
+  Due to the `on_delete: :delete_all` constraint in the migration,
   deleting a parent section will automatically remove all its descendants.
   """
   @spec delete_section(map(), Section.t()) ::
@@ -151,38 +151,55 @@ defmodule Athena.Content.Sections do
 
   @doc """
   Fetches all sections for a course and builds a nested tree structure.
-  If a user is provided, filters the tree based on access policies.
+  If a user is provided, filters the tree based on access policies and overrides.
+  Hierarchy is strict: if a parent is hidden, all descendants are hidden too,
+  regardless of their own overrides.
   """
-  @spec get_course_tree(String.t(), Account.t() | nil | :all) :: [Section.t()]
-  def get_course_tree(course_id, user_or_mode \\ :all) do
+  @spec get_course_tree(String.t(), Account.t() | nil | :all, list()) :: [Section.t()]
+  def get_course_tree(course_id, user_or_mode \\ :all, overrides \\ []) do
     sections =
       Section
       |> where([s], s.course_id == ^course_id)
       |> order_by([s], asc: s.order, asc: s.inserted_at)
       |> Repo.all()
 
-    build_tree(sections, nil, user_or_mode)
+    full_tree = build_tree(sections, nil)
+
+    if user_or_mode == :all do
+      full_tree
+    else
+      filter_tree_by_visibility(full_tree, user_or_mode, overrides)
+    end
   end
 
   @doc false
-  defp build_tree(sections, parent_id, user_or_mode) do
+  defp build_tree(sections, parent_id) do
     sections
-    |> Enum.filter(fn section ->
-      section.parent_id == parent_id and
-        (user_or_mode == :all or Athena.Content.Policy.can_view?(user_or_mode, section))
-    end)
+    |> Enum.filter(&(&1.parent_id == parent_id))
     |> Enum.map(fn section ->
-      children = build_tree(sections, section.id, user_or_mode)
+      children = build_tree(sections, section.id)
       Map.put(section, :children, children)
     end)
   end
 
   @doc false
-  def list_linear_lessons(course_id, user_or_mode \\ :all) do
+  defp filter_tree_by_visibility(tree, user, overrides) do
+    tree
+    |> Enum.filter(fn section ->
+      Athena.Content.Policy.can_view?(user, section, overrides)
+    end)
+    |> Enum.map(fn section ->
+      filtered_children = filter_tree_by_visibility(section.children || [], user, overrides)
+      %{section | children: filtered_children}
+    end)
+  end
+
+  @doc false
+  def list_linear_lessons(course_id, user_or_mode \\ :all, overrides \\ []) do
     block_counts = Blocks.count_blocks_by_course(course_id)
 
     course_id
-    |> get_course_tree(user_or_mode)
+    |> get_course_tree(user_or_mode, overrides)
     |> flatten_and_filter_tree(block_counts)
   end
 

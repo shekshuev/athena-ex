@@ -12,7 +12,7 @@
     </script>
   </head>
   <body class="h-full antialiased overflow-x-hidden">
-    <div class="browser-support-banner bg-warning text-warning-content sticky top-0 z-[9999] px-4 py-2 flex flex-col sm:flex-row items-center justify-center gap-2 text-sm font-bold shadow-md">
+    <div class="browser-support-banner bg-warning text-warning-content sticky top-0 z-9999 px-4 py-2 flex flex-col sm:flex-row items-center justify-center gap-2 text-sm font-bold border-b border-warning/30">
       <.icon name="hero-exclamation-triangle" class="size-5 shrink-0" />
       <span class="text-center">
         {gettext(
@@ -21,7 +21,7 @@
       </span>
       <button
         onclick="this.parentElement.style.display='none'"
-        class="btn btn-ghost btn-xs btn-circle ml-auto sm:ml-4"
+        class="btn btn-ghost btn-xs btn-square ml-auto sm:ml-4"
         aria-label={gettext("Dismiss")}
       >
         <.icon name="hero-x-mark" class="size-4" />

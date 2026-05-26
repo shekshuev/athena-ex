@@ -57,9 +57,9 @@ defmodule AthenaWeb.CoreComponents do
       }
       role="alert"
       class={[
-        "alert shadow-none border cursor-pointer w-full sm:w-96 transition-all duration-300 flex items-start",
-        @kind == :info && "alert-info text-info-content",
-        @kind == :error && "alert-error text-error-content"
+        "alert cursor-pointer w-full sm:w-96 transition-all duration-300 flex items-start bg-base-100 border",
+        @kind == :info && "border-info text-info",
+        @kind == :error && "border-error text-error"
       ]}
       {@rest}
     >
@@ -105,7 +105,7 @@ defmodule AthenaWeb.CoreComponents do
   slot :inner_block, required: true
 
   def button(%{rest: rest} = assigns) do
-    variants = %{"primary" => "btn-primary", nil => "btn-primary btn-soft"}
+    variants = %{"primary" => "btn-primary", nil => "btn-outline"}
 
     assigns =
       assign_new(assigns, :class, fn ->
@@ -148,21 +148,11 @@ defmodule AthenaWeb.CoreComponents do
   for more information. Unsupported types, such as radio, are best
   written directly in your templates.
 
-  ## Examples
-
-  ```heex
-  <.input field={@form[:email]} type="email" />
-  <.input name="my-input" errors={["oh no!"]} />
-  ```
 
   ## Select type
 
   When using `type="select"`, you must pass the `options` and optionally
   a `value` to mark which option should be preselected.
-
-  ```heex
-  <.input field={@form[:user_type]} type="select" options={["Admin": "admin", "User": "user"]} />
-  ```
 
   For more information on what kind of data can be passed to `options` see
   [`options_for_select`](https://hexdocs.pm/phoenix_html/Phoenix.HTML.Form.html#options_for_select/2).
@@ -216,7 +206,7 @@ defmodule AthenaWeb.CoreComponents do
       end)
 
     ~H"""
-    <div class="form-control mb-2 w-full">
+    <fieldset class="fieldset mb-2 w-full">
       <label class="label cursor-pointer justify-start gap-3">
         <input
           type="hidden"
@@ -231,19 +221,19 @@ defmodule AthenaWeb.CoreComponents do
           name={@name}
           value="true"
           checked={@checked}
-          class={[@class || "checkbox checkbox-primary", @errors != [] && "border-error"]}
+          class={[@class || "checkbox checkbox-primary", @errors != [] && "checkbox-error!"]}
           {@rest}
         />
         <span class="label-text font-bold">{@label}</span>
       </label>
       <.error :for={msg <- @errors}>{msg}</.error>
-    </div>
+    </fieldset>
     """
   end
 
   def input(%{type: "select"} = assigns) do
     ~H"""
-    <div class="form-control mb-2 w-full">
+    <fieldset class="fieldset mb-2 w-full">
       <label :if={@label} for={@id} class="label">
         <span class="label-text font-bold">{@label}</span>
       </label>
@@ -251,8 +241,8 @@ defmodule AthenaWeb.CoreComponents do
         id={@id}
         name={@name}
         class={[
-          "select select-bordered w-full",
-          @errors != [] && "select-error",
+          "select w-full",
+          @errors != [] && "select-error border-error!",
           @class,
           @multiple && "h-auto py-2"
         ]}
@@ -265,13 +255,13 @@ defmodule AthenaWeb.CoreComponents do
         {Phoenix.HTML.Form.options_for_select(@options, @value)}
       </select>
       <.error :for={msg <- @errors}>{msg}</.error>
-    </div>
+    </fieldset>
     """
   end
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
-    <div class="form-control mb-2 w-full">
+    <fieldset class="fieldset mb-2 w-full">
       <label :if={@label} for={@id} class="label">
         <span class="label-text font-bold">{@label}</span>
       </label>
@@ -279,20 +269,20 @@ defmodule AthenaWeb.CoreComponents do
         id={@id}
         name={@name}
         class={[
-          @class || "textarea textarea-bordered w-full",
-          @errors != [] && (@error_class || "textarea-error border-error")
+          @class || "textarea w-full",
+          @errors != [] && (@error_class || "textarea-error border-error!")
         ]}
         {@rest}
       >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
       <.error :for={msg <- @errors}>{msg}</.error>
-    </div>
+    </fieldset>
     """
   end
 
   # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
-    <div class="form-control mb-2 w-full">
+    <fieldset class="fieldset mb-2 w-full">
       <label :if={@label} for={@id} class="label">
         <span class="label-text font-bold">{@label}</span>
       </label>
@@ -302,13 +292,13 @@ defmodule AthenaWeb.CoreComponents do
         id={@id}
         value={Phoenix.HTML.Form.normalize_value(@type, @value)}
         class={[
-          @class || "input input-bordered w-full",
-          @errors != [] && (@error_class || "input-error border-error")
+          @class || "input w-full",
+          @errors != [] && (@error_class || "input-error border-error!")
         ]}
         {@rest}
       />
       <.error :for={msg <- @errors}>{msg}</.error>
-    </div>
+    </fieldset>
     """
   end
 
@@ -380,8 +370,8 @@ defmodule AthenaWeb.CoreComponents do
       end
 
     ~H"""
-    <div class="overflow-x-auto overflow-y-visible">
-      <table class="table table-zebra">
+    <div class="overflow-x-auto overflow-y-visible border border-base-300 rounded-sm">
+      <table class="table table-zebra table-sm">
         <thead>
           <tr>
             <th :for={col <- @col}>
@@ -461,7 +451,7 @@ defmodule AthenaWeb.CoreComponents do
 
   def list(assigns) do
     ~H"""
-    <ul class="list">
+    <ul class="list bg-base-200 border border-base-300 rounded-sm">
       <li :for={item <- @item} class="list-row">
         <div class="list-col-grow">
           <div class="font-bold">{item.title}</div>
@@ -564,9 +554,7 @@ defmodule AthenaWeb.CoreComponents do
     ~H"""
     <div class="flex flex-col items-center justify-center flex-1 min-h-[60vh] p-8 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div class="relative mb-8 group">
-        <div class="absolute inset-0 bg-primary/20 blur-3xl rounded-full opacity-50 group-hover:opacity-100 transition-opacity duration-700" />
-
-        <div class="relative flex items-center justify-center w-24 h-24 rounded-2xl bg-base-100 ring-1 ring-base-300 shadow-xl border border-base-200">
+        <div class="relative flex items-center justify-center w-24 h-24 rounded-sm bg-base-200 border border-base-300">
           <.icon
             name={@icon}
             class="w-12 h-12 text-primary group-hover:scale-110 transition-transform duration-300"
@@ -585,7 +573,7 @@ defmodule AthenaWeb.CoreComponents do
         <button
           type="button"
           onclick="history.back()"
-          class="btn btn-ghost font-bold uppercase"
+          class="btn btn-outline font-bold uppercase"
         >
           <.icon name="hero-arrow-left" class="size-5" />
           {gettext("Go Back")}
@@ -593,7 +581,7 @@ defmodule AthenaWeb.CoreComponents do
 
         <.link
           navigate={~p"/dashboard"}
-          class="btn btn-primary btn-soft font-bold uppercase px-8"
+          class="btn btn-primary font-bold uppercase px-8"
         >
           <.icon name="hero-squares-2x2" class="size-5" />
           {gettext("Dashboard")}
@@ -624,7 +612,7 @@ defmodule AthenaWeb.CoreComponents do
       phx-window-keydown={@show && @on_cancel}
       phx-key="escape"
     >
-      <div class="modal-box">
+      <div class="modal-box rounded-sm border border-base-300">
         <h3 :if={@title} class="font-bold text-lg">{@title}</h3>
         <p :if={@description} class="py-4 text-base-content/70">{@description}</p>
 
@@ -633,7 +621,7 @@ defmodule AthenaWeb.CoreComponents do
         <div :if={@on_confirm} class="modal-action">
           <button
             type="button"
-            class="btn btn-ghost"
+            class="btn btn-outline btn-sm"
             phx-click={@on_cancel}
           >
             {gettext("Cancel")}
@@ -641,7 +629,7 @@ defmodule AthenaWeb.CoreComponents do
 
           <button
             type="button"
-            class={["btn", @danger && "btn-error", !@danger && "btn-primary"]}
+            class={["btn btn-sm", @danger && "btn-error", !@danger && "btn-primary"]}
             phx-click={@on_confirm}
           >
             {@confirm_label}
@@ -649,7 +637,7 @@ defmodule AthenaWeb.CoreComponents do
         </div>
       </div>
 
-      <div class="modal-backdrop" phx-click={@on_cancel}>
+      <div class="modal-backdrop bg-black/50" phx-click={@on_cancel}>
         <button type="button" class="cursor-default" aria-label={gettext("close")}></button>
       </div>
     </div>
@@ -680,10 +668,10 @@ defmodule AthenaWeb.CoreComponents do
       />
       <div class="drawer-side" style="pointer-events: auto;">
         <label for={"#{@id}-toggle"} class="drawer-overlay" phx-click={@on_close}></label>
-        <div class="menu bg-base-100 text-base-content min-h-full w-full max-w-md p-0 flex flex-col shadow-2xl">
+        <div class="bg-base-100 text-base-content min-h-full w-full max-w-md p-0 flex flex-col border-l border-base-300">
           <div class="p-6 border-b border-base-300 flex items-center justify-between shrink-0">
             <h2 class="text-xl font-display font-bold">{@title}</h2>
-            <button type="button" class="btn btn-ghost btn-circle btn-sm" phx-click={@on_close}>
+            <button type="button" class="btn btn-ghost btn-square btn-sm" phx-click={@on_close}>
               <.icon name="hero-x-mark" class="size-5" />
             </button>
           </div>
@@ -711,7 +699,7 @@ defmodule AthenaWeb.CoreComponents do
       <div class="flex items-center gap-2">
         <span class="text-sm text-base-content/60">{gettext("Show")}</span>
         <form phx-change="update_page_size">
-          <select name="page_size" class="select select-bordered select-sm">
+          <select name="page_size" class="select select-sm">
             <%= for size <- [10, 20, 50, 100] do %>
               <option value={size} selected={@meta.page_size == size}>{size}</option>
             <% end %>
@@ -722,12 +710,15 @@ defmodule AthenaWeb.CoreComponents do
       <div :if={@meta.total_pages > 1} class="join">
         <.link
           patch={@path_fn.(%{"page" => @meta.current_page - 1})}
-          class={["join-item btn btn-sm", @meta.current_page <= 1 && "pointer-events-none opacity-50"]}
+          class={[
+            "join-item btn btn-sm btn-outline",
+            @meta.current_page <= 1 && "pointer-events-none opacity-50"
+          ]}
           tabindex={if @meta.current_page <= 1, do: -1, else: 0}
         >
           «
         </.link>
-        <button class="join-item btn btn-sm pointer-events-none">
+        <button class="join-item btn btn-sm pointer-events-none btn-outline">
           {gettext("Page %{current} of %{total}",
             current: @meta.current_page,
             total: @meta.total_pages
@@ -736,7 +727,7 @@ defmodule AthenaWeb.CoreComponents do
         <.link
           patch={@path_fn.(%{"page" => @meta.current_page + 1})}
           class={[
-            "join-item btn btn-sm",
+            "join-item btn btn-sm btn-outline",
             @meta.current_page >= @meta.total_pages && "pointer-events-none opacity-50"
           ]}
           tabindex={if @meta.current_page >= @meta.total_pages, do: -1, else: 0}

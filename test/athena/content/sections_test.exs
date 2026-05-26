@@ -411,4 +411,427 @@ defmodule Athena.Content.SectionsTest do
       assert Sections.list_linear_lessons(course.id) == []
     end
   end
+
+  describe "get_course_tree/3 with cohort overrides" do
+    test ":all mode ignores overrides and returns full tree", %{admin: admin} do
+      course = insert(:course, owner_id: admin.id)
+
+      {:ok, s1} = Sections.create_section(admin, %{"title" => "S1", "course_id" => course.id})
+      {:ok, s2} = Sections.create_section(admin, %{"title" => "S2", "course_id" => course.id})
+
+      overrides = [
+        %Athena.Learning.CohortSchedule{
+          resource_type: :section,
+          resource_id: s2.id,
+          visibility: :hidden
+        }
+      ]
+
+      tree = Sections.get_course_tree(course.id, :all, overrides)
+      assert length(tree) == 2
+      assert Enum.map(tree, & &1.id) |> Enum.sort() == Enum.sort([s1.id, s2.id])
+    end
+
+    test "override :hidden removes section from tree", %{admin: admin, student: student} do
+      course = insert(:course, owner_id: admin.id)
+
+      {:ok, s_visible} =
+        Sections.create_section(admin, %{
+          "title" => "Visible",
+          "course_id" => course.id,
+          "visibility" => :enrolled
+        })
+
+      {:ok, s_hidden} =
+        Sections.create_section(admin, %{
+          "title" => "Hidden",
+          "course_id" => course.id,
+          "visibility" => :enrolled
+        })
+
+      overrides = [
+        %Athena.Learning.CohortSchedule{
+          resource_type: :section,
+          resource_id: s_hidden.id,
+          visibility: :hidden
+        }
+      ]
+
+      tree = Sections.get_course_tree(course.id, student, overrides)
+      assert length(tree) == 1
+      assert hd(tree).id == s_visible.id
+    end
+
+    test "override :enrolled reveals a globally hidden section", %{
+      admin: admin,
+      student: student
+    } do
+      course = insert(:course, owner_id: admin.id)
+
+      {:ok, hidden_section} =
+        Sections.create_section(admin, %{
+          "title" => "Hidden Globally",
+          "course_id" => course.id,
+          "visibility" => :hidden
+        })
+
+      assert Sections.get_course_tree(course.id, student, []) == []
+
+      overrides = [
+        %Athena.Learning.CohortSchedule{
+          resource_type: :section,
+          resource_id: hidden_section.id,
+          visibility: :enrolled
+        }
+      ]
+
+      tree = Sections.get_course_tree(course.id, student, overrides)
+      assert length(tree) == 1
+      assert hd(tree).id == hidden_section.id
+    end
+
+    test "STRICT HIERARCHY: hidden parent hides children even if children have override :enrolled",
+         %{admin: admin, student: student} do
+      course = insert(:course, owner_id: admin.id)
+
+      {:ok, parent} =
+        Sections.create_section(admin, %{
+          "title" => "Parent",
+          "course_id" => course.id,
+          "visibility" => :enrolled
+        })
+
+      {:ok, child} =
+        Sections.create_section(admin, %{
+          "title" => "Child",
+          "course_id" => course.id,
+          "parent_id" => parent.id,
+          "visibility" => :enrolled
+        })
+
+      overrides = [
+        %Athena.Learning.CohortSchedule{
+          resource_type: :section,
+          resource_id: parent.id,
+          visibility: :hidden
+        },
+        %Athena.Learning.CohortSchedule{
+          resource_type: :section,
+          resource_id: child.id,
+          visibility: :enrolled
+        }
+      ]
+
+      tree = Sections.get_course_tree(course.id, student, overrides)
+
+      assert tree == []
+    end
+
+    test "visible parent with hidden child via override — only child removed", %{
+      admin: admin,
+      student: student
+    } do
+      course = insert(:course, owner_id: admin.id)
+
+      {:ok, parent} =
+        Sections.create_section(admin, %{
+          "title" => "Parent",
+          "course_id" => course.id,
+          "visibility" => :enrolled
+        })
+
+      {:ok, child_visible} =
+        Sections.create_section(admin, %{
+          "title" => "Child Visible",
+          "course_id" => course.id,
+          "parent_id" => parent.id,
+          "visibility" => :enrolled
+        })
+
+      {:ok, child_hidden} =
+        Sections.create_section(admin, %{
+          "title" => "Child Hidden",
+          "course_id" => course.id,
+          "parent_id" => parent.id,
+          "visibility" => :enrolled
+        })
+
+      overrides = [
+        %Athena.Learning.CohortSchedule{
+          resource_type: :section,
+          resource_id: child_hidden.id,
+          visibility: :hidden
+        }
+      ]
+
+      tree = Sections.get_course_tree(course.id, student, overrides)
+      assert length(tree) == 1
+      parent_node = hd(tree)
+      assert length(parent_node.children) == 1
+      assert hd(parent_node.children).id == child_visible.id
+    end
+
+    test "override with future unlock_at hides section until time", %{
+      admin: admin,
+      student: student
+    } do
+      course = insert(:course, owner_id: admin.id)
+      future = DateTime.add(DateTime.utc_now(), 1, :day)
+
+      {:ok, s} =
+        Sections.create_section(admin, %{
+          "title" => "Future",
+          "course_id" => course.id,
+          "visibility" => :enrolled
+        })
+
+      overrides = [
+        %Athena.Learning.CohortSchedule{
+          resource_type: :section,
+          resource_id: s.id,
+          visibility: :restricted,
+          unlock_at: future
+        }
+      ]
+
+      tree = Sections.get_course_tree(course.id, student, overrides)
+      assert tree == []
+    end
+
+    test "override with past unlock_at shows section", %{admin: admin, student: student} do
+      course = insert(:course, owner_id: admin.id)
+      past = DateTime.add(DateTime.utc_now(), -1, :day)
+
+      {:ok, s} =
+        Sections.create_section(admin, %{
+          "title" => "Unlocked",
+          "course_id" => course.id,
+          "visibility" => :hidden
+        })
+
+      overrides = [
+        %Athena.Learning.CohortSchedule{
+          resource_type: :section,
+          resource_id: s.id,
+          visibility: :restricted,
+          unlock_at: past
+        }
+      ]
+
+      tree = Sections.get_course_tree(course.id, student, overrides)
+      assert length(tree) == 1
+      assert hd(tree).id == s.id
+    end
+
+    test "override with past lock_at hides section", %{admin: admin, student: student} do
+      course = insert(:course, owner_id: admin.id)
+      past = DateTime.add(DateTime.utc_now(), -1, :day)
+
+      {:ok, s} =
+        Sections.create_section(admin, %{
+          "title" => "Locked",
+          "course_id" => course.id,
+          "visibility" => :enrolled
+        })
+
+      overrides = [
+        %Athena.Learning.CohortSchedule{
+          resource_type: :section,
+          resource_id: s.id,
+          visibility: :restricted,
+          lock_at: past
+        }
+      ]
+
+      tree = Sections.get_course_tree(course.id, student, overrides)
+      assert tree == []
+    end
+
+    test "override for non-existent section id does not break tree", %{
+      admin: admin,
+      student: student
+    } do
+      course = insert(:course, owner_id: admin.id)
+
+      {:ok, s} =
+        Sections.create_section(admin, %{
+          "title" => "Exists",
+          "course_id" => course.id,
+          "visibility" => :enrolled
+        })
+
+      overrides = [
+        %Athena.Learning.CohortSchedule{
+          resource_type: :section,
+          resource_id: Ecto.UUID.generate(),
+          visibility: :hidden
+        }
+      ]
+
+      tree = Sections.get_course_tree(course.id, student, overrides)
+      assert length(tree) == 1
+      assert hd(tree).id == s.id
+    end
+
+    test "empty overrides list preserves original visibility behavior", %{
+      admin: admin,
+      student: student
+    } do
+      course = insert(:course, owner_id: admin.id)
+
+      {:ok, s_visible} =
+        Sections.create_section(admin, %{
+          "title" => "Visible",
+          "course_id" => course.id,
+          "visibility" => :enrolled
+        })
+
+      {:ok, _s_hidden} =
+        Sections.create_section(admin, %{
+          "title" => "Hidden",
+          "course_id" => course.id,
+          "visibility" => :hidden
+        })
+
+      tree = Sections.get_course_tree(course.id, student, [])
+      assert length(tree) == 1
+      assert hd(tree).id == s_visible.id
+    end
+  end
+
+  describe "list_linear_lessons/3 with overrides" do
+    test "hidden sections are excluded from flat list", %{admin: admin, student: student} do
+      course = insert(:course, owner_id: admin.id)
+
+      {:ok, s_visible} =
+        Sections.create_section(admin, %{
+          "title" => "Visible",
+          "course_id" => course.id,
+          "visibility" => :enrolled
+        })
+
+      {:ok, s_hidden} =
+        Sections.create_section(admin, %{
+          "title" => "Hidden",
+          "course_id" => course.id,
+          "visibility" => :enrolled
+        })
+
+      insert(:block, section: nil, section_id: s_visible.id)
+      insert(:block, section: nil, section_id: s_hidden.id)
+
+      overrides = [
+        %Athena.Learning.CohortSchedule{
+          resource_type: :section,
+          resource_id: s_hidden.id,
+          visibility: :hidden
+        }
+      ]
+
+      lessons = Sections.list_linear_lessons(course.id, student, overrides)
+      assert length(lessons) == 1
+      assert hd(lessons).id == s_visible.id
+    end
+
+    test "hidden parent hides children even if children have blocks", %{
+      admin: admin,
+      student: student
+    } do
+      course = insert(:course, owner_id: admin.id)
+
+      {:ok, parent} =
+        Sections.create_section(admin, %{
+          "title" => "Parent",
+          "course_id" => course.id,
+          "visibility" => :enrolled
+        })
+
+      {:ok, child} =
+        Sections.create_section(admin, %{
+          "title" => "Child",
+          "course_id" => course.id,
+          "parent_id" => parent.id,
+          "visibility" => :enrolled
+        })
+
+      insert(:block, section: nil, section_id: child.id)
+
+      overrides = [
+        %Athena.Learning.CohortSchedule{
+          resource_type: :section,
+          resource_id: parent.id,
+          visibility: :hidden
+        }
+      ]
+
+      lessons = Sections.list_linear_lessons(course.id, student, overrides)
+      assert lessons == []
+    end
+
+    test "override unlocks a time-restricted section with blocks", %{
+      admin: admin,
+      student: student
+    } do
+      course = insert(:course, owner_id: admin.id)
+      past = DateTime.add(DateTime.utc_now(), -1, :day)
+      future = DateTime.add(DateTime.utc_now(), 1, :day)
+
+      {:ok, s} =
+        Sections.create_section(admin, %{
+          "title" => "Time Locked",
+          "course_id" => course.id,
+          "visibility" => :restricted,
+          "access_rules" => %{unlock_at: future}
+        })
+
+      insert(:block, section: nil, section_id: s.id)
+
+      assert Sections.list_linear_lessons(course.id, student, []) == []
+
+      overrides = [
+        %Athena.Learning.CohortSchedule{
+          resource_type: :section,
+          resource_id: s.id,
+          visibility: :restricted,
+          unlock_at: past
+        }
+      ]
+
+      lessons = Sections.list_linear_lessons(course.id, student, overrides)
+      assert length(lessons) == 1
+      assert hd(lessons).id == s.id
+    end
+
+    test ":all mode returns all sections with blocks regardless of overrides", %{admin: admin} do
+      course = insert(:course, owner_id: admin.id)
+
+      {:ok, s1} =
+        Sections.create_section(admin, %{
+          "title" => "S1",
+          "course_id" => course.id,
+          "visibility" => :enrolled
+        })
+
+      {:ok, s2} =
+        Sections.create_section(admin, %{
+          "title" => "S2",
+          "course_id" => course.id,
+          "visibility" => :enrolled
+        })
+
+      insert(:block, section: nil, section_id: s1.id)
+      insert(:block, section: nil, section_id: s2.id)
+
+      overrides = [
+        %Athena.Learning.CohortSchedule{
+          resource_type: :section,
+          resource_id: s2.id,
+          visibility: :hidden
+        }
+      ]
+
+      lessons = Sections.list_linear_lessons(course.id, :all, overrides)
+      assert length(lessons) == 2
+    end
+  end
 end

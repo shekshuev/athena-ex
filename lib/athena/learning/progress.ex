@@ -81,7 +81,7 @@ defmodule Athena.Learning.Progress do
 
   @doc """
   Returns a list of all section IDs the student is allowed to access.
-  Implements Retrograde Locking: if an old section has an uncompleted gate, 
+  Implements Retrograde Locking: if an old section has an uncompleted gate,
   everything after it becomes locked.
   """
   @spec accessible_section_ids(
@@ -145,7 +145,7 @@ defmodule Athena.Learning.Progress do
     has_uncompleted? = Map.has_key?(uncompleted, section.id)
 
     cond do
-      not can_view? -> {:halt, {acc, true}}
+      not can_view? -> {:cont, {acc, false}}
       has_uncompleted? -> {:halt, {acc ++ [section.id], true}}
       true -> {:cont, {acc ++ [section.id], false}}
     end

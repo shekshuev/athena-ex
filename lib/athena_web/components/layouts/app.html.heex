@@ -21,12 +21,12 @@
       <% current_locale = Gettext.get_locale(AthenaWeb.Gettext) %>
       <a
         href={"/locale/#{if current_locale == "ru", do: "en", else: "ru"}"}
-        class="btn btn-ghost btn-sm font-bold"
+        class="btn btn-ghost btn-sm font-bold min-h-9 h-9"
       >
         {String.upcase(current_locale)}
       </a>
 
-      <label class="btn btn-ghost btn-sm btn-circle swap swap-rotate">
+      <label class="btn btn-ghost btn-sm btn-square swap swap-rotate min-h-9 h-9 w-9">
         <input
           type="checkbox"
           value="dark"
@@ -42,7 +42,7 @@
       <%= if assigns[:current_user] do %>
         <div class="dropdown dropdown-end">
           <div tabindex="0" role="button" class="avatar">
-            <div class="w-8 rounded-full ring-2 ring-primary ring-offset-base-100 ring-offset-2">
+            <div class="w-8 rounded-sm border-2 border-primary bg-base-100">
               <img src={
                 @current_user.avatar_url ||
                   "https://api.dicebear.com/7.x/avataaars/svg?seed=#{@current_user.login}"
@@ -51,7 +51,7 @@
           </div>
           <ul
             tabindex="0"
-            class="dropdown-content menu bg-base-200 rounded-box z-1 w-52 p-2 shadow-xl border border-base-300 mt-4"
+            class="dropdown-content menu bg-base-100 rounded-sm z-1 w-52 p-2 border border-base-300 mt-4"
           >
             <li class="menu-title opacity-50 text-xs uppercase">{gettext("Signed in as")}</li>
             <li class="font-bold"><a>{@current_user.login}</a></li>

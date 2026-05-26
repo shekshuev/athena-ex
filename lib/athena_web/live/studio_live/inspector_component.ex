@@ -101,27 +101,25 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
             />
 
             <%= if to_string(@form[:visibility].value) == "restricted" do %>
-              <div class="p-4 bg-base-200/50 rounded-xl border border-base-300 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                <div class="bg-base-300 p-2 rounded text-xs font-mono text-center text-base-content/70">
-                  SERVER TIME:
-                  <span class="font-bold text-base-content">
-                    {Calendar.strftime(@server_now, "%Y-%m-%d %H:%M:%S")}
-                  </span>
-                </div>
-
-                <.inputs_for :let={ar} field={@form[:access_rules]}>
-                  <.input
-                    type="datetime-local"
-                    field={ar[:unlock_at]}
-                    label={gettext("Unlock At (Optional)")}
-                  />
-                  <.input
-                    type="datetime-local"
-                    field={ar[:lock_at]}
-                    label={gettext("Lock At (Optional)")}
-                  />
-                </.inputs_for>
+              <div class="bg-base-300 p-2 rounded text-xs font-mono text-center text-base-content/70">
+                SERVER TIME:
+                <span class="font-bold text-base-content">
+                  {Calendar.strftime(@server_now, "%Y-%m-%d %H:%M:%S")}
+                </span>
               </div>
+
+              <.inputs_for :let={ar} field={@form[:access_rules]}>
+                <.input
+                  type="datetime-local"
+                  field={ar[:unlock_at]}
+                  label={gettext("Unlock At (Optional)")}
+                />
+                <.input
+                  type="datetime-local"
+                  field={ar[:lock_at]}
+                  label={gettext("Lock At (Optional)")}
+                />
+              </.inputs_for>
             <% end %>
           </div>
         </.form>
@@ -467,27 +465,25 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
             />
 
             <%= if to_string(@form[:visibility].value) == "restricted" do %>
-              <div class="p-4 bg-base-200/50 rounded-xl border border-base-300 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                <div class="bg-base-300 p-2 rounded text-xs font-mono text-center text-base-content/70">
-                  SERVER TIME:
-                  <span class="font-bold text-base-content">
-                    {Calendar.strftime(@server_now, "%Y-%m-%d %H:%M:%S")}
-                  </span>
-                </div>
-
-                <.inputs_for :let={ar} field={@form[:access_rules]}>
-                  <.input
-                    type="datetime-local"
-                    field={ar[:unlock_at]}
-                    label={gettext("Unlock At (Optional)")}
-                  />
-                  <.input
-                    type="datetime-local"
-                    field={ar[:lock_at]}
-                    label={gettext("Lock At (Optional)")}
-                  />
-                </.inputs_for>
+              <div class="bg-base-300 p-2 rounded text-xs font-mono text-center text-base-content/70">
+                SERVER TIME:
+                <span class="font-bold text-base-content">
+                  {Calendar.strftime(@server_now, "%Y-%m-%d %H:%M:%S")}
+                </span>
               </div>
+
+              <.inputs_for :let={ar} field={@form[:access_rules]}>
+                <.input
+                  type="datetime-local"
+                  field={ar[:unlock_at]}
+                  label={gettext("Unlock At (Optional)")}
+                />
+                <.input
+                  type="datetime-local"
+                  field={ar[:lock_at]}
+                  label={gettext("Lock At (Optional)")}
+                />
+              </.inputs_for>
             <% end %>
           </div>
         </.form>

@@ -60,20 +60,21 @@ defmodule AthenaWeb.BlockComponents do
   end
 
   defp wrapper_classes(:edit, true),
-    do: "p-5 rounded-sm ring-2 ring-primary bg-base-100 transition-all shadow-sm"
+    do: "p-5 rounded-sm border-2 border-primary bg-base-100 transition-all"
 
   defp wrapper_classes(:edit, false),
     do:
-      "p-5 rounded-sm ring-1 ring-base-300 hover:ring-primary/50 bg-base-100 transition-all cursor-pointer opacity-80 hover:opacity-100"
+      "p-5 rounded-sm border border-base-300 hover:border-primary/50 bg-base-100 transition-all cursor-pointer opacity-80 hover:opacity-100"
 
   defp wrapper_classes(:play, _), do: "mb-10 last:mb-0 w-full"
   defp wrapper_classes(:review, _), do: "mb-10 last:mb-0 w-full"
 
   defp wrapper_classes(:preview, true),
-    do: "p-5 rounded-sm ring-2 ring-base-300 bg-base-100 transition-all shadow-sm cursor-default"
+    do: "p-5 rounded-sm border-2 border-base-300 bg-base-100 transition-all cursor-default"
 
   defp wrapper_classes(:preview, false),
-    do: "p-5 rounded-sm ring-1 ring-base-200 bg-base-100 transition-all opacity-80 cursor-default"
+    do:
+      "p-5 rounded-sm border border-base-200 bg-base-100 transition-all opacity-80 cursor-default"
 
   defp render_text(assigns) do
     ~H"""
@@ -100,7 +101,7 @@ defmodule AthenaWeb.BlockComponents do
         <img
           src={@block.content["url"]}
           alt={@block.content["alt"]}
-          class="rounded-sm w-full object-cover border border-base-200 shadow-sm"
+          class="rounded-sm w-full object-cover border border-base-200"
         />
       </figure>
     <% else %>
@@ -119,7 +120,7 @@ defmodule AthenaWeb.BlockComponents do
         src={@block.content["url"]}
         poster={@block.content["poster_url"]}
         controls={@block.content["controls"] not in [false, "false"]}
-        class="rounded-sm w-full bg-black aspect-video shadow-md"
+        class="rounded-sm w-full bg-black aspect-video"
       />
     <% else %>
       <div class="p-10 border-2 border-dashed border-base-300 rounded-sm text-center text-base-content/40 bg-base-200/50">
@@ -153,7 +154,7 @@ defmodule AthenaWeb.BlockComponents do
           href={file["url"]}
           target="_blank"
           rel="noopener noreferrer"
-          class="flex items-center gap-4 p-4 bg-base-100 rounded-sm border border-base-200 shadow-sm hover:border-primary/40 hover:shadow-md transition-all group"
+          class="flex items-center gap-4 p-4 bg-base-100 rounded-sm border border-base-200 hover:border-primary/40 transition-all group"
         >
           <div class="p-3 bg-primary/10 rounded-sm text-primary shrink-0 group-hover:scale-110 transition-transform">
             <.icon name="hero-document-arrow-down" class="size-6" />
@@ -212,7 +213,7 @@ defmodule AthenaWeb.BlockComponents do
         </span>
       </label>
 
-      <div class="overflow-hidden rounded-sm border border-base-300 shadow-inner bg-[#282c34]">
+      <div class="overflow-hidden rounded-sm border border-base-300 bg-base-200 dark:bg-[#282c34]">
         <div class="relative w-full">
           <form
             :if={@mode == :edit}
@@ -360,7 +361,7 @@ defmodule AthenaWeb.BlockComponents do
         name="answer"
         value={@answer}
         placeholder={if @mode == :play, do: gettext("Type your answer..."), else: ""}
-        class="input input-bordered w-full font-mono text-lg bg-base-100 disabled:opacity-70 disabled:text-base-content"
+        class="input w-full font-mono text-lg bg-base-100 disabled:opacity-70 disabled:text-base-content"
         disabled={@mode != :play}
         phx-debounce="500"
       />
@@ -369,7 +370,7 @@ defmodule AthenaWeb.BlockComponents do
           <span class="font-bold text-success">
             <.icon name="hero-check-circle" class="size-4 inline" /> {gettext("Correct:")}
           </span>
-          <span class="font-mono bg-base-300 px-2 py-0.5 rounded">
+          <span class="font-mono bg-base-300 px-2 py-0.5 rounded-sm">
             {@block.content["correct_answer"]}
           </span>
         </div>
@@ -384,7 +385,7 @@ defmodule AthenaWeb.BlockComponents do
       name="answer"
       rows="5"
       placeholder={if @mode == :play, do: gettext("Write your detailed answer here..."), else: ""}
-      class="textarea textarea-bordered w-full text-base leading-relaxed bg-base-100 disabled:opacity-70 disabled:text-base-content"
+      class="textarea w-full text-base leading-relaxed bg-base-100 disabled:opacity-70 disabled:text-base-content"
       disabled={@mode != :play}
       phx-debounce="1000"
     >{@answer}</textarea>
@@ -407,7 +408,7 @@ defmodule AthenaWeb.BlockComponents do
           @mode == :review && is_selected && not is_correct &&
             "bg-error/10 border-error/30",
           @mode == :review && not is_selected && is_correct &&
-            "bg-base-100 border-success/30 ring-2 ring-success/20",
+            "bg-base-100 border-2 border-success/30",
           @mode == :review && (not is_selected and not is_correct) &&
             "bg-base-100 border-base-300 opacity-60",
           @mode in [:edit, :preview] && "bg-base-100 border-base-200 opacity-60 pointer-events-none"
@@ -443,9 +444,9 @@ defmodule AthenaWeb.BlockComponents do
 
   defp render_quiz_exam(assigns) do
     ~H"""
-    <div class="p-8 bg-base-100 rounded-sm border border-base-200 shadow-sm text-center relative overflow-hidden">
+    <div class="p-8 bg-base-100 rounded-sm border border-base-200 text-center relative overflow-hidden">
       <div class="absolute top-0 left-0 w-full h-1 bg-primary"></div>
-      <div class="size-16 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-4">
+      <div class="size-16 bg-primary/10 text-primary rounded-sm flex items-center justify-center mx-auto mb-4">
         <.icon name="hero-academic-cap-solid" class="size-8" />
       </div>
       <h3 class="text-2xl font-black mb-2">{gettext("Final Exam")}</h3>
@@ -461,7 +462,7 @@ defmodule AthenaWeb.BlockComponents do
           <button
             phx-click="start_exam"
             phx-value-block_id={@block.id}
-            class="btn btn-primary px-10 shadow-lg shadow-primary/20"
+            class="btn btn-primary px-10"
           >
             {gettext("Start Exam")} <.icon name="hero-play-solid" class="size-4 ml-2" />
           </button>
@@ -482,7 +483,7 @@ defmodule AthenaWeb.BlockComponents do
     ~H"""
     <div>
       <%= if @block.type == :quiz_question do %>
-        <div class="mt-2 p-6 bg-base-100 ring-1 ring-base-300 rounded-sm shadow-lg border-t-4 border-t-primary animate-in slide-in-from-top-2 duration-200">
+        <div class="mt-2 p-6 bg-base-100 border-l border-r border-b border-base-300 rounded-sm border-t-4 border-t-primary animate-in slide-in-from-top-2 duration-200">
           <div class="text-xs font-bold uppercase tracking-widest text-primary mb-4 border-b border-base-200 pb-2">
             {gettext("Answer Editor")}
           </div>
@@ -496,7 +497,7 @@ defmodule AthenaWeb.BlockComponents do
 
             <%= case @block.content["question_type"] do %>
               <% "exact_match" -> %>
-                <div class="form-control">
+                <fieldset class="fieldset">
                   <label class="label">
                     <span class="label-text font-bold text-xs uppercase text-base-content/70">
                       {gettext("Correct Answer (Flag)")}
@@ -508,11 +509,11 @@ defmodule AthenaWeb.BlockComponents do
                       type="text"
                       name="correct_answer"
                       value={@block.content["correct_answer"]}
-                      class="input input-bordered flex-1 font-mono"
+                      class="input flex-1 font-mono"
                       phx-debounce="500"
                     />
                   </div>
-                </div>
+                </fieldset>
               <% type when type in ["single", "multiple"] -> %>
                 <div class="space-y-3">
                   <%= for {opt, index} <- Enum.with_index(@block.content["options"] || []) do %>
@@ -538,7 +539,7 @@ defmodule AthenaWeb.BlockComponents do
                           />
                         <% end %>
                       </div>
-                      <div class="flex-1 bg-base-100/50 p-2 rounded-sm border border-base-200/50 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary space-y-2">
+                      <div class="flex-1 bg-base-100/50 p-2 rounded-sm border border-base-200/50 focus-within:border-2 focus-within:border-primary space-y-2">
                         <input type="hidden" name={"options[#{index}][id]"} value={opt["id"]} />
                         <input
                           type="text"
@@ -592,7 +593,7 @@ defmodule AthenaWeb.BlockComponents do
       <% end %>
 
       <%= if @block.type == :attachment do %>
-        <div class="mt-2 p-4 bg-base-100 ring-1 ring-base-300 rounded-sm shadow-lg animate-in slide-in-from-top-2 duration-200">
+        <div class="mt-2 p-4 bg-base-100 border border-base-300 rounded-sm animate-in slide-in-from-top-2 duration-200">
           <div class="text-xs font-bold uppercase tracking-widest text-primary mb-3">
             {gettext("Manage Files")}
           </div>
@@ -621,7 +622,7 @@ defmodule AthenaWeb.BlockComponents do
             phx-value-block_id={@block.id}
             phx-value-media_type="attachment"
             phx-target={@target}
-            class="btn btn-primary btn-sm mt-3 w-full shadow-sm"
+            class="btn btn-primary btn-sm mt-3 w-full"
           >
             <.icon name="hero-cloud-arrow-up" class="size-4 mr-1" /> {gettext("Upload File")}
           </button>
@@ -635,7 +636,7 @@ defmodule AthenaWeb.BlockComponents do
             phx-value-block_id={@block.id}
             phx-value-media_type={@block.type}
             phx-target={@target}
-            class="btn btn-primary btn-sm shadow-sm"
+            class="btn btn-primary btn-sm"
           >
             <.icon name="hero-cloud-arrow-up" class="size-4 mr-1" />
             {if @block.content["url"], do: gettext("Replace Media"), else: gettext("Upload Media")}
@@ -644,7 +645,7 @@ defmodule AthenaWeb.BlockComponents do
       <% end %>
 
       <%= if @block.type == :code do %>
-        <div class="mt-2 p-6 bg-base-100 ring-1 ring-base-300 rounded-sm shadow-lg border-t-4 border-t-primary animate-in slide-in-from-top-2 duration-200">
+        <div class="mt-2 p-6 bg-base-100 border-l border-r border-b border-base-300 rounded-sm border-t-4 border-t-primary animate-in slide-in-from-top-2 duration-200">
           <div class="flex items-center justify-between mb-6 border-b border-base-200 pb-2">
             <div class="text-xs font-bold uppercase tracking-widest text-primary">
               {gettext("Sandbox Configuration")}
@@ -654,7 +655,7 @@ defmodule AthenaWeb.BlockComponents do
               phx-click="run_instructor_test"
               phx-value-id={@block.id}
               phx-target={assigns[:target]}
-              class="btn btn-sm btn-primary shadow-sm"
+              class="btn btn-sm btn-primary"
             >
               <.icon name="hero-play" class="size-4 mr-1" /> {gettext("Test Solution")}
             </button>
@@ -681,7 +682,7 @@ defmodule AthenaWeb.BlockComponents do
                 value={@block.content["solution_code"]}
               />
 
-              <div class="overflow-hidden rounded-sm border border-base-300 shadow-inner bg-[#282c34]">
+              <div class="overflow-hidden rounded-sm border border-base-300 bg-base-200 dark:bg-[#282c34]">
                 <div
                   id={"solution-editor-#{@block.id}"}
                   phx-hook="CodeEditor"
@@ -726,7 +727,7 @@ defmodule AthenaWeb.BlockComponents do
                 end %>
 
               <%= for {tc, index} <- Enum.with_index(test_cases) do %>
-                <div class="flex gap-2 items-start bg-base-200/50 p-2 rounded border border-base-300 relative group">
+                <div class="flex gap-2 items-start bg-base-200/50 p-2 rounded-sm border border-base-300 relative group">
                   <input
                     type="hidden"
                     name={"block[content][test_cases][#{index}][id]"}
@@ -736,14 +737,14 @@ defmodule AthenaWeb.BlockComponents do
                   <div class="flex-1">
                     <textarea
                       name={"block[content][test_cases][#{index}][input]"}
-                      class="textarea textarea-bordered w-full font-mono text-xs h-16 resize-none"
+                      class="textarea w-full font-mono text-xs h-16 resize-none"
                       placeholder="stdin"
                     >{tc["input"]}</textarea>
                   </div>
                   <div class="flex-1">
                     <textarea
                       name={"block[content][test_cases][#{index}][expected_output]"}
-                      class="textarea textarea-bordered w-full font-mono text-xs h-16 resize-none"
+                      class="textarea w-full font-mono text-xs h-16 resize-none"
                       placeholder="stdout"
                     >{tc["expected_output"]}</textarea>
                   </div>
@@ -752,7 +753,7 @@ defmodule AthenaWeb.BlockComponents do
                       type="number"
                       name={"block[content][test_cases][#{index}][weight]"}
                       value={tc["weight"]}
-                      class="input input-bordered input-sm w-full text-center"
+                      class="input input-sm w-full text-center"
                       placeholder="Weight %"
                     />
 
@@ -781,7 +782,7 @@ defmodule AthenaWeb.BlockComponents do
                     phx-value-block_id={@block.id}
                     phx-value-tc_id={tc["id"]}
                     phx-target={assigns[:target]}
-                    class="btn btn-ghost btn-xs text-error absolute -right-2 -top-2 bg-base-100 shadow-sm rounded-full border border-base-200"
+                    class="btn btn-ghost btn-xs text-error absolute -right-2 -top-2 bg-base-100 rounded-sm border border-base-200"
                   >
                     <.icon name="hero-x-mark" class="size-3" />
                   </button>
@@ -798,7 +799,7 @@ defmodule AthenaWeb.BlockComponents do
   @doc false
   defp tiptap_toolbar(%{mode: :edit} = assigns) do
     ~H"""
-    <div class="fixed-toolbar hidden group-focus-within:flex flex-wrap gap-2 bg-base-100 border border-base-300 rounded-sm p-1.5 mb-3 shadow-sm sticky top-2 z-10 items-center">
+    <div class="fixed-toolbar hidden group-focus-within:flex flex-wrap gap-2 bg-base-100 border border-base-300 rounded-sm p-1.5 mb-3 sticky top-2 z-10 items-center">
       <div class="join flex-wrap">
         <button
           type="button"
