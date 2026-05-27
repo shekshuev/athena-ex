@@ -120,7 +120,7 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
         title={gettext("Upload Media")}
         on_cancel={JS.push("cancel_media_upload")}
       >
-        <div class="p-6">
+        <div>
           <% has_entries = @uploads.media.entries != []
 
           is_uploading =
@@ -134,7 +134,7 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
           <form id="upload-form" phx-submit="save" phx-change="validate" phx-target={@myself}>
             <div
               class={[
-                "relative border-2 border-dashed rounded-2xl transition-all duration-200 group flex flex-col items-center justify-center p-10 text-center",
+                "relative border-2 border-dashed rounded-sm transition-all duration-200 group flex flex-col items-center justify-center p-10 text-center",
                 if(has_entries,
                   do: "hidden",
                   else: "border-base-300 hover:border-primary/50 hover:bg-base-200/50 bg-base-100"
@@ -146,8 +146,8 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
                 upload={@uploads.media}
                 class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
               />
-              <div class="p-4 bg-primary/10 text-primary rounded-full mb-4 group-hover:scale-110 transition-transform">
-                <.icon name="hero-cloud-arrow-up" class="size-10" />
+              <div class="flex items-center justify-center w-16 h-16 bg-primary/10 border border-primary/20 text-primary rounded-sm mb-4 group-hover:scale-105 transition-transform">
+                <.icon name="hero-cloud-arrow-up" class="size-8" />
               </div>
               <h4 class="font-black text-lg text-base-content mb-1">
                 {gettext("Click or drag files here")}
@@ -158,13 +158,15 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
             <div :if={has_entries} class="space-y-3 max-h-64 overflow-y-auto">
               <div
                 :for={entry <- @uploads.media.entries}
-                class="flex flex-col gap-3 p-4 bg-base-200/50 rounded-2xl border border-base-300"
+                class="flex flex-col gap-3 p-4 bg-base-200/50 rounded-sm border border-base-300"
               >
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-3 min-w-0">
-                    <div class="p-2 bg-base-100 rounded-lg text-base-content/50 shrink-0">
+                    <div class="p-2 bg-base-100 rounded-sm border border-base-200 text-base-content/50 shrink-0">
                       <.icon
-                        name={if @upload_type == "video", do: "hero-video-camera", else: "hero-photo"}
+                        name={
+                          if @upload_type == "video", do: "hero-video-camera", else: "hero-document"
+                        }
                         class="size-5"
                       />
                     </div>
@@ -185,7 +187,7 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
 
                   <div
                     :if={has_too_many}
-                    class="mt-4 p-4 bg-error/10 border border-error/30 rounded-lg text-error text-sm font-bold flex items-start gap-3"
+                    class="mt-4 p-4 bg-error/10 border border-error/30 rounded-sm text-error text-sm font-bold flex items-start gap-3"
                   >
                     <.icon name="hero-exclamation-triangle" class="size-5 shrink-0 mt-0.5" />
                     <div>
@@ -206,14 +208,14 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
                       phx-click="cancel_entry"
                       phx-value-ref={entry.ref}
                       phx-target={@myself}
-                      class="btn btn-ghost btn-sm btn-circle text-error hover:bg-error/20"
+                      class="btn btn-ghost btn-sm btn-square min-h-9 h-9 w-9 text-error hover:bg-error/10"
                       title={gettext("Cancel")}
                     >
                       <.icon name="hero-x-mark" class="size-5" />
                     </button>
                   </div>
                 </div>
-                <div class="w-full bg-base-300 rounded-full h-2.5 overflow-hidden">
+                <div class="w-full bg-base-300 rounded-sm h-2 overflow-hidden">
                   <div
                     class={[
                       "h-full transition-all duration-300",
@@ -234,8 +236,8 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
               </div>
             </div>
 
-            <div class="flex justify-end gap-3 mt-8 pt-6 border-t border-base-200">
-              <button type="button" phx-click="cancel_media_upload" class="btn btn-ghost">
+            <div class="flex flex-col-reverse sm:flex-row justify-end gap-3 mt-8 pt-6 border-t border-base-200">
+              <button type="button" phx-click="cancel_media_upload" class="btn btn-outline">
                 {gettext("Cancel")}
               </button>
 
@@ -252,7 +254,7 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
 
               <button
                 type="submit"
-                class="btn btn-primary"
+                class="btn btn-primary phx-submit-loading:opacity-70"
                 disabled={not has_entries or is_uploading or has_errors}
               >
                 <.icon name="hero-arrow-up-tray" class="size-4 mr-2" />

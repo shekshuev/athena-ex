@@ -804,7 +804,8 @@ defmodule AthenaWeb.LearnLive.Player do
           <% is_passed =
             sub_status_str == "accepted" or (sub_status_str == "graded" and sub_score == 100) %>
           <% is_pending = sub_status_str in ["pending", "processing"] %>
-          <% is_review_needed = sub_status_str in ["rejected", "needs_review"] %>
+          <% is_review_needed =
+            sub_status_str in ["rejected", "needs_review", "pending", "processing"] %>
 
           <% is_locked = is_passed or attempts_exhausted or is_review_needed %>
           <% mode = if is_locked, do: :review, else: :play %>
@@ -1026,42 +1027,32 @@ defmodule AthenaWeb.LearnLive.Player do
                   </form>
                 </div>
               <% :file_assignment -> %>
+                <% # Файловые задания не должны блочиться при rejection/low score, как квизы %>
+                <% fa_locked =
+                  sub_status_str == "accepted" or (sub_status_str == "graded" and sub_score == 100) or
+                    is_pending %>
+
                 <div class="space-y-4">
                   <form phx-submit="submit_file_assignment" id={"file-assignment-form-#{block.id}"}>
                     <input type="hidden" name="block_id" value={block.id} />
 
                     <.content_block
                       block={block}
-                      mode={mode}
+                      mode={if fa_locked, do: :review, else: :play}
                       submission={submission}
                       pending_file_urls={@pending_file_urls}
                     />
 
-                    <div
-                      :if={submission && submission.feedback not in [nil, ""]}
-                      class={[
-                        "mt-4 mb-4 rounded-sm text-sm",
-                        submission.status == :rejected && "text-error",
-                        submission.status != :rejected && "text-info"
-                      ]}
-                    >
-                      <strong class="flex items-center gap-1 mb-2">
-                        <.icon name="hero-chat-bubble-bottom-center-text" class="size-4" />
-                        {gettext("Instructor Feedback")}
-                      </strong>
-                      <p class="whitespace-pre-wrap leading-relaxed">{submission.feedback}</p>
-                    </div>
-
-                    <div
-                      :if={mode == :play && submission == nil}
-                      class="mt-6 flex items-center justify-between"
-                    >
+                    <div :if={!fa_locked} class="mt-6 flex items-center justify-between">
                       <button
                         type="submit"
                         class="btn btn-primary"
                         disabled={Map.get(@pending_file_urls, block.id, []) == []}
                       >
                         {cond do
+                          submission != nil ->
+                            gettext("Resubmit")
+
                           Map.get(@pending_file_urls, block.id, []) == [] ->
                             gettext("Select Files First")
 

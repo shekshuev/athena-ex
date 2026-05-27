@@ -320,7 +320,7 @@ defmodule AthenaWeb.BlockComponents do
         <% end %>
       </div>
 
-      <div class="pl-4">
+      <div>
         <.render_quiz_inputs
           block={@block}
           mode={@mode}
@@ -483,27 +483,24 @@ defmodule AthenaWeb.BlockComponents do
   defp render_file_assignment(assigns) do
     body_content = assigns.block.content["body"] || %{}
     max_files = assigns.block.content["max_files"] || 1
-
     pending_urls = Map.get(assigns.pending_file_urls, assigns.block.id, [])
-    can_submit = pending_urls != []
+    pending_count = length(pending_urls)
+    remaining = max(0, max_files - pending_count)
 
     assigns =
       assigns
-      |> assign_new(:pending_file_urls, fn -> %{} end)
       |> assign(:body_content, body_content)
       |> assign(:max_files, max_files)
       |> assign(:file_urls, extract_file_urls(assigns))
       |> assign(:has_submitted, !is_nil(assigns.submission))
-      |> assign(:is_pending, is_pending_review?(assigns.submission))
       |> assign(:pending_urls, pending_urls)
-      |> assign(:can_submit, can_submit)
+      |> assign(:remaining, remaining)
 
     ~H"""
     <div class="space-y-6">
       <div class="editor-wrapper group relative outline-none">
         <.tiptap_toolbar mode={@mode} />
         <div
-          :if={@mode in [:edit, :preview]}
           id={"tiptap-body-#{@mode}-#{@block.id}"}
           phx-hook="TiptapEditor"
           data-id={@block.id}
@@ -521,19 +518,16 @@ defmodule AthenaWeb.BlockComponents do
         </div>
       <% end %>
 
-      <% pending_count = length(@pending_urls) %>
-      <% remaining = @max_files - pending_count %>
-
-      <div :if={@mode == :play && !@has_submitted} class="pl-4 space-y-3">
+      <div :if={@mode == :play} class="space-y-4">
         <div
-          :if={remaining > 0}
-          class="border-2 border-dashed border-base-300 rounded-sm p-6 text-center bg-base-200/30"
+          :if={@remaining > 0}
+          class="border-2 border-dashed border-base-300 rounded-sm p-8 text-center bg-base-200/30"
         >
-          <.icon name="hero-cloud-arrow-up" class="size-8 mx-auto text-base-content/40 mb-2" />
-          <p class="text-sm text-base-content/70 mb-1">
-            {gettext("You can upload %{count} more file(s)", count: remaining)}
+          <.icon name="hero-cloud-arrow-up" class="size-12 mx-auto text-base-content/40 mb-4" />
+          <p class="text-base-content/70 mb-2">
+            {gettext("You can upload %{count} more file(s)", count: @remaining)}
           </p>
-          <p class="text-xs text-base-content/50 mb-3">
+          <p class="text-xs text-base-content/50 mb-4">
             {Athena.Media.Config.format_extensions("file_assignment")}
           </p>
           <button
@@ -541,7 +535,7 @@ defmodule AthenaWeb.BlockComponents do
             phx-click="request_media_upload"
             phx-value-block_id={@block.id}
             phx-value-media_type="file_assignment"
-            class="btn btn-primary min-h-11 h-11 px-6"
+            class="btn btn-primary"
           >
             <.icon name="hero-document-plus" class="size-4 mr-2" />
             {gettext("Select Files")}
@@ -549,17 +543,19 @@ defmodule AthenaWeb.BlockComponents do
         </div>
 
         <div
-          :if={pending_count > 0}
-          class="text-xs text-base-content/60 font-medium flex items-center gap-2"
+          :if={@remaining == 0}
+          class="p-4 bg-base-200/50 rounded-sm border border-base-300 text-center"
         >
-          <.icon name="hero-document-check" class="size-4 text-success" />
-          {gettext("%{count} of %{max} file(s) selected", count: pending_count, max: @max_files)}
+          <.icon name="hero-lock-closed" class="size-6 mx-auto text-base-content/40 mb-2" />
+          <p class="text-sm font-medium text-base-content/70">
+            {gettext("Maximum file limit reached.")}
+          </p>
         </div>
 
         <div :if={@pending_urls != []} class="space-y-2">
           <div
             :for={url <- @pending_urls}
-            class="flex items-center justify-between gap-3 p-3 bg-base-200/50 border border-base-300 rounded-sm"
+            class="flex items-center justify-between gap-3 p-3 bg-base-100 border border-base-200 rounded-sm"
           >
             <div class="flex items-center gap-2 min-w-0">
               <.icon name="hero-document-check" class="size-4 text-success shrink-0" />
@@ -570,7 +566,7 @@ defmodule AthenaWeb.BlockComponents do
               phx-click="remove_pending_file"
               phx-value-block_id={@block.id}
               phx-value-url={url}
-              class="btn btn-ghost btn-sm btn-square min-h-8 h-8 w-8 text-error shrink-0"
+              class="btn btn-ghost btn-sm btn-square min-h-9 h-9 w-9 text-error shrink-0"
               title={gettext("Remove")}
             >
               <.icon name="hero-trash" class="size-4" />
@@ -579,7 +575,7 @@ defmodule AthenaWeb.BlockComponents do
         </div>
       </div>
 
-      <div :if={@mode == :review} class="space-y-4">
+      <div :if={@has_submitted && @mode != :play} class="space-y-4">
         <div :if={@file_urls != []} class="space-y-2">
           <a
             :for={url <- @file_urls}
@@ -610,10 +606,6 @@ defmodule AthenaWeb.BlockComponents do
         []
     end
   end
-
-  @doc false
-  defp is_pending_review?(%{status: status}) when status in [:pending, :needs_review], do: true
-  defp is_pending_review?(_), do: false
 
   @doc """
   Contextual editor panels for specific block types (Quiz options, File manager).
