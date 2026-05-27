@@ -97,12 +97,12 @@ defmodule AthenaWeb.AuthLive.ForcePasswordChange do
 
   def render(assigns) do
     ~H"""
-    <div class="w-full h-[calc(100vh-100px)] flex flex-col items-center justify-center p-4">
-      <div class="card w-full max-w-md bg-base-100 border border-base-300">
-        <div class="card-body gap-6">
+    <div class="flex-1 flex flex-col items-center justify-center p-4 sm:p-6">
+      <div class="card w-full max-w-md bg-base-100 border border-base-300 rounded-sm">
+        <div class="card-body gap-4 p-6 sm:p-8">
           <div class="text-center">
-            <div class="inline-flex items-center justify-center p-3 bg-warning/10 rounded-full mb-4">
-              <.icon name="hero-shield-exclamation" class="w-8 h-8 text-warning" />
+            <div class="inline-flex items-center justify-center w-14 h-14 bg-warning/10 border border-warning/20 rounded-sm mb-4">
+              <.icon name="hero-shield-exclamation" class="size-7 text-warning" />
             </div>
             <h2 class="text-2xl font-display font-bold uppercase">
               {gettext("Security Update Required")}
@@ -117,7 +117,7 @@ defmodule AthenaWeb.AuthLive.ForcePasswordChange do
             for={@form}
             phx-change="validate"
             phx-submit="save"
-            class="flex flex-col gap-4"
+            class="flex flex-col gap-2"
           >
             <.input
               field={@form[:password]}
@@ -135,9 +135,9 @@ defmodule AthenaWeb.AuthLive.ForcePasswordChange do
               required
             />
 
-            <button class="btn btn-warning w-full mt-4 font-bold">
+            <button class="btn btn-warning w-full mt-4 phx-submit-loading:opacity-70">
               {gettext("Save and continue")}
-              <.icon name="hero-arrow-right" class="w-5 h-5 ml-2" />
+              <.icon name="hero-arrow-right" class="size-5 ml-2" />
             </button>
           </.form>
         </div>
