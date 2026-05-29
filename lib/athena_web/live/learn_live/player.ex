@@ -105,10 +105,12 @@ defmodule AthenaWeb.LearnLive.Player do
     attempts =
       Learning.count_attempts(ctx.user.id, Enum.map(blocks, & &1.id), ctx.team_id)
 
+    drafts = load_drafts(ctx.user.id, Enum.map(blocks, & &1.id), ctx.team_id)
+
+    pending_file_urls = load_pending_file_urls(blocks, drafts)
+
     if connected?(socket) do
-      for block <- blocks, block.type == :code do
-        Phoenix.PubSub.subscribe(Athena.PubSub, "submission:#{ctx.user.id}:#{block.id}")
-      end
+      subscribe_to_block_topics(blocks, ctx.user.id, ctx.team_id)
     end
 
     socket =
@@ -128,14 +130,52 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
       |> assign(:submissions, submissions)
       |> assign(:attempts_map, attempts)
+      |> assign(:drafts, drafts)
       |> assign(:overrides, ctx.overrides)
       |> assign(:block_counts, ctx.block_counts)
       |> assign(:show_media_modal, false)
       |> assign(:active_upload_block_id, nil)
       |> assign(:upload_type, nil)
-      |> assign(:pending_file_urls, %{})
+      |> assign(:pending_file_urls, pending_file_urls)
 
     {:ok, schedule_next_unlock(socket, course.id)}
+  end
+
+  @doc false
+  defp load_pending_file_urls(blocks, drafts) do
+    drafts
+    |> Enum.filter(fn {block_id, _content} ->
+      block = Enum.find(blocks, &(&1.id == block_id))
+      block && block.type == :file_assignment
+    end)
+    |> Enum.map(fn {block_id, content} ->
+      {block_id, content["file_urls"] || []}
+    end)
+    |> Map.new()
+  end
+
+  @doc false
+  defp subscribe_to_block_topics(blocks, user_id, team_id) do
+    for block <- blocks, block.type == :code do
+      Phoenix.PubSub.subscribe(Athena.PubSub, "submission:#{user_id}:#{block.id}")
+    end
+
+    if team_id do
+      for block <- blocks do
+        Learning.subscribe_to_draft_updates(team_id, block.id)
+      end
+    end
+  end
+
+  @doc false
+  defp load_drafts(user_id, block_ids, team_id) do
+    block_ids
+    |> Enum.map(fn block_id ->
+      draft_content = Learning.get_draft(user_id, block_id, team_id)
+      {block_id, draft_content}
+    end)
+    |> Enum.reject(fn {_block_id, content} -> is_nil(content) end)
+    |> Map.new()
   end
 
   @doc """
@@ -257,6 +297,9 @@ defmodule AthenaWeb.LearnLive.Player do
 
     if length(current_urls) < max_files do
       updated_pending = Map.put(pending, block_id, current_urls ++ [url])
+
+      save_file_assignment_draft(socket, block_id, updated_pending[block_id])
+
       {:noreply, assign(socket, :pending_file_urls, updated_pending)}
     else
       {:noreply, put_flash(socket, :error, gettext("Maximum number of files reached"))}
@@ -310,7 +353,31 @@ defmodule AthenaWeb.LearnLive.Player do
     updated = List.delete(current, url)
     updated_pending = Map.put(pending, block_id, updated)
 
+    save_file_assignment_draft(socket, block_id, updated)
+
     {:noreply, assign(socket, :pending_file_urls, updated_pending)}
+  end
+
+  def handle_event("save_draft", %{"block_id" => block_id} = params, socket) do
+    user = socket.assigns.current_user
+    team_id = socket.assigns.team_id
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
+    content = build_draft_content(block, params)
+
+    case Learning.save_draft(user, block_id, content, team_id) do
+      {:ok, _submission} ->
+        new_drafts = Map.put(socket.assigns.drafts || %{}, block_id, content)
+        {:noreply, assign(socket, :drafts, new_drafts)}
+
+      {:error, _changeset} ->
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("save_draft", _params, socket) do
+    {:noreply, socket}
   end
 
   @doc false
@@ -443,7 +510,11 @@ defmodule AthenaWeb.LearnLive.Player do
         new_attempts = current_attempts + 1
         attempts_map = Map.put(socket.assigns.attempts_map || %{}, block.id, new_attempts)
 
-        socket = assign(socket, submissions: submissions, attempts_map: attempts_map)
+        new_drafts = Map.delete(socket.assigns.drafts || %{}, block.id)
+
+        socket =
+          assign(socket, submissions: submissions, attempts_map: attempts_map, drafts: new_drafts)
+
         socket = process_gate_after_submission(socket, block, final_sub)
 
         {flash_type, flash_msg} = build_quiz_flash(final_sub, block, new_attempts)
@@ -684,6 +755,8 @@ defmodule AthenaWeb.LearnLive.Player do
     current = Map.get(pending, block_id, [])
     updated_pending = Map.put(pending, block_id, current ++ file_urls)
 
+    save_file_assignment_draft(socket, block_id, updated_pending[block_id])
+
     socket =
       socket
       |> assign(:pending_file_urls, updated_pending)
@@ -707,6 +780,18 @@ defmodule AthenaWeb.LearnLive.Player do
         socket
       ) do
     {:noreply, socket}
+  end
+
+  def handle_info(
+        {:draft_updated, %{block_id: block_id, content: content, updater_id: updater_id}},
+        socket
+      ) do
+    if updater_id == socket.assigns.current_user.id do
+      {:noreply, socket}
+    else
+      new_drafts = Map.put(socket.assigns.drafts || %{}, block_id, content)
+      {:noreply, assign(socket, :drafts, new_drafts)}
+    end
   end
 
   @doc false
@@ -743,6 +828,59 @@ defmodule AthenaWeb.LearnLive.Player do
   defp all_blocks_completed?(visible_blocks, completed_ids) do
     last_block = List.last(visible_blocks)
     last_block == nil or (!gate?(last_block) or last_block.id in completed_ids)
+  end
+
+  @doc false
+  defp build_draft_content(block, params) do
+    case block.type do
+      :quiz_question ->
+        build_quiz_draft_content(block.content["question_type"], params)
+
+      :code ->
+        code = get_in(params, ["answer", "code"]) || ""
+        %{"type" => :code, "code" => code}
+
+      :file_assignment ->
+        %{"type" => :file_assignment, "file_urls" => []}
+
+      _ ->
+        %{}
+    end
+  end
+
+  @doc false
+  defp build_quiz_draft_content(question_type, params)
+       when question_type in ["open", "exact_match"] do
+    %{"type" => :quiz_question, "text_answer" => params["answer"] || ""}
+  end
+
+  defp build_quiz_draft_content(_question_type, params) do
+    answer = params["answer"]
+
+    selected =
+      cond do
+        is_list(answer) -> answer
+        is_binary(answer) -> [answer]
+        true -> []
+      end
+
+    %{"type" => :quiz_question, "selected_choices" => selected}
+  end
+
+  @doc false
+  defp save_file_assignment_draft(socket, block_id, file_urls) do
+    user = socket.assigns.current_user
+    team_id = socket.assigns.team_id
+
+    content = %{
+      "type" => :file_assignment,
+      "file_urls" => file_urls || []
+    }
+
+    Learning.save_draft(user, block_id, content, team_id)
+
+    new_drafts = Map.put(socket.assigns.drafts || %{}, block_id, content)
+    assign(socket, :drafts, new_drafts)
   end
 
   @doc "Renders the interactive course player UI."
@@ -825,7 +963,12 @@ defmodule AthenaWeb.LearnLive.Player do
           >
             <%= case block.type do %>
               <% :quiz_question -> %>
-                <form phx-submit="submit_quiz" id={"quiz-form-#{block.id}"}>
+                <form
+                  phx-submit="submit_quiz"
+                  phx-change="save_draft"
+                  phx-value-block_id={block.id}
+                  id={"quiz-form-#{block.id}"}
+                >
                   <input type="hidden" name="block_id" value={block.id} />
 
                   <.content_block
@@ -833,6 +976,7 @@ defmodule AthenaWeb.LearnLive.Player do
                     mode={mode}
                     submission={submission}
                     answers={@submissions}
+                    draft={Map.get(@drafts || %{}, block.id)}
                   />
 
                   <div
@@ -878,7 +1022,11 @@ defmodule AthenaWeb.LearnLive.Player do
               <% :quiz_exam -> %>
                 <% exam_mode = if submission, do: :review, else: :play %>
                 <div class="relative">
-                  <.content_block block={block} mode={exam_mode} submission={submission} />
+                  <.content_block
+                    block={block}
+                    mode={exam_mode}
+                    submission={submission}
+                  />
 
                   <%= if submission do %>
                     <div class="mt-6 flex justify-center">
@@ -911,7 +1059,12 @@ defmodule AthenaWeb.LearnLive.Player do
                 </div>
               <% :code -> %>
                 <div class="space-y-4">
-                  <form phx-submit="submit_code" id={"code-form-#{block.id}"}>
+                  <form
+                    phx-submit="submit_code"
+                    phx-change="save_draft"
+                    phx-value-block_id={block.id}
+                    id={"code-form-#{block.id}"}
+                  >
                     <input type="hidden" name="block_id" value={block.id} />
 
                     <.content_block
@@ -919,6 +1072,7 @@ defmodule AthenaWeb.LearnLive.Player do
                       mode={mode}
                       submission={submission}
                       answers={@submissions}
+                      draft={Map.get(@drafts || %{}, block.id)}
                     />
 
                     <div class="mt-4 flex items-center justify-between">
@@ -1036,13 +1190,17 @@ defmodule AthenaWeb.LearnLive.Player do
                   </form>
                 </div>
               <% :file_assignment -> %>
-                <% # Файловые задания не должны блочиться при rejection/low score, как квизы %>
                 <% fa_locked =
                   sub_status_str == "accepted" or (sub_status_str == "graded" and sub_score == 100) or
                     is_pending %>
 
                 <div class="space-y-4">
-                  <form phx-submit="submit_file_assignment" id={"file-assignment-form-#{block.id}"}>
+                  <form
+                    phx-submit="submit_file_assignment"
+                    phx-change="save_draft"
+                    phx-value-block_id={block.id}
+                    id={"file-assignment-form-#{block.id}"}
+                  >
                     <input type="hidden" name="block_id" value={block.id} />
 
                     <.content_block
@@ -1050,6 +1208,7 @@ defmodule AthenaWeb.LearnLive.Player do
                       mode={if fa_locked, do: :review, else: :play}
                       submission={submission}
                       pending_file_urls={@pending_file_urls}
+                      draft={Map.get(@drafts || %{}, block.id)}
                     />
 
                     <div :if={!fa_locked} class="mt-6 flex items-center justify-between">

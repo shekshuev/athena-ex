@@ -8,7 +8,17 @@ defmodule Athena.Learning.Submissions do
 
   import Ecto.Query
   alias Athena.{Repo, Content}
-  alias Athena.Learning.{Submission, Enrollment, Cohort, Instructor, CohortInstructor, Progress}
+
+  alias Athena.Learning.{
+    Submission,
+    Enrollment,
+    Cohort,
+    Instructor,
+    CohortInstructor,
+    Progress,
+    DraftCache
+  }
+
   alias Athena.Content.{Block, Section}
 
   @doc """
@@ -38,6 +48,8 @@ defmodule Athena.Learning.Submissions do
 
   @doc false
   defp scope_submissions(query, user, permission) do
+    query = where(query, [s], s.status != :draft)
+
     cond do
       "admin" in user.role.permissions ->
         query
@@ -73,15 +85,19 @@ defmodule Athena.Learning.Submissions do
 
   @doc """
   Gets the latest submission for a specific block, scoped by cohort or user.
+  Excludes draft submissions.
   """
   @spec get_submission(String.t(), String.t(), String.t() | nil) :: Submission.t() | nil
   def get_submission(account_id, block_id, cohort_id \\ nil) do
     query =
       if cohort_id do
-        from s in Submission, where: s.cohort_id == ^cohort_id and s.block_id == ^block_id
+        from s in Submission,
+          where: s.cohort_id == ^cohort_id and s.block_id == ^block_id and s.status != :draft
       else
         from s in Submission,
-          where: s.account_id == ^account_id and is_nil(s.cohort_id) and s.block_id == ^block_id
+          where:
+            s.account_id == ^account_id and is_nil(s.cohort_id) and
+              s.block_id == ^block_id and s.status != :draft
       end
 
     query
@@ -92,14 +108,29 @@ defmodule Athena.Learning.Submissions do
 
   @doc """
   Creates a new submission, forces the account_id, and enqueues execution if it's a code block.
+  If a draft exists for this block, updates it instead of creating a new record.
   Uses Ecto.Multi to guarantee that the job is queued ONLY if the submission is saved.
   """
   @spec create_submission(map(), map()) :: {:ok, Submission.t()} | {:error, any()}
   def create_submission(user, attrs) do
     safe_attrs = Map.put(attrs, "account_id", user.id)
+    block_id = Map.get(attrs, "block_id")
+    cohort_id = Map.get(attrs, "cohort_id")
+
+    existing_draft = find_draft(user.id, block_id, cohort_id)
 
     Ecto.Multi.new()
-    |> Ecto.Multi.insert(:submission, Submission.changeset(%Submission{}, safe_attrs))
+    |> Ecto.Multi.run(:submission, fn _repo, _changes ->
+      if existing_draft do
+        existing_draft
+        |> Submission.changeset(Map.put(safe_attrs, "status", :pending))
+        |> Repo.update()
+      else
+        %Submission{}
+        |> Submission.changeset(safe_attrs)
+        |> Repo.insert()
+      end
+    end)
     |> Ecto.Multi.run(:enqueue_job, fn repo, %{submission: submission} ->
       block = repo.get(Block, submission.block_id)
 
@@ -110,6 +141,10 @@ defmodule Athena.Learning.Submissions do
       else
         {:ok, :skipped_execution}
       end
+    end)
+    |> Ecto.Multi.run(:clear_draft_cache, fn _repo, _changes ->
+      clear_draft(user.id, block_id, cohort_id)
+      {:ok, :cleared}
     end)
     |> Repo.transaction()
     |> case do
@@ -151,6 +186,7 @@ defmodule Athena.Learning.Submissions do
   @doc """
   Gets the best/latest submissions for a list of block ids, scoped by cohort or user.
   Prioritizes the highest score. If scores are equal, takes the latest attempt.
+  Excludes draft submissions.
   """
   @spec get_latest_submissions(String.t(), [String.t()], String.t() | nil) :: %{
           String.t() => Submission.t()
@@ -158,10 +194,13 @@ defmodule Athena.Learning.Submissions do
   def get_latest_submissions(account_id, block_ids, cohort_id \\ nil) do
     query =
       if cohort_id do
-        from s in Submission, where: s.cohort_id == ^cohort_id and s.block_id in ^block_ids
+        from s in Submission,
+          where: s.cohort_id == ^cohort_id and s.block_id in ^block_ids and s.status != :draft
       else
         from s in Submission,
-          where: s.account_id == ^account_id and is_nil(s.cohort_id) and s.block_id in ^block_ids
+          where:
+            s.account_id == ^account_id and is_nil(s.cohort_id) and
+              s.block_id in ^block_ids and s.status != :draft
       end
 
     query
@@ -287,15 +326,18 @@ defmodule Athena.Learning.Submissions do
 
   @doc """
   Returns a map of %{block_id => attempts_count} for a given user/team and list of blocks.
+  Excludes draft submissions.
   """
   def count_attempts(account_id, block_ids, cohort_id \\ nil) do
     query =
       if cohort_id do
         from s in Athena.Learning.Submission,
-          where: s.cohort_id == ^cohort_id and s.block_id in ^block_ids
+          where: s.cohort_id == ^cohort_id and s.block_id in ^block_ids and s.status != :draft
       else
         from s in Athena.Learning.Submission,
-          where: s.account_id == ^account_id and is_nil(s.cohort_id) and s.block_id in ^block_ids
+          where:
+            s.account_id == ^account_id and is_nil(s.cohort_id) and
+              s.block_id in ^block_ids and s.status != :draft
       end
 
     query
@@ -303,5 +345,106 @@ defmodule Athena.Learning.Submissions do
     |> select([s], {s.block_id, count(s.id)})
     |> Repo.all()
     |> Enum.into(%{})
+  end
+
+  @doc """
+  Saves a draft submission. Creates or updates existing draft.
+  Caches in Cachex for fast access, stores in DB for persistence.
+  For team submissions, broadcasts update to all team members.
+  """
+  @spec save_draft(map(), String.t(), map(), String.t() | nil) ::
+          {:ok, Submission.t()} | {:error, Ecto.Changeset.t()}
+  def save_draft(user, block_id, content, cohort_id \\ nil) do
+    attrs = %{
+      "account_id" => user.id,
+      "block_id" => block_id,
+      "cohort_id" => cohort_id,
+      "status" => :draft,
+      "content" => content
+    }
+
+    find_draft(user.id, block_id, cohort_id)
+    |> case do
+      nil ->
+        %Submission{}
+        |> Submission.changeset(attrs)
+        |> Repo.insert()
+
+      val ->
+        val
+        |> Submission.changeset(attrs)
+        |> Repo.update()
+    end
+    |> case do
+      {:ok, submission} ->
+        DraftCache.save_draft(user.id, cohort_id, block_id, content)
+
+        if cohort_id do
+          DraftCache.broadcast_draft_update(cohort_id, block_id, content, user.id)
+        end
+
+        {:ok, submission}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  @doc """
+  Retrieves a draft submission content.
+  Checks Cachex first, falls back to DB if not found.
+  """
+  @spec get_draft(String.t(), String.t(), String.t() | nil) :: map() | nil
+  def get_draft(user_id, block_id, cohort_id \\ nil) do
+    case DraftCache.get_draft(user_id, cohort_id, block_id) do
+      nil ->
+        maybe_restore_draft_from_db(user_id, block_id, cohort_id)
+
+      content ->
+        content
+    end
+  end
+
+  @doc """
+  Clears a draft from cache (but not from DB).
+  Used when submission is finalized.
+  """
+  @spec clear_draft(String.t(), String.t(), String.t() | nil) :: :ok
+  def clear_draft(user_id, block_id, cohort_id \\ nil) do
+    DraftCache.clear_draft(user_id, cohort_id, block_id)
+    :ok
+  end
+
+  @doc false
+  defp maybe_restore_draft_from_db(user_id, block_id, cohort_id) do
+    case find_draft(user_id, block_id, cohort_id) do
+      nil ->
+        nil
+
+      submission ->
+        DraftCache.save_draft(user_id, cohort_id, block_id, submission.content)
+        submission.content
+    end
+  end
+
+  @doc false
+  defp find_draft(_user_id, nil, _cohort_id), do: nil
+
+  defp find_draft(user_id, block_id, cohort_id) do
+    query =
+      if cohort_id do
+        from s in Submission,
+          where: s.cohort_id == ^cohort_id and s.block_id == ^block_id and s.status == :draft
+      else
+        from s in Submission,
+          where:
+            s.account_id == ^user_id and s.block_id == ^block_id and
+              s.status == :draft and is_nil(s.cohort_id)
+      end
+
+    query
+    |> order_by([s], desc: s.updated_at)
+    |> limit(1)
+    |> Repo.one()
   end
 end

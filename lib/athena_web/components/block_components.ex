@@ -20,6 +20,7 @@ defmodule AthenaWeb.BlockComponents do
   attr :active, :boolean, default: false
   attr :attempts_count, :integer, default: 0
   attr :pending_file_urls, :map, default: %{}
+  attr :draft, :map, default: nil
 
   def content_block(assigns) do
     ~H"""
@@ -40,6 +41,7 @@ defmodule AthenaWeb.BlockComponents do
             answers={@answers}
             submission={@submission}
             attempts_count={@attempts_count}
+            draft={@draft}
           />
         <% :quiz_question -> %>
           <.render_quiz_question
@@ -48,6 +50,7 @@ defmodule AthenaWeb.BlockComponents do
             answers={@answers}
             submission={@submission}
             attempts_count={@attempts_count}
+            draft={@draft}
           />
         <% :quiz_exam -> %>
           <.render_quiz_exam block={@block} mode={@mode} submission={@submission} />
@@ -57,6 +60,7 @@ defmodule AthenaWeb.BlockComponents do
             mode={@mode}
             submission={@submission}
             pending_file_urls={@pending_file_urls}
+            draft={@draft}
           />
         <% _ -> %>
           <div class="p-4 text-warning italic border border-warning/20 bg-warning/5 rounded-sm">
@@ -180,14 +184,15 @@ defmodule AthenaWeb.BlockComponents do
 
   defp render_code(assigns) do
     code =
-      if assigns.mode == :edit do
-        assigns.block.content["initial_code"] || ""
-      else
-        extract_code_answer(assigns) || assigns.block.content["initial_code"] || ""
-      end
+      compute_code_for_mode(
+        assigns.mode,
+        assigns.block,
+        assigns.draft,
+        assigns[:answers],
+        assigns[:submission]
+      )
 
     lang = assigns.block.content["language"] || "python3"
-
     readonly = assigns.mode not in [:edit, :play]
 
     assigns =
@@ -244,6 +249,9 @@ defmodule AthenaWeb.BlockComponents do
               id={"code-input-#{@block.id}"}
               name="answer[code]"
               value={@code}
+              phx-change="save_draft"
+              phx-value-block_id={@block.id}
+              phx-debounce="500"
             />
           <% end %>
 
@@ -262,6 +270,30 @@ defmodule AthenaWeb.BlockComponents do
       </div>
     </div>
     """
+  end
+
+  @doc false
+  defp compute_code_for_mode(:edit, block, _draft, _answers, _submission),
+    do: block.content["initial_code"] || ""
+
+  defp compute_code_for_mode(:play, block, draft, answers, submission) do
+    extract_code_answer(%{block: block, answers: answers, submission: submission}) ||
+      extract_draft_code(draft) ||
+      block.content["initial_code"] ||
+      ""
+  end
+
+  defp compute_code_for_mode(_other_mode, block, _draft, answers, submission) do
+    extract_code_answer(%{block: block, answers: answers, submission: submission}) ||
+      block.content["initial_code"] ||
+      ""
+  end
+
+  @doc false
+  defp extract_draft_code(nil), do: nil
+
+  defp extract_draft_code(draft) when is_map(draft) do
+    draft["code"] || draft[:code]
   end
 
   defp map_cm_lang("cpp"), do: "cpp"
@@ -328,6 +360,7 @@ defmodule AthenaWeb.BlockComponents do
           options={@options}
           answer={@answer}
           submission={@submission}
+          draft={@draft}
         />
       </div>
     </div>
@@ -344,8 +377,19 @@ defmodule AthenaWeb.BlockComponents do
         live_answer
       end
     else
-      extract_from_submission(assigns[:submission], q_type)
+      extract_from_submission(assigns[:submission], q_type) ||
+        extract_from_draft(assigns[:draft], q_type)
     end
+  end
+
+  defp extract_from_draft(nil, _q_type), do: nil
+
+  defp extract_from_draft(draft, q_type) when q_type in ["exact_match", "open"] do
+    draft["text_answer"] || draft[:text_answer]
+  end
+
+  defp extract_from_draft(draft, _q_type) do
+    draft["selected_choices"] || draft[:selected_choices]
   end
 
   defp extract_from_submission(%{content: content}, q_type)
@@ -362,15 +406,20 @@ defmodule AthenaWeb.BlockComponents do
   end
 
   defp render_quiz_inputs(%{q_type: "exact_match"} = assigns) do
+    answer_content = assigns.answer || extract_draft_text_answer(assigns.draft)
+    assigns = assign(assigns, :answer_content, answer_content)
+
     ~H"""
     <div class="flex flex-col gap-2 max-w-md">
       <input
         type="text"
         name="answer"
-        value={@answer}
+        value={@answer_content}
         placeholder={if @mode == :play, do: gettext("Type your answer..."), else: ""}
         class="input w-full font-mono text-lg bg-base-100 disabled:opacity-70 disabled:text-base-content"
         disabled={@mode != :play}
+        phx-change={if @mode == :play, do: "save_draft", else: nil}
+        phx-value-block_id={@block.id}
         phx-debounce="500"
       />
       <%= if @mode == :review do %>
@@ -388,6 +437,9 @@ defmodule AthenaWeb.BlockComponents do
   end
 
   defp render_quiz_inputs(%{q_type: "open"} = assigns) do
+    answer_content = assigns.answer || extract_draft_text_answer(assigns.draft)
+    assigns = assign(assigns, :answer_content, answer_content)
+
     ~H"""
     <textarea
       name="answer"
@@ -395,8 +447,10 @@ defmodule AthenaWeb.BlockComponents do
       placeholder={if @mode == :play, do: gettext("Write your detailed answer here..."), else: ""}
       class="textarea w-full text-base leading-relaxed bg-base-100 disabled:opacity-70 disabled:text-base-content"
       disabled={@mode != :play}
-      phx-debounce="1000"
-    >{@answer}</textarea>
+      phx-change={if @mode == :play, do: "save_draft", else: nil}
+      phx-value-block_id={@block.id}
+      phx-debounce="500"
+    ><%= @answer_content %></textarea>
     """
   end
 
@@ -432,6 +486,9 @@ defmodule AthenaWeb.BlockComponents do
                 else: "checkbox checkbox-primary mt-0.5"
             }
             disabled={@mode != :play}
+            phx-change={if @mode == :play, do: "save_draft", else: nil}
+            phx-value-block_id={@block.id}
+            phx-debounce="300"
           />
           <div class="flex-1">
             <span class="text-base font-medium">{opt["text"]}</span>
@@ -448,6 +505,14 @@ defmodule AthenaWeb.BlockComponents do
       <% end %>
     </div>
     """
+  end
+
+  @doc false
+  defp extract_draft_text_answer(nil), do: nil
+
+  defp extract_draft_text_answer(draft) when is_map(draft) do
+    draft["text_answer"] || draft[:text_answer] || draft["selected_choices"] ||
+      draft[:selected_choices]
   end
 
   defp render_quiz_exam(assigns) do
@@ -483,6 +548,7 @@ defmodule AthenaWeb.BlockComponents do
   defp render_file_assignment(assigns) do
     body_content = assigns.block.content["body"] || %{}
     max_files = assigns.block.content["max_files"] || 1
+
     pending_urls = Map.get(assigns.pending_file_urls, assigns.block.id, [])
     pending_count = length(pending_urls)
     remaining = max(0, max_files - pending_count)
