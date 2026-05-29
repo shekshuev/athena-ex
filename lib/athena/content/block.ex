@@ -74,32 +74,42 @@ defmodule Athena.Content.Block do
     type = get_field(changeset, :type)
     content_map = get_field(changeset, :content) || %{}
 
-    embed_cs =
-      case type do
-        :quiz_question -> QuizQuestion.changeset(struct(QuizQuestion), content_map)
-        :quiz_exam -> QuizExam.changeset(struct(QuizExam), content_map)
-        :code -> CodeChallenge.changeset(struct(CodeChallenge), content_map)
-        :file_assignment -> FileAssignment.changeset(struct(FileAssignment), content_map)
-        _ -> nil
-      end
+    type
+    |> build_embed_changeset(content_map)
+    |> apply_embed_changes(changeset)
+  end
 
-    case embed_cs do
-      nil ->
-        changeset
+  @doc false
+  defp build_embed_changeset(:quiz_question, content_map),
+    do: QuizQuestion.changeset(%QuizQuestion{}, content_map)
 
-      %Ecto.Changeset{valid?: true} ->
-        pure_string_map =
-          embed_cs
-          |> Ecto.Changeset.apply_changes()
-          |> Jason.encode!()
-          |> Jason.decode!()
+  defp build_embed_changeset(:quiz_exam, content_map),
+    do: QuizExam.changeset(%QuizExam{}, content_map)
 
-        put_change(changeset, :content, pure_string_map)
+  defp build_embed_changeset(:code, content_map),
+    do: CodeChallenge.changeset(struct(CodeChallenge), content_map)
 
-      %Ecto.Changeset{valid?: false} ->
-        Enum.reduce(embed_cs.errors, changeset, fn {field, {msg, opts}}, acc ->
-          add_error(acc, :content, "#{field}: #{msg}", opts)
-        end)
-    end
+  defp build_embed_changeset(:file_assignment, content_map),
+    do: FileAssignment.changeset(%FileAssignment{}, content_map)
+
+  defp build_embed_changeset(_, _), do: nil
+
+  @doc false
+  defp apply_embed_changes(nil, changeset), do: changeset
+
+  defp apply_embed_changes(%Ecto.Changeset{valid?: true} = embed_cs, changeset) do
+    pure_string_map =
+      embed_cs
+      |> Ecto.Changeset.apply_changes()
+      |> Jason.encode!()
+      |> Jason.decode!()
+
+    put_change(changeset, :content, pure_string_map)
+  end
+
+  defp apply_embed_changes(%Ecto.Changeset{valid?: false} = embed_cs, changeset) do
+    Enum.reduce(embed_cs.errors, changeset, fn {field, {msg, opts}}, acc ->
+      add_error(acc, :content, "#{field}: #{msg}", opts)
+    end)
   end
 end

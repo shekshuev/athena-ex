@@ -590,4 +590,133 @@ defmodule AthenaWeb.BlockComponentsTest do
       assert html =~ "cursor-default"
     end
   end
+
+  describe "content_block/1 :file_assignment" do
+    setup do
+      block =
+        insert(:block,
+          type: :file_assignment,
+          content: %{
+            "body" => %{"text" => "Please submit your project files."},
+            "max_files" => 3
+          }
+        )
+
+      %{block: block}
+    end
+
+    test "renders instruction banner and no upload button in :edit mode", %{block: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:edit} active={true} />
+        """)
+
+      assert html =~ "Student will be able to upload up to 3 file(s)"
+      assert html =~ "Please submit your project files"
+      assert html =~ "border-primary"
+      refute html =~ "Select Files"
+      refute html =~ "request_media_upload"
+    end
+
+    test "renders upload area and select button in :play mode (initial state)", %{block: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} />
+        """)
+
+      assert html =~ "You can upload 3 more file(s)"
+      assert html =~ "Select Files"
+      assert html =~ "request_media_upload"
+      assert html =~ "hero-cloud-arrow-up"
+      refute html =~ "Maximum file limit reached"
+      refute html =~ "remove_pending_file"
+    end
+
+    test "renders pending files and reduces remaining count in :play mode", %{block: block} do
+      assigns = %{
+        block: block,
+        pending_file_urls: %{
+          block.id => ["https://s3.aws/file1.pdf", "https://s3.aws/file2.pdf"]
+        }
+      }
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} pending_file_urls={@pending_file_urls} />
+        """)
+
+      assert html =~ "You can upload 1 more file(s)"
+      assert html =~ "file1.pdf"
+      assert html =~ "file2.pdf"
+      assert html =~ "remove_pending_file"
+      assert html =~ "hero-document-check"
+    end
+
+    test "hides upload area and shows limit reached message when max_files is met in :play mode",
+         %{
+           block: block
+         } do
+      assigns = %{
+        block: block,
+        pending_file_urls: %{
+          block.id => [
+            "https://s3.aws/f1.pdf",
+            "https://s3.aws/f2.pdf",
+            "https://s3.aws/f3.pdf"
+          ]
+        }
+      }
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} pending_file_urls={@pending_file_urls} />
+        """)
+
+      assert html =~ "Maximum file limit reached."
+      assert html =~ "hero-lock-closed"
+      refute html =~ "You can upload"
+      refute html =~ "Select Files"
+    end
+
+    test "renders submitted files in :review mode and hides upload controls", %{block: block} do
+      sub = %{
+        content: %{
+          "file_urls" => ["https://s3.aws/submitted1.pdf", "https://s3.aws/submitted2.pdf"]
+        }
+      }
+
+      assigns = %{block: block, submission: sub}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:review} submission={@submission} />
+        """)
+
+      assert html =~ "submitted1.pdf"
+      assert html =~ "submitted2.pdf"
+      assert html =~ "hero-document-arrow-down"
+      assert html =~ ~s(data-readonly="true")
+      refute html =~ "Select Files"
+      refute html =~ "Maximum file limit reached"
+      refute html =~ "remove_pending_file"
+    end
+
+    test "renders in :preview mode as read-only without any interactive elements", %{block: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:preview} />
+        """)
+
+      assert html =~ ~s(data-readonly="true")
+      assert html =~ "cursor-default"
+      refute html =~ "Select Files"
+      refute html =~ "request_media_upload"
+    end
+  end
 end

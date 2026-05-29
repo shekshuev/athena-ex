@@ -125,62 +125,20 @@ defmodule AthenaWeb.StudioLive.Builder do
       |> Enum.filter(&match?({:ok, _}, &1))
       |> Enum.map(fn {:ok, map} -> map end)
 
-    if media_type == "tiptap_image" do
-      file_map = List.first(successful_results)
+    case media_type do
+      "tiptap_image" ->
+        {:noreply, handle_tiptap_image_upload(socket, block_id, successful_results)}
 
-      if file_map do
+      _ ->
         {:noreply,
-         socket
-         |> assign(show_media_modal: false, active_upload_block_id: nil, upload_type: nil)
-         |> push_event("insert_media", %{
-           block_id: block_id,
-           url: file_map["url"],
-           type: "tiptap_image"
-         })
-         |> put_flash(:info, gettext("Image inserted into text!"))}
-      else
-        {:noreply,
-         socket
-         |> assign(show_media_modal: false, active_upload_block_id: nil, upload_type: nil)
-         |> put_flash(:error, gettext("Failed to upload image"))}
-      end
-    else
-      new_content =
-        case media_type do
-          "attachment" ->
-            Map.put(content_map, "files", Map.get(content_map, "files", []) ++ successful_results)
-
-          _ ->
-            file_map = List.first(successful_results)
-            if file_map, do: Map.put(content_map, "url", file_map["url"]), else: content_map
-        end
-
-      {:ok, updated_block} =
-        Content.update_block(socket.assigns.current_user, block, %{"content" => new_content})
-
-      error_count = length(results) - length(successful_results)
-
-      socket =
-        socket
-        |> assign(
-          blocks: replace_block(socket.assigns.blocks, updated_block),
-          show_media_modal: false,
-          active_upload_block_id: nil,
-          upload_type: nil
-        )
-
-      socket =
-        if error_count > 0 do
-          put_flash(
-            socket,
-            :error,
-            gettext("Failed to save %{count} file(s)", count: error_count)
-          )
-        else
-          put_flash(socket, :info, gettext("Media uploaded successfully!"))
-        end
-
-      {:noreply, socket}
+         handle_standard_media_upload(
+           socket,
+           block,
+           content_map,
+           results,
+           successful_results,
+           media_type
+         )}
     end
   end
 
@@ -1278,6 +1236,81 @@ defmodule AthenaWeb.StudioLive.Builder do
     else
       {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
     end
+  end
+
+  @doc false
+  defp build_new_content(content_map, "attachment", successful_results) do
+    Map.put(content_map, "files", Map.get(content_map, "files", []) ++ successful_results)
+  end
+
+  @doc false
+  defp build_new_content(content_map, _media_type, successful_results) do
+    case List.first(successful_results) do
+      nil -> content_map
+      file_map -> Map.put(content_map, "url", file_map["url"])
+    end
+  end
+
+  @doc false
+  defp reset_upload_state(socket) do
+    assign(socket, show_media_modal: false, active_upload_block_id: nil, upload_type: nil)
+  end
+
+  @doc false
+  defp put_upload_flash(socket, error_count) when error_count > 0 do
+    put_flash(
+      socket,
+      :error,
+      gettext("Failed to save %{count} file(s)", count: error_count)
+    )
+  end
+
+  @doc false
+  defp put_upload_flash(socket, _error_count) do
+    put_flash(socket, :info, gettext("Media uploaded successfully!"))
+  end
+
+  defp handle_tiptap_image_upload(socket, block_id, successful_results) do
+    socket = reset_upload_state(socket)
+
+    case List.first(successful_results) do
+      nil ->
+        put_flash(socket, :error, gettext("Failed to upload image"))
+
+      file_map ->
+        socket
+        |> push_event("insert_media", %{
+          block_id: block_id,
+          url: file_map["url"],
+          type: "tiptap_image"
+        })
+        |> put_flash(:info, gettext("Image inserted into text!"))
+    end
+  end
+
+  defp handle_standard_media_upload(
+         socket,
+         block,
+         content_map,
+         results,
+         successful_results,
+         media_type
+       ) do
+    new_content = build_new_content(content_map, media_type, successful_results)
+
+    {:ok, updated_block} =
+      Content.update_block(socket.assigns.current_user, block, %{"content" => new_content})
+
+    error_count = length(results) - length(successful_results)
+
+    socket
+    |> assign(
+      blocks: replace_block(socket.assigns.blocks, updated_block),
+      show_media_modal: false,
+      active_upload_block_id: nil,
+      upload_type: nil
+    )
+    |> put_upload_flash(error_count)
   end
 
   @impl true

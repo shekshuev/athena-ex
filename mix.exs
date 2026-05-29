@@ -114,7 +114,13 @@ defmodule Athena.MixProject do
         "phx.digest"
       ],
       precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"],
-      check: ["format", "credo", "dialyzer", "test", "compile --warnings-as-errors"]
+      check: [
+        "format",
+        "credo",
+        "dialyzer",
+        "test --exclude isolate",
+        "compile --warnings-as-errors"
+      ]
     ]
   end
 end

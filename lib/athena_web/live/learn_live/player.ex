@@ -269,45 +269,17 @@ defmodule AthenaWeb.LearnLive.Player do
       |> Map.get(block_id, [])
       |> Enum.reject(&(&1 == ""))
 
-    if file_urls == [] do
-      {:noreply, put_flash(socket, :error, gettext("Please upload at least one file"))}
+    with {:files?, true} <- {:files?, file_urls != []},
+         sub_attrs <- build_file_submission_attrs(block_id, socket.assigns, file_urls),
+         {:ok, submission} <-
+           Athena.Learning.create_submission(socket.assigns.current_user, sub_attrs) do
+      {:noreply, handle_successful_file_submission(socket, block_id, submission)}
     else
-      sub_attrs = %{
-        "block_id" => block_id,
-        "account_id" => socket.assigns.current_user.id,
-        "cohort_id" => socket.assigns.team_id,
-        "status" => :pending,
-        "content" => %{
-          type: :file_assignment,
-          file_urls: file_urls
-        }
-      }
+      {:files?, false} ->
+        {:noreply, put_flash(socket, :error, gettext("Please upload at least one file"))}
 
-      case Athena.Learning.create_submission(socket.assigns.current_user, sub_attrs) do
-        {:ok, submission} ->
-          if socket.assigns.team_id do
-            Phoenix.PubSub.broadcast(
-              Athena.PubSub,
-              "team_progress:#{socket.assigns.team_id}",
-              :team_progress_updated
-            )
-          end
-
-          new_submissions = Map.put(socket.assigns.submissions || %{}, block_id, submission)
-          new_pending = Map.update!(socket.assigns.pending_file_urls, block_id, fn _ -> [] end)
-
-          {:noreply,
-           socket
-           |> assign(:submissions, new_submissions)
-           |> assign(:pending_file_urls, new_pending)
-           |> put_flash(:info, gettext("Assignment submitted!"))}
-
-        {:error, changeset} ->
-          error_msg =
-            changeset.errors |> Keyword.values() |> Enum.map_join(", ", fn {msg, _} -> msg end)
-
-          {:noreply, put_flash(socket, :error, error_msg)}
-      end
+      {:error, changeset} ->
+        {:noreply, handle_failed_file_submission(socket, changeset)}
     end
   end
 
@@ -339,6 +311,43 @@ defmodule AthenaWeb.LearnLive.Player do
     updated_pending = Map.put(pending, block_id, updated)
 
     {:noreply, assign(socket, :pending_file_urls, updated_pending)}
+  end
+
+  @doc false
+  defp build_file_submission_attrs(block_id, assigns, file_urls) do
+    %{
+      "block_id" => block_id,
+      "account_id" => assigns.current_user.id,
+      "cohort_id" => assigns.team_id,
+      "status" => :pending,
+      "content" => %{
+        type: :file_assignment,
+        file_urls: file_urls
+      }
+    }
+  end
+
+  @doc false
+  defp handle_successful_file_submission(socket, block_id, submission) do
+    broadcast_team_progress(socket.assigns.team_id, socket.assigns.course.id)
+
+    new_submissions = Map.put(socket.assigns.submissions || %{}, block_id, submission)
+    new_pending = Map.update!(socket.assigns.pending_file_urls, block_id, fn _ -> [] end)
+
+    socket
+    |> assign(:submissions, new_submissions)
+    |> assign(:pending_file_urls, new_pending)
+    |> put_flash(:info, gettext("Assignment submitted!"))
+  end
+
+  @doc false
+  defp handle_failed_file_submission(socket, changeset) do
+    error_msg =
+      changeset.errors
+      |> Keyword.values()
+      |> Enum.map_join(", ", fn {msg, _} -> msg end)
+
+    put_flash(socket, :error, error_msg)
   end
 
   @doc false
@@ -920,12 +929,12 @@ defmodule AthenaWeb.LearnLive.Player do
                           disabled={is_locked or is_pending}
                         >
                           <%= cond do %>
-                            <% is_locked -> %>
-                              <.icon name="hero-lock-closed" class="size-4 mr-1" /> {gettext("Locked")}
                             <% is_pending -> %>
                               <span class="loading loading-spinner loading-xs"></span> {gettext(
                                 "Checking..."
                               )}
+                            <% is_locked -> %>
+                              <.icon name="hero-lock-closed" class="size-4 mr-1" /> {gettext("Locked")}
                             <% true -> %>
                               {gettext("Run & Submit")}
                           <% end %>

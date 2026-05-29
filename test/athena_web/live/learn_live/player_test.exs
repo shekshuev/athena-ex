@@ -1021,4 +1021,175 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       assert html =~ "disabled"
     end
   end
+
+  describe "File Assignment Submissions" do
+    test "opens media upload modal when requested for file assignment", %{
+      conn: conn,
+      course: course
+    } do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :file_assignment, content: %{"max_files" => 3})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      render_hook(lv, "request_media_upload", %{
+        "block_id" => block.id,
+        "media_type" => "file_assignment"
+      })
+
+      html = render(lv)
+      assert html =~ "Upload Media"
+      assert html =~ "Click or drag files here"
+    end
+
+    test "cancels media upload and closes modal", %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :file_assignment, content: %{"max_files" => 1})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      render_hook(lv, "request_media_upload", %{
+        "block_id" => block.id,
+        "media_type" => "file_assignment"
+      })
+
+      assert render(lv) =~ "Upload Media"
+
+      lv
+      |> element("button[phx-click='cancel_media_upload']")
+      |> render_click()
+
+      refute render(lv) =~ "Upload Media"
+    end
+
+    test "submits file assignment successfully after uploading files", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :file_assignment, content: %{"max_files" => 2})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      render_hook(lv, "media_upload_clipboard_success", %{
+        "block_id" => block.id,
+        "final_url" => "https://s3.aws/file1.pdf"
+      })
+
+      render_hook(lv, "media_upload_clipboard_success", %{
+        "block_id" => block.id,
+        "final_url" => "https://s3.aws/file2.pdf"
+      })
+
+      html =
+        lv
+        |> form("#file-assignment-form-#{block.id}")
+        |> render_submit()
+
+      assert html =~ "Assignment submitted!"
+
+      sub =
+        Athena.Repo.get_by(Athena.Learning.Submission, block_id: block.id, account_id: user.id)
+
+      assert sub.status == :pending
+      assert sub.content["type"] == "file_assignment"
+
+      assert sub.content["file_urls"] == [
+               "https://s3.aws/file1.pdf",
+               "https://s3.aws/file2.pdf"
+             ]
+    end
+
+    test "shows error when submitting file assignment without files", %{
+      conn: conn,
+      course: course
+    } do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :file_assignment, content: %{"max_files" => 2})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      html =
+        lv
+        |> form("#file-assignment-form-#{block.id}")
+        |> render_submit()
+
+      assert html =~ "Please upload at least one file"
+    end
+
+    test "rejects file upload when max_files limit is reached", %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :file_assignment, content: %{"max_files" => 1})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      render_hook(lv, "media_upload_clipboard_success", %{
+        "block_id" => block.id,
+        "final_url" => "https://s3.aws/file1.pdf"
+      })
+
+      html =
+        render_hook(lv, "media_upload_clipboard_success", %{
+          "block_id" => block.id,
+          "final_url" => "https://s3.aws/file2.pdf"
+        })
+
+      assert html =~ "Maximum number of files reached"
+    end
+
+    test "removes pending file from upload list", %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :file_assignment, content: %{"max_files" => 2})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      render_hook(lv, "media_upload_clipboard_success", %{
+        "block_id" => block.id,
+        "final_url" => "https://s3.aws/file1.pdf"
+      })
+
+      render_hook(lv, "remove_pending_file", %{
+        "block_id" => block.id,
+        "url" => "https://s3.aws/file1.pdf"
+      })
+
+      html =
+        lv
+        |> form("#file-assignment-form-#{block.id}")
+        |> render_submit()
+
+      assert html =~ "Please upload at least one file"
+    end
+
+    test "handles saved files from MediaUploadComponent and adds to pending list", %{
+      conn: conn,
+      course: course
+    } do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :file_assignment, content: %{"max_files" => 2})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      render_hook(lv, "request_media_upload", %{
+        "block_id" => block.id,
+        "media_type" => "file_assignment"
+      })
+
+      send(lv.pid, {
+        AthenaWeb.StudioLive.MediaUploadComponent,
+        {:saved, block.id, "file_assignment", [{:ok, %{"url" => "https://s3.aws/saved.pdf"}}]}
+      })
+
+      html = render(lv)
+      assert html =~ "File(s) ready to submit"
+
+      lv
+      |> form("#file-assignment-form-#{block.id}")
+      |> render_submit()
+
+      sub = Athena.Repo.get_by(Athena.Learning.Submission, block_id: block.id)
+      assert sub.content["file_urls"] == ["https://s3.aws/saved.pdf"]
+    end
+  end
 end
