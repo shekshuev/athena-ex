@@ -3,6 +3,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
   import Phoenix.LiveViewTest
 
   import Athena.Factory
+  import Ecto.Query
   alias Athena.Content.{CompletionRule, AccessRules}
 
   setup %{conn: conn} do
@@ -1019,6 +1020,475 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       assert html =~ "Attempts: 1 / 5"
       assert html =~ "Locked"
       assert html =~ "disabled"
+    end
+  end
+
+  describe "File Assignment Submissions" do
+    test "opens media upload modal when requested for file assignment", %{
+      conn: conn,
+      course: course
+    } do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :file_assignment, content: %{"max_files" => 3})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      render_hook(lv, "request_media_upload", %{
+        "block_id" => block.id,
+        "media_type" => "file_assignment"
+      })
+
+      html = render(lv)
+      assert html =~ "Upload Media"
+      assert html =~ "Click or drag files here"
+    end
+
+    test "cancels media upload and closes modal", %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :file_assignment, content: %{"max_files" => 1})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      render_hook(lv, "request_media_upload", %{
+        "block_id" => block.id,
+        "media_type" => "file_assignment"
+      })
+
+      assert render(lv) =~ "Upload Media"
+
+      lv
+      |> element("button[phx-click='cancel_media_upload']")
+      |> render_click()
+
+      refute render(lv) =~ "Upload Media"
+    end
+
+    test "submits file assignment successfully after uploading files", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :file_assignment, content: %{"max_files" => 2})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      render_hook(lv, "media_upload_clipboard_success", %{
+        "block_id" => block.id,
+        "final_url" => "https://s3.aws/file1.pdf"
+      })
+
+      render_hook(lv, "media_upload_clipboard_success", %{
+        "block_id" => block.id,
+        "final_url" => "https://s3.aws/file2.pdf"
+      })
+
+      html =
+        lv
+        |> form("#file-assignment-form-#{block.id}")
+        |> render_submit()
+
+      assert html =~ "Assignment submitted!"
+
+      sub =
+        Athena.Repo.get_by(Athena.Learning.Submission, block_id: block.id, account_id: user.id)
+
+      assert sub.status == :pending
+      assert sub.content["type"] == "file_assignment"
+
+      assert sub.content["file_urls"] == [
+               "https://s3.aws/file1.pdf",
+               "https://s3.aws/file2.pdf"
+             ]
+    end
+
+    test "shows error when submitting file assignment without files", %{
+      conn: conn,
+      course: course
+    } do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :file_assignment, content: %{"max_files" => 2})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      html =
+        lv
+        |> form("#file-assignment-form-#{block.id}")
+        |> render_submit()
+
+      assert html =~ "Please upload at least one file"
+    end
+
+    test "rejects file upload when max_files limit is reached", %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :file_assignment, content: %{"max_files" => 1})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      render_hook(lv, "media_upload_clipboard_success", %{
+        "block_id" => block.id,
+        "final_url" => "https://s3.aws/file1.pdf"
+      })
+
+      html =
+        render_hook(lv, "media_upload_clipboard_success", %{
+          "block_id" => block.id,
+          "final_url" => "https://s3.aws/file2.pdf"
+        })
+
+      assert html =~ "Maximum number of files reached"
+    end
+
+    test "removes pending file from upload list", %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :file_assignment, content: %{"max_files" => 2})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      render_hook(lv, "media_upload_clipboard_success", %{
+        "block_id" => block.id,
+        "final_url" => "https://s3.aws/file1.pdf"
+      })
+
+      render_hook(lv, "remove_pending_file", %{
+        "block_id" => block.id,
+        "url" => "https://s3.aws/file1.pdf"
+      })
+
+      html =
+        lv
+        |> form("#file-assignment-form-#{block.id}")
+        |> render_submit()
+
+      assert html =~ "Please upload at least one file"
+    end
+
+    test "handles saved files from MediaUploadComponent and adds to pending list", %{
+      conn: conn,
+      course: course
+    } do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :file_assignment, content: %{"max_files" => 2})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      render_hook(lv, "request_media_upload", %{
+        "block_id" => block.id,
+        "media_type" => "file_assignment"
+      })
+
+      send(lv.pid, {
+        AthenaWeb.StudioLive.MediaUploadComponent,
+        {:saved, block.id, "file_assignment", [{:ok, %{"url" => "https://s3.aws/saved.pdf"}}]}
+      })
+
+      html = render(lv)
+      assert html =~ "File(s) ready to submit"
+
+      lv
+      |> form("#file-assignment-form-#{block.id}")
+      |> render_submit()
+
+      sub = Athena.Repo.get_by(Athena.Learning.Submission, block_id: block.id)
+      assert sub.content["file_urls"] == ["https://s3.aws/saved.pdf"]
+    end
+  end
+
+  describe "Draft Submissions" do
+    test "loads draft from database when mounting player", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block, section: s1, type: :quiz_question, content: %{"question_type" => "open"})
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :draft,
+        content: %{"type" => :quiz_question, "text_answer" => "My saved draft"}
+      )
+
+      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ "My saved draft"
+    end
+
+    test "loads draft from Cachex when available (faster than DB)", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block, section: s1, type: :quiz_question, content: %{"question_type" => "open"})
+
+      Athena.Learning.DraftCache.save_draft(
+        user.id,
+        nil,
+        block.id,
+        %{"type" => :quiz_question, "text_answer" => "Cached draft"}
+      )
+
+      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ "Cached draft"
+    end
+
+    test "saves draft when student types in textarea", %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block, section: s1, type: :quiz_question, content: %{"question_type" => "open"})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      lv
+      |> form("#quiz-form-#{block.id}", %{"answer" => "Typing my answer..."})
+      |> render_change()
+
+      draft =
+        Athena.Repo.get_by(Athena.Learning.Submission,
+          block_id: block.id,
+          status: :draft
+        )
+
+      assert draft != nil
+      assert draft.content["text_answer"] == "Typing my answer..."
+    end
+
+    test "saves draft for code block when student types", %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :code, content: %{"language" => "python3"})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      lv
+      |> element("#code-form-#{block.id}")
+      |> render_change(%{"answer" => %{"code" => "print('draft code')"}})
+
+      draft =
+        Athena.Repo.get_by(Athena.Learning.Submission,
+          block_id: block.id,
+          status: :draft
+        )
+
+      assert draft != nil
+      assert draft.content["code"] == "print('draft code')"
+    end
+
+    test "updates existing draft instead of creating multiple drafts", %{
+      conn: conn,
+      course: course
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block, section: s1, type: :quiz_question, content: %{"question_type" => "open"})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      lv
+      |> form("#quiz-form-#{block.id}", %{"answer" => "First version"})
+      |> render_change()
+
+      lv
+      |> form("#quiz-form-#{block.id}", %{"answer" => "Second version"})
+      |> render_change()
+
+      drafts =
+        Athena.Repo.all(
+          from s in Athena.Learning.Submission,
+            where: s.block_id == ^block.id and s.status == :draft
+        )
+
+      assert length(drafts) == 1
+      assert hd(drafts).content["text_answer"] == "Second version"
+    end
+
+    test "clears draft from cache after final submission", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block, section: s1, type: :quiz_question, content: %{"question_type" => "open"})
+
+      {:ok, _} =
+        Athena.Learning.save_draft(user, block.id, %{
+          "type" => :quiz_question,
+          "text_answer" => "Draft answer"
+        })
+
+      assert Athena.Learning.DraftCache.get_draft(user.id, nil, block.id) != nil
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      lv
+      |> form("#quiz-form-#{block.id}", %{"answer" => "Final answer"})
+      |> render_submit()
+
+      assert Athena.Learning.DraftCache.get_draft(user.id, nil, block.id) == nil
+
+      submission =
+        Athena.Repo.get_by(Athena.Learning.Submission,
+          block_id: block.id,
+          account_id: user.id
+        )
+
+      assert submission.status != :draft
+    end
+
+    test "team draft is shared across team members via PubSub", %{conn: conn, user: user} do
+      course = insert(:course, type: :competition)
+      team = insert(:cohort, type: :team)
+
+      insert(:enrollment, course_id: course.id, cohort_id: team.id)
+      insert(:cohort_membership, account_id: user.id, cohort_id: team.id)
+
+      teammate = insert(:account)
+      insert(:cohort_membership, account_id: teammate.id, cohort_id: team.id)
+
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block, section: s1, type: :quiz_question, content: %{"question_type" => "open"})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      Athena.Learning.save_draft(
+        teammate,
+        block.id,
+        %{
+          "type" => :quiz_question,
+          "text_answer" => "Teammate draft"
+        },
+        team.id
+      )
+
+      Phoenix.PubSub.broadcast(
+        Athena.PubSub,
+        "draft:#{team.id}:#{block.id}",
+        {:draft_updated,
+         %{
+           block_id: block.id,
+           content: %{"type" => :quiz_question, "text_answer" => "Teammate draft"},
+           updater_id: teammate.id
+         }}
+      )
+
+      Process.sleep(100)
+
+      html = render(lv)
+      assert html =~ "Teammate draft"
+    end
+
+    test "draft is not visible in grading view", %{conn: conn, course: course, user: user} do
+      admin_role = insert(:role, permissions: ["grading.read"])
+      admin = insert(:account, role: admin_role)
+      admin_conn = init_test_session(conn, %{"account_id" => admin.id})
+
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block, section: s1, type: :quiz_question, content: %{"question_type" => "open"})
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :draft,
+        content: %{"type" => :quiz_question, "text_answer" => "Hidden draft"}
+      )
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :pending,
+        content: %{"type" => :quiz_question, "text_answer" => "Visible submission"}
+      )
+
+      {:ok, _lv, html} = live(admin_conn, ~p"/teaching/grading")
+
+      assert html =~ "Pending"
+      assert html =~ user.login
+      submission_rows = Regex.scan(~r/<tr id="submissions-/, html)
+      assert length(submission_rows) == 1
+    end
+
+    test "saves draft for single choice quiz", %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+      opt1_id = Ecto.UUID.generate()
+      opt2_id = Ecto.UUID.generate()
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "single",
+            "options" => [
+              %{"id" => opt1_id, "text" => "Option 1", "is_correct" => true},
+              %{"id" => opt2_id, "text" => "Option 2", "is_correct" => false}
+            ]
+          }
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      lv
+      |> form("#quiz-form-#{block.id}", %{"answer" => opt1_id})
+      |> render_change()
+
+      draft =
+        Athena.Repo.get_by(Athena.Learning.Submission,
+          block_id: block.id,
+          status: :draft
+        )
+
+      assert draft != nil
+      assert draft.content["selected_choices"] == [opt1_id]
+    end
+
+    test "saves draft for multiple choice quiz", %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+      opt1_id = Ecto.UUID.generate()
+      opt2_id = Ecto.UUID.generate()
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "multiple",
+            "options" => [
+              %{"id" => opt1_id, "text" => "Option A", "is_correct" => true},
+              %{"id" => opt2_id, "text" => "Option B", "is_correct" => true}
+            ]
+          }
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      lv
+      |> form("#quiz-form-#{block.id}", %{
+        "answer" => [opt1_id, opt2_id]
+      })
+      |> render_change()
+
+      draft =
+        Athena.Repo.get_by(Athena.Learning.Submission,
+          block_id: block.id,
+          status: :draft
+        )
+
+      assert draft != nil
+      assert draft.content["selected_choices"] == [opt1_id, opt2_id]
     end
   end
 end

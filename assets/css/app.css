@@ -349,7 +349,7 @@
   }
 
   .tippy-box[data-theme~="athena"] {
-    @apply bg-base-content text-base-100 text-xs font-bold py-1.5 px-3 rounded-md shadow-lg tracking-wide;
+    @apply bg-base-content text-base-100 text-xs font-bold py-1.5 px-3 rounded-md tracking-wide;
   }
 
   .tippy-box[data-theme~="athena"][data-placement^="top"]

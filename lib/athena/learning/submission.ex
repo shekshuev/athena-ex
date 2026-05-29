@@ -10,7 +10,7 @@ defmodule Athena.Learning.Submission do
   @foreign_key_type :binary_id
 
   @execution_statuses ~w(
-    pending processing graded needs_review rejected
+    draft pending processing graded needs_review rejected
     accepted wrong_answer time_limit_exceeded
     memory_limit_exceeded runtime_error compilation_error system_error
   )a
@@ -45,7 +45,8 @@ defmodule Athena.Learning.Submission do
   end
 
   @type status ::
-          :pending
+          :draft
+          | :pending
           | :processing
           | :graded
           | :needs_review

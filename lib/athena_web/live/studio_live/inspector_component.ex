@@ -187,7 +187,6 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
               <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
                 {gettext("Question Settings")}
               </div>
-
               <div class="mt-4">
                 <.input
                   type="number"
@@ -367,6 +366,28 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
             <div class="divider my-4"></div>
           <% end %>
 
+          <%= if @block.type == :file_assignment do %>
+            <div class="space-y-4 mb-6">
+              <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
+                {gettext("Assignment Settings")}
+              </div>
+              <.input
+                type="number"
+                name="block[content][max_files]"
+                value={@block.content["max_files"] || 1}
+                label={gettext("Max Files Allowed")}
+                min="1"
+                max="20"
+                step="1"
+                phx-debounce="500"
+              />
+              <div class="text-xs text-base-content/50 leading-relaxed -mt-2">
+                {gettext("Students upload files for manual review. Allowed range: 1–20 files.")}
+              </div>
+            </div>
+            <div class="divider my-4"></div>
+          <% end %>
+
           <%= if @block.type in [:image, :video] do %>
             <div class="space-y-4 mb-6">
               <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
@@ -379,8 +400,9 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                 phx-value-media_type={@block.type}
                 class="btn btn-outline w-full mb-2"
               >
-                <.icon name="hero-cloud-arrow-up" class="size-4" />
-                {if @block.content["url"], do: gettext("Replace File"), else: gettext("Upload File")}
+                <.icon name="hero-cloud-arrow-up" class="size-4" /> {if @block.content["url"],
+                  do: gettext("Replace File"),
+                  else: gettext("Upload File")}
               </.button>
               <%= if @block.type == :image do %>
                 <.input
@@ -515,37 +537,39 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   end
 
   @doc false
-  defp completion_options_for(type) when type in [:text, :image, :video] do
-    [{gettext("None (Scroll past)"), "none"}, {gettext("Require Button Click"), "button"}]
-  end
+  defp completion_options_for(type) when type in [:text, :image, :video],
+    do: [{gettext("None (Scroll past)"), "none"}, {gettext("Require Button Click"), "button"}]
 
-  defp completion_options_for(:attachment) do
-    [{gettext("None (Scroll past)"), "none"}, {gettext("Require Button Click"), "button"}]
-  end
+  defp completion_options_for(:attachment),
+    do: [{gettext("None (Scroll past)"), "none"}, {gettext("Require Button Click"), "button"}]
 
-  defp completion_options_for(:code) do
+  defp completion_options_for(:file_assignment) do
     [
+      {gettext("None (Scroll past)"), "none"},
+      {gettext("Require Submission"), "submit"}
+    ]
+  end
+
+  defp completion_options_for(:code),
+    do: [
       {gettext("None (Scroll past)"), "none"},
       {gettext("Require Submission"), "submit"},
       {gettext("Pass Auto-Grade"), "pass_auto_grade"}
     ]
-  end
 
-  defp completion_options_for(:quiz_question) do
-    [
+  defp completion_options_for(:quiz_question),
+    do: [
       {gettext("None (Scroll past)"), "none"},
       {gettext("Require Submission"), "submit"},
       {gettext("Pass Auto-Grade"), "pass_auto_grade"}
     ]
-  end
 
-  defp completion_options_for(:quiz_exam) do
-    [
+  defp completion_options_for(:quiz_exam),
+    do: [
       {gettext("None (Scroll past)"), "none"},
       {gettext("Require Submission"), "submit"},
       {gettext("Pass Auto-Grade"), "pass_auto_grade"}
     ]
-  end
 
   defp completion_options_for(_), do: [{gettext("None"), "none"}]
 end

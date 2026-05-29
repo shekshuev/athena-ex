@@ -9,6 +9,7 @@ defmodule AthenaWeb.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug :put_locale
+    plug AthenaWeb.Plugs.FetchCurrentUser
   end
 
   pipeline :app_layout do
@@ -44,6 +45,7 @@ defmodule AthenaWeb.Router do
   end
 
   live_session :require_password_change,
+    layout: {AthenaWeb.Layouts, :app},
     on_mount: [
       {AthenaWeb.Hooks.Auth, :default},
       {AthenaWeb.Hooks.Auth, :require_authenticated_user}

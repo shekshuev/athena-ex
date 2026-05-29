@@ -303,7 +303,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
       <div class="flex flex-col lg:flex-row items-start gap-8">
         <div class="flex-1 w-full min-w-0 space-y-6">
-          <div class="p-6 bg-base-100 border border-base-200 rounded-sm shadow-sm">
+          <div class="p-6 bg-base-100 border border-base-200 rounded-sm">
             <div class="flex items-center justify-between mb-6 pb-4 border-b border-base-100">
               <h2 class="text-lg font-bold">{gettext("Content Editor")}</h2>
             </div>
@@ -316,7 +316,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
         <div
           :if={@role in [:owner, :writer]}
-          class="w-full lg:w-[400px] shrink-0 bg-base-100 rounded-sm border border-base-300 shadow-sm sticky top-8 flex flex-col overflow-hidden"
+          class="w-full lg:w-[400px] shrink-0 bg-base-100 rounded-sm border border-base-300 sticky top-8 flex flex-col overflow-hidden"
         >
           <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-200 bg-base-200/30">
             <div>
@@ -476,7 +476,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
           <div class="p-6 border-t border-base-200 bg-base-200/20 mt-auto">
             <.link
               navigate={~p"/studio/library"}
-              class="btn btn-primary rounded-sm w-full shadow-sm"
+              class="btn btn-primary rounded-sm w-full"
             >
               <.icon name="hero-check-circle" class="size-5 mr-2" />
               {gettext("Done & Return")}

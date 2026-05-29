@@ -10,13 +10,18 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
   def update(assigns, socket) do
     settings = Media.Config.upload_settings(assigns.upload_type)
 
+    max_files = Map.get(assigns, :max_files, settings.max_entries)
+    current_count = Map.get(assigns, :current_file_count, 0)
+    remaining = max(1, max_files - current_count)
+
     {:ok,
      socket
      |> assign(assigns)
      |> assign(accept_str: settings.description)
+     |> assign(max_entries: remaining)
      |> allow_upload(:media,
        accept: settings.accept,
-       max_entries: settings.max_entries,
+       max_entries: remaining,
        max_file_size: settings.max_size,
        external: &presign_upload/2
      )}
@@ -41,11 +46,16 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
     {:noreply, cancel_upload(socket, :media, ref)}
   end
 
-  @impl true
   def handle_event("save", _params, socket) do
     user_id = socket.assigns.current_user.id
     upload_type = socket.assigns.upload_type
     block_id = socket.assigns.block_id
+
+    file_context =
+      case upload_type do
+        "file_assignment" -> "submission"
+        _ -> "course_material"
+      end
 
     results =
       consume_uploaded_entries(socket, :media, fn meta, entry ->
@@ -57,22 +67,23 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
           "original_name" => file_info.name,
           "mime_type" => file_info.type,
           "size" => file_info.size,
-          "context" => "course_material",
+          "context" => file_context,
           "owner_id" => user_id
         }
 
         case Media.create_file(file_attrs) do
           {:ok, _file} ->
             {:ok,
-             %{
-               "url" => meta.url_for_saved_entry,
-               "name" => file_info.name,
-               "size" => file_info.size,
-               "mime" => file_info.type
-             }}
+             {:ok,
+              %{
+                "url" => meta.url_for_saved_entry,
+                "name" => file_info.name,
+                "size" => file_info.size,
+                "mime" => file_info.type
+              }}}
 
           {:error, err} ->
-            {:error, err}
+            {:ok, {:error, err}}
         end
       end)
 
@@ -81,10 +92,22 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
     {:noreply, socket}
   end
 
+  @impl true
+  def handle_event("clear_all_entries", _params, socket) do
+    socket =
+      Enum.reduce(socket.assigns.uploads.media.entries, socket, fn entry, acc ->
+        cancel_upload(acc, :media, entry.ref)
+      end)
+
+    {:noreply, socket}
+  end
+
   @doc false
   defp error_to_string(:too_large), do: gettext("File is too large")
   defp error_to_string(:not_accepted), do: gettext("Unacceptable file type")
-  defp error_to_string(:too_many_files), do: gettext("Too many files")
+  defp error_to_string(:too_many_files), do: gettext("Too many files — remove some and try again")
+  defp error_to_string(:external_client_failure), do: gettext("Upload failed on client side")
+  defp error_to_string({:writer_fail, _}), do: gettext("Upload writer failed")
   defp error_to_string(_), do: gettext("Upload error")
 
   @impl true
@@ -97,7 +120,7 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
         title={gettext("Upload Media")}
         on_cancel={JS.push("cancel_media_upload")}
       >
-        <div class="p-6">
+        <div>
           <% has_entries = @uploads.media.entries != []
 
           is_uploading =
@@ -111,7 +134,7 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
           <form id="upload-form" phx-submit="save" phx-change="validate" phx-target={@myself}>
             <div
               class={[
-                "relative border-2 border-dashed rounded-2xl transition-all duration-200 group flex flex-col items-center justify-center p-10 text-center",
+                "relative border-2 border-dashed rounded-sm transition-all duration-200 group flex flex-col items-center justify-center p-10 text-center",
                 if(has_entries,
                   do: "hidden",
                   else: "border-base-300 hover:border-primary/50 hover:bg-base-200/50 bg-base-100"
@@ -123,8 +146,8 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
                 upload={@uploads.media}
                 class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
               />
-              <div class="p-4 bg-primary/10 text-primary rounded-full mb-4 group-hover:scale-110 transition-transform">
-                <.icon name="hero-cloud-arrow-up" class="size-10" />
+              <div class="flex items-center justify-center w-16 h-16 bg-primary/10 border border-primary/20 text-primary rounded-sm mb-4 group-hover:scale-105 transition-transform">
+                <.icon name="hero-cloud-arrow-up" class="size-8" />
               </div>
               <h4 class="font-black text-lg text-base-content mb-1">
                 {gettext("Click or drag files here")}
@@ -135,13 +158,15 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
             <div :if={has_entries} class="space-y-3 max-h-64 overflow-y-auto">
               <div
                 :for={entry <- @uploads.media.entries}
-                class="flex flex-col gap-3 p-4 bg-base-200/50 rounded-2xl border border-base-300"
+                class="flex flex-col gap-3 p-4 bg-base-200/50 rounded-sm border border-base-300"
               >
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-3 min-w-0">
-                    <div class="p-2 bg-base-100 rounded-lg shadow-sm text-base-content/50 shrink-0">
+                    <div class="p-2 bg-base-100 rounded-sm border border-base-200 text-base-content/50 shrink-0">
                       <.icon
-                        name={if @upload_type == "video", do: "hero-video-camera", else: "hero-photo"}
+                        name={
+                          if @upload_type == "video", do: "hero-video-camera", else: "hero-document"
+                        }
                         class="size-5"
                       />
                     </div>
@@ -154,6 +179,28 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
                       </div>
                     </div>
                   </div>
+
+                  <% has_too_many =
+                    Enum.any?(@uploads.media.entries, fn entry ->
+                      :too_many_files in upload_errors(@uploads.media, entry)
+                    end) %>
+
+                  <div
+                    :if={has_too_many}
+                    class="mt-4 p-4 bg-error/10 border border-error/30 rounded-sm text-error text-sm font-bold flex items-start gap-3"
+                  >
+                    <.icon name="hero-exclamation-triangle" class="size-5 shrink-0 mt-0.5" />
+                    <div>
+                      <div class="font-black mb-1">{gettext("Too many files selected")}</div>
+                      <div class="text-xs font-medium opacity-80">
+                        {gettext(
+                          "Maximum allowed: %{max}. Please cancel some entries below to continue.",
+                          max: @max_entries
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   <div class="flex items-center gap-4 shrink-0">
                     <span class="text-sm font-black text-primary">{entry.progress}%</span>
                     <button
@@ -161,14 +208,14 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
                       phx-click="cancel_entry"
                       phx-value-ref={entry.ref}
                       phx-target={@myself}
-                      class="btn btn-ghost btn-sm btn-circle text-error hover:bg-error/20"
+                      class="btn btn-ghost btn-sm btn-square min-h-9 h-9 w-9 text-error hover:bg-error/10"
                       title={gettext("Cancel")}
                     >
                       <.icon name="hero-x-mark" class="size-5" />
                     </button>
                   </div>
                 </div>
-                <div class="w-full bg-base-300 rounded-full h-2.5 overflow-hidden">
+                <div class="w-full bg-base-300 rounded-sm h-2 overflow-hidden">
                   <div
                     class={[
                       "h-full transition-all duration-300",
@@ -189,13 +236,25 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
               </div>
             </div>
 
-            <div class="flex justify-end gap-3 mt-8 pt-6 border-t border-base-200">
-              <button type="button" phx-click="cancel_media_upload" class="btn btn-ghost">
+            <div class="flex flex-col-reverse sm:flex-row justify-end gap-3 mt-8 pt-6 border-t border-base-200">
+              <button type="button" phx-click="cancel_media_upload" class="btn btn-outline">
                 {gettext("Cancel")}
               </button>
+
+              <button
+                :if={has_errors}
+                type="button"
+                phx-click="clear_all_entries"
+                phx-target={@myself}
+                class="btn btn-warning btn-outline"
+              >
+                <.icon name="hero-arrow-path" class="size-4 mr-1" />
+                {gettext("Clear Selection")}
+              </button>
+
               <button
                 type="submit"
-                class="btn btn-primary shadow-lg shadow-primary/20"
+                class="btn btn-primary phx-submit-loading:opacity-70"
                 disabled={not has_entries or is_uploading or has_errors}
               >
                 <.icon name="hero-arrow-up-tray" class="size-4 mr-2" />

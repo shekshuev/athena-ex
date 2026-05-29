@@ -144,7 +144,7 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
 
             <ul
               :if={@search_results != []}
-              class="absolute top-18 left-0 w-full bg-base-100 shadow-2xl border border-base-200 rounded-lg z-50 max-h-60 overflow-y-auto"
+              class="absolute top-18 left-0 w-full bg-base-100 border border-base-200 rounded-lg z-50 max-h-60 overflow-y-auto"
             >
               <%= for acc <- @search_results do %>
                 <li

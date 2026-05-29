@@ -111,12 +111,12 @@ defmodule AthenaWeb.AuthLive.Login do
 
   def render(assigns) do
     ~H"""
-    <div class="w-full h-[calc(100vh-100px)] flex flex-col items-center justify-center p-4">
-      <div class="card w-full max-w-md bg-base-100 shadow-xl border border-base-300">
-        <div class="card-body gap-6">
+    <div class="flex-1 flex flex-col items-center justify-center p-4 sm:p-6">
+      <div class="card w-full max-w-md bg-base-100 border border-base-300 rounded-sm">
+        <div class="card-body gap-4 p-6 sm:p-8">
           <div class="text-center">
-            <div class="inline-flex items-center justify-center p-3 bg-primary/10 rounded-full mb-4">
-              <.icon name="hero-user" class="w-8 h-8 text-primary" />
+            <div class="inline-flex items-center justify-center w-14 h-14 bg-primary/10 border border-primary/20 rounded-sm mb-4">
+              <.icon name="hero-user" class="size-7 text-primary" />
             </div>
             <h2 class="text-2xl font-display font-bold uppercase">{gettext("Welcome Back")}</h2>
             <p class="text-base-content/60 text-sm">
@@ -125,8 +125,11 @@ defmodule AthenaWeb.AuthLive.Login do
           </div>
 
           <%= if @error_message do %>
-            <div role="alert" class="alert alert-error text-sm font-bold shadow-none rounded-md">
-              <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
+            <div
+              role="alert"
+              class="alert alert-error rounded-sm border border-error bg-base-100 text-error text-sm font-bold"
+            >
+              <.icon name="hero-exclamation-triangle" class="size-5 shrink-0" />
               <span>{@error_message}</span>
             </div>
           <% end %>
@@ -138,7 +141,7 @@ defmodule AthenaWeb.AuthLive.Login do
             phx-change="validate"
             phx-submit="submit"
             phx-trigger-action={assigns[:trigger_action]}
-            class="flex flex-col gap-4"
+            class="flex flex-col gap-2"
           >
             <.input
               field={@form[:login]}
@@ -154,9 +157,9 @@ defmodule AthenaWeb.AuthLive.Login do
               placeholder="••••••••"
             />
 
-            <button class="btn btn-primary w-full mt-2">
+            <button class="btn btn-primary w-full mt-4 phx-submit-loading:opacity-70">
               {gettext("Log in")}
-              <.icon name="hero-arrow-right-end-on-rectangle" class="w-5 h-5" />
+              <.icon name="hero-arrow-right-end-on-rectangle" class="size-5" />
             </button>
           </.form>
         </div>

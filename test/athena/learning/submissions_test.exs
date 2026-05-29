@@ -1,8 +1,7 @@
 defmodule Athena.Learning.SubmissionsTest do
   use Athena.DataCase, async: true
 
-  alias Athena.Learning.Submissions
-  alias Athena.Learning.Submission
+  alias Athena.Learning.{Submissions, Submission, DraftCache}
   import Athena.Factory
 
   describe "list_submissions/2" do
@@ -747,6 +746,356 @@ defmodule Athena.Learning.SubmissionsTest do
       block_id = Ecto.UUID.generate()
 
       assert %{} == Submissions.count_attempts(account_id, [block_id])
+    end
+  end
+
+  describe "save_draft/4" do
+    test "creates a new draft submission in DB and caches it" do
+      user = insert(:account)
+      block = insert(:block)
+      content = %{"type" => :quiz_question, "text_answer" => "My draft answer"}
+
+      assert {:ok, draft} = Submissions.save_draft(user, block.id, content)
+
+      assert draft.status == :draft
+      assert draft.account_id == user.id
+      assert draft.block_id == block.id
+      assert draft.content["text_answer"] == "My draft answer"
+      assert draft.cohort_id == nil
+      assert DraftCache.get_draft(user.id, nil, block.id) == content
+    end
+
+    test "updates existing draft instead of creating a new one (upsert)" do
+      user = insert(:account)
+      block = insert(:block)
+
+      {:ok, draft1} =
+        Submissions.save_draft(user, block.id, %{
+          "type" => :quiz_question,
+          "text_answer" => "First version"
+        })
+
+      {:ok, draft2} =
+        Submissions.save_draft(user, block.id, %{
+          "type" => :quiz_question,
+          "text_answer" => "Second version"
+        })
+
+      assert draft1.id == draft2.id
+      assert draft2.content["text_answer"] == "Second version"
+
+      drafts =
+        Repo.all(
+          from s in Submission,
+            where: s.account_id == ^user.id and s.block_id == ^block.id and s.status == :draft
+        )
+
+      assert length(drafts) == 1
+    end
+
+    test "creates team draft when cohort_id is provided" do
+      user = insert(:account)
+      teammate = insert(:account)
+      team = insert(:cohort, type: :team)
+      block = insert(:block)
+      content = %{"type" => :quiz_question, "text_answer" => "Team answer"}
+
+      assert {:ok, draft} = Submissions.save_draft(user, block.id, content, team.id)
+
+      assert draft.cohort_id == team.id
+      assert draft.account_id == user.id
+      assert draft.content["text_answer"] == "Team answer"
+
+      assert DraftCache.get_draft(user.id, team.id, block.id) == content
+      assert DraftCache.get_draft(teammate.id, team.id, block.id) == content
+    end
+
+    test "broadcasts draft update via PubSub for team submissions" do
+      user = insert(:account)
+      team = insert(:cohort, type: :team)
+      block = insert(:block)
+      content = %{"type" => :quiz_question, "text_answer" => "Live collab"}
+
+      DraftCache.subscribe_to_draft_updates(team.id, block.id)
+
+      {:ok, _draft} = Submissions.save_draft(user, block.id, content, team.id)
+
+      assert_receive {:draft_updated,
+                      %{block_id: block_id, content: received_content, updater_id: updater_id}}
+
+      assert block_id == block.id
+      assert received_content == content
+      assert updater_id == user.id
+    end
+
+    test "does NOT broadcast for individual submissions" do
+      user = insert(:account)
+      block = insert(:block)
+      content = %{"type" => :quiz_question, "text_answer" => "Solo work"}
+
+      {:ok, _draft} = Submissions.save_draft(user, block.id, content)
+
+      refute_receive {:draft_updated, _}
+    end
+  end
+
+  describe "get_draft/3" do
+    test "returns draft content from cache if present" do
+      user = insert(:account)
+      block = insert(:block)
+      content = %{"type" => "quiz_question", "text_answer" => "Cached answer"}
+
+      DraftCache.save_draft(user.id, nil, block.id, content)
+
+      assert Submissions.get_draft(user.id, block.id) == content
+    end
+
+    test "falls back to DB and restores to cache if cache is empty" do
+      user = insert(:account)
+      block = insert(:block)
+      content = %{"type" => "quiz_question", "text_answer" => "DB answer"}
+
+      {:ok, _draft} = Submissions.save_draft(user, block.id, content)
+
+      DraftCache.clear_draft(user.id, nil, block.id)
+
+      result = Submissions.get_draft(user.id, block.id)
+      assert result == content
+      assert DraftCache.get_draft(user.id, nil, block.id) == content
+    end
+
+    test "returns nil if draft does not exist in cache or DB" do
+      user = insert(:account)
+      block = insert(:block)
+
+      assert Submissions.get_draft(user.id, block.id) == nil
+    end
+
+    test "returns team draft when cohort_id is provided" do
+      user = insert(:account)
+      teammate = insert(:account)
+      team = insert(:cohort, type: :team)
+      block = insert(:block)
+      content = %{"type" => :quiz_question, "text_answer" => "Shared team draft"}
+
+      {:ok, _draft} = Submissions.save_draft(teammate, block.id, content, team.id)
+
+      assert Submissions.get_draft(user.id, block.id, team.id) == content
+    end
+
+    test "does not leak individual drafts to team context" do
+      user = insert(:account)
+      team = insert(:cohort, type: :team)
+      block = insert(:block)
+      individual_content = %{"type" => :quiz_question, "text_answer" => "My private work"}
+      team_content = %{"type" => :quiz_question, "text_answer" => "Team work"}
+
+      {:ok, _} = Submissions.save_draft(user, block.id, individual_content)
+
+      {:ok, _} = Submissions.save_draft(user, block.id, team_content, team.id)
+
+      assert Submissions.get_draft(user.id, block.id, team.id) == team_content
+      assert Submissions.get_draft(user.id, block.id) == individual_content
+    end
+  end
+
+  describe "clear_draft/3" do
+    test "removes draft from cache but keeps it in DB" do
+      user = insert(:account)
+      block = insert(:block)
+      content = %{"type" => "quiz_question", "text_answer" => "To be cleared"}
+
+      {:ok, _draft} = Submissions.save_draft(user, block.id, content)
+
+      assert DraftCache.get_draft(user.id, nil, block.id) == content
+      Submissions.clear_draft(user.id, block.id)
+
+      assert DraftCache.get_draft(user.id, nil, block.id) == nil
+      assert Submissions.get_draft(user.id, block.id) == content
+    end
+  end
+
+  describe "create_submission/2 with draft upsert" do
+    test "updates existing draft instead of creating new submission" do
+      user = insert(:account)
+      block = insert(:block)
+
+      {:ok, draft} =
+        Submissions.save_draft(user, block.id, %{
+          "type" => :quiz_question,
+          "text_answer" => "Draft version"
+        })
+
+      attrs = %{
+        "block_id" => block.id,
+        "status" => :pending,
+        "content" => %{"type" => :quiz_question, "text_answer" => "Final answer"}
+      }
+
+      assert {:ok, submission} = Submissions.create_submission(user, attrs)
+      assert submission.id == draft.id
+      assert submission.status == :pending
+      assert submission.content["text_answer"] == "Final answer"
+
+      submissions =
+        Repo.all(
+          from s in Submission, where: s.account_id == ^user.id and s.block_id == ^block.id
+        )
+
+      assert length(submissions) == 1
+      assert DraftCache.get_draft(user.id, nil, block.id) == nil
+    end
+
+    test "creates new submission when no draft exists" do
+      user = insert(:account)
+      block = insert(:block)
+
+      attrs = %{
+        "block_id" => block.id,
+        "status" => :pending,
+        "content" => %{"type" => :quiz_question, "text_answer" => "Fresh submission"}
+      }
+
+      assert {:ok, submission} = Submissions.create_submission(user, attrs)
+
+      assert submission.status == :pending
+      assert submission.account_id == user.id
+      assert submission.block_id == block.id
+    end
+
+    test "upserts team draft correctly" do
+      user = insert(:account)
+      team = insert(:cohort, type: :team)
+      block = insert(:block)
+
+      {:ok, draft} =
+        Submissions.save_draft(
+          user,
+          block.id,
+          %{"type" => :quiz_question, "text_answer" => "Team draft"},
+          team.id
+        )
+
+      attrs = %{
+        "block_id" => block.id,
+        "cohort_id" => team.id,
+        "status" => :pending,
+        "content" => %{"type" => :quiz_question, "text_answer" => "Final team answer"}
+      }
+
+      assert {:ok, submission} = Submissions.create_submission(user, attrs)
+
+      assert submission.id == draft.id
+      assert submission.cohort_id == team.id
+      assert submission.content["text_answer"] == "Final team answer"
+      assert DraftCache.get_draft(user.id, team.id, block.id) == nil
+    end
+  end
+
+  describe "draft filtering in queries" do
+    test "list_submissions excludes drafts from results" do
+      admin_role = insert(:role, permissions: ["grading.read"])
+      admin = insert(:account, role: admin_role)
+      student = insert(:account)
+      block = insert(:block)
+
+      insert(:submission, account_id: student.id, block_id: block.id, status: :pending)
+
+      Submissions.save_draft(student, block.id, %{
+        "type" => :quiz_question,
+        "text_answer" => "Hidden draft"
+      })
+
+      {:ok, {submissions, meta}} = Submissions.list_submissions(admin, %{})
+
+      assert length(submissions) == 1
+      assert hd(submissions).status == :pending
+      assert meta.total_count == 1
+    end
+
+    test "get_submission/3 excludes drafts" do
+      account_id = Ecto.UUID.generate()
+      block_id = Ecto.UUID.generate()
+
+      insert(:submission, account_id: account_id, block_id: block_id, status: :draft)
+
+      regular_sub =
+        insert(:submission, account_id: account_id, block_id: block_id, status: :pending)
+
+      fetched = Submissions.get_submission(account_id, block_id)
+      assert fetched.id == regular_sub.id
+      assert fetched.status == :pending
+    end
+
+    test "get_latest_submissions/3 excludes drafts" do
+      account_id = Ecto.UUID.generate()
+      block_1_id = Ecto.UUID.generate()
+      block_2_id = Ecto.UUID.generate()
+
+      insert(:submission,
+        account_id: account_id,
+        block_id: block_1_id,
+        status: :draft,
+        score: 100
+      )
+
+      regular_sub =
+        insert(:submission,
+          account_id: account_id,
+          block_id: block_2_id,
+          status: :graded,
+          score: 80
+        )
+
+      result = Submissions.get_latest_submissions(account_id, [block_1_id, block_2_id])
+
+      assert map_size(result) == 1
+      assert result[block_2_id].id == regular_sub.id
+      refute Map.has_key?(result, block_1_id)
+    end
+
+    test "count_attempts/3 does not count drafts" do
+      account_id = Ecto.UUID.generate()
+      block_id = Ecto.UUID.generate()
+
+      insert(:submission, account_id: account_id, block_id: block_id, status: :pending)
+      insert(:submission, account_id: account_id, block_id: block_id, status: :graded)
+      insert(:submission, account_id: account_id, block_id: block_id, status: :draft)
+      insert(:submission, account_id: account_id, block_id: block_id, status: :draft)
+      insert(:submission, account_id: account_id, block_id: block_id, status: :draft)
+
+      result = Submissions.count_attempts(account_id, [block_id])
+
+      assert result[block_id] == 2
+    end
+
+    test "get_team_leaderboard/1 ignores draft submissions" do
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section)
+      team = insert(:cohort, name: "Drafters", type: :team)
+
+      insert(:enrollment, course_id: course.id, cohort_id: team.id)
+
+      insert(:submission,
+        block_id: block.id,
+        cohort_id: team.id,
+        score: 100,
+        status: :draft
+      )
+
+      insert(:submission,
+        block_id: block.id,
+        cohort_id: team.id,
+        score: 50,
+        status: :graded
+      )
+
+      leaderboard = Submissions.get_team_leaderboard(course.id)
+
+      assert length(leaderboard) == 1
+      [team_stats] = leaderboard
+      assert team_stats.total_score == 50
     end
   end
 end

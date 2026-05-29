@@ -207,7 +207,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
         </div>
       </div>
 
-      <div class="bg-base-100 border border-base-200 rounded-box p-4 shadow-sm">
+      <div class="bg-base-100 border border-base-200 rounded-box p-4">
         <div class="flex items-center justify-between mb-4">
           <h2 class="font-bold text-sm uppercase tracking-wider opacity-70">{gettext("Filters")}</h2>
           <button
@@ -275,7 +275,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
 
       <div
         :if={@block_id != ""}
-        class="alert alert-info shadow-sm bg-info/10 text-info border-info/20"
+        class="alert alert-info bg-info/10 text-info border-info/20"
       >
         <.icon name="hero-funnel" class="size-5 shrink-0" />
         <span>

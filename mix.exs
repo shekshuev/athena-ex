@@ -4,7 +4,7 @@ defmodule Athena.MixProject do
   def project do
     [
       app: :athena,
-      version: "0.7.5",
+      version: "0.8.0",
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
@@ -114,7 +114,13 @@ defmodule Athena.MixProject do
         "phx.digest"
       ],
       precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"],
-      check: ["format", "credo", "dialyzer", "test", "compile --warnings-as-errors"]
+      check: [
+        "format",
+        "credo",
+        "dialyzer",
+        "test --exclude isolate",
+        "compile --warnings-as-errors"
+      ]
     ]
   end
 end

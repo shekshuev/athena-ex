@@ -276,7 +276,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
     assigns = assign(assigns, :current_vis, current_vis)
 
     ~H"""
-    <div class="bg-base-100 border border-base-200 rounded-sm shadow-sm p-6">
+    <div class="bg-base-100 border border-base-200 rounded-sm p-6">
       <div class="flex items-start justify-between mb-6">
         <div>
           <h3 class="text-xl font-bold flex items-center gap-2">

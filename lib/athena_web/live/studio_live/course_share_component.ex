@@ -181,7 +181,7 @@ defmodule AthenaWeb.StudioLive.CourseShareComponent do
 
         <ul
           :if={@search_results != []}
-          class="absolute z-50 w-full mt-1 bg-base-100 border border-base-300 rounded-box shadow-xl max-h-60 overflow-y-auto"
+          class="absolute z-50 w-full mt-1 bg-base-100 border border-base-300 rounded-box max-h-60 overflow-y-auto"
         >
           <li
             :for={user <- @search_results}

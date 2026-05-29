@@ -58,11 +58,28 @@ config :mime, :types, %{
   "audio/mpeg" => ["mp3"],
   "audio/wav" => ["wav"],
   "application/x-rar-compressed" => ["rar"],
-  "application/x-7z-compressed" => ["7z"]
+  "application/x-7z-compressed" => ["7z"],
+  "text/x-python" => ["py"],
+  "text/x-c++src" => ["cpp"],
+  "text/x-csrc" => ["c"],
+  "text/x-chdr" => ["h"],
+  "text/javascript" => ["js"],
+  "text/typescript" => ["ts"],
+  "text/markdown" => ["md"],
+  "text/csv" => ["csv"],
+  "application/json" => ["json"]
 }
 
 config :mime, :extensions, %{
-  "rar" => "application/x-rar-compressed"
+  "rar" => "application/x-rar-compressed",
+  "py" => "text/x-python",
+  "cpp" => "text/x-c++src",
+  "c" => "text/x-csrc",
+  "h" => "text/x-chdr",
+  "js" => "text/javascript",
+  "ts" => "text/typescript",
+  "md" => "text/markdown",
+  "json" => "application/json"
 }
 
 config :athena, Athena.Execution.Worker, timeout: 60_000

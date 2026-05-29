@@ -590,4 +590,399 @@ defmodule AthenaWeb.BlockComponentsTest do
       assert html =~ "cursor-default"
     end
   end
+
+  describe "content_block/1 :file_assignment" do
+    setup do
+      block =
+        insert(:block,
+          type: :file_assignment,
+          content: %{
+            "body" => %{"text" => "Please submit your project files."},
+            "max_files" => 3
+          }
+        )
+
+      %{block: block}
+    end
+
+    test "renders instruction banner and no upload button in :edit mode", %{block: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:edit} active={true} />
+        """)
+
+      assert html =~ "Student will be able to upload up to 3 file(s)"
+      assert html =~ "Please submit your project files"
+      assert html =~ "border-primary"
+      refute html =~ "Select Files"
+      refute html =~ "request_media_upload"
+    end
+
+    test "renders upload area and select button in :play mode (initial state)", %{block: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} />
+        """)
+
+      assert html =~ "You can upload 3 more file(s)"
+      assert html =~ "Select Files"
+      assert html =~ "request_media_upload"
+      assert html =~ "hero-cloud-arrow-up"
+      refute html =~ "Maximum file limit reached"
+      refute html =~ "remove_pending_file"
+    end
+
+    test "renders pending files and reduces remaining count in :play mode", %{block: block} do
+      assigns = %{
+        block: block,
+        pending_file_urls: %{
+          block.id => ["https://s3.aws/file1.pdf", "https://s3.aws/file2.pdf"]
+        }
+      }
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} pending_file_urls={@pending_file_urls} />
+        """)
+
+      assert html =~ "You can upload 1 more file(s)"
+      assert html =~ "file1.pdf"
+      assert html =~ "file2.pdf"
+      assert html =~ "remove_pending_file"
+      assert html =~ "hero-document-check"
+    end
+
+    test "hides upload area and shows limit reached message when max_files is met in :play mode",
+         %{
+           block: block
+         } do
+      assigns = %{
+        block: block,
+        pending_file_urls: %{
+          block.id => [
+            "https://s3.aws/f1.pdf",
+            "https://s3.aws/f2.pdf",
+            "https://s3.aws/f3.pdf"
+          ]
+        }
+      }
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} pending_file_urls={@pending_file_urls} />
+        """)
+
+      assert html =~ "Maximum file limit reached."
+      assert html =~ "hero-lock-closed"
+      refute html =~ "You can upload"
+      refute html =~ "Select Files"
+    end
+
+    test "renders submitted files in :review mode and hides upload controls", %{block: block} do
+      sub = %{
+        content: %{
+          "file_urls" => ["https://s3.aws/submitted1.pdf", "https://s3.aws/submitted2.pdf"]
+        }
+      }
+
+      assigns = %{block: block, submission: sub}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:review} submission={@submission} />
+        """)
+
+      assert html =~ "submitted1.pdf"
+      assert html =~ "submitted2.pdf"
+      assert html =~ "hero-document-arrow-down"
+      assert html =~ ~s(data-readonly="true")
+      refute html =~ "Select Files"
+      refute html =~ "Maximum file limit reached"
+      refute html =~ "remove_pending_file"
+    end
+
+    test "renders in :preview mode as read-only without any interactive elements", %{block: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:preview} />
+        """)
+
+      assert html =~ ~s(data-readonly="true")
+      assert html =~ "cursor-default"
+      refute html =~ "Select Files"
+      refute html =~ "request_media_upload"
+    end
+  end
+
+  describe "content_block/1 draft fallback" do
+    test "quiz_question (open) renders draft text when no submission or answers present" do
+      block = insert(:block, type: :quiz_question, content: %{"question_type" => "open"})
+      draft = %{"type" => :quiz_question, "text_answer" => "My saved draft"}
+      assigns = %{block: block, draft: draft}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} draft={@draft} />
+        """)
+
+      assert html =~ "My saved draft"
+      assert html =~ "<textarea"
+    end
+
+    test "quiz_question (exact_match) renders draft text when no submission or answers present" do
+      block = insert(:block, type: :quiz_question, content: %{"question_type" => "exact_match"})
+      draft = %{"type" => :quiz_question, "text_answer" => "draft_flag{123}"}
+      assigns = %{block: block, draft: draft}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} draft={@draft} />
+        """)
+
+      assert html =~ "draft_flag{123}"
+      assert html =~ ~s(value="draft_flag{123}")
+    end
+
+    test "quiz_question (single) renders draft selected_choices when no submission or answers present" do
+      block =
+        insert(:block,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "single",
+            "options" => [
+              %{"id" => "opt1", "text" => "Option 1", "is_correct" => true},
+              %{"id" => "opt2", "text" => "Option 2", "is_correct" => false}
+            ]
+          }
+        )
+
+      draft = %{"type" => :quiz_question, "selected_choices" => ["opt1"]}
+      assigns = %{block: block, draft: draft}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} draft={@draft} />
+        """)
+
+      assert html =~ "Option 1"
+      assert html =~ "Option 2"
+      assert html =~ ~s(value="opt1" checked)
+      refute html =~ ~s(value="opt2" checked)
+    end
+
+    test "quiz_question (multiple) renders draft selected_choices when no submission or answers present" do
+      block =
+        insert(:block,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "multiple",
+            "options" => [
+              %{"id" => "opt1", "text" => "Option A", "is_correct" => true},
+              %{"id" => "opt2", "text" => "Option B", "is_correct" => true},
+              %{"id" => "opt3", "text" => "Option C", "is_correct" => false}
+            ]
+          }
+        )
+
+      draft = %{"type" => :quiz_question, "selected_choices" => ["opt1", "opt2"]}
+      assigns = %{block: block, draft: draft}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} draft={@draft} />
+        """)
+
+      assert html =~ "Option A"
+      assert html =~ "Option B"
+      assert html =~ "Option C"
+      assert html =~ ~s(value="opt1" checked)
+      assert html =~ ~s(value="opt2" checked)
+      refute html =~ ~s(value="opt3" checked)
+    end
+
+    test "quiz_question prioritizes submission over draft" do
+      block = insert(:block, type: :quiz_question, content: %{"question_type" => "open"})
+      draft = %{"type" => :quiz_question, "text_answer" => "Draft answer"}
+      submission = %{content: %{"text_answer" => "Final submission"}}
+      assigns = %{block: block, draft: draft, submission: submission}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:review} submission={@submission} draft={@draft} />
+        """)
+
+      assert html =~ "Final submission"
+      refute html =~ "Draft answer"
+    end
+
+    test "quiz_question prioritizes answers over draft" do
+      block = insert(:block, type: :quiz_question, content: %{"question_type" => "open"})
+      draft = %{"type" => :quiz_question, "text_answer" => "Draft answer"}
+      answers = %{block.id => "Live answer"}
+      assigns = %{block: block, draft: draft, answers: answers}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} answers={@answers} draft={@draft} />
+        """)
+
+      assert html =~ "Live answer"
+      refute html =~ "Draft answer"
+    end
+
+    test "code block renders draft code when no submission or answers present" do
+      block =
+        insert(:block,
+          type: :code,
+          content: %{"language" => "python", "initial_code" => "# template"}
+        )
+
+      draft = %{"type" => :code, "code" => "print(draft code)"}
+      assigns = %{block: block, draft: draft}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} draft={@draft} />
+        """)
+
+      assert html =~ "print("
+      assert html =~ "draft code"
+    end
+
+    test "code block prioritizes submission over draft" do
+      block = insert(:block, type: :code, content: %{"language" => "python"})
+      draft = %{"type" => :code, "code" => "# draft"}
+
+      submission = %Athena.Learning.Submission{
+        content: %{"code" => "# final submission", "type" => "code"},
+        status: :graded,
+        score: 100
+      }
+
+      assigns = %{block: block, draft: draft, submission: submission}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:review} submission={@submission} draft={@draft} />
+        """)
+
+      assert html =~ "# final submission"
+      refute html =~ "# draft"
+    end
+
+    test "code block prioritizes answers over draft" do
+      block = insert(:block, type: :code, content: %{"language" => "python"})
+      draft = %{"type" => :code, "code" => "# draft"}
+      answers = %{block.id => %{"code" => "# live answer"}}
+      assigns = %{block: block, draft: draft, answers: answers}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} answers={@answers} draft={@draft} />
+        """)
+
+      assert html =~ "# live answer"
+      refute html =~ "# draft"
+    end
+
+    test "file_assignment merges draft file_urls into pending_urls" do
+      block = insert(:block, type: :file_assignment, content: %{"max_files" => 3})
+
+      assigns = %{
+        block: block,
+        pending_file_urls: %{
+          block.id => ["https://s3.aws/draft1.pdf", "https://s3.aws/pending1.pdf"]
+        }
+      }
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} pending_file_urls={@pending_file_urls} />
+        """)
+
+      assert html =~ "draft1.pdf"
+      assert html =~ "pending1.pdf"
+      assert html =~ "You can upload 1 more file(s)"
+    end
+
+    test "file_assignment shows draft files when no pending_urls present" do
+      block = insert(:block, type: :file_assignment, content: %{"max_files" => 2})
+
+      assigns = %{
+        block: block,
+        pending_file_urls: %{
+          block.id => ["https://s3.aws/draft1.pdf", "https://s3.aws/draft2.pdf"]
+        }
+      }
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} pending_file_urls={@pending_file_urls} />
+        """)
+
+      assert html =~ "draft1.pdf"
+      assert html =~ "draft2.pdf"
+      assert html =~ "Maximum file limit reached"
+    end
+
+    test "file_assignment prioritizes submission over draft" do
+      block = insert(:block, type: :file_assignment, content: %{"max_files" => 2})
+      draft = %{"type" => :file_assignment, "file_urls" => ["https://s3.aws/draft.pdf"]}
+      submission = %{content: %{"file_urls" => ["https://s3.aws/final.pdf"]}}
+      assigns = %{block: block, draft: draft, submission: submission}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:review} submission={@submission} draft={@draft} />
+        """)
+
+      assert html =~ "final.pdf"
+      refute html =~ "draft.pdf"
+    end
+
+    test "quiz_question includes phx-change handler for save_draft in play mode" do
+      block = insert(:block, type: :quiz_question, content: %{"question_type" => "open"})
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} />
+        """)
+
+      assert html =~ ~s(phx-change="save_draft")
+      assert html =~ ~s(phx-debounce="500")
+    end
+
+    test "code block includes phx-change handler for save_draft in play mode" do
+      block = insert(:block, type: :code, content: %{"language" => "python"})
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} />
+        """)
+
+      assert html =~ ~s(phx-change="save_draft")
+      assert html =~ ~s(phx-debounce="500")
+    end
+
+    test "quiz_question does not include phx-change in review mode" do
+      block = insert(:block, type: :quiz_question, content: %{"question_type" => "open"})
+      submission = %{content: %{"text_answer" => "answer"}}
+      assigns = %{block: block, submission: submission}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:review} submission={@submission} />
+        """)
+
+      refute html =~ ~s(phx-change="save_draft")
+    end
+  end
 end

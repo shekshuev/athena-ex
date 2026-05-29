@@ -126,7 +126,7 @@ defmodule AthenaWeb.LearnLive.Exam do
   def render(assigns) do
     ~H"""
     <div id="exam-container" phx-hook="AntiCheat" class="min-h-screen bg-base-200 flex flex-col">
-      <header class="bg-base-100 border-b border-base-300 p-4 sticky top-0 z-50 flex items-center justify-between shadow-sm">
+      <header class="bg-base-100 border-b border-base-300 p-4 sticky top-0 z-50 flex items-center justify-between">
         <div class="font-black text-xl flex items-center gap-2">
           <.icon name="hero-academic-cap" class="size-6 text-primary" />
           {gettext("Final Exam")}
@@ -169,7 +169,7 @@ defmodule AthenaWeb.LearnLive.Exam do
       </header>
 
       <div class="flex-1 max-w-5xl w-full mx-auto p-4 md:p-8 flex flex-col md:flex-row gap-8 items-start">
-        <aside class="w-full md:w-64 shrink-0 bg-base-100 p-4 rounded-2xl border border-base-300 shadow-sm sticky top-24">
+        <aside class="w-full md:w-64 shrink-0 bg-base-100 p-4 rounded-2xl border border-base-300 sticky top-24">
           <div class="text-xs font-bold uppercase tracking-widest text-base-content/50 mb-4 text-center">
             {gettext("Questions Navigation")}
           </div>
@@ -193,7 +193,7 @@ defmodule AthenaWeb.LearnLive.Exam do
           </div>
         </aside>
 
-        <main class="flex-1 bg-base-100 p-6 md:p-10 rounded-2xl border border-base-300 shadow-sm w-full">
+        <main class="flex-1 bg-base-100 p-6 md:p-10 rounded-2xl border border-base-300 w-full">
           <%= if @current_question do %>
             <% q_id = @current_question["id"] || @current_question[:id] %>
             <% q_type = to_string(@current_question["type"] || @current_question[:type]) %>

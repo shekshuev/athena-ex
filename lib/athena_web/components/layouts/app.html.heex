@@ -42,11 +42,12 @@
       <%= if assigns[:current_user] do %>
         <div class="dropdown dropdown-end">
           <div tabindex="0" role="button" class="avatar">
-            <div class="w-8 rounded-sm border-2 border-primary bg-base-100">
-              <img src={
-                @current_user.avatar_url ||
-                  "https://api.dicebear.com/7.x/avataaars/svg?seed=#{@current_user.login}"
-              } />
+            <div
+              tabindex="0"
+              role="button"
+              class="flex items-center justify-center w-8 h-8 rounded-sm border border-base-300 bg-primary/10 text-primary font-display font-bold text-sm uppercase cursor-pointer"
+            >
+              {String.upcase(String.first(@current_user.login || "U"))}
             </div>
           </div>
           <ul
@@ -57,7 +58,15 @@
             <li class="font-bold"><a>{@current_user.login}</a></li>
             <div class="divider my-1"></div>
             <li><a>{gettext("Settings")}</a></li>
-            <li><a class="text-error">{gettext("Logout")}</a></li>
+            <li>
+              <.link
+                href={~p"/auth/log_out"}
+                method="delete"
+                class="text-error"
+              >
+                {gettext("Log out")}
+              </.link>
+            </li>
           </ul>
         </div>
       <% else %>

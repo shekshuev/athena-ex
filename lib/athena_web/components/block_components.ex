@@ -19,6 +19,8 @@ defmodule AthenaWeb.BlockComponents do
   attr :submission, :map, default: nil
   attr :active, :boolean, default: false
   attr :attempts_count, :integer, default: 0
+  attr :pending_file_urls, :map, default: %{}
+  attr :draft, :map, default: nil
 
   def content_block(assigns) do
     ~H"""
@@ -39,6 +41,7 @@ defmodule AthenaWeb.BlockComponents do
             answers={@answers}
             submission={@submission}
             attempts_count={@attempts_count}
+            draft={@draft}
           />
         <% :quiz_question -> %>
           <.render_quiz_question
@@ -47,9 +50,18 @@ defmodule AthenaWeb.BlockComponents do
             answers={@answers}
             submission={@submission}
             attempts_count={@attempts_count}
+            draft={@draft}
           />
         <% :quiz_exam -> %>
           <.render_quiz_exam block={@block} mode={@mode} submission={@submission} />
+        <% :file_assignment -> %>
+          <.render_file_assignment
+            block={@block}
+            mode={@mode}
+            submission={@submission}
+            pending_file_urls={@pending_file_urls}
+            draft={@draft}
+          />
         <% _ -> %>
           <div class="p-4 text-warning italic border border-warning/20 bg-warning/5 rounded-sm">
             {gettext("Unknown block type: %{type}", type: @block.type)}
@@ -172,14 +184,15 @@ defmodule AthenaWeb.BlockComponents do
 
   defp render_code(assigns) do
     code =
-      if assigns.mode == :edit do
-        assigns.block.content["initial_code"] || ""
-      else
-        extract_code_answer(assigns) || assigns.block.content["initial_code"] || ""
-      end
+      compute_code_for_mode(
+        assigns.mode,
+        assigns.block,
+        assigns.draft,
+        assigns[:answers],
+        assigns[:submission]
+      )
 
     lang = assigns.block.content["language"] || "python3"
-
     readonly = assigns.mode not in [:edit, :play]
 
     assigns =
@@ -236,6 +249,9 @@ defmodule AthenaWeb.BlockComponents do
               id={"code-input-#{@block.id}"}
               name="answer[code]"
               value={@code}
+              phx-change="save_draft"
+              phx-value-block_id={@block.id}
+              phx-debounce="500"
             />
           <% end %>
 
@@ -254,6 +270,30 @@ defmodule AthenaWeb.BlockComponents do
       </div>
     </div>
     """
+  end
+
+  @doc false
+  defp compute_code_for_mode(:edit, block, _draft, _answers, _submission),
+    do: block.content["initial_code"] || ""
+
+  defp compute_code_for_mode(:play, block, draft, answers, submission) do
+    extract_code_answer(%{block: block, answers: answers, submission: submission}) ||
+      extract_draft_code(draft) ||
+      block.content["initial_code"] ||
+      ""
+  end
+
+  defp compute_code_for_mode(_other_mode, block, _draft, answers, submission) do
+    extract_code_answer(%{block: block, answers: answers, submission: submission}) ||
+      block.content["initial_code"] ||
+      ""
+  end
+
+  @doc false
+  defp extract_draft_code(nil), do: nil
+
+  defp extract_draft_code(draft) when is_map(draft) do
+    draft["code"] || draft[:code]
   end
 
   defp map_cm_lang("cpp"), do: "cpp"
@@ -312,7 +352,7 @@ defmodule AthenaWeb.BlockComponents do
         <% end %>
       </div>
 
-      <div class="pl-4">
+      <div>
         <.render_quiz_inputs
           block={@block}
           mode={@mode}
@@ -320,6 +360,7 @@ defmodule AthenaWeb.BlockComponents do
           options={@options}
           answer={@answer}
           submission={@submission}
+          draft={@draft}
         />
       </div>
     </div>
@@ -336,8 +377,19 @@ defmodule AthenaWeb.BlockComponents do
         live_answer
       end
     else
-      extract_from_submission(assigns[:submission], q_type)
+      extract_from_submission(assigns[:submission], q_type) ||
+        extract_from_draft(assigns[:draft], q_type)
     end
+  end
+
+  defp extract_from_draft(nil, _q_type), do: nil
+
+  defp extract_from_draft(draft, q_type) when q_type in ["exact_match", "open"] do
+    draft["text_answer"] || draft[:text_answer]
+  end
+
+  defp extract_from_draft(draft, _q_type) do
+    draft["selected_choices"] || draft[:selected_choices]
   end
 
   defp extract_from_submission(%{content: content}, q_type)
@@ -354,15 +406,20 @@ defmodule AthenaWeb.BlockComponents do
   end
 
   defp render_quiz_inputs(%{q_type: "exact_match"} = assigns) do
+    answer_content = assigns.answer || extract_draft_text_answer(assigns.draft)
+    assigns = assign(assigns, :answer_content, answer_content)
+
     ~H"""
     <div class="flex flex-col gap-2 max-w-md">
       <input
         type="text"
         name="answer"
-        value={@answer}
+        value={@answer_content}
         placeholder={if @mode == :play, do: gettext("Type your answer..."), else: ""}
         class="input w-full font-mono text-lg bg-base-100 disabled:opacity-70 disabled:text-base-content"
         disabled={@mode != :play}
+        phx-change={if @mode == :play, do: "save_draft", else: nil}
+        phx-value-block_id={@block.id}
         phx-debounce="500"
       />
       <%= if @mode == :review do %>
@@ -380,6 +437,9 @@ defmodule AthenaWeb.BlockComponents do
   end
 
   defp render_quiz_inputs(%{q_type: "open"} = assigns) do
+    answer_content = assigns.answer || extract_draft_text_answer(assigns.draft)
+    assigns = assign(assigns, :answer_content, answer_content)
+
     ~H"""
     <textarea
       name="answer"
@@ -387,8 +447,10 @@ defmodule AthenaWeb.BlockComponents do
       placeholder={if @mode == :play, do: gettext("Write your detailed answer here..."), else: ""}
       class="textarea w-full text-base leading-relaxed bg-base-100 disabled:opacity-70 disabled:text-base-content"
       disabled={@mode != :play}
-      phx-debounce="1000"
-    >{@answer}</textarea>
+      phx-change={if @mode == :play, do: "save_draft", else: nil}
+      phx-value-block_id={@block.id}
+      phx-debounce="500"
+    ><%= @answer_content %></textarea>
     """
   end
 
@@ -424,6 +486,9 @@ defmodule AthenaWeb.BlockComponents do
                 else: "checkbox checkbox-primary mt-0.5"
             }
             disabled={@mode != :play}
+            phx-change={if @mode == :play, do: "save_draft", else: nil}
+            phx-value-block_id={@block.id}
+            phx-debounce="300"
           />
           <div class="flex-1">
             <span class="text-base font-medium">{opt["text"]}</span>
@@ -440,6 +505,14 @@ defmodule AthenaWeb.BlockComponents do
       <% end %>
     </div>
     """
+  end
+
+  @doc false
+  defp extract_draft_text_answer(nil), do: nil
+
+  defp extract_draft_text_answer(draft) when is_map(draft) do
+    draft["text_answer"] || draft[:text_answer] || draft["selected_choices"] ||
+      draft[:selected_choices]
   end
 
   defp render_quiz_exam(assigns) do
@@ -470,6 +543,134 @@ defmodule AthenaWeb.BlockComponents do
       <% end %>
     </div>
     """
+  end
+
+  defp render_file_assignment(assigns) do
+    body_content = assigns.block.content["body"] || %{}
+    max_files = assigns.block.content["max_files"] || 1
+
+    pending_urls = Map.get(assigns.pending_file_urls, assigns.block.id, [])
+    pending_count = length(pending_urls)
+    remaining = max(0, max_files - pending_count)
+
+    assigns =
+      assigns
+      |> assign(:body_content, body_content)
+      |> assign(:max_files, max_files)
+      |> assign(:file_urls, extract_file_urls(assigns))
+      |> assign(:has_submitted, !is_nil(assigns.submission))
+      |> assign(:pending_urls, pending_urls)
+      |> assign(:remaining, remaining)
+
+    ~H"""
+    <div class="space-y-6">
+      <div class="editor-wrapper group relative outline-none">
+        <.tiptap_toolbar mode={@mode} />
+        <div
+          id={"tiptap-body-#{@mode}-#{@block.id}"}
+          phx-hook="TiptapEditor"
+          data-id={@block.id}
+          data-readonly={to_string(@mode != :edit)}
+          phx-update="ignore"
+          data-content={Jason.encode!(@body_content)}
+          class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed"
+        >
+        </div>
+      </div>
+
+      <%= if @mode == :edit do %>
+        <div class="text-sm text-base-content/50 italic bg-base-200/50 p-4 rounded-sm border border-dashed border-base-300">
+          {gettext("Student will be able to upload up to %{max} file(s).", max: @max_files)}
+        </div>
+      <% end %>
+
+      <div :if={@mode == :play} class="space-y-4">
+        <div
+          :if={@remaining > 0}
+          class="border-2 border-dashed border-base-300 rounded-sm p-8 text-center bg-base-200/30"
+        >
+          <.icon name="hero-cloud-arrow-up" class="size-12 mx-auto text-base-content/40 mb-4" />
+          <p class="text-base-content/70 mb-2">
+            {gettext("You can upload %{count} more file(s)", count: @remaining)}
+          </p>
+          <p class="text-xs text-base-content/50 mb-4">
+            {Athena.Media.Config.format_extensions("file_assignment")}
+          </p>
+          <button
+            type="button"
+            phx-click="request_media_upload"
+            phx-value-block_id={@block.id}
+            phx-value-media_type="file_assignment"
+            class="btn btn-primary"
+          >
+            <.icon name="hero-document-plus" class="size-4 mr-2" />
+            {gettext("Select Files")}
+          </button>
+        </div>
+
+        <div
+          :if={@remaining == 0}
+          class="p-4 bg-base-200/50 rounded-sm border border-base-300 text-center"
+        >
+          <.icon name="hero-lock-closed" class="size-6 mx-auto text-base-content/40 mb-2" />
+          <p class="text-sm font-medium text-base-content/70">
+            {gettext("Maximum file limit reached.")}
+          </p>
+        </div>
+
+        <div :if={@pending_urls != []} class="space-y-2">
+          <div
+            :for={url <- @pending_urls}
+            class="flex items-center justify-between gap-3 p-3 bg-base-100 border border-base-200 rounded-sm"
+          >
+            <div class="flex items-center gap-2 min-w-0">
+              <.icon name="hero-document-check" class="size-4 text-success shrink-0" />
+              <span class="text-sm truncate flex-1 font-medium">{Path.basename(url)}</span>
+            </div>
+            <button
+              type="button"
+              phx-click="remove_pending_file"
+              phx-value-block_id={@block.id}
+              phx-value-url={url}
+              class="btn btn-ghost btn-sm btn-square min-h-9 h-9 w-9 text-error shrink-0"
+              title={gettext("Remove")}
+            >
+              <.icon name="hero-trash" class="size-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div :if={@has_submitted && @mode != :play} class="space-y-4">
+        <div :if={@file_urls != []} class="space-y-2">
+          <a
+            :for={url <- @file_urls}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex items-center gap-3 p-3 bg-base-100 rounded-sm border border-base-200 hover:bg-base-200/50 hover:border-primary/40 transition-all"
+          >
+            <.icon name="hero-document-arrow-down" class="size-5 text-primary" />
+            <span class="text-sm font-medium truncate">{Path.basename(url)}</span>
+          </a>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  @doc false
+  defp extract_file_urls(assigns) do
+    cond do
+      assigns.submission && assigns.submission.content["file_urls"] ->
+        assigns.submission.content["file_urls"]
+
+      assigns.submission && assigns.submission.content[:file_urls] ->
+        assigns.submission.content[:file_urls]
+
+      true ->
+        []
+    end
   end
 
   @doc """

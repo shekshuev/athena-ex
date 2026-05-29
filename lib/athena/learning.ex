@@ -18,7 +18,8 @@ defmodule Athena.Learning do
     Submissions,
     Progress,
     Evaluator,
-    Schedules
+    Schedules,
+    DraftCache
   }
 
   defdelegate list_instructors(user, params \\ %{}), to: Instructors
@@ -61,6 +62,9 @@ defmodule Athena.Learning do
   defdelegate get_team_leaderboard(course_id), to: Submissions
   defdelegate delete_submission_with_rollback(user, submission), to: Submissions
   defdelegate count_attempts(account_id, block_ids, cohort_id), to: Submissions
+  defdelegate save_draft(user, block_id, content, cohort_id \\ nil), to: Submissions
+  defdelegate get_draft(user_id, block_id, cohort_id \\ nil), to: Submissions
+  defdelegate clear_draft(user_id, block_id, cohort_id \\ nil), to: Submissions
 
   defdelegate mark_completed(account_id, block_id, cohort_id \\ nil), to: Progress
   defdelegate completed_block_ids(account_id, section_id, cohort_id \\ nil), to: Progress
@@ -80,4 +84,6 @@ defmodule Athena.Learning do
   defdelegate list_cohort_course_overrides(cohort_id, course_id), to: Schedules
   defdelegate set_override(user, cohort, course, attrs), to: Schedules
   defdelegate clear_override(user, cohort, course, resource_type, resource_id), to: Schedules
+
+  defdelegate subscribe_to_draft_updates(cohort_id, block_id), to: DraftCache
 end

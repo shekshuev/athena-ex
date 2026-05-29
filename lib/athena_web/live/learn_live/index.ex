@@ -57,11 +57,11 @@ defmodule AthenaWeb.LearnLive.Index do
 
       <div :if={@enrollments != []} class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 mt-8">
         <%= for enrollment <- @enrollments do %>
-          <div class="card bg-base-100 border border-base-200 shadow-sm hover:shadow-xl hover:border-primary/40 transition-all duration-300 overflow-hidden group flex flex-col">
+          <div class="card bg-base-100 border border-base-200 hover:border-primary/40 transition-all duration-300 overflow-hidden group flex flex-col">
             <div class="h-36 bg-linear-to-br from-base-200 to-base-300 relative overflow-hidden">
               <div class="absolute bottom-4 left-4 z-10">
                 <span class={[
-                  "badge badge-sm font-bold shadow-sm border-0",
+                  "badge badge-sm font-bold border-0",
                   if(enrollment.cohort_id,
                     do: "bg-primary text-primary-content",
                     else: "bg-accent text-accent-content"

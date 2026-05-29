@@ -44,7 +44,8 @@ defmodule Athena.Application do
       {Phoenix.PubSub, name: Athena.PubSub},
       Athena.Media.EventListener,
       Athena.Content.Listener,
-      {Cachex, name: :account_cache},
+      Supervisor.child_spec({Cachex, name: :account_cache}, id: :account_cache),
+      Supervisor.child_spec({Cachex, name: :draft_cache}, id: :draft_cache),
       AthenaWeb.Endpoint
     ]
 
