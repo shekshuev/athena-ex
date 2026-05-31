@@ -98,6 +98,7 @@ defmodule AthenaWeb.BlockComponents do
         data-id={@block.id}
         data-readonly={to_string(@mode != :edit)}
         phx-update="ignore"
+        data-context="builder"
         data-content={Jason.encode!(@block.content)}
         class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed"
       >
@@ -152,6 +153,7 @@ defmodule AthenaWeb.BlockComponents do
           :if={@block.content["description"]}
           id={"tiptap-desc-#{@mode}-#{@block.id}"}
           phx-hook="TiptapEditor"
+          data-context="builder"
           data-id={@block.id}
           data-readonly={to_string(@mode != :edit)}
           phx-update="ignore"
@@ -208,6 +210,7 @@ defmodule AthenaWeb.BlockComponents do
         <div
           id={"tiptap-code-#{@mode}-#{@block.id}"}
           phx-hook="TiptapEditor"
+          data-context="builder"
           data-id={@block.id}
           data-readonly={to_string(@mode != :edit)}
           phx-update="ignore"
@@ -337,6 +340,7 @@ defmodule AthenaWeb.BlockComponents do
         <div
           id={"tiptap-quiz-#{@mode}-#{@block.id}"}
           phx-hook="TiptapEditor"
+          data-context="builder"
           data-id={@block.id}
           data-readonly={to_string(@mode != :edit)}
           phx-update="ignore"
@@ -369,40 +373,47 @@ defmodule AthenaWeb.BlockComponents do
 
   defp extract_quiz_answer(assigns, q_type) do
     live_answer = Map.get(assigns.answers || %{}, assigns.block.id)
+    answer_type = assigns.block.content["answer_type"] || "plain_text"
 
     if live_answer do
       if is_struct(live_answer, Athena.Learning.Submission) do
-        extract_from_submission(live_answer, q_type)
+        extract_from_submission(live_answer, q_type, answer_type)
       else
         live_answer
       end
     else
-      extract_from_submission(assigns[:submission], q_type) ||
-        extract_from_draft(assigns[:draft], q_type)
+      extract_from_submission(assigns[:submission], q_type, answer_type) ||
+        extract_from_draft(assigns[:draft], q_type, answer_type)
     end
   end
 
-  defp extract_from_draft(nil, _q_type), do: nil
+  defp extract_from_draft(nil, _q_type, _answer_type), do: nil
 
-  defp extract_from_draft(draft, q_type) when q_type in ["exact_match", "open"] do
-    draft["text_answer"] || draft[:text_answer]
+  defp extract_from_draft(draft, q_type, answer_type) when q_type in ["exact_match", "open"] do
+    if answer_type == "rich_text" do
+      draft["rich_answer"] || draft[:rich_answer]
+    else
+      draft["text_answer"] || draft[:text_answer]
+    end
   end
 
-  defp extract_from_draft(draft, _q_type) do
+  defp extract_from_draft(draft, _q_type, _answer_type) do
     draft["selected_choices"] || draft[:selected_choices]
   end
 
-  defp extract_from_submission(%{content: content}, q_type)
+  defp extract_from_submission(nil, _q_type, _answer_type), do: nil
+
+  defp extract_from_submission(%{content: content}, q_type, answer_type)
        when q_type in ["exact_match", "open"] do
-    Map.get(content, "text_answer") || Map.get(content, :text_answer)
+    if answer_type == "rich_text" do
+      Map.get(content, "rich_answer") || Map.get(content, :rich_answer)
+    else
+      Map.get(content, "text_answer") || Map.get(content, :text_answer)
+    end
   end
 
-  defp extract_from_submission(%{content: content}, _q_type) do
+  defp extract_from_submission(%{content: content}, _q_type, _answer_type) do
     Map.get(content, "selected_choices") || Map.get(content, :selected_choices)
-  end
-
-  defp extract_from_submission(_submission, _q_type) do
-    nil
   end
 
   defp render_quiz_inputs(%{q_type: "exact_match"} = assigns) do
@@ -437,21 +448,14 @@ defmodule AthenaWeb.BlockComponents do
   end
 
   defp render_quiz_inputs(%{q_type: "open"} = assigns) do
-    answer_content = assigns.answer || extract_draft_text_answer(assigns.draft)
+    answer_type = assigns.block.content["answer_type"] || "plain_text"
+    answer_content = fetch_open_answer_content(assigns.answer, assigns.draft, answer_type)
     assigns = assign(assigns, :answer_content, answer_content)
 
-    ~H"""
-    <textarea
-      name="answer"
-      rows="5"
-      placeholder={if @mode == :play, do: gettext("Write your detailed answer here..."), else: ""}
-      class="textarea w-full text-base leading-relaxed bg-base-100 disabled:opacity-70 disabled:text-base-content"
-      disabled={@mode != :play}
-      phx-change={if @mode == :play, do: "save_draft", else: nil}
-      phx-value-block_id={@block.id}
-      phx-debounce="500"
-    ><%= @answer_content %></textarea>
-    """
+    case answer_type do
+      "rich_text" -> render_open_rich(assigns)
+      _ -> render_open_plain(assigns)
+    end
   end
 
   defp render_quiz_inputs(%{q_type: q_type} = assigns) when q_type in ["single", "multiple"] do
@@ -505,6 +509,104 @@ defmodule AthenaWeb.BlockComponents do
       <% end %>
     </div>
     """
+  end
+
+  @doc false
+  defp fetch_open_answer_content(answer, draft, "rich_text"),
+    do: answer || extract_draft_rich_answer(draft)
+
+  defp fetch_open_answer_content(answer, draft, _), do: answer || extract_draft_text_answer(draft)
+
+  @doc false
+  defp render_open_rich(assigns) do
+    initial_content = build_initial_tip_tap_content(assigns.answer_content)
+    assigns = assign(assigns, :initial_content, initial_content)
+
+    ~H"""
+    <div class="relative">
+      <input
+        type="hidden"
+        name="answer"
+        id={"open-answer-#{@block.id}"}
+        value={
+          if is_map(@answer_content), do: Jason.encode!(@answer_content), else: @answer_content || ""
+        }
+        phx-change={if @mode == :play, do: "save_draft", else: nil}
+        phx-value-block_id={@block.id}
+        phx-debounce="500"
+      />
+      <div class="editor-wrapper group relative outline-none" tabindex="-1">
+        <.tiptap_toolbar mode={:edit} />
+        <div
+          id={"tiptap-open-answer-#{@mode}-#{@block.id}"}
+          phx-hook="TiptapEditor"
+          data-id={@block.id}
+          data-input-id={"open-answer-#{@block.id}"}
+          data-readonly={to_string(@mode != :play)}
+          data-context="player"
+          phx-update="ignore"
+          data-content={Jason.encode!(@initial_content)}
+          class={[
+            "prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed",
+            @mode != :play && "opacity-70 cursor-not-allowed"
+          ]}
+        >
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  @doc false
+  defp render_open_plain(assigns) do
+    ~H"""
+    <textarea
+      name="answer"
+      rows="5"
+      placeholder={if @mode == :play, do: gettext("Write your detailed answer here..."), else: ""}
+      class="textarea w-full text-base leading-relaxed bg-base-100 disabled:opacity-70 disabled:text-base-content"
+      disabled={@mode != :play}
+      phx-change={if @mode == :play, do: "save_draft", else: nil}
+      phx-value-block_id={@block.id}
+      phx-debounce="500"
+    ><%= @answer_content %></textarea>
+    """
+  end
+
+  @doc false
+  defp build_initial_tip_tap_content(nil), do: empty_tip_tap_doc()
+  defp build_initial_tip_tap_content(""), do: empty_tip_tap_doc()
+
+  defp build_initial_tip_tap_content(content) when is_binary(content) do
+    if String.starts_with?(content, "{") do
+      case Jason.decode(content) do
+        {:ok, decoded} -> decoded
+        _ -> wrap_text_in_paragraph(content)
+      end
+    else
+      wrap_text_in_paragraph(content)
+    end
+  end
+
+  @doc false
+  defp build_initial_tip_tap_content(content) when is_map(content), do: content
+  defp build_initial_tip_tap_content(content), do: wrap_text_in_paragraph(to_string(content))
+
+  @doc false
+  defp empty_tip_tap_doc(), do: %{"type" => "doc", "content" => [%{"type" => "paragraph"}]}
+
+  @doc false
+  defp wrap_text_in_paragraph(text),
+    do: %{
+      "type" => "doc",
+      "content" => [%{"type" => "paragraph", "content" => [%{"type" => "text", "text" => text}]}]
+    }
+
+  @doc false
+  defp extract_draft_rich_answer(nil), do: nil
+
+  defp extract_draft_rich_answer(draft) when is_map(draft) do
+    draft["rich_answer"] || draft[:rich_answer] || draft["text_answer"] || draft[:text_answer]
   end
 
   @doc false
@@ -1008,7 +1110,7 @@ defmodule AthenaWeb.BlockComponents do
           data-action="bold"
           data-tippy-content={"#{gettext("Bold")} ($mod+B)"}
         >
-          <b>B</b>
+          <.icon name="hero-bold" class="size-5" />
         </button>
         <button
           type="button"
@@ -1016,7 +1118,7 @@ defmodule AthenaWeb.BlockComponents do
           data-action="italic"
           data-tippy-content={"#{gettext("Italic")} ($mod+I)"}
         >
-          <i class="font-serif">I</i>
+          <.icon name="hero-italic" class="size-5" />
         </button>
         <button
           type="button"
@@ -1024,7 +1126,7 @@ defmodule AthenaWeb.BlockComponents do
           data-action="underline"
           data-tippy-content={"#{gettext("Underline")} ($mod+U)"}
         >
-          <u>U</u>
+          <.icon name="hero-underline" class="size-5" />
         </button>
         <button
           type="button"
@@ -1051,38 +1153,42 @@ defmodule AthenaWeb.BlockComponents do
           <.icon name="hero-code-bracket" class="size-5" />
         </button>
 
-        <div
-          class="join-item flex items-center px-2"
-          data-tippy-content={gettext("Text Color")}
-        >
-          <.icon name="hero-swatch" class="size-4 mr-1 text-base-content/50" />
-          <input
-            type="color"
-            class="w-6 h-6 p-0 border-0 bg-transparent cursor-pointer rounded-sm"
-            data-action="text-color"
-            value="#000000"
-          />
-        </div>
-
-        <div
-          class="join-item flex items-center px-2"
-          data-tippy-content={gettext("Highlight Color")}
-        >
-          <.icon name="hero-paint-brush" class="size-4 mr-1 text-base-content/50" />
-          <input
-            type="color"
-            class="w-6 h-6 p-0 border-0 bg-transparent cursor-pointer rounded-sm"
-            data-action="highlight-color"
-            value="#ffff00"
-          />
-        </div>
         <button
           type="button"
-          class="join-item btn btn-sm btn-ghost rounded-sm px-2 border-r border-base-200"
-          data-action="unset-highlight"
-          data-tippy-content={gettext("Clear Highlight")}
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
+          data-action="highlight"
+          data-tippy-content={"#{gettext("Highlight")} ($mod+$shift+H)"}
         >
-          <.icon name="hero-no-symbol" class="size-4 text-base-content/50" />
+          <.icon name="hero-paint-brush" class="size-5" />
+        </button>
+
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
+          data-action="clear-format"
+          data-tippy-content={"#{gettext("Clear Formatting")} ($mod+\\)"}
+        >
+          <div class="flex items-center">
+            <span class="font-bold text-sm">T</span>
+            <.icon name="hero-no-symbol" class="size-5" />
+          </div>
+        </button>
+
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
+          data-action="insert-before"
+          data-tippy-content={gettext("Insert paragraph above")}
+        >
+          <.icon name="hero-bars-arrow-up" class="size-5" />
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
+          data-action="insert-after"
+          data-tippy-content={gettext("Insert paragraph below")}
+        >
+          <.icon name="hero-bars-arrow-down" class="size-5" />
         </button>
 
         <button
@@ -1099,7 +1205,7 @@ defmodule AthenaWeb.BlockComponents do
           data-action="h1"
           data-tippy-content={"#{gettext("Heading 1")} ($mod+$alt+1)"}
         >
-          H1
+          <.icon name="hero-h1" class="size-5" />
         </button>
         <button
           type="button"
@@ -1107,7 +1213,7 @@ defmodule AthenaWeb.BlockComponents do
           data-action="h2"
           data-tippy-content={"#{gettext("Heading 2")} ($mod+$alt+2)"}
         >
-          H2
+          <.icon name="hero-h2" class="size-5" />
         </button>
         <button
           type="button"
@@ -1115,8 +1221,9 @@ defmodule AthenaWeb.BlockComponents do
           data-action="h3"
           data-tippy-content={"#{gettext("Heading 3")} ($mod+$alt+3)"}
         >
-          H3
+          <.icon name="hero-h3" class="size-5" />
         </button>
+
         <button
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-2"
@@ -1131,7 +1238,7 @@ defmodule AthenaWeb.BlockComponents do
           data-action="align-center"
           data-tippy-content={"#{gettext("Align Center")} ($mod+$shift+E)"}
         >
-          <.icon name="hero-bars-3" class="size-5" />
+          <.icon name="hero-bars-2" class="size-5" />
         </button>
         <button
           type="button"
@@ -1140,6 +1247,15 @@ defmodule AthenaWeb.BlockComponents do
           data-tippy-content={"#{gettext("Align Right")} ($mod+$shift+R)"}
         >
           <.icon name="hero-bars-3-bottom-right" class="size-5" />
+        </button>
+
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-2"
+          data-action="align-justify"
+          data-tippy-content={"#{gettext("Justify")} ($mod+$shift+J)"}
+        >
+          <.icon name="hero-bars-4" class="size-5" />
         </button>
 
         <button
@@ -1156,7 +1272,7 @@ defmodule AthenaWeb.BlockComponents do
           data-action="ordered"
           data-tippy-content={"#{gettext("Ordered List")} ($mod+$shift+7)"}
         >
-          1.
+          <.icon name="hero-numbered-list" class="size-5" />
         </button>
         <button
           type="button"
@@ -1182,7 +1298,6 @@ defmodule AthenaWeb.BlockComponents do
         >
           —
         </button>
-
         <button
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3"
@@ -1191,7 +1306,6 @@ defmodule AthenaWeb.BlockComponents do
         >
           <.icon name="hero-chevron-down" class="size-5" />
         </button>
-
         <button
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3"

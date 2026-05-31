@@ -834,4 +834,155 @@ defmodule Athena.Content.SectionsTest do
       assert length(lessons) == 2
     end
   end
+
+  describe "sharing: sections with CourseShare" do
+    setup %{admin: admin} do
+      course = insert(:course, owner_id: admin.id)
+
+      instructor_role =
+        insert(:role,
+          permissions: ["courses.update"],
+          policies: %{"courses.update" => ["own_only"]}
+        )
+
+      instructor = insert(:account, role: instructor_role)
+
+      %{course: course, instructor: instructor}
+    end
+
+    test "writer via CourseShare can create section", %{
+      admin: admin,
+      course: course,
+      instructor: instructor
+    } do
+      assert {:ok, _share} = Athena.Content.share_course(admin, course, instructor.id, :writer)
+
+      attrs = %{"title" => "Shared Section", "course_id" => course.id}
+
+      assert {:ok, %Section{} = section} = Sections.create_section(instructor, attrs)
+      assert section.title == "Shared Section"
+      assert section.course_id == course.id
+    end
+
+    test "reader via CourseShare cannot create section", %{
+      admin: admin,
+      course: course,
+      instructor: instructor
+    } do
+      assert {:ok, _share} = Athena.Content.share_course(admin, course, instructor.id, :reader)
+
+      attrs = %{"title" => "Should Fail", "course_id" => course.id}
+
+      assert {:error, :unauthorized} = Sections.create_section(instructor, attrs)
+    end
+
+    test "writer via CourseShare can update section", %{
+      admin: admin,
+      course: course,
+      instructor: instructor
+    } do
+      assert {:ok, _share} = Athena.Content.share_course(admin, course, instructor.id, :writer)
+
+      section = insert(:section, course: course, title: "Old Title")
+
+      assert {:ok, updated} =
+               Sections.update_section(instructor, section, %{"title" => "New Title"})
+
+      assert updated.title == "New Title"
+    end
+
+    test "reader via CourseShare cannot update section", %{
+      admin: admin,
+      course: course,
+      instructor: instructor
+    } do
+      assert {:ok, _share} = Athena.Content.share_course(admin, course, instructor.id, :reader)
+
+      section = insert(:section, course: course)
+
+      assert {:error, :unauthorized} =
+               Sections.update_section(instructor, section, %{"title" => "Hacked"})
+    end
+
+    test "writer via CourseShare can delete section", %{
+      admin: admin,
+      course: course,
+      instructor: instructor
+    } do
+      assert {:ok, _share} = Athena.Content.share_course(admin, course, instructor.id, :writer)
+
+      section = insert(:section, course: course)
+
+      assert {:ok, _} = Sections.delete_section(instructor, section)
+      refute Repo.get(Section, section.id)
+    end
+
+    test "writer via CourseShare can reorder section", %{
+      admin: admin,
+      course: course,
+      instructor: instructor
+    } do
+      assert {:ok, _share} = Athena.Content.share_course(admin, course, instructor.id, :writer)
+
+      _s1 = insert(:section, course: course, order: 0)
+      s2 = insert(:section, course: course, order: 1)
+
+      assert {:ok, updated} = Sections.reorder_section(instructor, s2, 0)
+      assert updated.order == 0
+    end
+
+    test "get_section/2 returns section for writer via CourseShare", %{
+      admin: admin,
+      course: course,
+      instructor: instructor
+    } do
+      assert {:ok, _share} = Athena.Content.share_course(admin, course, instructor.id, :writer)
+
+      section = insert(:section, course: course)
+
+      assert {:ok, fetched} = Sections.get_section(instructor, section.id)
+      assert fetched.id == section.id
+    end
+
+    test "get_section/2 returns not_found for reader via CourseShare", %{
+      admin: admin,
+      course: course,
+      instructor: instructor
+    } do
+      assert {:ok, _share} = Athena.Content.share_course(admin, course, instructor.id, :reader)
+
+      section = insert(:section, course: course)
+
+      assert {:error, :not_found} = Sections.get_section(instructor, section.id)
+    end
+
+    test "get_course_tree includes sections for writer via CourseShare", %{
+      admin: admin,
+      course: course,
+      instructor: instructor
+    } do
+      assert {:ok, _share} = Athena.Content.share_course(admin, course, instructor.id, :writer)
+
+      section = insert(:section, course: course, visibility: :enrolled)
+
+      tree = Sections.get_course_tree(course.id, instructor)
+      assert length(tree) == 1
+      assert hd(tree).id == section.id
+    end
+
+    test "list_linear_lessons works for writer via CourseShare", %{
+      admin: admin,
+      course: course,
+      instructor: instructor
+    } do
+      assert {:ok, _share} = Athena.Content.share_course(admin, course, instructor.id, :writer)
+
+      section = insert(:section, course: course, visibility: :enrolled)
+      insert(:block, section: section)
+
+      lessons = Sections.list_linear_lessons(course.id, instructor)
+      assert length(lessons) == 1
+      assert hd(lessons).id == section.id
+    end
+  end
 end

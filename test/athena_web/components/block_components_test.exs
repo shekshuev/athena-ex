@@ -466,6 +466,422 @@ defmodule AthenaWeb.BlockComponentsTest do
     end
   end
 
+  describe "content_block/1 :quiz_question (open) with answer_type: rich_text" do
+    setup do
+      block_plain =
+        insert(:block,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "open",
+            "answer_type" => "plain_text",
+            "body" => %{
+              "type" => "doc",
+              "content" => [
+                %{
+                  "type" => "paragraph",
+                  "content" => [%{"type" => "text", "text" => "Write your thoughts"}]
+                }
+              ]
+            }
+          }
+        )
+
+      block_rich =
+        insert(:block,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "open",
+            "answer_type" => "rich_text",
+            "body" => %{
+              "type" => "doc",
+              "content" => [
+                %{
+                  "type" => "paragraph",
+                  "content" => [%{"type" => "text", "text" => "Write your rich answer"}]
+                }
+              ]
+            }
+          }
+        )
+
+      %{block_plain: block_plain, block_rich: block_rich}
+    end
+
+    test "renders textarea for plain_text answer_type in :play mode", %{block_plain: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} />
+        """)
+
+      assert html =~ "<textarea"
+      assert html =~ ~s(name="answer")
+      assert html =~ ~s(phx-change="save_draft")
+      refute html =~ "tiptap-open-answer"
+      refute html =~ ~s(data-context="player")
+    end
+
+    test "renders Tiptap editor div for rich_text answer_type in :play mode", %{block_rich: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} />
+        """)
+
+      refute html =~ "<textarea"
+      assert html =~ ~s(id="tiptap-open-answer-play-#{block.id}")
+      assert html =~ ~s(phx-hook="TiptapEditor")
+      assert html =~ ~s(data-context="player")
+      assert html =~ ~s(data-readonly="false")
+      assert html =~ ~s(data-input-id="open-answer-#{block.id}")
+      assert html =~ "<input"
+      assert html =~ ~s(type="hidden")
+      assert html =~ ~s(name="answer")
+      assert html =~ ~s(id="open-answer-#{block.id}")
+    end
+
+    test "renders read-only Tiptap for rich_text in :review mode", %{block_rich: block} do
+      tipmap = %{
+        "type" => "doc",
+        "content" => [
+          %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => "Student answer"}]}
+        ]
+      }
+
+      sub = %{content: %{"rich_answer" => tipmap}}
+      assigns = %{block: block, submission: sub}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:review} submission={@submission} />
+        """)
+
+      assert html =~ ~s(data-readonly="true")
+      assert html =~ "opacity-70"
+      assert html =~ "cursor-not-allowed"
+
+      escaped =
+        Jason.encode!(tipmap) |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+
+      assert html =~ "data-content=\"#{escaped}\""
+      refute html =~ "<textarea"
+    end
+
+    test "renders disabled Tiptap for rich_text in :edit mode", %{block_rich: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:edit} active={true} />
+        """)
+
+      assert html =~ ~s(data-readonly="true")
+      assert html =~ "opacity-70"
+      refute html =~ "<textarea"
+    end
+
+    test "encodes Map answer_content to JSON in hidden input for rich_text", %{block_rich: block} do
+      tipmap = %{
+        "type" => "doc",
+        "content" => [
+          %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => "Test"}]}
+        ]
+      }
+
+      assigns = %{block: block, answers: %{block.id => tipmap}}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} answers={@answers} />
+        """)
+
+      escaped =
+        Jason.encode!(tipmap) |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+
+      assert html =~ "value=\"#{escaped}\""
+    end
+
+    test "handles string JSON answer_content by decoding for rich_text", %{block_rich: block} do
+      tipmap = %{
+        "type" => "doc",
+        "content" => [
+          %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => "JSON string"}]}
+        ]
+      }
+
+      json_str = Jason.encode!(tipmap)
+      assigns = %{block: block, answers: %{block.id => json_str}}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} answers={@answers} />
+        """)
+
+      escaped = json_str |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+      assert html =~ "data-content=\"#{escaped}\""
+    end
+
+    test "handles plain string answer_content by wrapping in paragraph for rich_text", %{
+      block_rich: block
+    } do
+      assigns = %{block: block, answers: %{block.id => "Plain text answer"}}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} answers={@answers} />
+        """)
+
+      expected =
+        Jason.encode!(%{
+          "type" => "doc",
+          "content" => [
+            %{
+              "type" => "paragraph",
+              "content" => [%{"type" => "text", "text" => "Plain text answer"}]
+            }
+          ]
+        })
+
+      escaped = expected |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+      assert html =~ "data-content=\"#{escaped}\""
+    end
+
+    test "handles nil/empty answer_content with empty paragraph for rich_text", %{
+      block_rich: block
+    } do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} />
+        """)
+
+      expected = Jason.encode!(%{"type" => "doc", "content" => [%{"type" => "paragraph"}]})
+      escaped = expected |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+      assert html =~ "data-content=\"#{escaped}\""
+    end
+
+    test "draft rich_answer (Map) is rendered in Tiptap for rich_text", %{block_rich: block} do
+      tipmap = %{
+        "type" => "doc",
+        "content" => [
+          %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => "Draft content"}]}
+        ]
+      }
+
+      draft = %{"type" => :quiz_question, "rich_answer" => tipmap}
+      assigns = %{block: block, draft: draft}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} draft={@draft} />
+        """)
+
+      escaped =
+        Jason.encode!(tipmap) |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+
+      assert html =~ "data-content=\"#{escaped}\""
+      assert html =~ "value=\"#{escaped}\""
+    end
+
+    test "draft rich_answer (JSON string) is decoded and rendered for rich_text", %{
+      block_rich: block
+    } do
+      tipmap = %{
+        "type" => "doc",
+        "content" => [
+          %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => "JSON draft"}]}
+        ]
+      }
+
+      draft = %{"type" => :quiz_question, "rich_answer" => Jason.encode!(tipmap)}
+      assigns = %{block: block, draft: draft}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} draft={@draft} />
+        """)
+
+      escaped =
+        Jason.encode!(tipmap) |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+
+      assert html =~ "data-content=\"#{escaped}\""
+    end
+
+    test "fallback to text_answer when rich_answer is nil for rich_text draft", %{
+      block_rich: block
+    } do
+      draft = %{"type" => :quiz_question, "text_answer" => "Fallback text"}
+      assigns = %{block: block, draft: draft}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} draft={@draft} />
+        """)
+
+      expected =
+        Jason.encode!(%{
+          "type" => "doc",
+          "content" => [
+            %{
+              "type" => "paragraph",
+              "content" => [%{"type" => "text", "text" => "Fallback text"}]
+            }
+          ]
+        })
+
+      escaped = expected |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+      assert html =~ "data-content=\"#{escaped}\""
+    end
+
+    test "submission rich_answer takes priority over draft for rich_text", %{block_rich: block} do
+      draft_tip = %{
+        "type" => "doc",
+        "content" => [
+          %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => "Draft"}]}
+        ]
+      }
+
+      sub_tip = %{
+        "type" => "doc",
+        "content" => [
+          %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => "Submission"}]}
+        ]
+      }
+
+      draft = %{"type" => :quiz_question, "rich_answer" => draft_tip}
+      submission = %{content: %{"rich_answer" => sub_tip}}
+      assigns = %{block: block, draft: draft, submission: submission}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:review} draft={@draft} submission={@submission} />
+        """)
+
+      escaped =
+        Jason.encode!(sub_tip) |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+
+      assert html =~ "data-content=\"#{escaped}\""
+      assert html =~ "Submission"
+      refute html =~ "Draft"
+    end
+
+    test "answers map takes priority over submission and draft for rich_text", %{
+      block_rich: block
+    } do
+      draft_tip = %{
+        "type" => "doc",
+        "content" => [
+          %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => "Draft"}]}
+        ]
+      }
+
+      sub_tip = %{
+        "type" => "doc",
+        "content" => [
+          %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => "Submission"}]}
+        ]
+      }
+
+      answer_tip = %{
+        "type" => "doc",
+        "content" => [
+          %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => "Live Answer"}]}
+        ]
+      }
+
+      draft = %{"type" => :quiz_question, "rich_answer" => draft_tip}
+      submission = %{content: %{"rich_answer" => sub_tip}}
+      answers = %{block.id => answer_tip}
+      assigns = %{block: block, draft: draft, submission: submission, answers: answers}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block
+          block={@block}
+          mode={:play}
+          draft={@draft}
+          submission={@submission}
+          answers={@answers}
+        />
+        """)
+
+      escaped =
+        Jason.encode!(answer_tip) |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+
+      assert html =~ "data-content=\"#{escaped}\""
+      assert html =~ "Live Answer"
+      refute html =~ "Draft"
+      refute html =~ "Submission"
+    end
+
+    test "malformed JSON string in answer_content falls back to plain text paragraph for rich_text",
+         %{block_rich: block} do
+      assigns = %{block: block, answers: %{block.id => "{invalid json}"}}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} answers={@answers} />
+        """)
+
+      expected =
+        Jason.encode!(%{
+          "type" => "doc",
+          "content" => [
+            %{
+              "type" => "paragraph",
+              "content" => [%{"type" => "text", "text" => "{invalid json}"}]
+            }
+          ]
+        })
+
+      escaped = expected |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+      assert html =~ "data-content=\"#{escaped}\""
+    end
+
+    test "phx-change and debounce are present for rich_text in :play mode", %{block_rich: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} />
+        """)
+
+      assert html =~ ~s(name="answer")
+      assert html =~ ~s(phx-change="save_draft")
+      assert html =~ ~s(phx-debounce="500")
+      assert html =~ ~s(phx-value-block_id="#{block.id}")
+    end
+
+    test "no phx-change in :review mode for rich_text", %{block_rich: block} do
+      tipmap = %{"type" => "doc", "content" => [%{"type" => "paragraph"}]}
+      sub = %{content: %{"rich_answer" => tipmap}}
+      assigns = %{block: block, submission: sub}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:review} submission={@submission} />
+        """)
+
+      refute html =~ ~s(phx-change="save_draft")
+    end
+
+    test "Tiptap toolbar is rendered for rich_text in :play mode", %{block_rich: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} />
+        """)
+
+      assert html =~ "fixed-toolbar"
+      assert html =~ "data-action=\"bold\""
+      assert html =~ "data-action=\"italic\""
+    end
+  end
+
   describe "content_block/1 :quiz_question (exact_match / ctf)" do
     setup do
       block =

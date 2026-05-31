@@ -28,18 +28,16 @@ defmodule Athena.Content.Sections do
   """
   @spec get_section(map(), String.t()) :: {:ok, Section.t()} | {:error, :not_found}
   def get_section(user, id) do
-    accessible_courses =
-      Course
-      |> where([c], is_nil(c.deleted_at))
-      |> Identity.scope_query(user, "courses.update")
+    section = Repo.get(Section, id)
 
-    Section
-    |> join(:inner, [s], c in subquery(accessible_courses), on: s.course_id == c.id)
-    |> where([s], s.id == ^id)
-    |> Repo.one()
-    |> case do
-      nil -> {:error, :not_found}
-      section -> {:ok, section}
+    if section do
+      if can_edit_course?(user, section.course_id) do
+        {:ok, section}
+      else
+        {:error, :not_found}
+      end
+    else
+      {:error, :not_found}
     end
   end
 
@@ -218,10 +216,20 @@ defmodule Athena.Content.Sections do
 
   @doc false
   defp can_edit_course?(user, course_id) do
-    Course
-    |> where(id: ^course_id)
-    |> Identity.scope_query(user, "courses.update")
-    |> Repo.exists?()
+    has_acl =
+      Course
+      |> where([c], c.id == ^course_id and is_nil(c.deleted_at))
+      |> Identity.scope_query(user, "courses.update")
+      |> Repo.exists?()
+
+    if has_acl do
+      true
+    else
+      Repo.exists?(
+        from cs in Athena.Content.CourseShare,
+          where: cs.course_id == ^course_id and cs.account_id == ^user.id and cs.role == :writer
+      )
+    end
   end
 
   @doc false

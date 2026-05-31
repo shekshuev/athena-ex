@@ -502,6 +502,7 @@ defmodule AthenaWeb.StudioLive.Builder do
         "type" => "quiz_question",
         "content" => %{
           "question_type" => "open",
+          "answer_type" => "plain_text",
           "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
           "options" => [],
           "max_attempts" => nil

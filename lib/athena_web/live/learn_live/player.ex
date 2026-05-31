@@ -569,14 +569,45 @@ defmodule AthenaWeb.LearnLive.Player do
 
   @doc false
   defp build_submission_content(block, answer) do
-    case block.content["question_type"] do
-      "exact_match" -> %{type: :quiz_question, text_answer: answer || ""}
-      "open" -> %{type: :quiz_question, text_answer: answer || ""}
-      "single" -> %{type: :quiz_question, selected_choices: if(answer, do: [answer], else: [])}
-      "multiple" -> %{type: :quiz_question, selected_choices: List.wrap(answer)}
-      _ -> %{type: :quiz_question}
+    q_type = block.content["question_type"]
+    answer_type = block.content["answer_type"] || "plain_text"
+    build_submission_for_type(q_type, answer_type, answer)
+  end
+
+  @doc false
+  defp build_submission_for_type("exact_match", _answer_type, answer),
+    do: %{type: :quiz_question, text_answer: answer || ""}
+
+  defp build_submission_for_type("open", "rich_text", answer),
+    do: %{type: :quiz_question, rich_answer: parse_rich_answer(answer)}
+
+  defp build_submission_for_type("open", _answer_type, answer),
+    do: %{type: :quiz_question, text_answer: answer || ""}
+
+  defp build_submission_for_type("single", _answer_type, answer),
+    do: %{type: :quiz_question, selected_choices: if(answer, do: [answer], else: [])}
+
+  defp build_submission_for_type("multiple", _answer_type, answer),
+    do: %{type: :quiz_question, selected_choices: List.wrap(answer)}
+
+  defp build_submission_for_type(_q_type, _answer_type, _answer), do: %{type: :quiz_question}
+
+  @doc false
+  defp parse_rich_answer(nil), do: ""
+  defp parse_rich_answer(""), do: ""
+
+  defp parse_rich_answer(val) when is_binary(val) do
+    if String.starts_with?(val, "{") do
+      case Jason.decode(val) do
+        {:ok, decoded} -> decoded
+        _ -> val
+      end
+    else
+      val
     end
   end
+
+  defp parse_rich_answer(val), do: val
 
   @doc false
   defp process_gate_after_submission(socket, block, submission) do
@@ -834,7 +865,8 @@ defmodule AthenaWeb.LearnLive.Player do
   defp build_draft_content(block, params) do
     case block.type do
       :quiz_question ->
-        build_quiz_draft_content(block.content["question_type"], params)
+        answer_type = block.content["answer_type"] || "plain_text"
+        build_quiz_draft_content(block.content["question_type"], params, answer_type)
 
       :code ->
         code = get_in(params, ["answer", "code"]) || ""
@@ -849,12 +881,23 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp build_quiz_draft_content(question_type, params)
+  defp build_quiz_draft_content(question_type, params, answer_type)
        when question_type in ["open", "exact_match"] do
-    %{"type" => :quiz_question, "text_answer" => params["answer"] || ""}
+    content = params["answer"] || ""
+
+    if answer_type == "rich_text" do
+      rich_val =
+        if is_binary(content) and String.starts_with?(content, "{"),
+          do: Jason.decode!(content),
+          else: content
+
+      %{"type" => :quiz_question, "rich_answer" => rich_val}
+    else
+      %{"type" => :quiz_question, "text_answer" => content}
+    end
   end
 
-  defp build_quiz_draft_content(_question_type, params) do
+  defp build_quiz_draft_content(_question_type, params, _answer_type) do
     answer = params["answer"]
 
     selected =

@@ -194,6 +194,7 @@ msgid "must have either account_id or cohort_id"
 msgstr "необходимо указать либо account_id, либо cohort_id"
 
 #: lib/athena/learning/submission_content.ex:70
+#: lib/athena/learning/submission_content.ex:115
 #, elixir-autogen, elixir-format
 msgid "at least one file is required"
 msgstr "требуется хотя бы один файл"
