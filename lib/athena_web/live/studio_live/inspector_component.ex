@@ -212,6 +212,18 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                 ]}
               />
 
+              <.input
+                type="select"
+                name="block[content][answer_type]"
+                value={@block.content["answer_type"] || "plain_text"}
+                label={gettext("Answer Input Type")}
+                options={[
+                  {gettext("Plain Text"), "plain_text"},
+                  {gettext("Rich Text"), "rich_text"}
+                ]}
+                phx-debounce="300"
+              />
+
               <%= if @block.content["question_type"] == "exact_match" do %>
                 <div class="mt-2">
                   <label class="flex items-center gap-2 cursor-pointer">

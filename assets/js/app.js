@@ -482,10 +482,27 @@ Hooks.TiptapEditor = {
         updateToolbarState(editor);
         clearTimeout(timeout);
         timeout = setTimeout(() => {
-          hook.pushEvent("update_content", {
-            id: blockId,
-            content: editor.getJSON(),
-          });
+          const context = hook.el.dataset.context;
+
+          if (context === "builder") {
+            hook.pushEvent("update_content", {
+              id: blockId,
+              content: editor.getJSON(),
+            });
+          }
+
+          if (context === "player") {
+            const inputId = hook.el.dataset.inputId;
+            if (inputId) {
+              const hiddenInput = document.getElementById(inputId);
+              if (hiddenInput) {
+                hiddenInput.value = JSON.stringify(editor.getJSON());
+                hiddenInput.dispatchEvent(
+                  new Event("input", { bubbles: true }),
+                );
+              }
+            }
+          }
         }, 500);
       },
       onSelectionUpdate: ({ editor }) => {
@@ -646,6 +663,26 @@ Hooks.TiptapEditor = {
     if (this.handleInsertMedia) {
       window.removeEventListener("phx:insert_media", this.handleInsertMedia);
     }
+  },
+};
+
+Hooks.FlashAutohide = {
+  mounted() {
+    this.startTimeout();
+  },
+  updated() {
+    clearTimeout(this.timeout);
+    this.startTimeout();
+  },
+  destroyed() {
+    clearTimeout(this.timeout);
+  },
+  startTimeout() {
+    this.timeout = setTimeout(() => {
+      if (this.el) {
+        this.el.click();
+      }
+    }, 5000);
   },
 };
 

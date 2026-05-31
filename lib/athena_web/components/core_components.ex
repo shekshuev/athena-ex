@@ -55,6 +55,7 @@ defmodule AthenaWeb.CoreComponents do
       phx-click={
         JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id || "flash-#{@kind}"}")
       }
+      phx-hook="FlashAutohide"
       role="alert"
       class={[
         "alert cursor-pointer w-full sm:w-96 transition-all duration-300 flex items-start bg-base-100 border",

@@ -38,6 +38,7 @@ defmodule Athena.Content.QuizQuestion do
   @primary_key false
   embedded_schema do
     field :question_type, Ecto.Enum, values: [:single, :multiple, :exact_match, :open]
+    field :answer_type, Ecto.Enum, values: [:plain_text, :rich_text]
     field :body, :map
     field :correct_answer, :string
     field :case_sensitive, :boolean, default: false
@@ -49,6 +50,7 @@ defmodule Athena.Content.QuizQuestion do
 
   @type t :: %__MODULE__{
           question_type: :single | :multiple | :exact_match | :open | nil,
+          answer_type: :plain_text | :rich_text,
           body: map() | nil,
           correct_answer: String.t() | nil,
           case_sensitive: boolean(),
@@ -61,6 +63,7 @@ defmodule Athena.Content.QuizQuestion do
     schema
     |> cast(attrs, [
       :question_type,
+      :answer_type,
       :body,
       :correct_answer,
       :case_sensitive,
