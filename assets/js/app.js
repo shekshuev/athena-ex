@@ -3,9 +3,8 @@ import { python } from "@codemirror/lang-python";
 import { sql } from "@codemirror/lang-sql";
 import { Compartment, EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { Editor } from "@tiptap/core";
+import { Editor, Extension } from "@tiptap/core";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
-import Color from "@tiptap/extension-color";
 import Details from "@tiptap/extension-details";
 import DetailsContent from "@tiptap/extension-details-content";
 import DetailsSummary from "@tiptap/extension-details-summary";
@@ -20,7 +19,6 @@ import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import TableRow from "@tiptap/extension-table-row";
 import TextAlign from "@tiptap/extension-text-align";
-import TextStyle from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 import { EditorView, basicSetup } from "codemirror";
@@ -237,12 +235,39 @@ Hooks.TiptapEditor = {
       Uploaders.S3([blobEntry], () => {});
     };
 
+    const SmartSpacer = Extension.create({
+      name: "smartSpacer",
+      addKeyboardShortcuts() {
+        return {
+          "Alt-Enter": () => {
+            return this.editor
+              .chain()
+              .insertContentAt(this.editor.state.selection.$to.after(), {
+                type: "paragraph",
+              })
+              .focus()
+              .run();
+          },
+          "Shift-Alt-Enter": () => {
+            return this.editor
+              .chain()
+              .insertContentAt(this.editor.state.selection.$from.before(), {
+                type: "paragraph",
+              })
+              .focus()
+              .run();
+          },
+        };
+      },
+    });
+
     const extensions = [
       StarterKit.configure({ codeBlock: false }),
+      SmartSpacer,
       CodeBlockLowlight.configure({ lowlight }),
       Underline,
       Link.configure({ openOnClick: isReadOnly }),
-      Highlight.configure({ multicolor: true }),
+      Highlight,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       Table.configure({ resizable: !isReadOnly }),
       TableRow,
@@ -251,15 +276,11 @@ Hooks.TiptapEditor = {
       Placeholder.configure({
         includeChildren: true,
         placeholder: ({ node }) => {
-          if (node.type.name === "detailsSummary") {
-            return "Spoiler header...";
-          }
+          if (node.type.name === "detailsSummary") return "Spoiler header...";
           return "Type here...";
         },
         emptyEditorClass: "is-editor-empty",
       }),
-      TextStyle,
-      Color,
       Subscript,
       Superscript,
       Mathematics.configure({
@@ -270,26 +291,16 @@ Hooks.TiptapEditor = {
           );
         },
       }),
-      Details.configure({
-        HTMLAttributes: {
-          class: "tiptap-details",
-        },
-      }),
+      Details.configure({ HTMLAttributes: { class: "tiptap-details" } }),
       DetailsSummary.configure({
-        HTMLAttributes: {
-          class: "tiptap-details-summary",
-        },
+        HTMLAttributes: { class: "tiptap-details-summary" },
       }),
       DetailsContent.configure({
-        HTMLAttributes: {
-          class: "tiptap-details-content",
-        },
+        HTMLAttributes: { class: "tiptap-details-content" },
       }),
       ResizableImage.configure({
         inline: false,
-        HTMLAttributes: {
-          class: "rounded-sm my-4 mx-auto",
-        },
+        HTMLAttributes: { class: "rounded-sm my-4 mx-auto" },
       }),
     ];
 
@@ -299,7 +310,6 @@ Hooks.TiptapEditor = {
       if (!toolbar) return;
 
       const tableControls = toolbar.querySelectorAll(".tiptap-table-control");
-
       if (tableControls) {
         for (const tableControl of tableControls) {
           if (editor.isActive("table")) {
@@ -308,19 +318,6 @@ Hooks.TiptapEditor = {
             tableControl.classList.add("hidden");
           }
         }
-      }
-
-      const colorInput = toolbar.querySelector('[data-action="text-color"]');
-      if (colorInput) {
-        colorInput.value = editor.getAttributes("textStyle").color || "#000000";
-      }
-
-      const highlightInput = toolbar.querySelector(
-        '[data-action="highlight-color"]',
-      );
-      if (highlightInput) {
-        highlightInput.value =
-          editor.getAttributes("highlight").color || "#ffff00";
       }
     };
 
@@ -405,6 +402,18 @@ Hooks.TiptapEditor = {
           if (isMod && event.shiftKey && event.key.toLowerCase() === "r") {
             event.preventDefault();
             this.editor.chain().focus().setTextAlign("right").run();
+            return true;
+          }
+
+          if (isMod && event.shiftKey && event.key.toLowerCase() === "j") {
+            event.preventDefault();
+            this.editor.chain().focus().setTextAlign("justify").run();
+            return true;
+          }
+
+          if (isMod && event.key === "\\") {
+            event.preventDefault();
+            this.editor.chain().focus().unsetAllMarks().clearNodes().run();
             return true;
           }
 
@@ -531,7 +540,36 @@ Hooks.TiptapEditor = {
           if (action === "bold") chain.toggleBold().run();
           if (action === "italic") chain.toggleItalic().run();
           if (action === "underline") chain.toggleUnderline().run();
-          if (action === "unset-highlight") chain.unsetHighlight().run();
+          if (action === "highlight") chain.toggleHighlight().run();
+          if (action === "clear-format") {
+            chain.unsetAllMarks().clearNodes().run();
+          }
+
+          if (action === "insert-before") {
+            try {
+              const pos = this.editor.state.selection.$from.before(1);
+              this.editor
+                .chain()
+                .insertContentAt(pos, { type: "paragraph" })
+                .focus(pos + 1)
+                .run();
+            } catch (e) {
+              console.warn("Cannot insert before root");
+            }
+          }
+
+          if (action === "insert-after") {
+            try {
+              const pos = this.editor.state.selection.$to.after(1);
+              this.editor
+                .chain()
+                .insertContentAt(pos, { type: "paragraph" })
+                .focus(pos + 1)
+                .run();
+            } catch (e) {
+              console.warn("Cannot insert after root");
+            }
+          }
           if (action === "inline-code") chain.toggleCode().run();
           if (action === "subscript") chain.toggleSubscript().run();
           if (action === "superscript") chain.toggleSuperscript().run();
@@ -558,6 +596,7 @@ Hooks.TiptapEditor = {
           if (action === "align-left") chain.setTextAlign("left").run();
           if (action === "align-center") chain.setTextAlign("center").run();
           if (action === "align-right") chain.setTextAlign("right").run();
+          if (action === "align-justify") chain.setTextAlign("justify").run();
 
           if (action === "table")
             chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();

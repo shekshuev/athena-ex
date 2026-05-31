@@ -2,7 +2,7 @@ defmodule Athena.Content.Blocks do
   @moduledoc """
   Internal business logic for managing Content Blocks.
 
-  Implements double precision indexing (gap of 1024) to allow easy 
+  Implements double precision indexing (gap of 1024) to allow easy
   drag-and-drop reordering without recalculating the entire table.
   """
 
@@ -59,28 +59,25 @@ defmodule Athena.Content.Blocks do
   """
   @spec get_block(map(), String.t()) :: {:ok, Block.t()} | {:error, :not_found}
   def get_block(user, id) do
-    accessible_courses =
-      Course
-      |> where([c], is_nil(c.deleted_at))
-      |> Identity.scope_query(user, "courses.update")
+    block = Repo.get(Block, id)
 
-    Block
-    |> join(:inner, [b], s in Section, on: b.section_id == s.id)
-    |> join(:inner, [b, s], c in subquery(accessible_courses), on: s.course_id == c.id)
-    |> where([b], b.id == ^id)
-    |> Repo.one()
-    |> case do
-      nil -> {:error, :not_found}
-      block -> {:ok, block}
+    if block do
+      if can_edit_section?(user, block.section_id) do
+        {:ok, block}
+      else
+        {:error, :not_found}
+      end
+    else
+      {:error, :not_found}
     end
   end
 
   @doc """
-  Creates a new block. 
+  Creates a new block.
 
   If `order` is provided, it uses it directly.
   If `after_id` is provided, it calculates the order to place the new block immediately after it.
-  If neither is provided, it automatically calculates the next order 
+  If neither is provided, it automatically calculates the next order
   by finding the maximum order in the section and adding 1024.
   """
   @spec create_block(map(), map()) ::
@@ -169,7 +166,7 @@ defmodule Athena.Content.Blocks do
   defp calculate_new_order(prev, next), do: div(prev.order + next.order, 2)
 
   @doc """
-  Permanently deletes a block. 
+  Permanently deletes a block.
   Media cleanup is handled asynchronously by Oban (Athena.Workers.MediaCleanup).
   """
   @spec delete_block(map(), Block.t()) ::
@@ -275,22 +272,48 @@ defmodule Athena.Content.Blocks do
   end
 
   defp can_edit_course?(user, course_id) do
-    Course
-    |> where(id: ^course_id)
-    |> Identity.scope_query(user, "courses.update")
-    |> Repo.exists?()
+    has_acl =
+      Course
+      |> where([c], c.id == ^course_id and is_nil(c.deleted_at))
+      |> Identity.scope_query(user, "courses.update")
+      |> Repo.exists?()
+
+    if has_acl do
+      true
+    else
+      Repo.exists?(
+        from cs in Athena.Content.CourseShare,
+          where: cs.course_id == ^course_id and cs.account_id == ^user.id and cs.role == :writer
+      )
+    end
   end
 
   defp can_edit_section?(user, section_id) do
-    accessible_courses =
-      Course
-      |> where([c], is_nil(c.deleted_at))
-      |> Identity.scope_query(user, "courses.update")
+    section = Repo.get(Section, section_id)
 
-    Section
-    |> join(:inner, [s], c in subquery(accessible_courses), on: s.course_id == c.id)
-    |> where([s], s.id == ^section_id)
-    |> Repo.exists?()
+    if section do
+      course_id = section.course_id
+
+      acl_check =
+        Course
+        |> where([c], c.id == ^course_id and is_nil(c.deleted_at))
+        |> Identity.scope_query(user, "courses.update")
+        |> Repo.exists?()
+
+      if acl_check do
+        true
+      else
+        Repo.exists?(
+          from cs in Athena.Content.CourseShare,
+            where:
+              cs.course_id == ^course_id and
+                cs.account_id == ^user.id and
+                cs.role == :writer
+        )
+      end
+    else
+      false
+    end
   end
 
   @doc false

@@ -1110,7 +1110,7 @@ defmodule AthenaWeb.BlockComponents do
           data-action="bold"
           data-tippy-content={"#{gettext("Bold")} ($mod+B)"}
         >
-          <b>B</b>
+          <.icon name="hero-bold" class="size-5" />
         </button>
         <button
           type="button"
@@ -1118,7 +1118,7 @@ defmodule AthenaWeb.BlockComponents do
           data-action="italic"
           data-tippy-content={"#{gettext("Italic")} ($mod+I)"}
         >
-          <i class="font-serif">I</i>
+          <.icon name="hero-italic" class="size-5" />
         </button>
         <button
           type="button"
@@ -1126,7 +1126,7 @@ defmodule AthenaWeb.BlockComponents do
           data-action="underline"
           data-tippy-content={"#{gettext("Underline")} ($mod+U)"}
         >
-          <u>U</u>
+          <.icon name="hero-underline" class="size-5" />
         </button>
         <button
           type="button"
@@ -1153,38 +1153,42 @@ defmodule AthenaWeb.BlockComponents do
           <.icon name="hero-code-bracket" class="size-5" />
         </button>
 
-        <div
-          class="join-item flex items-center px-2"
-          data-tippy-content={gettext("Text Color")}
-        >
-          <.icon name="hero-swatch" class="size-4 mr-1 text-base-content/50" />
-          <input
-            type="color"
-            class="w-6 h-6 p-0 border-0 bg-transparent cursor-pointer rounded-sm"
-            data-action="text-color"
-            value="#000000"
-          />
-        </div>
-
-        <div
-          class="join-item flex items-center px-2"
-          data-tippy-content={gettext("Highlight Color")}
-        >
-          <.icon name="hero-paint-brush" class="size-4 mr-1 text-base-content/50" />
-          <input
-            type="color"
-            class="w-6 h-6 p-0 border-0 bg-transparent cursor-pointer rounded-sm"
-            data-action="highlight-color"
-            value="#ffff00"
-          />
-        </div>
         <button
           type="button"
-          class="join-item btn btn-sm btn-ghost rounded-sm px-2 border-r border-base-200"
-          data-action="unset-highlight"
-          data-tippy-content={gettext("Clear Highlight")}
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
+          data-action="highlight"
+          data-tippy-content={"#{gettext("Highlight")} ($mod+$shift+H)"}
         >
-          <.icon name="hero-no-symbol" class="size-4 text-base-content/50" />
+          <.icon name="hero-paint-brush" class="size-5" />
+        </button>
+
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
+          data-action="clear-format"
+          data-tippy-content={"#{gettext("Clear Formatting")} ($mod+\\)"}
+        >
+          <div class="flex items-center">
+            <span class="font-bold text-sm">T</span>
+            <.icon name="hero-no-symbol" class="size-5" />
+          </div>
+        </button>
+
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
+          data-action="insert-before"
+          data-tippy-content={gettext("Insert paragraph above")}
+        >
+          <.icon name="hero-bars-arrow-up" class="size-5" />
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
+          data-action="insert-after"
+          data-tippy-content={gettext("Insert paragraph below")}
+        >
+          <.icon name="hero-bars-arrow-down" class="size-5" />
         </button>
 
         <button
@@ -1201,7 +1205,7 @@ defmodule AthenaWeb.BlockComponents do
           data-action="h1"
           data-tippy-content={"#{gettext("Heading 1")} ($mod+$alt+1)"}
         >
-          H1
+          <.icon name="hero-h1" class="size-5" />
         </button>
         <button
           type="button"
@@ -1209,7 +1213,7 @@ defmodule AthenaWeb.BlockComponents do
           data-action="h2"
           data-tippy-content={"#{gettext("Heading 2")} ($mod+$alt+2)"}
         >
-          H2
+          <.icon name="hero-h2" class="size-5" />
         </button>
         <button
           type="button"
@@ -1217,8 +1221,9 @@ defmodule AthenaWeb.BlockComponents do
           data-action="h3"
           data-tippy-content={"#{gettext("Heading 3")} ($mod+$alt+3)"}
         >
-          H3
+          <.icon name="hero-h3" class="size-5" />
         </button>
+
         <button
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-2"
@@ -1233,7 +1238,7 @@ defmodule AthenaWeb.BlockComponents do
           data-action="align-center"
           data-tippy-content={"#{gettext("Align Center")} ($mod+$shift+E)"}
         >
-          <.icon name="hero-bars-3" class="size-5" />
+          <.icon name="hero-bars-2" class="size-5" />
         </button>
         <button
           type="button"
@@ -1242,6 +1247,15 @@ defmodule AthenaWeb.BlockComponents do
           data-tippy-content={"#{gettext("Align Right")} ($mod+$shift+R)"}
         >
           <.icon name="hero-bars-3-bottom-right" class="size-5" />
+        </button>
+
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-2"
+          data-action="align-justify"
+          data-tippy-content={"#{gettext("Justify")} ($mod+$shift+J)"}
+        >
+          <.icon name="hero-bars-4" class="size-5" />
         </button>
 
         <button
@@ -1258,7 +1272,7 @@ defmodule AthenaWeb.BlockComponents do
           data-action="ordered"
           data-tippy-content={"#{gettext("Ordered List")} ($mod+$shift+7)"}
         >
-          1.
+          <.icon name="hero-numbered-list" class="size-5" />
         </button>
         <button
           type="button"
@@ -1284,7 +1298,6 @@ defmodule AthenaWeb.BlockComponents do
         >
           —
         </button>
-
         <button
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3"
@@ -1293,7 +1306,6 @@ defmodule AthenaWeb.BlockComponents do
         >
           <.icon name="hero-chevron-down" class="size-5" />
         </button>
-
         <button
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3"

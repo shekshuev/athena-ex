@@ -341,4 +341,191 @@ defmodule Athena.Content.BlocksTest do
       assert counts[s2.id] == 1
     end
   end
+
+  describe "sharing: blocks with CourseShare" do
+    setup %{admin: admin} do
+      course = insert(:course, owner_id: admin.id)
+      section = insert(:section, course: course)
+
+      instructor_role =
+        insert(:role,
+          permissions: ["courses.update"],
+          policies: %{"courses.update" => ["own_only"]}
+        )
+
+      instructor = insert(:account, role: instructor_role)
+
+      %{course: course, section: section, instructor: instructor}
+    end
+
+    test "writer via CourseShare can create block", %{
+      admin: admin,
+      section: section,
+      instructor: instructor
+    } do
+      assert {:ok, _share} =
+               Athena.Content.share_course(admin, section.course, instructor.id, :writer)
+
+      attrs = %{
+        "type" => "text",
+        "content" => %{"text" => "Shared block"},
+        "section_id" => section.id
+      }
+
+      assert {:ok, %Block{} = block} = Blocks.create_block(instructor, attrs)
+      assert block.content == %{"text" => "Shared block"}
+    end
+
+    test "reader via CourseShare cannot create block", %{
+      admin: admin,
+      section: section,
+      instructor: instructor
+    } do
+      assert {:ok, _share} =
+               Athena.Content.share_course(admin, section.course, instructor.id, :reader)
+
+      attrs = %{
+        "type" => "text",
+        "content" => %{"text" => "Should fail"},
+        "section_id" => section.id
+      }
+
+      assert {:error, :unauthorized} = Blocks.create_block(instructor, attrs)
+    end
+
+    test "writer via CourseShare can update block", %{
+      admin: admin,
+      section: section,
+      instructor: instructor
+    } do
+      assert {:ok, _share} =
+               Athena.Content.share_course(admin, section.course, instructor.id, :writer)
+
+      block = insert(:block, section: section, type: :text, content: %{"text" => "Old"})
+
+      assert {:ok, updated} =
+               Blocks.update_block(instructor, block, %{"content" => %{"text" => "New"}})
+
+      assert updated.content == %{"text" => "New"}
+    end
+
+    test "reader via CourseShare cannot update block", %{
+      admin: admin,
+      section: section,
+      instructor: instructor
+    } do
+      assert {:ok, _share} =
+               Athena.Content.share_course(admin, section.course, instructor.id, :reader)
+
+      block = insert(:block, section: section)
+
+      assert {:error, :unauthorized} =
+               Blocks.update_block(instructor, block, %{"content" => %{"text" => "Hacked"}})
+    end
+
+    test "writer via CourseShare can delete block", %{
+      admin: admin,
+      section: section,
+      instructor: instructor
+    } do
+      assert {:ok, _share} =
+               Athena.Content.share_course(admin, section.course, instructor.id, :writer)
+
+      block = insert(:block, section: section)
+
+      assert {:ok, _} = Blocks.delete_block(instructor, block)
+      refute Repo.get(Block, block.id)
+    end
+
+    test "writer via CourseShare can reorder block", %{
+      admin: admin,
+      section: section,
+      instructor: instructor
+    } do
+      assert {:ok, _share} =
+               Athena.Content.share_course(admin, section.course, instructor.id, :writer)
+
+      _b1 = insert(:block, section: section, order: 1000)
+      b2 = insert(:block, section: section, order: 2000)
+
+      assert {:ok, updated} = Blocks.reorder_block(instructor, b2, 0)
+      assert updated.order == 500
+    end
+
+    test "writer via CourseShare can prepare media upload", %{
+      admin: admin,
+      course: course,
+      instructor: instructor
+    } do
+      assert {:ok, _share} =
+               Athena.Content.share_course(admin, course, instructor.id, :writer)
+
+      assert {:ok, meta} = Blocks.prepare_media_upload(instructor, course.id, "test.mp4")
+      assert meta.uploader == "S3"
+      assert String.starts_with?(meta.key, "courses/#{course.id}/")
+    end
+
+    test "reader via CourseShare cannot prepare media upload", %{
+      admin: admin,
+      course: course,
+      instructor: instructor
+    } do
+      assert {:ok, _share} =
+               Athena.Content.share_course(admin, course, instructor.id, :reader)
+
+      assert {:error, :unauthorized} =
+               Blocks.prepare_media_upload(instructor, course.id, "test.mp4")
+    end
+
+    test "writer via CourseShare can attach media to block", %{
+      admin: admin,
+      section: section,
+      instructor: instructor
+    } do
+      assert {:ok, _share} =
+               Athena.Content.share_course(admin, section.course, instructor.id, :writer)
+
+      block = insert(:block, section: section, content: %{"controls" => true})
+
+      meta = %{
+        bucket: "athena-test",
+        key: "courses/test/uuid.mp4",
+        url_for_saved_entry: "/media/courses/test/uuid.mp4"
+      }
+
+      file_info = %{name: "test.mp4", type: "video/mp4", size: 1000}
+
+      assert {:ok, updated} =
+               Blocks.attach_media_to_block(instructor, block, meta, file_info)
+
+      assert updated.content["url"] == meta.url_for_saved_entry
+    end
+  end
+
+  test "get_block/2 returns block for writer via CourseShare", %{
+    admin: admin,
+    section: section,
+    instructor: instructor
+  } do
+    assert {:ok, _share} =
+             Athena.Content.share_course(admin, section.course, instructor.id, :writer)
+
+    block = insert(:block, section: section)
+
+    assert {:ok, fetched} = Blocks.get_block(instructor, block.id)
+    assert fetched.id == block.id
+  end
+
+  test "get_block/2 returns not_found for reader via CourseShare", %{
+    admin: admin,
+    section: section,
+    instructor: instructor
+  } do
+    assert {:ok, _share} =
+             Athena.Content.share_course(admin, section.course, instructor.id, :reader)
+
+    block = insert(:block, section: section)
+
+    assert {:error, :not_found} = Blocks.get_block(instructor, block.id)
+  end
 end
