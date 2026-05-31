@@ -686,6 +686,34 @@ Hooks.FlashAutohide = {
   },
 };
 
+Hooks.Sidebar = {
+  mounted() {
+    const isCollapsed = localStorage.getItem("sidebar-collapsed") === "true";
+
+    if (isCollapsed) {
+      this.el.classList.add("is-collapsed");
+    }
+    this.observer = new MutationObserver((mutations) => {
+      mutations.forEach((m) => {
+        if (m.attributeName === "class") {
+          const hasClass = this.el.classList.contains("is-collapsed");
+          localStorage.setItem("sidebar-collapsed", hasClass);
+        }
+      });
+    });
+
+    this.observer.observe(this.el, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+  },
+  destroyed() {
+    if (this.observer) {
+      this.observer.disconnect();
+    }
+  },
+};
+
 let Uploaders = {};
 
 Uploaders.S3 = function (entries, onViewError) {
