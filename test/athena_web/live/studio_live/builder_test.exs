@@ -345,7 +345,17 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
             "question_type" => "single",
             "body" => %{},
             "options" => [
-              %{"id" => "opt1", "text" => "A", "is_correct" => false, "explanation" => ""}
+              %{
+                "id" => "opt1",
+                "text" => %{
+                  "type" => "doc",
+                  "content" => [
+                    %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => "A"}]}
+                  ]
+                },
+                "is_correct" => false,
+                "explanation" => ""
+              }
             ]
           }
         })
@@ -358,15 +368,77 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
 
       lv |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']") |> render_click()
 
-      lv
-      |> form("#quiz-form-#{block.id}", %{
+      updated_text_json =
+        Jason.encode!(%{
+          "type" => "doc",
+          "content" => [
+            %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => "Updated A"}]}
+          ]
+        })
+
+      render_change(lv, "update_quiz_content", %{
+        "block_id" => block.id,
         "correct_option_id" => "opt1",
         "options" => %{
           "0" => %{
             "id" => "opt1",
-            "text" => "Updated A",
+            "text" => updated_text_json,
             "is_correct" => "false",
             "explanation" => "New expl"
+          }
+        }
+      })
+
+      blocks = Content.list_blocks_by_section(section.id)
+      updated_block = Enum.find(blocks, &(&1.id == block.id))
+
+      opt = hd(updated_block.content["options"])
+
+      assert opt["text"] == %{
+               "type" => "doc",
+               "content" => [
+                 %{
+                   "type" => "paragraph",
+                   "content" => [%{"type" => "text", "text" => "Updated A"}]
+                 }
+               ]
+             }
+
+      assert opt["is_correct"] == true
+      assert opt["explanation"] == "New expl"
+    end
+
+    test "updates quiz block answer_type via inspector form", %{
+      conn: conn,
+      course: course,
+      section: section,
+      admin: admin
+    } do
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "quiz_question",
+          "section_id" => section.id,
+          "content" => %{
+            "question_type" => "open",
+            "answer_type" => "plain_text",
+            "body" => %{}
+          }
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']") |> render_click()
+
+      lv
+      |> form("#block-inspector-form-#{block.id}", %{
+        "block" => %{
+          "id" => block.id,
+          "content" => %{
+            "answer_type" => "rich_text"
           }
         }
       })
@@ -375,11 +447,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       blocks = Content.list_blocks_by_section(section.id)
       updated_block = Enum.find(blocks, &(&1.id == block.id))
 
-      opt = hd(updated_block.content["options"])
-
-      assert opt["text"] == "Updated A"
-      assert opt["is_correct"] == true
-      assert opt["explanation"] == "New expl"
+      assert updated_block.content["answer_type"] == "rich_text"
     end
 
     test "updates quiz exam metadata and parses tags correctly", %{

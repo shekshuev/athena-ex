@@ -90,7 +90,7 @@ defmodule AthenaWeb.BlockComponents do
 
   defp render_text(assigns) do
     ~H"""
-    <div class="editor-wrapper group relative outline-none" tabindex="-1">
+    <div class="editor-wrapper group/tiptap relative outline-none" tabindex="-1">
       <.tiptap_toolbar mode={@mode} />
       <div
         id={"tiptap-#{@mode}-#{@block.id}"}
@@ -147,7 +147,7 @@ defmodule AthenaWeb.BlockComponents do
   defp render_attachment(assigns) do
     ~H"""
     <div class="p-6 bg-base-200/50 rounded-sm border border-base-300">
-      <div class="editor-wrapper group relative outline-none" tabindex="-1">
+      <div class="editor-wrapper group/tiptap relative outline-none" tabindex="-1">
         <.tiptap_toolbar mode={@mode} />
         <div
           :if={@block.content["description"]}
@@ -205,7 +205,7 @@ defmodule AthenaWeb.BlockComponents do
 
     ~H"""
     <div class="relative w-full">
-      <div class="editor-wrapper group relative outline-none mb-6" tabindex="-1">
+      <div class="editor-wrapper group/tiptap relative outline-none mb-6" tabindex="-1">
         <.tiptap_toolbar mode={@mode} />
         <div
           id={"tiptap-code-#{@mode}-#{@block.id}"}
@@ -335,7 +335,7 @@ defmodule AthenaWeb.BlockComponents do
 
     ~H"""
     <div class="relative">
-      <div class="editor-wrapper group relative outline-none" tabindex="-1">
+      <div class="editor-wrapper group/tiptap relative outline-none" tabindex="-1">
         <.tiptap_toolbar mode={@mode} />
         <div
           id={"tiptap-quiz-#{@mode}-#{@block.id}"}
@@ -494,8 +494,21 @@ defmodule AthenaWeb.BlockComponents do
             phx-value-block_id={@block.id}
             phx-debounce="300"
           />
-          <div class="flex-1">
-            <span class="text-base font-medium">{opt["text"]}</span>
+          <div class="flex-1 min-w-0 pt-0.5">
+            <div
+              id={"tiptap-player-opt-#{@block.id}-#{opt["id"]}"}
+              phx-hook="TiptapEditor"
+              data-id={@block.id}
+              data-readonly="true"
+              phx-update="ignore"
+              data-content={
+                if is_map(opt["text"]),
+                  do: Jason.encode!(opt["text"]),
+                  else: Jason.encode!(wrap_text_in_paragraph(opt["text"]))
+              }
+              class="prose prose-base max-w-none text-base-content pointer-events-none [&_p]:my-0"
+            >
+            </div>
             <%= if @mode == :review do %>
               <div
                 :if={opt["explanation"] not in [nil, ""]}
@@ -535,7 +548,7 @@ defmodule AthenaWeb.BlockComponents do
         phx-value-block_id={@block.id}
         phx-debounce="500"
       />
-      <div class="editor-wrapper group relative outline-none" tabindex="-1">
+      <div class="editor-wrapper group/tiptap relative outline-none" tabindex="-1">
         <.tiptap_toolbar mode={:edit} />
         <div
           id={"tiptap-open-answer-#{@mode}-#{@block.id}"}
@@ -666,7 +679,7 @@ defmodule AthenaWeb.BlockComponents do
 
     ~H"""
     <div class="space-y-6">
-      <div class="editor-wrapper group relative outline-none">
+      <div class="editor-wrapper group/tiptap relative outline-none">
         <.tiptap_toolbar mode={@mode} />
         <div
           id={"tiptap-body-#{@mode}-#{@block.id}"}
@@ -844,19 +857,44 @@ defmodule AthenaWeb.BlockComponents do
                       </div>
                       <div class="flex-1 bg-base-100/50 p-2 rounded-sm border border-base-200/50 focus-within:border-2 focus-within:border-primary space-y-2">
                         <input type="hidden" name={"options[#{index}][id]"} value={opt["id"]} />
-                        <input
-                          type="text"
-                          name={"options[#{index}][text]"}
-                          value={opt["text"]}
-                          class="w-full bg-transparent border-none outline-none focus:ring-0 font-medium text-base-content"
-                          placeholder={gettext("Option text")}
-                          phx-debounce="500"
-                        />
+
+                        <div
+                          class="editor-wrapper group/tiptap relative outline-none w-full"
+                          tabindex="-1"
+                        >
+                          <.tiptap_toolbar mode={:edit} />
+                          <input
+                            type="hidden"
+                            id={"option-text-#{@block.id}-#{opt["id"]}"}
+                            name={"options[#{index}][text]"}
+                            value={
+                              if is_map(opt["text"]),
+                                do: Jason.encode!(opt["text"]),
+                                else: Jason.encode!(wrap_text_in_paragraph(opt["text"]))
+                            }
+                          />
+                          <div
+                            id={"tiptap-option-#{@block.id}-#{opt["id"]}"}
+                            phx-hook="TiptapEditor"
+                            data-id={@block.id}
+                            data-input-id={"option-text-#{@block.id}-#{opt["id"]}"}
+                            data-readonly="false"
+                            phx-update="ignore"
+                            data-content={
+                              if is_map(opt["text"]),
+                                do: Jason.encode!(opt["text"]),
+                                else: Jason.encode!(wrap_text_in_paragraph(opt["text"]))
+                            }
+                            class="prose prose-sm max-w-none text-base-content/80 leading-relaxed min-h-10 px-3 py-2 bg-base-100 rounded-sm cursor-text [&_p]:my-1"
+                          >
+                          </div>
+                        </div>
+
                         <input
                           type="text"
                           name={"options[#{index}][explanation]"}
                           value={opt["explanation"]}
-                          class="w-full bg-transparent border-none outline-none focus:ring-0 text-sm text-base-content/60"
+                          class="w-full bg-transparent border-none outline-none focus:ring-0 text-sm text-base-content/60 px-3"
                           placeholder={gettext("Explanation (optional)")}
                           phx-debounce="500"
                         />
@@ -1102,7 +1140,7 @@ defmodule AthenaWeb.BlockComponents do
   @doc false
   defp tiptap_toolbar(%{mode: :edit} = assigns) do
     ~H"""
-    <div class="fixed-toolbar hidden group-focus-within:flex flex-wrap gap-2 bg-base-100 border border-base-300 rounded-sm p-1.5 mb-3 sticky top-2 z-10 items-center">
+    <div class="fixed-toolbar hidden group-focus-within/tiptap:flex flex-wrap gap-2 bg-base-100 border border-base-300 rounded-sm p-1.5 mb-3 sticky top-2 z-10 items-center">
       <div class="join flex-wrap">
         <button
           type="button"

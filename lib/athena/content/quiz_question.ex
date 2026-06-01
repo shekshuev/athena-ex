@@ -7,14 +7,14 @@ defmodule Athena.Content.QuizQuestion.Option do
   @primary_key false
   embedded_schema do
     field :id, :binary_id
-    field :text, :string
+    field :text, :map
     field :is_correct, :boolean, default: false
     field :explanation, :string
   end
 
   @type t :: %__MODULE__{
           id: binary() | nil,
-          text: String.t() | nil,
+          text: map() | nil,
           is_correct: boolean(),
           explanation: String.t() | nil
         }
