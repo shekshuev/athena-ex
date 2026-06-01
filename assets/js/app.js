@@ -502,13 +502,17 @@ Hooks.TiptapEditor = {
               hiddenInput.dispatchEvent(new Event("input", { bubbles: true }));
             }
           } else {
-            const context = hook.el.dataset.context;
+            const onChangeEvent = hook.el.dataset.onChange;
 
-            if (context === "builder") {
-              hook.pushEvent("update_content", {
-                id: blockId,
-                content: editor.getJSON(),
-              });
+            if (onChangeEvent) {
+              const payload = { id: blockId, content: editor.getJSON() };
+              const target = hook.el.getAttribute("phx-target");
+
+              if (target) {
+                hook.pushEventTo(target, onChangeEvent, payload);
+              } else {
+                hook.pushEvent(onChangeEvent, payload);
+              }
             }
           }
         }, 500);

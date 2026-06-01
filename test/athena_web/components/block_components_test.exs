@@ -534,7 +534,6 @@ defmodule AthenaWeb.BlockComponentsTest do
       refute html =~ "<textarea"
       assert html =~ ~s(id="tiptap-open-answer-play-#{block.id}")
       assert html =~ ~s(phx-hook="TiptapEditor")
-      assert html =~ ~s(data-context="player")
       assert html =~ ~s(data-readonly="false")
       assert html =~ ~s(data-input-id="open-answer-#{block.id}")
       assert html =~ "<input"

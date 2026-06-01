@@ -98,7 +98,7 @@ defmodule AthenaWeb.BlockComponents do
         data-id={@block.id}
         data-readonly={to_string(@mode != :edit)}
         phx-update="ignore"
-        data-context="builder"
+        data-on-change="update_content"
         data-content={Jason.encode!(@block.content)}
         class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed"
       >
@@ -153,7 +153,7 @@ defmodule AthenaWeb.BlockComponents do
           :if={@block.content["description"]}
           id={"tiptap-desc-#{@mode}-#{@block.id}"}
           phx-hook="TiptapEditor"
-          data-context="builder"
+          data-on-change="update_content"
           data-id={@block.id}
           data-readonly={to_string(@mode != :edit)}
           phx-update="ignore"
@@ -210,7 +210,7 @@ defmodule AthenaWeb.BlockComponents do
         <div
           id={"tiptap-code-#{@mode}-#{@block.id}"}
           phx-hook="TiptapEditor"
-          data-context="builder"
+          data-on-change="update_content"
           data-id={@block.id}
           data-readonly={to_string(@mode != :edit)}
           phx-update="ignore"
@@ -340,7 +340,7 @@ defmodule AthenaWeb.BlockComponents do
         <div
           id={"tiptap-quiz-#{@mode}-#{@block.id}"}
           phx-hook="TiptapEditor"
-          data-context="builder"
+          data-on-change="update_content"
           data-id={@block.id}
           data-readonly={to_string(@mode != :edit)}
           phx-update="ignore"
@@ -556,7 +556,6 @@ defmodule AthenaWeb.BlockComponents do
           data-id={@block.id}
           data-input-id={"open-answer-#{@block.id}"}
           data-readonly={to_string(@mode != :play)}
-          data-context="player"
           phx-update="ignore"
           data-content={Jason.encode!(@initial_content)}
           class={[
@@ -684,6 +683,7 @@ defmodule AthenaWeb.BlockComponents do
         <div
           id={"tiptap-body-#{@mode}-#{@block.id}"}
           phx-hook="TiptapEditor"
+          data-on-change="update_content"
           data-id={@block.id}
           data-readonly={to_string(@mode != :edit)}
           phx-update="ignore"
