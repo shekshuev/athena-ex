@@ -5,6 +5,7 @@ import { Compartment, EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { Editor, Extension } from "@tiptap/core";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
+import Color from "@tiptap/extension-color";
 import Details from "@tiptap/extension-details";
 import DetailsContent from "@tiptap/extension-details-content";
 import DetailsSummary from "@tiptap/extension-details-summary";
@@ -19,6 +20,7 @@ import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import TableRow from "@tiptap/extension-table-row";
 import TextAlign from "@tiptap/extension-text-align";
+import TextStyle from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 import { EditorView, basicSetup } from "codemirror";
@@ -240,21 +242,19 @@ Hooks.TiptapEditor = {
       addKeyboardShortcuts() {
         return {
           "Alt-Enter": () => {
+            const pos = this.editor.state.selection.$to.after(1);
             return this.editor
               .chain()
-              .insertContentAt(this.editor.state.selection.$to.after(), {
-                type: "paragraph",
-              })
-              .focus()
+              .insertContentAt(pos, { type: "paragraph" })
+              .focus(pos + 1)
               .run();
           },
           "Shift-Alt-Enter": () => {
+            const pos = this.editor.state.selection.$from.before(1);
             return this.editor
               .chain()
-              .insertContentAt(this.editor.state.selection.$from.before(), {
-                type: "paragraph",
-              })
-              .focus()
+              .insertContentAt(pos, { type: "paragraph" })
+              .focus(pos + 1)
               .run();
           },
         };
@@ -267,7 +267,7 @@ Hooks.TiptapEditor = {
       CodeBlockLowlight.configure({ lowlight }),
       Underline,
       Link.configure({ openOnClick: isReadOnly }),
-      Highlight,
+      Highlight.configure({ multicolor: true }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       Table.configure({ resizable: !isReadOnly }),
       TableRow,
@@ -281,6 +281,8 @@ Hooks.TiptapEditor = {
         },
         emptyEditorClass: "is-editor-empty",
       }),
+      TextStyle,
+      Color,
       Subscript,
       Superscript,
       Mathematics.configure({
