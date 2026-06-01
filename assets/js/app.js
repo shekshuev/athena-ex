@@ -493,25 +493,22 @@ Hooks.TiptapEditor = {
         updateToolbarState(editor);
         clearTimeout(timeout);
         timeout = setTimeout(() => {
-          const context = hook.el.dataset.context;
+          const inputId = hook.el.dataset.inputId;
 
-          if (context === "builder") {
-            hook.pushEvent("update_content", {
-              id: blockId,
-              content: editor.getJSON(),
-            });
-          }
+          if (inputId) {
+            const hiddenInput = document.getElementById(inputId);
+            if (hiddenInput) {
+              hiddenInput.value = JSON.stringify(editor.getJSON());
+              hiddenInput.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+          } else {
+            const context = hook.el.dataset.context;
 
-          if (context === "player") {
-            const inputId = hook.el.dataset.inputId;
-            if (inputId) {
-              const hiddenInput = document.getElementById(inputId);
-              if (hiddenInput) {
-                hiddenInput.value = JSON.stringify(editor.getJSON());
-                hiddenInput.dispatchEvent(
-                  new Event("input", { bubbles: true }),
-                );
-              }
+            if (context === "builder") {
+              hook.pushEvent("update_content", {
+                id: blockId,
+                content: editor.getJSON(),
+              });
             }
           }
         }, 500);

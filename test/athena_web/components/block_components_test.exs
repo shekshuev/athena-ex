@@ -310,11 +310,12 @@ defmodule AthenaWeb.BlockComponentsTest do
         """)
 
       assert html =~ "Pick one"
-      assert html =~ "Correct Opt"
       assert html =~ "radio"
       assert html =~ " disabled"
       assert html =~ "border-primary"
-      assert html =~ "pointer-events-none"
+      assert html =~ "tiptap-player-opt-#{block.id}-o1"
+      assert html =~ "phx-hook=\"TiptapEditor\""
+      assert html =~ "data-readonly=\"true\""
     end
 
     test "renders active inputs and preserves student answers in :play mode", %{block: block} do
@@ -325,10 +326,10 @@ defmodule AthenaWeb.BlockComponentsTest do
         <.content_block block={@block} mode={:play} answers={@answers} />
         """)
 
-      assert html =~ "Correct Opt"
       assert html =~ "radio"
       assert html =~ "checked"
-      refute html =~ " disabled"
+      refute html =~ ~r/ disabled(?!:)/
+      assert html =~ "tiptap-player-opt-#{block.id}-o1"
     end
 
     test "renders read-only results with feedback in :review mode", %{block: block} do
@@ -879,6 +880,27 @@ defmodule AthenaWeb.BlockComponentsTest do
       assert html =~ "fixed-toolbar"
       assert html =~ "data-action=\"bold\""
       assert html =~ "data-action=\"italic\""
+    end
+
+    test "renders new toolbar actions (justify, clear format, smart spacers) in edit mode", %{
+      block_rich: block
+    } do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} />
+        """)
+
+      assert html =~ "data-action=\"align-justify\""
+      assert html =~ "data-action=\"clear-format\""
+      assert html =~ "data-action=\"insert-before\""
+      assert html =~ "data-action=\"insert-after\""
+
+      assert html =~ "Justify"
+      assert html =~ "Clear Formatting"
+      assert html =~ "Insert paragraph above"
+      assert html =~ "Insert paragraph below"
     end
   end
 

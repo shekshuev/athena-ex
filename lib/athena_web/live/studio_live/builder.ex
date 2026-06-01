@@ -615,7 +615,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
         new_option = %{
           "id" => Ecto.UUID.generate(),
-          "text" => "",
+          "text" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
           "is_correct" => false,
           "explanation" => ""
         }
@@ -1716,7 +1716,21 @@ defmodule AthenaWeb.StudioLive.Builder do
           v["is_correct"] in ["true", true]
         end
 
-      %{v | "is_correct" => is_correct}
+      text_map =
+        case Jason.decode(v["text"]) do
+          {:ok, decoded} ->
+            decoded
+
+          _ ->
+            %{
+              "type" => "doc",
+              "content" => [
+                %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => v["text"]}]}
+              ]
+            }
+        end
+
+      %{v | "is_correct" => is_correct, "text" => text_map}
     end)
   end
 
