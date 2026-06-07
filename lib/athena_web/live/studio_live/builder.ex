@@ -370,9 +370,15 @@ defmodule AthenaWeb.StudioLive.Builder do
     {:noreply, assign(socket, viewing_parent_id: id)}
   end
 
-  def handle_event("drill_up", %{"id" => id}, socket) do
-    parent_id = if id == "", do: nil, else: id
-    {:noreply, assign(socket, viewing_parent_id: parent_id)}
+  def handle_event("drill_up", %{"id" => current_parent_id}, socket) do
+    if current_parent_id == "" do
+      {:noreply, assign(socket, viewing_parent_id: nil)}
+    else
+      current_section = find_section_in_tree(socket.assigns.sections, current_parent_id)
+      new_parent_id = if current_section, do: current_section.parent_id, else: nil
+
+      {:noreply, assign(socket, viewing_parent_id: new_parent_id)}
+    end
   end
 
   def handle_event("open_quick_nav", _, socket) do
@@ -1373,11 +1379,15 @@ defmodule AthenaWeb.StudioLive.Builder do
     active_section = find_section_in_tree(assigns.sections, assigns.active_section_id)
     active_block = Enum.find(assigns.blocks, &(&1.id == assigns.active_block_id))
 
+    current_parent = find_section(assigns.sections, assigns.viewing_parent_id)
+    breadcrumbs = build_breadcrumbs(assigns.sections, current_parent || active_section)
+
     assigns =
       assigns
       |> assign(
         active_section: active_section,
         active_block: active_block,
+        breadcrumbs: breadcrumbs,
         image_types_str: MediaConfig.format_extensions("image"),
         video_types_str: MediaConfig.format_extensions("video"),
         attachment_types_str: MediaConfig.format_extensions("attachment"),
@@ -1387,14 +1397,7 @@ defmodule AthenaWeb.StudioLive.Builder do
     ~H"""
     <div class="hidden lg:flex fixed inset-0 pt-16 lg:pt-0 z-50 bg-base-200">
       <div class="w-80 flex flex-col bg-base-100 border-r border-base-300 shrink-0 z-10">
-        <div class="p-4 border-b border-base-300 flex items-center justify-between">
-          <h2 class="font-bold truncate" title={@course.title}>{@course.title}</h2>
-          <.link navigate={~p"/studio/courses"} class="btn btn-ghost btn-xs btn-square">
-            <.icon name="hero-x-mark" class="size-4" />
-          </.link>
-        </div>
-
-        <div class="flex-1 overflow-hidden p-4 flex flex-col">
+        <div class="flex-1 overflow-hidden p-0">
           <.live_component
             module={AthenaWeb.StudioLive.Builder.StructureSidebarComponent}
             id="structure-sidebar"
@@ -1407,33 +1410,23 @@ defmodule AthenaWeb.StudioLive.Builder do
       </div>
 
       <div class="flex-1 flex flex-col relative overflow-hidden bg-base-200">
-        <div class="flex-1 flex flex-col relative overflow-hidden bg-base-200">
-          <div class="flex-1 overflow-y-auto p-8 relative">
-            <div class="max-w-3xl mx-auto min-h-full flex flex-col gap-4">
-              <.live_component
-                module={AthenaWeb.StudioLive.Builder.CanvasComponent}
-                id="canvas-component"
-                blocks={@blocks}
-                active_section_id={@active_section_id}
-                active_block_id={@active_block_id}
-                mode={@block_mode}
-              />
-            </div>
-          </div>
-        </div>
+        <.live_component
+          module={AthenaWeb.StudioLive.Builder.CanvasComponent}
+          id="canvas-component"
+          blocks={@blocks}
+          active_section_id={@active_section_id}
+          active_block_id={@active_block_id}
+          mode={@block_mode}
+          viewing_parent_id={@viewing_parent_id}
+          breadcrumbs={@breadcrumbs}
+        />
       </div>
 
       <div
         :if={@role in [:owner, :writer]}
         class="w-80 flex flex-col bg-base-100 border-l border-base-300 shrink-0 z-10"
       >
-        <div class="p-4 border-b border-base-300">
-          <h3 class="font-bold text-sm uppercase tracking-wider text-base-content/70">
-            {gettext("Inspector")}
-          </h3>
-        </div>
-
-        <div class="flex-1 overflow-hidden p-4 flex flex-col">
+        <div class="flex-1 overflow-hidden p-0">
           <.live_component
             module={AthenaWeb.StudioLive.Builder.InspectorComponent}
             id="inspector-component"
@@ -1895,5 +1888,29 @@ defmodule AthenaWeb.StudioLive.Builder do
     Enum.reduce(socket.assigns.uploads[upload_name].entries, socket, fn entry, acc ->
       cancel_upload(acc, upload_name, entry.ref)
     end)
+  end
+
+  defp find_section(_, nil), do: nil
+
+  defp find_section(sections, id) do
+    Enum.find_value(sections, fn section ->
+      if section.id == id do
+        section
+      else
+        find_section(section.children || [], id)
+      end
+    end)
+  end
+
+  defp build_breadcrumbs(_sections, nil), do: []
+
+  defp build_breadcrumbs(sections, current_section) do
+    path_ids =
+      current_section.path.labels
+      |> Enum.map(&String.replace(&1, "_", "-"))
+
+    path_ids
+    |> Enum.map(fn id -> find_section(sections, id) end)
+    |> Enum.reject(&is_nil/1)
   end
 end

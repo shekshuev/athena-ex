@@ -756,6 +756,22 @@ Hooks.Sidebar = {
   },
 };
 
+Hooks.DblClickDrillDown = {
+  mounted() {
+    let timer;
+    this.el.addEventListener("click", (e) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {}, 250);
+    });
+
+    this.el.addEventListener("dblclick", (e) => {
+      e.preventDefault();
+      clearTimeout(timer);
+      this.pushEvent("drill_down", { id: this.el.dataset.drillId });
+    });
+  },
+};
+
 let Uploaders = {};
 
 Uploaders.S3 = function (entries, onViewError) {

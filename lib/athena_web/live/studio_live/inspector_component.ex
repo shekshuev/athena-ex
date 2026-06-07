@@ -28,6 +28,11 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
+      <div class="h-14 shrink-0 border-b border-base-300 flex items-center px-4 gap-3">
+        <h3 class="font-bold text-sm uppercase tracking-wider text-base-content/70">
+          {gettext("Inspector")}
+        </h3>
+      </div>
       <%= cond do %>
         <% @active_block -> %>
           <.block_inspector block={@active_block} server_now={@server_now} />
@@ -53,7 +58,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
     assigns = assign(assigns, :form, to_form(section_changeset))
 
     ~H"""
-    <div class="flex flex-col h-full animate-in fade-in duration-200">
+    <div class="flex flex-col flex-1 min-h-0 animate-in fade-in duration-200 px-4">
       <div class="flex items-center gap-3 py-4 border-b border-base-300">
         <div>
           <div class="text-xs text-base-content/50 font-bold uppercase tracking-wider">
@@ -187,7 +192,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
     assigns = assign(assigns, :form, to_form(block_changeset))
 
     ~H"""
-    <div class="flex flex-col h-full animate-in fade-in duration-200">
+    <div class="flex flex-col flex-1 min-h-0 animate-in fade-in duration-200 px-4">
       <div class="flex items-center gap-3 py-4 border-b border-base-300">
         <div>
           <div class="text-xs text-base-content/50 font-bold uppercase tracking-wider">
@@ -281,37 +286,31 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                 {gettext("Exam Configuration")}
               </div>
 
-              <div class="flex gap-4">
-                <div class="flex-1">
-                  <.input
-                    type="number"
-                    name="block[content][count]"
-                    value={@block.content["count"] || 10}
-                    label={gettext("Questions Count")}
-                    min="1"
-                    max="100"
-                  />
-                </div>
-                <div class="flex-1">
-                  <.input
-                    type="number"
-                    name="block[content][time_limit]"
-                    value={@block.content["time_limit"]}
-                    label={gettext("Time Limit (Minutes)")}
-                    placeholder={gettext("Optional")}
-                    min="1"
-                  />
-                </div>
-                <div class="flex-1">
-                  <.input
-                    type="number"
-                    name="block[content][allowed_blur_attempts]"
-                    value={@block.content["allowed_blur_attempts"] || 3}
-                    label={gettext("Max Cheat Attempts")}
-                    placeholder="3"
-                    min="0"
-                  />
-                </div>
+              <div class="flex flex-col gap-3">
+                <.input
+                  type="number"
+                  name="block[content][count]"
+                  value={@block.content["count"] || 10}
+                  label={gettext("Questions Count")}
+                  min="1"
+                  max="100"
+                />
+                <.input
+                  type="number"
+                  name="block[content][time_limit]"
+                  value={@block.content["time_limit"]}
+                  label={gettext("Time Limit (Minutes)")}
+                  placeholder={gettext("Optional")}
+                  min="1"
+                />
+                <.input
+                  type="number"
+                  name="block[content][allowed_blur_attempts]"
+                  value={@block.content["allowed_blur_attempts"] || 3}
+                  label={gettext("Max Cheat Attempts")}
+                  placeholder="3"
+                  min="0"
+                />
               </div>
 
               <div class="divider my-2"></div>
@@ -358,31 +357,27 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                 label={gettext("Programming Language")}
                 options={[{"Python 3", "python3"}, {"C++ (GCC)", "cpp"}]}
               />
-              <div class="flex gap-4">
-                <div class="flex-1">
-                  <.input
-                    type="number"
-                    name="block[content][time_limit]"
-                    value={@block.content["time_limit"] || 1.0}
-                    label={gettext("Time Limit (s)")}
-                    step="0.1"
-                    min="0.1"
-                    max="15.0"
-                    phx-debounce="500"
-                  />
-                </div>
-                <div class="flex-1">
-                  <.input
-                    type="number"
-                    name="block[content][memory_limit]"
-                    value={@block.content["memory_limit"] || 65_536}
-                    label={gettext("Memory (KB)")}
-                    step="1024"
-                    min="16384"
-                    max="524288"
-                    phx-debounce="500"
-                  />
-                </div>
+              <div class="grid grid-cols-2 gap-3">
+                <.input
+                  type="number"
+                  name="block[content][time_limit]"
+                  value={@block.content["time_limit"] || 1.0}
+                  label={gettext("Time Limit (s)")}
+                  step="0.1"
+                  min="0.1"
+                  max="15.0"
+                  phx-debounce="500"
+                />
+                <.input
+                  type="number"
+                  name="block[content][memory_limit]"
+                  value={@block.content["memory_limit"] || 65_536}
+                  label={gettext("Memory (KB)")}
+                  step="1024"
+                  min="16384"
+                  max="524288"
+                  phx-debounce="500"
+                />
               </div>
               <div class="mt-2">
                 <.input
