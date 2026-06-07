@@ -181,5 +181,27 @@ defmodule Athena.Learning.ProgressTest do
       assert s2.id in new_accessible
       assert s3.id in new_accessible
     end
+
+    test "grants access to a section if it has reset_waterline: true, ignoring previous locked gates",
+         %{user: user} do
+      course = insert(:course)
+      s1 = insert(:section, course: course)
+
+      s2 =
+        insert(:section,
+          course: course,
+          access_rules: %Athena.Content.AccessRules{reset_waterline: true}
+        )
+
+      s3 = insert(:section, course: course)
+
+      insert(:block, section: s1, completion_rule: %CompletionRule{type: :button})
+
+      accessible = Progress.accessible_section_ids(user, course.id, [s1, s2, s3])
+
+      assert s1.id in accessible
+      assert s2.id in accessible
+      assert s3.id in accessible
+    end
   end
 end

@@ -100,9 +100,29 @@ defmodule Athena.Learning.Progress do
       |> Enum.reject(&(&1.id in completed_ids))
       |> Enum.group_by(& &1.section_id)
 
-    {accessible, _locked} =
-      Enum.reduce_while(linear_sections, {[], false}, fn section, {acc, _} ->
-        evaluate_section_access(section, acc, user, overrides, uncompleted_gates_by_section)
+    {accessible, _blocked?} =
+      Enum.reduce(linear_sections, {[], false}, fn section, {acc, blocked?} ->
+        override =
+          Enum.find(overrides, &(&1.resource_type == :section and &1.resource_id == section.id))
+
+        reset_waterline? =
+          if override && Map.has_key?(override, :reset_waterline) &&
+               not is_nil(override.reset_waterline) do
+            override.reset_waterline
+          else
+            section.access_rules && section.access_rules.reset_waterline
+          end
+
+        current_blocked? = if reset_waterline?, do: false, else: blocked?
+
+        can_view? = Content.Policy.can_view?(user, section, overrides)
+        has_uncompleted? = Map.has_key?(uncompleted_gates_by_section, section.id)
+
+        new_acc = if can_view? and not current_blocked?, do: acc ++ [section.id], else: acc
+
+        next_blocked? = current_blocked? or has_uncompleted?
+
+        {new_acc, next_blocked?}
       end)
 
     accessible
@@ -138,16 +158,5 @@ defmodule Athena.Learning.Progress do
       end
 
     Repo.all(from q in query, select: q.block_id)
-  end
-
-  defp evaluate_section_access(section, acc, user, overrides, uncompleted) do
-    can_view? = Content.Policy.can_view?(user, section, overrides)
-    has_uncompleted? = Map.has_key?(uncompleted, section.id)
-
-    cond do
-      not can_view? -> {:cont, {acc, false}}
-      has_uncompleted? -> {:halt, {acc ++ [section.id], true}}
-      true -> {:cont, {acc ++ [section.id], false}}
-    end
   end
 end

@@ -164,6 +164,29 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       assert html =~ "Block 3"
     end
+
+    test "renders blocks after an uncompleted gate if a subsequent block has reset_waterline: true",
+         %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+      insert(:block, section: s1, order: 10, content: %{"text" => "Block 1"})
+
+      insert(:block, section: s1, order: 20, completion_rule: %CompletionRule{type: :button})
+
+      insert(:block,
+        section: s1,
+        order: 30,
+        access_rules: %AccessRules{reset_waterline: true},
+        content: %{"text" => "Rebel Block 3"}
+      )
+
+      insert(:block, section: s1, order: 40, content: %{"text" => "Block 4"})
+
+      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ "Block 1"
+      assert html =~ "Rebel Block 3"
+      assert html =~ "Block 4"
+    end
   end
 
   describe "Access and Waterline bounds" do

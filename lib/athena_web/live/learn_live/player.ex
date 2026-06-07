@@ -401,9 +401,12 @@ defmodule AthenaWeb.LearnLive.Player do
     new_submissions = Map.put(socket.assigns.submissions || %{}, block_id, submission)
     new_pending = Map.update!(socket.assigns.pending_file_urls, block_id, fn _ -> [] end)
 
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
     socket
     |> assign(:submissions, new_submissions)
     |> assign(:pending_file_urls, new_pending)
+    |> process_gate_after_submission(block, submission)
     |> put_flash(:info, gettext("Assignment submitted!"))
   end
 
@@ -556,15 +559,24 @@ defmodule AthenaWeb.LearnLive.Player do
 
   @doc false
   defp calc_visible_blocks(blocks, completed_ids) do
-    Enum.reduce_while(blocks, [], fn block, acc ->
-      is_completed = block.id in completed_ids
+    {visible, _blocked?} =
+      Enum.reduce(blocks, {[], false}, fn block, {acc, blocked?} ->
+        reset? = block.access_rules && block.access_rules.reset_waterline
+        current_blocked? = if reset?, do: false, else: blocked?
 
-      if gate?(block) and not is_completed do
-        {:halt, acc ++ [block]}
-      else
-        {:cont, acc ++ [block]}
-      end
-    end)
+        is_completed = block.id in completed_ids
+
+        if current_blocked? do
+          {acc, true}
+        else
+          new_acc = acc ++ [block]
+          next_blocked? = gate?(block) and not is_completed
+
+          {new_acc, next_blocked?}
+        end
+      end)
+
+    visible
   end
 
   @doc false

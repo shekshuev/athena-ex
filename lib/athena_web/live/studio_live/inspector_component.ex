@@ -100,15 +100,36 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
               ]}
             />
 
-            <%= if to_string(@form[:visibility].value) == "restricted" do %>
-              <div class="bg-base-300 p-2 rounded text-xs font-mono text-center text-base-content/70">
-                SERVER TIME:
-                <span class="font-bold text-base-content">
-                  {Calendar.strftime(@server_now, "%Y-%m-%d %H:%M:%S")}
-                </span>
+            <.inputs_for :let={ar} field={@form[:access_rules]}>
+              <div class="mt-2">
+                <label class="flex items-start gap-3 cursor-pointer">
+                  <input type="hidden" name={ar[:reset_waterline].name} value="false" />
+                  <input
+                    type="checkbox"
+                    name={ar[:reset_waterline].name}
+                    value="true"
+                    checked={ar[:reset_waterline].value}
+                    class="checkbox checkbox-sm checkbox-primary mt-0.5"
+                  />
+                  <div>
+                    <div class="font-bold text-sm leading-none mb-1">
+                      {gettext("Reset Waterline")}
+                    </div>
+                    <div class="text-xs text-base-content/60 leading-tight">
+                      {gettext("Ignore previous locked lessons and forcefully open this section.")}
+                    </div>
+                  </div>
+                </label>
               </div>
 
-              <.inputs_for :let={ar} field={@form[:access_rules]}>
+              <%= if to_string(@form[:visibility].value) == "restricted" do %>
+                <div class="bg-base-200 p-2 rounded-sm border border-base-300 text-xs font-mono text-center text-base-content/70 mt-4">
+                  SERVER TIME:
+                  <span class="font-bold text-base-content">
+                    {Calendar.strftime(@server_now, "%Y-%m-%d %H:%M:%S")}
+                  </span>
+                </div>
+
                 <.input
                   type="datetime-local"
                   field={ar[:unlock_at]}
@@ -119,8 +140,8 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                   field={ar[:lock_at]}
                   label={gettext("Lock At (Optional)")}
                 />
-              </.inputs_for>
-            <% end %>
+              <% end %>
+            </.inputs_for>
           </div>
         </.form>
       </div>
@@ -130,7 +151,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
           type="button"
           phx-click="open_move_modal"
           phx-value-id={@section.id}
-          class="btn btn-soft btn-sm w-full"
+          class="btn btn-outline w-full"
         >
           <.icon name="hero-folder-arrow-down" class="size-4" />
           {gettext("Move To...")}
@@ -140,7 +161,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
           type="button"
           phx-click="delete_section_click"
           phx-value-id={@section.id}
-          class="btn btn-error btn-soft btn-sm w-full"
+          class="btn btn-error btn-outline w-full"
         >
           <.icon name="hero-trash" class="size-4" />
           {gettext("Delete Section")}
@@ -233,7 +254,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                       name="block[content][case_sensitive]"
                       value="true"
                       checked={@block.content["case_sensitive"]}
-                      class="checkbox checkbox-sm checkbox-primary"
+                      class="checkbox checkbox-sm checkbox-primary mt-0.5"
                     />
                     <span class="label-text">{gettext("Case Sensitive")}</span>
                   </label>
@@ -452,29 +473,25 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
               />
 
               <%= if to_string(cr[:type].value) == "button" do %>
-                <div class="p-4 bg-base-200/50 rounded-xl border border-base-300 animate-in fade-in slide-in-from-top-2 duration-300 mt-2">
-                  <.input
-                    type="text"
-                    field={cr[:button_text]}
-                    label={gettext("Button Text")}
-                    placeholder={gettext("e.g. Understood, Continue")}
-                    phx-debounce="500"
-                  />
-                </div>
+                <.input
+                  type="text"
+                  field={cr[:button_text]}
+                  label={gettext("Button Text")}
+                  placeholder={gettext("e.g. Understood, Continue")}
+                  phx-debounce="500"
+                />
               <% end %>
 
               <%= if to_string(cr[:type].value) == "pass_auto_grade" do %>
-                <div class="p-4 bg-base-200/50 rounded-xl border border-base-300 animate-in fade-in slide-in-from-top-2 duration-300 mt-2">
-                  <.input
-                    type="number"
-                    field={cr[:min_score]}
-                    label={gettext("Minimum Score to Pass")}
-                    placeholder="100"
-                    min="0"
-                    max="100"
-                    phx-debounce="500"
-                  />
-                </div>
+                <.input
+                  type="number"
+                  field={cr[:min_score]}
+                  label={gettext("Minimum Score to Pass")}
+                  placeholder="100"
+                  min="0"
+                  max="100"
+                  phx-debounce="500"
+                />
               <% end %>
             </.inputs_for>
           </div>
@@ -498,15 +515,36 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
               ]}
             />
 
-            <%= if to_string(@form[:visibility].value) == "restricted" do %>
-              <div class="bg-base-300 p-2 rounded text-xs font-mono text-center text-base-content/70">
-                SERVER TIME:
-                <span class="font-bold text-base-content">
-                  {Calendar.strftime(@server_now, "%Y-%m-%d %H:%M:%S")}
-                </span>
+            <.inputs_for :let={ar} field={@form[:access_rules]}>
+              <div class="mt-2">
+                <label class="flex items-start gap-3 cursor-pointer">
+                  <input type="hidden" name={ar[:reset_waterline].name} value="false" />
+                  <input
+                    type="checkbox"
+                    name={ar[:reset_waterline].name}
+                    value="true"
+                    checked={ar[:reset_waterline].value}
+                    class="checkbox checkbox-sm checkbox-primary mt-0.5"
+                  />
+                  <div>
+                    <div class="font-bold text-sm leading-none mb-1">
+                      {gettext("Reset Waterline")}
+                    </div>
+                    <div class="text-xs text-base-content/60 leading-tight">
+                      {gettext("Ignore previous locked lessons and forcefully open this block.")}
+                    </div>
+                  </div>
+                </label>
               </div>
 
-              <.inputs_for :let={ar} field={@form[:access_rules]}>
+              <%= if to_string(@form[:visibility].value) == "restricted" do %>
+                <div class="bg-base-200 p-2 rounded-sm border border-base-300 text-xs font-mono text-center text-base-content/70 mt-4">
+                  SERVER TIME:
+                  <span class="font-bold text-base-content">
+                    {Calendar.strftime(@server_now, "%Y-%m-%d %H:%M:%S")}
+                  </span>
+                </div>
+
                 <.input
                   type="datetime-local"
                   field={ar[:unlock_at]}
@@ -517,8 +555,8 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                   field={ar[:lock_at]}
                   label={gettext("Lock At (Optional)")}
                 />
-              </.inputs_for>
-            <% end %>
+              <% end %>
+            </.inputs_for>
           </div>
         </.form>
       </div>
@@ -528,7 +566,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
           type="button"
           phx-click="open_save_library_modal"
           phx-value-id={@block.id}
-          class="btn btn-primary btn-soft w-full"
+          class="btn btn-primary w-full"
         >
           <.icon name="hero-bookmark-square" class="size-4" />
           {gettext("Save to Library")}
@@ -538,7 +576,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
           type="button"
           phx-click="delete_block_click"
           phx-value-id={@block.id}
-          class="btn btn-error btn-soft w-full"
+          class="btn btn-error btn-outline w-full"
         >
           <.icon name="hero-trash" class="size-4" />
           {gettext("Delete Block")}

@@ -120,4 +120,38 @@ defmodule AthenaWeb.LearnLive.CourseTest do
       refute html_std =~ "Leaderboard"
     end
   end
+
+  test "renders Section 2 as accessible due to reset_waterline, ignoring Section 1 gate", %{
+    conn: conn,
+    user: user
+  } do
+    course = insert(:course)
+    insert(:enrollment, account_id: user.id, course_id: course.id)
+
+    s1 = insert(:section, course: course, title: "Blocked Section 1", order: 10)
+    insert(:block, section: s1, completion_rule: %Athena.Content.CompletionRule{type: :button})
+
+    s2 =
+      insert(:section,
+        course: course,
+        title: "Rescued Section 2",
+        order: 20,
+        access_rules: %Athena.Content.AccessRules{reset_waterline: true}
+      )
+
+    insert(:block, section: s2, type: :text, content: %{"text" => "Content"})
+
+    s3 = insert(:section, course: course, title: "Free Section 3", order: 30)
+    insert(:block, section: s3, type: :text, content: %{"text" => "Content"})
+
+    {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}")
+
+    assert html =~ ~s(href="/learn/courses/#{course.id}/play/#{s2.id}")
+    assert html =~ ~s(href="/learn/courses/#{course.id}/play/#{s3.id}")
+
+    assert html =~ ~s(href="/learn/courses/#{course.id}/play/#{s1.id}")
+
+    refute html =~
+             "Rescued Section 2</div>\n          <div class=\"opacity-40 pointer-events-none"
+  end
 end
