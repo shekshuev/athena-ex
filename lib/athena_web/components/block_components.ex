@@ -146,7 +146,7 @@ defmodule AthenaWeb.BlockComponents do
 
   defp render_attachment(assigns) do
     ~H"""
-    <div class="p-6 bg-base-200/50 rounded-sm border border-base-300">
+    <div class="space-y-4">
       <div class="editor-wrapper group/tiptap relative outline-none" tabindex="-1">
         <.tiptap_toolbar mode={@mode} />
         <div
@@ -158,7 +158,7 @@ defmodule AthenaWeb.BlockComponents do
           data-readonly={to_string(@mode != :edit)}
           phx-update="ignore"
           data-content={Jason.encode!(@block.content["description"])}
-          class="prose prose-sm max-w-none text-base-content/70 mb-4"
+          class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed mb-4"
         >
         </div>
       </div>
@@ -740,7 +740,7 @@ defmodule AthenaWeb.BlockComponents do
           >
             <div class="flex items-center gap-2 min-w-0">
               <.icon name="hero-document-check" class="size-4 text-success shrink-0" />
-              <span class="text-sm truncate flex-1 font-medium">{Path.basename(url)}</span>
+              <span class="text-sm truncate flex-1 font-medium">{clean_filename(url)}</span>
             </div>
             <button
               type="button"
@@ -757,16 +757,22 @@ defmodule AthenaWeb.BlockComponents do
       </div>
 
       <div :if={@has_submitted && @mode != :play} class="space-y-4">
-        <div :if={@file_urls != []} class="space-y-2">
+        <div :if={@file_urls != []} class="space-y-3">
           <a
             :for={url <- @file_urls}
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            class="flex items-center gap-3 p-3 bg-base-100 rounded-sm border border-base-200 hover:bg-base-200/50 hover:border-primary/40 transition-all"
+            class="flex items-center gap-4 p-4 bg-base-100 rounded-sm border border-base-200 hover:border-primary/40 transition-all group"
           >
-            <.icon name="hero-document-arrow-down" class="size-5 text-primary" />
-            <span class="text-sm font-medium truncate">{Path.basename(url)}</span>
+            <div class="p-3 bg-primary/10 rounded-sm text-primary shrink-0 group-hover:scale-110 transition-transform">
+              <.icon name="hero-document-arrow-down" class="size-6" />
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="font-bold text-base-content truncate group-hover:text-primary transition-colors">
+                {clean_filename(url)}
+              </div>
+            </div>
           </a>
         </div>
       </div>
@@ -1415,4 +1421,11 @@ defmodule AthenaWeb.BlockComponents do
   end
 
   defp tiptap_toolbar(assigns), do: ~H""
+
+  @doc false
+  defp clean_filename(url) do
+    url
+    |> Path.basename()
+    |> String.replace(~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/i, "")
+  end
 end

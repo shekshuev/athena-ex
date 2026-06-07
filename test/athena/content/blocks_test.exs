@@ -528,4 +528,37 @@ defmodule Athena.Content.BlocksTest do
 
     assert {:error, :not_found} = Blocks.get_block(instructor, block.id)
   end
+
+  describe "prepare_media_upload/4" do
+    test "should return presigned url and meta payload for admin", %{admin: admin, course: c} do
+      filename = "test_video.mp4"
+
+      assert {:ok, meta} = Blocks.prepare_media_upload(admin, c.id, filename)
+
+      assert meta.uploader == "S3"
+      assert is_binary(meta.bucket)
+      assert String.starts_with?(meta.key, "courses/#{c.id}/")
+      assert String.ends_with?(meta.key, "-test_video.mp4")
+      assert meta.url_for_saved_entry == "/media/#{meta.key}"
+      assert is_binary(meta.url)
+    end
+
+    test "returns unauthorized if user lacks edit rights and context is course_material", %{
+      student: student,
+      course: c
+    } do
+      assert {:error, :unauthorized} = Blocks.prepare_media_upload(student, c.id, "test.mp4")
+    end
+
+    test "allows student to get presigned url if context is submission", %{
+      student: student,
+      course: c
+    } do
+      assert {:ok, meta} =
+               Blocks.prepare_media_upload(student, c.id, "homework.pdf", "submission")
+
+      assert meta.uploader == "S3"
+      assert String.ends_with?(meta.key, "-homework.pdf")
+    end
+  end
 end
