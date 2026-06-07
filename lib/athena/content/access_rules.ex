@@ -11,12 +11,13 @@ defmodule Athena.Content.AccessRules do
   embedded_schema do
     field :unlock_at, :utc_datetime
     field :lock_at, :utc_datetime
+    field :reset_waterline, :boolean, default: false
   end
 
   @doc false
   def changeset(schema, attrs) do
     schema
-    |> cast(attrs, [:unlock_at, :lock_at])
+    |> cast(attrs, [:unlock_at, :lock_at, :reset_waterline])
     |> validate_dates()
   end
 

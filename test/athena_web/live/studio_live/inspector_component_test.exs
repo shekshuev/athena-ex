@@ -72,6 +72,19 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       refute html =~ "Unlock At (Optional)"
       refute html =~ "Lock At (Optional)"
     end
+
+    test "renders reset_waterline checkbox regardless of visibility", %{section: section} do
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: section,
+          active_block: nil
+        )
+
+      assert html =~ "Reset Waterline"
+      assert html =~ "Ignore previous locked lessons"
+      assert html =~ ~s(name="section[access_rules][reset_waterline]")
+    end
   end
 
   describe "Block Inspector" do
@@ -458,6 +471,19 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "Max Attempts"
       assert html =~ ~s(name="block[content][max_attempts]")
       assert html =~ ~s(value="3")
+    end
+
+    test "renders reset_waterline checkbox regardless of visibility", %{block: block} do
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block
+        )
+
+      assert html =~ "Reset Waterline"
+      assert html =~ "Ignore previous locked lessons"
+      assert html =~ ~s(name="block[access_rules][reset_waterline]")
     end
   end
 end
