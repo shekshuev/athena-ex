@@ -91,6 +91,11 @@ defmodule AthenaWeb.Router do
         live "/library/:id/editor", LibraryEditor
 
         live "/courses/:id/builder", Builder, :index
+        live "/courses/:id/builder/sections/:section_id", Builder, :section
+
+        live "/courses/:id/builder/sections/:section_id/blocks/:block_id",
+             Builder,
+             :block
       end
 
       scope "/teaching", TeachingLive do

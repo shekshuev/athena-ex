@@ -44,7 +44,7 @@ defmodule AthenaWeb.StudioLive.Builder do
          role: role,
          course: course,
          sections: sections,
-         active_section_id: active_section_id,
+         active_section_id: nil,
          active_block_id: nil,
          blocks: blocks,
          uploading_for_block: nil,
@@ -183,14 +183,59 @@ defmodule AthenaWeb.StudioLive.Builder do
   def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_params(_params, _url, socket) do
+  def handle_params(params, _url, socket) do
+    section_id = params["section_id"]
+    block_id = params["block_id"]
+
+    socket =
+      if section_id do
+        section = find_section_in_tree(socket.assigns.sections, section_id)
+
+        if section do
+          blocks = Content.list_blocks_by_section(section_id)
+
+          socket
+          |> assign(:active_section_id, section_id)
+          |> assign(:active_block_id, block_id)
+          |> assign(:blocks, blocks)
+          |> assign(:viewing_parent_id, section.parent_id)
+          |> maybe_push_scroll(block_id)
+        else
+          fallback_to_root(socket)
+        end
+      else
+        fallback_to_root(socket)
+      end
+
     {:noreply, socket}
+  end
+
+  @doc false
+  defp maybe_push_scroll(socket, nil), do: socket
+
+  defp maybe_push_scroll(socket, block_id) do
+    push_event(socket, "scroll_to_block", %{id: block_id})
+  end
+
+  @doc false
+  defp fallback_to_root(socket) do
+    sections = socket.assigns.sections
+    active_section_id = if sections != [], do: hd(sections).id, else: nil
+    blocks = if active_section_id, do: Content.list_blocks_by_section(active_section_id), else: []
+
+    socket
+    |> assign(:active_section_id, active_section_id)
+    |> assign(:active_block_id, nil)
+    |> assign(:blocks, blocks)
+    |> assign(:viewing_parent_id, nil)
   end
 
   @impl true
   def handle_event("select_section", %{"id" => id}, socket) do
-    blocks = Content.list_blocks_by_section(id)
-    {:noreply, assign(socket, active_section_id: id, active_block_id: nil, blocks: blocks)}
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/studio/courses/#{socket.assigns.course.id}/builder/sections/#{id}"
+     )}
   end
 
   def handle_event("add_section", %{"parent_id" => parent_id}, socket) do
@@ -216,7 +261,8 @@ defmodule AthenaWeb.StudioLive.Builder do
              active_section_id: new_section.id,
              viewing_parent_id: clean_parent_id
            )
-           |> put_flash(:info, gettext("Section added"))}
+           |> put_flash(:info, gettext("Section added"))
+           |> push_patch(to: ~p"/studio/courses/#{course.id}/builder/sections/#{new_section.id}")}
 
         {:error, _} ->
           {:noreply, put_flash(socket, :error, gettext("Failed to add section"))}
@@ -308,10 +354,9 @@ defmodule AthenaWeb.StudioLive.Builder do
        |> put_flash(:info, gettext("Section deleted"))
        |> assign(
          sections: updated_sections,
-         section_to_delete: nil,
-         active_section_id: nil,
-         blocks: []
-       )}
+         section_to_delete: nil
+       )
+       |> push_patch(to: ~p"/studio/courses/#{course.id}/builder")}
     else
       {:noreply, socket}
     end
@@ -346,17 +391,10 @@ defmodule AthenaWeb.StudioLive.Builder do
     section = find_section_in_tree(socket.assigns.sections, id)
 
     if section do
-      blocks = Content.list_blocks_by_section(id)
-
       {:noreply,
        socket
-       |> assign(
-         active_section_id: id,
-         active_block_id: nil,
-         viewing_parent_id: section.parent_id,
-         blocks: blocks,
-         quick_nav_open: false
-       )}
+       |> assign(quick_nav_open: false)
+       |> push_patch(to: ~p"/studio/courses/#{socket.assigns.course.id}/builder/sections/#{id}")}
     else
       {:noreply, assign(socket, quick_nav_open: false)}
     end
@@ -403,12 +441,22 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
+  @impl true
   def handle_event("select_block", %{"id" => id}, socket) do
-    {:noreply, assign(socket, active_block_id: id)}
+    {:noreply,
+     push_patch(socket,
+       to:
+         ~p"/studio/courses/#{socket.assigns.course.id}/builder/sections/#{socket.assigns.active_section_id}/blocks/#{id}"
+     )}
   end
 
+  @impl true
   def handle_event("deselect_block", _, socket) do
-    {:noreply, assign(socket, active_block_id: nil)}
+    {:noreply,
+     push_patch(socket,
+       to:
+         ~p"/studio/courses/#{socket.assigns.course.id}/builder/sections/#{socket.assigns.active_section_id}"
+     )}
   end
 
   def handle_event("move_block_up", %{"id" => id}, socket) do
@@ -812,7 +860,10 @@ defmodule AthenaWeb.StudioLive.Builder do
       {:noreply,
        socket
        |> put_flash(:info, gettext("Block deleted"))
-       |> assign(blocks: updated_blocks, block_to_delete: nil, active_block_id: nil)}
+       |> assign(blocks: updated_blocks, block_to_delete: nil)
+       |> push_patch(
+         to: ~p"/studio/courses/#{course.id}/builder/sections/#{socket.assigns.active_section_id}"
+       )}
     else
       {:noreply, socket}
     end
@@ -1058,11 +1109,14 @@ defmodule AthenaWeb.StudioLive.Builder do
            socket
            |> assign(
              blocks: updated_blocks,
-             active_block_id: block.id,
              library_picker_open: false,
              library_insert_after_id: nil
            )
-           |> put_flash(:info, gettext("Block inserted from library!"))}
+           |> put_flash(:info, gettext("Block inserted from library!"))
+           |> push_patch(
+             to:
+               ~p"/studio/courses/#{course.id}/builder/sections/#{socket.assigns.active_section_id}/blocks/#{block.id}"
+           )}
 
         {:error, _} ->
           {:noreply, put_flash(socket, :error, gettext("Failed to insert block"))}
@@ -1694,7 +1748,14 @@ defmodule AthenaWeb.StudioLive.Builder do
     case Content.create_block(socket.assigns.current_user, full_attrs) do
       {:ok, block} ->
         updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
-        {:noreply, assign(socket, blocks: updated_blocks, active_block_id: block.id)}
+
+        {:noreply,
+         socket
+         |> assign(blocks: updated_blocks)
+         |> push_patch(
+           to:
+             ~p"/studio/courses/#{socket.assigns.course.id}/builder/sections/#{socket.assigns.active_section_id}/blocks/#{block.id}"
+         )}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, error_msg)}

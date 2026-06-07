@@ -950,4 +950,104 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert blocks == []
     end
   end
+
+  describe "URL-driven Navigation & Scroll" do
+    setup %{course: course, admin: admin} do
+      {:ok, section} =
+        Content.create_section(admin, %{
+          "title" => "Scroll Target Section",
+          "course_id" => course.id
+        })
+
+      {:ok, block1} =
+        Content.create_block(admin, %{
+          "type" => "text",
+          "section_id" => section.id,
+          "content" => %{}
+        })
+
+      {:ok, block2} =
+        Content.create_block(admin, %{
+          "type" => "code",
+          "section_id" => section.id,
+          "content" => %{}
+        })
+
+      %{section: section, block1: block1, block2: block2}
+    end
+
+    test "opening URL with block_id pushes scroll_to_block event",
+         %{conn: conn, course: course, section: section, block2: block2} do
+      block_id = block2.id
+
+      {:ok, lv, _html} =
+        live(
+          conn,
+          ~p"/studio/courses/#{course.id}/builder/sections/#{section.id}/blocks/#{block_id}"
+        )
+
+      assert_push_event(lv, "scroll_to_block", %{id: ^block_id})
+      assert has_element?(lv, "#block-wrapper-#{block_id}")
+    end
+
+    test "opening URL with only section_id loads section correctly",
+         %{conn: conn, course: course, section: section} do
+      {:ok, lv, _html} =
+        live(conn, ~p"/studio/courses/#{course.id}/builder/sections/#{section.id}")
+
+      assert has_element?(lv, "#canvas-blocks-list")
+    end
+
+    test "clicking a block triggers scroll_to_block via push_patch",
+         %{conn: conn, course: course, section: section, block1: block1} do
+      block_id = block1.id
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/studio/courses/#{course.id}/builder/sections/#{section.id}")
+
+      lv
+      |> element("div[phx-click='select_block'][phx-value-id='#{block_id}']")
+      |> render_click()
+
+      assert_push_event(lv, "scroll_to_block", %{id: ^block_id})
+    end
+
+    test "navigating between blocks via UI pushes scroll for each selection",
+         %{conn: conn, course: course, section: section, block1: block1, block2: block2} do
+      id1 = block1.id
+      id2 = block2.id
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/studio/courses/#{course.id}/builder/sections/#{section.id}")
+
+      lv
+      |> element("div[phx-click='select_block'][phx-value-id='#{id1}']")
+      |> render_click()
+
+      assert_push_event(lv, "scroll_to_block", %{id: ^id1})
+
+      lv
+      |> element("div[phx-click='select_block'][phx-value-id='#{id2}']")
+      |> render_click()
+
+      assert_push_event(lv, "scroll_to_block", %{id: ^id2})
+    end
+
+    test "deselecting block clears selection without pushing scroll",
+         %{conn: conn, course: course, section: section, block1: block1} do
+      block_id = block1.id
+
+      {:ok, lv, _html} =
+        live(
+          conn,
+          ~p"/studio/courses/#{course.id}/builder/sections/#{section.id}/blocks/#{block_id}"
+        )
+
+      assert_push_event(lv, "scroll_to_block", %{id: ^block_id})
+
+      render_hook(lv, "deselect_block")
+
+      refute has_element?(lv, "#block-wrapper-#{block_id}.ring-2")
+    end
+  end
 end

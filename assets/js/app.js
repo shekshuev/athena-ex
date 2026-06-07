@@ -792,6 +792,27 @@ Uploaders.S3 = function (entries, onViewError) {
   });
 };
 
+window.addEventListener("phx:scroll_to_block", (e) => {
+  const blockId = e.detail.id;
+  if (!blockId) return;
+
+  setTimeout(() => {
+    const element =
+      document.querySelector(`[data-id="${blockId}"]`) ||
+      document.querySelector(`#block-wrapper-${blockId}`);
+
+    if (!element) {
+      console.warn(`[Athena] Block ${blockId} not found for scroll`);
+      return;
+    }
+
+    element.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, 150);
+});
+
 const liveSocket = new LiveSocket("/live", Socket, {
   uploaders: Uploaders,
   longPollFallbackMs: 2500,
