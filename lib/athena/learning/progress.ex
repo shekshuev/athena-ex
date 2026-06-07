@@ -100,32 +100,12 @@ defmodule Athena.Learning.Progress do
       |> Enum.reject(&(&1.id in completed_ids))
       |> Enum.group_by(& &1.section_id)
 
-    {accessible, _blocked?} =
-      Enum.reduce(linear_sections, {[], false}, fn section, {acc, blocked?} ->
-        override =
-          Enum.find(overrides, &(&1.resource_type == :section and &1.resource_id == section.id))
-
-        reset_waterline? =
-          if override && Map.has_key?(override, :reset_waterline) &&
-               not is_nil(override.reset_waterline) do
-            override.reset_waterline
-          else
-            section.access_rules && section.access_rules.reset_waterline
-          end
-
-        current_blocked? = if reset_waterline?, do: false, else: blocked?
-
-        can_view? = Content.Policy.can_view?(user, section, overrides)
-        has_uncompleted? = Map.has_key?(uncompleted_gates_by_section, section.id)
-
-        new_acc = if can_view? and not current_blocked?, do: acc ++ [section.id], else: acc
-
-        next_blocked? = current_blocked? or has_uncompleted?
-
-        {new_acc, next_blocked?}
+    {accessible_reversed, _blocked?} =
+      Enum.reduce(linear_sections, {[], false}, fn section, acc_state ->
+        process_section(section, acc_state, user, overrides, uncompleted_gates_by_section)
       end)
 
-    accessible
+    Enum.reverse(accessible_reversed)
   end
 
   defp get_gate_blocks(linear_sections, user, overrides) do
@@ -158,5 +138,42 @@ defmodule Athena.Learning.Progress do
       end
 
     Repo.all(from q in query, select: q.block_id)
+  end
+
+  @doc false
+  defp process_section(section, {acc, blocked?}, user, overrides, uncompleted_gates_by_section) do
+    reset_waterline? = get_reset_waterline(section, overrides)
+    current_blocked? = if reset_waterline?, do: false, else: blocked?
+
+    can_view? = Content.Policy.can_view?(user, section, overrides)
+    has_uncompleted? = Map.has_key?(uncompleted_gates_by_section, section.id)
+
+    new_acc =
+      if can_view? and not current_blocked? do
+        [section.id | acc]
+      else
+        acc
+      end
+
+    next_blocked? = current_blocked? or has_uncompleted?
+
+    {new_acc, next_blocked?}
+  end
+
+  @doc false
+  defp get_reset_waterline(section, overrides) do
+    override =
+      Enum.find(overrides, &(&1.resource_type == :section and &1.resource_id == section.id))
+
+    cond do
+      override && Map.get(override, :reset_waterline) != nil ->
+        override.reset_waterline
+
+      section.access_rules && Map.get(section.access_rules, :reset_waterline) != nil ->
+        section.access_rules.reset_waterline
+
+      true ->
+        false
+    end
   end
 end
