@@ -181,10 +181,19 @@ defmodule Athena.Content.Blocks do
 
   @doc """
   Prepares data for direct upload to S3.
-  Ensures user has update rights to the course first.
+  Ensures user has appropriate rights depending on the upload context.
   """
-  def prepare_media_upload(user, course_id, filename) do
-    if can_edit_course?(user, course_id) do
+  def prepare_media_upload(user, course_id, filename, upload_context \\ "course_material") do
+    authorized? =
+      case upload_context do
+        "submission" ->
+          true
+
+        _ ->
+          can_edit_course?(user, course_id)
+      end
+
+    if authorized? do
       bucket = Application.get_env(:athena, Media)[:bucket] || "athena"
 
       unique_filename = "#{Ecto.UUID.generate()}-#{filename}"

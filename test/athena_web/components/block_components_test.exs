@@ -1422,4 +1422,50 @@ defmodule AthenaWeb.BlockComponentsTest do
       refute html =~ ~s(phx-change="save_draft")
     end
   end
+
+  describe "content_block/1 :file_assignment UUID cleaning" do
+    setup do
+      block = insert(:block, type: :file_assignment, content: %{"max_files" => 2})
+      %{block: block}
+    end
+
+    test "strips UUID from pending files display in :play mode", %{block: block} do
+      pending = %{
+        block.id => ["https://s3.aws/123e4567-e89b-12d3-a456-426614174000-homework.pdf"]
+      }
+
+      assigns = %{block: block, pending: pending}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} pending_file_urls={@pending} />
+        """)
+
+      assert html =~ "homework.pdf"
+
+      assert html =~
+               ~s(phx-value-url="https://s3.aws/123e4567-e89b-12d3-a456-426614174000-homework.pdf")
+
+      refute html =~ ">123e4567-e89b-12d3-a456-426614174000-homework.pdf<"
+    end
+
+    test "strips UUID from submitted files display in :review mode", %{block: block} do
+      sub = %{
+        content: %{
+          "file_urls" => ["https://s3.aws/987f6543-e21b-34c5-b678-556677889900-project.zip"]
+        }
+      }
+
+      assigns = %{block: block, sub: sub}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:review} submission={@sub} />
+        """)
+
+      assert html =~ "project.zip"
+      assert html =~ ~s(href="https://s3.aws/987f6543-e21b-34c5-b678-556677889900-project.zip")
+      refute html =~ ">987f6543-e21b-34c5-b678-556677889900-project.zip<"
+    end
+  end
 end

@@ -30,7 +30,17 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
   defp presign_upload(entry, socket) do
     context_id = socket.assigns[:course_id] || "library"
 
-    case Content.prepare_media_upload(socket.assigns.current_user, context_id, entry.client_name) do
+    upload_context =
+      if socket.assigns.upload_type == "file_assignment",
+        do: "submission",
+        else: "course_material"
+
+    case Content.prepare_media_upload(
+           socket.assigns.current_user,
+           context_id,
+           entry.client_name,
+           upload_context
+         ) do
       {:ok, meta} ->
         {:ok, meta, socket}
 
@@ -202,7 +212,9 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
                   </div>
 
                   <div class="flex items-center gap-4 shrink-0">
-                    <span class="text-sm font-black text-primary">{entry.progress}%</span>
+                    <span :if={entry.progress > 0} class="text-sm font-black text-primary">
+                      {entry.progress}%
+                    </span>
                     <button
                       type="button"
                       phx-click="cancel_entry"
@@ -213,6 +225,21 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
                     >
                       <.icon name="hero-x-mark" class="size-5" />
                     </button>
+                  </div>
+
+                  <div
+                    :if={entry.progress > 0 or upload_errors(@uploads.media, entry) != []}
+                    class="w-full bg-base-300 rounded-sm h-2 overflow-hidden mt-2"
+                  >
+                    <div
+                      class={[
+                        "h-full transition-all duration-300",
+                        upload_errors(@uploads.media, entry) != [] && "bg-error",
+                        upload_errors(@uploads.media, entry) == [] && "bg-primary"
+                      ]}
+                      style={"width: #{entry.progress}%"}
+                    >
+                    </div>
                   </div>
                 </div>
                 <div class="w-full bg-base-300 rounded-sm h-2 overflow-hidden">
