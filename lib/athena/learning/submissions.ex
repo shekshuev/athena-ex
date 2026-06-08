@@ -447,4 +447,104 @@ defmodule Athena.Learning.Submissions do
     |> limit(1)
     |> Repo.one()
   end
+
+  @doc """
+  Starts a new exam submission attempt for a student.
+  Creates a parent submission with an expiration time.
+  """
+  def start_exam_submission(account_id, exam_block_id, cohort_id, time_limit_seconds) do
+    expires_at = DateTime.add(DateTime.utc_now(), time_limit_seconds, :second)
+
+    %Submission{}
+    |> Submission.changeset(%{
+      account_id: account_id,
+      block_id: exam_block_id,
+      cohort_id: cohort_id,
+      status: :pending,
+      expires_at: expires_at,
+      content: %{"started_at" => DateTime.utc_now() |> DateTime.to_iso8601()}
+    })
+    |> Repo.insert()
+  end
+
+  @doc """
+  Saves or updates a submission for a specific question/block within an exam.
+  Links it to the parent exam submission.
+  """
+  def save_question_submission(
+        parent_submission,
+        account_id,
+        question_block_id,
+        cohort_id,
+        answer_content
+      ) do
+    DateTime.utc_now()
+    |> DateTime.compare(parent_submission.expires_at)
+    |> do_save_question_submission(
+      parent_submission,
+      account_id,
+      question_block_id,
+      cohort_id,
+      answer_content
+    )
+  end
+
+  @doc false
+  defp do_save_question_submission(:gt, _, _, _, _, _), do: {:error, :time_limit_exceeded}
+
+  defp do_save_question_submission(
+         _,
+         parent_submission,
+         account_id,
+         question_block_id,
+         cohort_id,
+         answer_content
+       ) do
+    query =
+      from s in Submission,
+        where: s.parent_submission_id == ^parent_submission.id,
+        where: s.block_id == ^question_block_id,
+        where: s.account_id == ^account_id
+
+    case Repo.one(query) do
+      nil ->
+        %Submission{}
+        |> Submission.changeset(%{
+          parent_submission_id: parent_submission.id,
+          account_id: account_id,
+          block_id: question_block_id,
+          cohort_id: cohort_id,
+          status: :draft,
+          content: answer_content
+        })
+        |> Repo.insert()
+
+      existing_submission ->
+        existing_submission
+        |> Submission.changeset(%{
+          content: Map.merge(existing_submission.content || %{}, answer_content),
+          status: :draft
+        })
+        |> Repo.update()
+    end
+  end
+
+  @doc """
+  Gets the active (pending/draft) exam submission for a student, if it hasn't expired.
+  """
+  def get_active_exam_submission(account_id, exam_block_id) do
+    now = DateTime.utc_now()
+
+    query =
+      from s in Submission,
+        where: s.account_id == ^account_id,
+        where: s.block_id == ^exam_block_id,
+        where: s.status in [:pending, :draft],
+        where: is_nil(s.parent_submission_id),
+        where: s.expires_at > ^now,
+        order_by: [desc: s.inserted_at],
+        limit: 1
+
+    Repo.one(query)
+  end
 end

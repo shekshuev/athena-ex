@@ -1098,4 +1098,139 @@ defmodule Athena.Learning.SubmissionsTest do
       assert team_stats.total_score == 50
     end
   end
+
+  describe "exam submissions hierarchy" do
+    setup do
+      account = insert(:account)
+      exam_block = insert(:block, type: "quiz_exam")
+      question_block = insert(:block, type: "quiz_question")
+
+      %{
+        account: account,
+        exam_block: exam_block,
+        question_block: question_block
+      }
+    end
+
+    test "start_exam_submission creates a parent submission with expires_at", %{
+      account: account,
+      exam_block: exam_block
+    } do
+      time_limit = 3600
+
+      {:ok, parent} =
+        Submissions.start_exam_submission(account.id, exam_block.id, nil, time_limit)
+
+      assert parent.parent_submission_id == nil
+      assert parent.status == :pending
+      assert parent.expires_at != nil
+
+      expected_expires = DateTime.add(DateTime.utc_now(), time_limit, :second)
+      assert DateTime.diff(parent.expires_at, expected_expires, :second) < 2
+    end
+
+    test "save_question_submission creates child linked to parent", %{
+      account: account,
+      exam_block: exam_block,
+      question_block: question_block
+    } do
+      {:ok, parent} = Submissions.start_exam_submission(account.id, exam_block.id, nil, 3600)
+      answer_content = %{"selected_option" => "A", "text" => "My reasoning"}
+
+      {:ok, child} =
+        Submissions.save_question_submission(
+          parent,
+          account.id,
+          question_block.id,
+          nil,
+          answer_content
+        )
+
+      assert child.parent_submission_id == parent.id
+      assert child.block_id == question_block.id
+      assert child.content == answer_content
+      assert child.status == :draft
+
+      assert child.expires_at == nil
+    end
+
+    test "save_question_submission updates existing child submission for the same question", %{
+      account: account,
+      exam_block: exam_block,
+      question_block: question_block
+    } do
+      {:ok, parent} = Submissions.start_exam_submission(account.id, exam_block.id, nil, 3600)
+
+      {:ok, child1} =
+        Submissions.save_question_submission(parent, account.id, question_block.id, nil, %{
+          "answer" => "1"
+        })
+
+      {:ok, child2} =
+        Submissions.save_question_submission(parent, account.id, question_block.id, nil, %{
+          "answer" => "2"
+        })
+
+      assert child1.id == child2.id
+      assert child2.content["answer"] == "2"
+    end
+
+    test "save_question_submission prevents saving after parent expiration", %{
+      account: account,
+      exam_block: exam_block,
+      question_block: question_block
+    } do
+      expired_time = DateTime.add(DateTime.utc_now(), -10, :second)
+
+      parent =
+        %Submission{}
+        |> Submission.changeset(%{
+          account_id: account.id,
+          block_id: exam_block.id,
+          status: :pending,
+          expires_at: expired_time
+        })
+        |> Repo.insert!()
+
+      result =
+        Submissions.save_question_submission(parent, account.id, question_block.id, nil, %{
+          "answer" => "A"
+        })
+
+      assert result == {:error, :time_limit_exceeded}
+    end
+
+    test "get_active_exam_submission returns the valid unexpired attempt", %{
+      account: account,
+      exam_block: exam_block
+    } do
+      expired_time =
+        DateTime.utc_now()
+        |> DateTime.add(-10, :second)
+        |> DateTime.truncate(:second)
+
+      Repo.insert!(%Submission{
+        account_id: account.id,
+        block_id: exam_block.id,
+        status: :pending,
+        expires_at: expired_time
+      })
+
+      {:ok, active_parent} =
+        Submissions.start_exam_submission(account.id, exam_block.id, nil, 3600)
+
+      fetched = Submissions.get_active_exam_submission(account.id, exam_block.id)
+
+      assert fetched != nil
+      assert fetched.id == active_parent.id
+      assert DateTime.after?(fetched.expires_at, DateTime.utc_now())
+    end
+
+    test "get_active_exam_submission returns nil if no active attempt exists", %{
+      account: account,
+      exam_block: exam_block
+    } do
+      assert Submissions.get_active_exam_submission(account.id, exam_block.id) == nil
+    end
+  end
 end
