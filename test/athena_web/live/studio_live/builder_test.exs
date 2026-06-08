@@ -1042,4 +1042,54 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       refute has_element?(lv, "#block-wrapper-#{block_id}.ring-2")
     end
   end
+
+  describe "Section Creation Navigation" do
+    test "adding a section changes URL to new section path", %{conn: conn, course: course} do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      assert render(lv) =~ "No sections yet"
+
+      lv |> element("button[phx-click='add_section']") |> render_click()
+
+      html = render(lv)
+      assert html =~ "New Lesson"
+      assert html =~ "Section Title"
+      assert html =~ ~s(phx-change="update_section_meta")
+    end
+  end
+
+  describe "Section Deletion Navigation" do
+    setup %{course: course, admin: admin} do
+      {:ok, parent} =
+        Content.create_section(admin, %{
+          "title" => "Parent Section",
+          "course_id" => course.id
+        })
+
+      {:ok, child} =
+        Content.create_section(admin, %{
+          "title" => "Child Section",
+          "course_id" => course.id,
+          "parent_id" => parent.id
+        })
+
+      %{course: course, parent: parent, child: child}
+    end
+
+    test "deleting a child section navigates to its parent", %{
+      conn: conn,
+      course: course,
+      parent: parent,
+      child: child
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder/sections/#{child.id}")
+
+      lv |> element("button[phx-click='delete_section_click']") |> render_click()
+      lv |> element("#delete-section-modal button", "Delete") |> render_click()
+
+      html = render(lv)
+      refute html =~ child.title
+      assert html =~ parent.title
+    end
+  end
 end

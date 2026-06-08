@@ -253,6 +253,7 @@ defmodule AthenaWeb.StudioLive.Builder do
       case Content.create_section(socket.assigns.current_user, attrs) do
         {:ok, new_section} ->
           updated_sections = Content.get_course_tree(course.id)
+          Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
 
           {:noreply,
            socket
@@ -267,30 +268,18 @@ defmodule AthenaWeb.StudioLive.Builder do
         {:error, _} ->
           {:noreply, put_flash(socket, :error, gettext("Failed to add section"))}
       end
-
-      Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
-      {:noreply, socket}
     else
       {:noreply, socket}
     end
   end
 
-  def handle_event("add_section", _, socket) do
-    if can_edit?(socket) do
-      course = socket.assigns.course
-
+  def handle_event("add_section", _, socket),
+    do:
       handle_event(
         "add_section",
         %{"parent_id" => socket.assigns.viewing_parent_id || ""},
         socket
       )
-
-      Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
-  end
 
   def handle_event("update_section_meta", %{"section" => section_params}, socket) do
     id = section_params["id"]
@@ -345,9 +334,18 @@ defmodule AthenaWeb.StudioLive.Builder do
     if can_edit?(socket) do
       course = socket.assigns.course
       section = socket.assigns.section_to_delete
+      parent_id = section.parent_id
+
       {:ok, _} = Content.delete_section(socket.assigns.current_user, section)
       updated_sections = Content.get_course_tree(socket.assigns.course.id)
       Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
+
+      redirect_path =
+        if parent_id do
+          ~p"/studio/courses/#{course.id}/builder/sections/#{parent_id}"
+        else
+          ~p"/studio/courses/#{course.id}/builder"
+        end
 
       {:noreply,
        socket
@@ -356,7 +354,7 @@ defmodule AthenaWeb.StudioLive.Builder do
          sections: updated_sections,
          section_to_delete: nil
        )
-       |> push_patch(to: ~p"/studio/courses/#{course.id}/builder")}
+       |> push_patch(to: redirect_path)}
     else
       {:noreply, socket}
     end
