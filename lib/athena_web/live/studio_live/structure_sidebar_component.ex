@@ -42,13 +42,14 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponent do
         </button>
 
         <button
+          :if={@role in [:owner, :writer]}
           type="button"
           phx-click="add_section"
           phx-value-parent_id={@viewing_parent_id || ""}
           class="btn btn-ghost btn-xs flex-1 gap-1 text-primary"
         >
           <.icon name="hero-plus" class="size-3.5" />
-          {if @viewing_parent_id, do: gettext("Add Sub"), else: gettext("Add Section")}
+          {gettext("Add Section")}
         </button>
       </div>
 
@@ -86,11 +87,12 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponent do
             </div>
 
             <button
+              :if={@role in [:owner, :writer]}
               type="button"
               phx-click="add_section"
               phx-value-parent_id={section.id}
               class="opacity-0 group-hover:opacity-100 hover:bg-primary/10 hover:text-primary min-h-6 h-6 w-6 flex items-center justify-center rounded-sm transition-opacity shrink-0"
-              title={gettext("Add sub-section here")}
+              title={gettext("Add section here")}
             >
               <.icon name="hero-plus" class="size-3.5" />
             </button>

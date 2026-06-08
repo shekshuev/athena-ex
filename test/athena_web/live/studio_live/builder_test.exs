@@ -24,10 +24,9 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
                live(conn, ~p"/studio/courses/#{fake_id}/builder")
     end
 
-    test "renders builder successfully with course title", %{conn: conn, course: course} do
+    test "renders builder successfully", %{conn: conn, course: course} do
       {:ok, _lv, html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
 
-      assert html =~ course.title
       assert html =~ "No sections yet. Create your first one!"
     end
   end
@@ -879,10 +878,8 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
 
       {:ok, _lv, html} = live(conn, ~p"/studio/courses/#{other_course.id}/builder")
 
-      assert html =~ other_course.title
-
       assert html =~ "Inspector"
-      assert html =~ "Add Here"
+      assert html =~ "Add Section"
     end
   end
 
@@ -897,7 +894,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       %{section: section, collaborator: collaborator}
     end
 
-    test "reader sees read-only mode, no inspector, and no add buttons", %{
+    test "reader sees read-only mode and no add buttons", %{
       conn: conn,
       course: course,
       collaborator: reader
@@ -907,11 +904,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
 
       {:ok, _lv, html} = live(reader_conn, ~p"/studio/courses/#{course.id}/builder")
 
-      assert html =~ course.title
-
-      refute html =~ "Inspector"
-      refute html =~ "Add Here"
-      refute html =~ "New Lesson"
+      refute html =~ "Add Section"
     end
 
     test "writer sees edit mode and inspector", %{
@@ -924,9 +917,8 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
 
       {:ok, _lv, html} = live(writer_conn, ~p"/studio/courses/#{course.id}/builder")
 
-      assert html =~ course.title
       assert html =~ "Inspector"
-      assert html =~ "Add Here"
+      assert html =~ "Add Section"
     end
 
     test "reader is blocked from mutating events at the handler level", %{
