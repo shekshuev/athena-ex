@@ -8,87 +8,104 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="flex-1 flex flex-col relative">
-      <div :if={@active_section_id == nil} class="flex-1 flex items-center justify-center">
+    <div class="flex-1 flex flex-col h-full relative bg-base-200">
+      <div class="h-14 shrink-0 border-b border-base-300 bg-base-100 flex items-center px-4 gap-2 z-10 overflow-x-auto">
+        <span :for={crumb <- @breadcrumbs} class="flex items-center gap-1">
+          <.icon name="hero-chevron-right" class="size-3 text-base-content/30" />
+          <button
+            type="button"
+            phx-click="select_section"
+            phx-value-id={crumb.id}
+            class="text-xs hover:text-primary transition-colors truncate max-w-40 px-1.5 py-0.5 rounded-sm hover:bg-base-200"
+            title={crumb.title}
+          >
+            {crumb.title}
+          </button>
+        </span>
+      </div>
+
+      <div
+        :if={@active_section_id == nil}
+        class="flex-1 flex items-center justify-center overflow-y-auto"
+      >
         <p class="text-base-content/50 font-medium text-lg">
           {gettext("Select a section from the sidebar to view its blocks.")}
         </p>
       </div>
 
-      <div :if={@active_section_id != nil} class="flex-1 flex flex-col">
-        <div
-          id="canvas-blocks-list"
-          phx-hook={if @mode == :edit, do: "Sortable"}
-          data-event-name="reorder_block"
-          class="flex-1 flex flex-col gap-2"
-        >
-          <div
-            :for={block <- @blocks}
-            id={"block-wrapper-#{block.id}"}
-            data-id={block.id}
-            class="relative group flex flex-col"
-          >
+      <div :if={@active_section_id != nil} class="flex-1 flex flex-col min-h-0">
+        <div class="flex-1 overflow-y-auto p-2 min-h-0">
+          <div class="flex flex-col min-h-full">
             <div
-              :if={@mode == :edit}
-              class="absolute -left-8 top-0 flex flex-col items-center gap-1 opacity-0 group-hover:opacity-50 hover:opacity-100! transition-opacity sm:flex z-10"
+              id="canvas-blocks-list"
+              phx-hook={if @mode == :edit, do: "Sortable"}
+              data-event-name="reorder_block"
+              class="flex flex-col gap-2 flex-1"
             >
-              <.button
-                phx-click="move_block_up"
-                phx-value-id={block.id}
-                class="p-1 hover:text-primary transition-colors cursor-pointer rounded-sm"
-                title={gettext("Move Up")}
-              >
-                <.icon name="hero-chevron-up" class="size-5" />
-              </.button>
               <div
-                class="cursor-grab drag-handle p-1 hover:text-primary transition-colors rounded-sm"
-                title={gettext("Drag to Reorder")}
+                :for={block <- @blocks}
+                id={"block-wrapper-#{block.id}"}
+                data-block-id={block.id}
+                data-id={block.id}
+                class="relative group flex flex-col scroll-mt-20"
               >
-                <.icon name="hero-bars-3" class="size-5" />
+                <div
+                  :if={@mode == :edit}
+                  class="absolute -left-8 top-0 flex flex-col items-center gap-1 opacity-0 group-hover:opacity-50 hover:opacity-100! transition-opacity sm:flex z-10"
+                >
+                  <.button
+                    phx-click="move_block_up"
+                    phx-value-id={block.id}
+                    class="min-h-6 h-6 w-6 flex items-center justify-center hover:text-primary transition-colors cursor-pointer rounded-sm"
+                    title={gettext("Move Up")}
+                  >
+                    <.icon name="hero-chevron-up" class="size-4" />
+                  </.button>
+                  <div
+                    class="cursor-grab drag-handle min-h-6 h-6 w-6 flex items-center justify-center hover:text-primary transition-colors rounded-sm"
+                    title={gettext("Drag to Reorder")}
+                  >
+                    <.icon name="hero-bars-3" class="size-4" />
+                  </div>
+                  <.button
+                    phx-click="move_block_down"
+                    phx-value-id={block.id}
+                    class="min-h-6 h-6 w-6 flex items-center justify-center hover:text-primary transition-colors cursor-pointer rounded-sm"
+                    title={gettext("Move Down")}
+                  >
+                    <.icon name="hero-chevron-down" class="size-4" />
+                  </.button>
+                </div>
+
+                <div
+                  phx-click="select_block"
+                  phx-value-id={block.id}
+                  class={[
+                    "relative transition-all duration-300 rounded-sm",
+                    @active_block_id != block.id && block.type == :text && "max-h-48 overflow-hidden"
+                  ]}
+                >
+                  <.content_block block={block} mode={@mode} active={@active_block_id == block.id} />
+                  <div
+                    :if={@active_block_id != block.id && block.type == :text}
+                    class="absolute bottom-0 left-0 right-0 h-16 bg-linear-to-t from-base-100 to-transparent pointer-events-none rounded-b-sm"
+                  >
+                  </div>
+                </div>
+
+                <%= if @mode == :edit and @active_block_id == block.id do %>
+                  <div class="mt-2 rounded-sm"><.block_editor block={block} /></div>
+                  <div class="relative z-40 mt-4 mb-8 flex justify-center animate-in fade-in zoom-in duration-200">
+                    <.add_content_panel variant="inline" after_id={block.id} />
+                  </div>
+                <% end %>
               </div>
-              <.button
-                phx-click="move_block_down"
-                phx-value-id={block.id}
-                class="p-1 hover:text-primary transition-colors cursor-pointer rounded-sm"
-                title={gettext("Move Down")}
-              >
-                <.icon name="hero-chevron-down" class="size-5" />
-              </.button>
             </div>
 
-            <div
-              phx-click="select_block"
-              phx-value-id={block.id}
-              class={[
-                "relative transition-all duration-300 rounded-sm",
-                @active_block_id != block.id && block.type == :text && "max-h-48 overflow-hidden"
-              ]}
-            >
-              <.content_block block={block} mode={@mode} active={@active_block_id == block.id} />
-
-              <div
-                :if={@active_block_id != block.id && block.type == :text}
-                class="absolute bottom-0 left-0 right-0 h-16 bg-linear-to-t from-base-100 to-transparent pointer-events-none rounded-b-sm"
-              >
-              </div>
+            <div :if={@mode == :edit} class="mt-auto pt-8 pb-4 z-30">
+              <.add_content_panel variant="bottom" />
             </div>
-
-            <%= if @mode == :edit and @active_block_id == block.id do %>
-              <div class="mt-2 rounded-sm">
-                <.block_editor block={block} />
-              </div>
-            <% end %>
-
-            <%= if @mode == :edit and @active_block_id == block.id do %>
-              <div class="relative z-40 mt-4 mb-8 flex justify-center animate-in fade-in zoom-in duration-200">
-                <.add_content_panel variant="inline" after_id={block.id} />
-              </div>
-            <% end %>
           </div>
-        </div>
-
-        <div :if={@mode == :edit} class="mt-12 z-30">
-          <.add_content_panel variant="bottom" />
         </div>
       </div>
     </div>
@@ -105,7 +122,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         phx-click="add_text_block"
         phx-value-after_id={@after_id}
-        class="btn btn-ghost rounded-sm bg-base-100 border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
+        class="btn btn-outline rounded-sm bg-base-100 border-base-200 hover:border-primary hover:text-primary hover:bg-base-100 flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-document-text" class="size-6 opacity-70" />
         <span>{gettext("Text")}</span>
@@ -114,7 +131,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         phx-click="add_image_block"
         phx-value-after_id={@after_id}
-        class="btn btn-ghost rounded-sm bg-base-100 border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
+        class="btn btn-outline rounded-sm bg-base-100 border-base-200 hover:border-primary hover:text-primary hover:bg-base-100 flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-photo" class="size-6 opacity-70" />
         <span>{gettext("Image")}</span>
@@ -123,7 +140,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         phx-click="add_video_block"
         phx-value-after_id={@after_id}
-        class="btn btn-ghost rounded-sm bg-base-100 border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
+        class="btn btn-outline rounded-sm bg-base-100 border-base-200 hover:border-primary hover:text-primary hover:bg-base-100 flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-video-camera" class="size-6 opacity-70" />
         <span>{gettext("Video")}</span>
@@ -132,7 +149,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         phx-click="add_attachment_block"
         phx-value-after_id={@after_id}
-        class="btn btn-ghost rounded-sm bg-base-100 border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
+        class="btn btn-outline rounded-sm bg-base-100 border-base-200 hover:border-primary hover:text-primary hover:bg-base-100 flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-paper-clip" class="size-6 opacity-70" />
         <span>{gettext("Files")}</span>
@@ -141,7 +158,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         phx-click="add_quiz_question_block"
         phx-value-after_id={@after_id}
-        class="btn btn-ghost rounded-sm bg-base-100 border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
+        class="btn btn-outline rounded-sm bg-base-100 border-base-200 hover:border-primary hover:text-primary hover:bg-base-100 flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-question-mark-circle" class="size-6 opacity-70" />
         <span>{gettext("Question")}</span>
@@ -150,7 +167,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         phx-click="add_quiz_exam_block"
         phx-value-after_id={@after_id}
-        class="btn btn-ghost rounded-sm bg-base-100 border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
+        class="btn btn-outline rounded-sm bg-base-100 border-base-200 hover:border-primary hover:text-primary hover:bg-base-100 flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-academic-cap" class="size-6 opacity-70" />
         <span>{gettext("Exam")}</span>
@@ -159,7 +176,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         phx-click="add_code_block"
         phx-value-after_id={@after_id}
-        class="btn btn-ghost rounded-sm bg-base-100 border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
+        class="btn btn-outline rounded-sm bg-base-100 border-base-200 hover:border-primary hover:text-primary hover:bg-base-100 flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-code-bracket" class="size-6 opacity-70" />
         <span>{gettext("Code")}</span>
@@ -168,7 +185,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         phx-click="add_file_assignment_block"
         phx-value-after_id={@after_id}
-        class="btn btn-ghost rounded-sm bg-base-100 border border-base-200 hover:border-primary hover:text-primary flex-col h-auto py-4 gap-2 font-bold"
+        class="btn btn-outline rounded-sm bg-base-100 border-base-200 hover:border-primary hover:text-primary hover:bg-base-100 flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-folder-plus" class="size-6 opacity-70" />
         <span>{gettext("Assignment")}</span>
@@ -177,7 +194,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         phx-click="open_library_picker"
         phx-value-after_id={@after_id}
-        class="btn rounded-sm btn-primary/10 text-primary hover:btn-primary border border-primary/20 flex-col h-auto py-4 gap-2 font-black"
+        class="btn rounded-sm bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-primary-content hover:border-primary flex-col h-auto py-4 gap-2 font-black"
       >
         <.icon name="hero-bookmark-square" class="size-6" />
         <span>{gettext("Library")}</span>
@@ -195,7 +212,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         data-tippy-content={gettext("Text")}
         phx-click="add_text_block"
         phx-value-after_id={@after_id}
-        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary hover:bg-primary/10"
+        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary"
       >
         <.icon name="hero-document-text" class="size-5" />
       </.button>
@@ -206,7 +223,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         data-tippy-content={gettext("Image")}
         phx-click="add_image_block"
         phx-value-after_id={@after_id}
-        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary hover:bg-primary/10"
+        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary"
       >
         <.icon name="hero-photo" class="size-5" />
       </.button>
@@ -217,7 +234,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         data-tippy-content={gettext("Video")}
         phx-click="add_video_block"
         phx-value-after_id={@after_id}
-        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary hover:bg-primary/10"
+        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary"
       >
         <.icon name="hero-video-camera" class="size-5" />
       </.button>
@@ -228,7 +245,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         data-tippy-content={gettext("Files")}
         phx-click="add_attachment_block"
         phx-value-after_id={@after_id}
-        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary hover:bg-primary/10"
+        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary"
       >
         <.icon name="hero-paper-clip" class="size-5" />
       </.button>
@@ -239,7 +256,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         data-tippy-content={gettext("Quiz Question")}
         phx-click="add_quiz_question_block"
         phx-value-after_id={@after_id}
-        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary hover:bg-primary/10"
+        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary"
       >
         <.icon name="hero-question-mark-circle" class="size-5" />
       </.button>
@@ -250,7 +267,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         data-tippy-content={gettext("Quiz Exam")}
         phx-click="add_quiz_exam_block"
         phx-value-after_id={@after_id}
-        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary hover:bg-primary/10"
+        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary"
       >
         <.icon name="hero-academic-cap" class="size-5" />
       </.button>
@@ -261,7 +278,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         data-tippy-content={gettext("Code Sandbox")}
         phx-click="add_code_block"
         phx-value-after_id={@after_id}
-        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary hover:bg-primary/10"
+        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary"
       >
         <.icon name="hero-code-bracket" class="size-5" />
       </.button>
@@ -272,7 +289,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         data-tippy-content={gettext("File Assignment")}
         phx-click="add_file_assignment_block"
         phx-value-after_id={@after_id}
-        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary hover:bg-primary/10"
+        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary"
       >
         <.icon name="hero-folder-plus" class="size-5" />
       </.button>
@@ -285,7 +302,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         data-tippy-content={gettext("Add from Library")}
         phx-click="open_library_picker"
         phx-value-after_id={@after_id}
-        class="btn btn-sm btn-ghost btn-square rounded-sm text-primary hover:bg-primary/20"
+        class="btn btn-sm btn-square rounded-sm text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20"
       >
         <.icon name="hero-bookmark-square" class="size-5" />
       </.button>

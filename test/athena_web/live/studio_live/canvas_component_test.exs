@@ -12,6 +12,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_section_id: nil,
           blocks: [],
           active_block_id: nil,
+          breadcrumbs: [],
           mode: :edit
         )
 
@@ -25,7 +26,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_section_id: "some-section-id",
           blocks: [],
           active_block_id: nil,
-          mode: :edit
+          mode: :edit,
+          breadcrumbs: []
         )
 
       assert html =~ "Text"
@@ -47,6 +49,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_section_id: "sec-1",
           blocks: [text_block],
           active_block_id: nil,
+          breadcrumbs: [],
           mode: :edit
         )
 
@@ -67,6 +70,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_section_id: "sec-1",
           blocks: [code_block],
           active_block_id: nil,
+          breadcrumbs: [],
           mode: :edit
         )
 
@@ -82,6 +86,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_section_id: "sec-1",
           blocks: [image_block],
           active_block_id: nil,
+          breadcrumbs: [],
           mode: :edit
         )
 
@@ -101,6 +106,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_section_id: "sec-1",
           blocks: [image_block],
           active_block_id: nil,
+          breadcrumbs: [],
           mode: :edit
         )
 
@@ -121,6 +127,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_section_id: "sec-1",
           blocks: [exam_block],
           active_block_id: nil,
+          breadcrumbs: [],
           mode: :edit
         )
 
@@ -145,6 +152,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_section_id: "sec-1",
           blocks: [attachment_block],
           active_block_id: "block-att-2",
+          breadcrumbs: [],
           mode: :edit
         )
 
@@ -163,6 +171,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_section_id: "sec-1",
           blocks: [video_block],
           active_block_id: "block-vid-1",
+          breadcrumbs: [],
           mode: :edit
         )
 
@@ -186,6 +195,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_section_id: "sec-1",
           blocks: [quiz_block],
           active_block_id: "block-quiz-exact",
+          breadcrumbs: [],
           mode: :edit
         )
 
@@ -218,6 +228,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_section_id: "sec-1",
           blocks: [quiz_block],
           active_block_id: "block-quiz-multi",
+          breadcrumbs: [],
           mode: :edit
         )
 
@@ -243,6 +254,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_section_id: "sec-1",
           blocks: [quiz_block],
           active_block_id: "block-quiz-open",
+          breadcrumbs: [],
           mode: :edit
         )
 
@@ -269,6 +281,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_section_id: "sec-1",
           blocks: [code_block],
           active_block_id: "block-code-1",
+          breadcrumbs: [],
           mode: :edit
         )
 
@@ -296,6 +309,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_section_id: "sec-1",
           blocks: [code_block],
           active_block_id: "block-code-empty",
+          breadcrumbs: [],
           mode: :edit
         )
 
@@ -320,6 +334,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_section_id: "sec-1",
           blocks: [code_block],
           active_block_id: "block-code-map",
+          breadcrumbs: [],
           mode: :edit
         )
 
@@ -338,6 +353,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_section_id: "sec-1",
           blocks: [block1, block2],
           active_block_id: "block-1",
+          breadcrumbs: [],
           mode: :edit
         )
 
@@ -355,6 +371,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_section_id: "sec-1",
           blocks: [block1],
           active_block_id: "block-1",
+          breadcrumbs: [],
           mode: :edit
         )
 
@@ -374,6 +391,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           active_section_id: "sec-1",
           blocks: [block1],
           active_block_id: "block-1",
+          breadcrumbs: [],
           mode: :preview
         )
 
@@ -391,6 +409,40 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       refute html =~ "Manage Files"
 
       assert html =~ "tiptap-preview-block-1"
+    end
+  end
+
+  describe "Breadcrumbs & Navigation" do
+    test "renders breadcrumb bar when breadcrumbs are provided" do
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [],
+          active_block_id: nil,
+          mode: :edit,
+          breadcrumbs: [
+            %{id: "root", title: "Course Root"},
+            %{id: "parent-1", title: "Parent Section"}
+          ],
+          viewing_parent_id: "parent-1"
+        )
+
+      assert html =~ "Course Root"
+      assert html =~ "Parent Section"
+    end
+
+    test "hides 'Up' button when at root level" do
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [],
+          active_block_id: nil,
+          mode: :edit,
+          breadcrumbs: [%{id: "root", title: "Course Root"}],
+          viewing_parent_id: nil
+        )
+
+      assert html =~ "Course Root"
     end
   end
 end

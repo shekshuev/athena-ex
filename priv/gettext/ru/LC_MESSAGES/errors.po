@@ -171,7 +171,7 @@ msgstr "обязательно для автопроверки"
 msgid "can't be blank for button type"
 msgstr "обязательно для типа 'кнопка'"
 
-#: lib/athena/content/access_rules.ex:37
+#: lib/athena/content/access_rules.ex:38
 #: lib/athena/learning/cohort_schedule.ex:62
 #, elixir-autogen, elixir-format
 msgid "cannot be exactly the same as unlock time"
@@ -182,7 +182,7 @@ msgstr "не может совпадать со временем открыти�
 msgid "cannot have both account_id and cohort_id"
 msgstr "нельзя указать одновременно account_id и cohort_id"
 
-#: lib/athena/content/access_rules.ex:31
+#: lib/athena/content/access_rules.ex:32
 #: lib/athena/learning/cohort_schedule.ex:56
 #, elixir-autogen, elixir-format
 msgid "must be after the unlock time"

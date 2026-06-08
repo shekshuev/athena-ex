@@ -1,114 +1,120 @@
 defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponent do
   @moduledoc """
   LiveComponent for rendering the course structure in the Builder.
-
-  Uses a "Drill-down" UX pattern: displays only one level of the hierarchy at a time
-  with breadcrumbs for upward navigation. This ensures stable Drag-and-Drop sorting
-  via Sortable.js without the DOM conflicts of deeply nested trees.
   """
   use AthenaWeb, :live_component
 
-  @doc """
-  Renders the breadcrumb navigation, current level sections, and add button.
-  """
-  @spec render(map()) :: Phoenix.LiveView.Rendered.t()
   @impl true
   def render(assigns) do
-    current_parent = find_section(assigns.sections, assigns.viewing_parent_id)
-
-    breadcrumbs = build_breadcrumbs(assigns.sections, current_parent)
-
     current_level_sections =
-      if current_parent do
-        current_parent.children || []
+      if assigns.viewing_parent_id do
+        case find_section(assigns.sections, assigns.viewing_parent_id) do
+          nil -> []
+          parent -> parent.children || []
+        end
       else
         assigns.sections
       end
 
-    assigns =
-      assigns
-      |> assign(:breadcrumbs, breadcrumbs)
-      |> assign(:current_level_sections, current_level_sections)
-      |> assign(:current_parent, current_parent)
+    assigns = assign(assigns, :current_level_sections, current_level_sections)
 
     ~H"""
-    <div class="flex flex-col h-full">
-      <div class="px-2 pb-3 mb-2 border-b border-base-200">
-        <div class="text-xs font-semibold text-base-content/60 flex flex-wrap items-center gap-1">
-          <button
-            type="button"
-            phx-click="open_quick_nav"
-            class="hover:text-primary transition-colors flex items-center"
-            title={gettext("Open Course Map")}
-          >
-            <.icon name="hero-map" class="size-3.5 mr-1" />
-            {gettext("Course")}
-          </button>
+    <div class="flex flex-col h-full bg-base-100">
+      <div class="h-14 shrink-0 border-b border-base-300 flex items-center justify-between px-4 gap-3">
+        <h3 class="font-bold text-sm uppercase tracking-wider text-base-content/70">
+          {gettext("Navigation")}
+        </h3>
+        <.link navigate={~p"/studio/courses"} class="btn btn-ghost btn-xs btn-square">
+          <.icon name="hero-x-mark" class="size-4" />
+        </.link>
+      </div>
 
-          <span :for={crumb <- @breadcrumbs} class="flex items-center gap-1">
-            <.icon name="hero-chevron-right" class="size-3" />
-            <button
-              type="button"
-              phx-click="drill_up"
-              phx-value-id={crumb.id}
-              class="hover:text-primary transition-colors truncate max-w-25"
-              title={crumb.title}
-            >
-              {crumb.title}
-            </button>
-          </span>
-        </div>
+      <div class="px-2 py-2 border-b border-base-300 bg-base-100 shrink-0 flex gap-2">
+        <button
+          :if={@viewing_parent_id}
+          type="button"
+          phx-click="drill_up"
+          phx-value-id={@viewing_parent_id}
+          class="btn btn-ghost btn-xs flex-1 gap-1"
+        >
+          <.icon name="hero-arrow-up" class="size-3" />
+          {gettext("Up")}
+        </button>
+
+        <button
+          :if={@role in [:owner, :writer]}
+          type="button"
+          phx-click="add_section"
+          phx-value-parent_id={@viewing_parent_id || ""}
+          class="btn btn-ghost btn-xs flex-1 gap-1 text-primary"
+        >
+          <.icon name="hero-plus" class="size-3.5" />
+          {gettext("Add Section")}
+        </button>
       </div>
 
       <div
         id={"sidebar-level-#{@viewing_parent_id || "root"}"}
         phx-hook={if @role in [:owner, :writer], do: "Sortable", else: nil}
         data-event-name="reorder_section"
-        class="flex-1 overflow-y-auto space-y-1 pr-2 pb-4"
+        class="flex-1 overflow-y-auto space-y-0.5 p-2 pb-20"
       >
         <div
           :for={section <- @current_level_sections}
           id={"section-#{section.id}"}
           data-id={section.id}
           class={[
-            "group flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-colors text-sm",
+            "group flex items-center justify-between px-3 py-2 rounded-sm cursor-pointer transition-colors text-sm",
             @active_section_id == section.id && "bg-primary/10 text-primary font-bold",
             @active_section_id != section.id && "hover:bg-base-200 text-base-content/80"
           ]}
         >
-          <div class="flex items-center gap-3 overflow-hidden flex-1">
+          <div class="flex items-center gap-2 overflow-hidden flex-1">
             <.icon
-              name="hero-bars-2"
+              name="hero-bars-3"
               class="drag-handle size-4 opacity-0 group-hover:opacity-50 hover:opacity-100! cursor-grab shrink-0 transition-opacity"
             />
-
             <div
+              id={"section-title-#{section.id}"}
               class="truncate flex-1"
               phx-click="select_section"
               phx-value-id={section.id}
+              phx-hook="DblClickDrillDown"
+              data-drill-id={section.id}
+              title={section.title}
             >
               {section.title}
             </div>
-          </div>
 
-          <div class="flex items-center gap-2 shrink-0">
             <button
+              :if={@role in [:owner, :writer]}
               type="button"
-              phx-click="drill_down"
-              phx-value-id={section.id}
-              class="p-1 rounded hover:bg-base-300 text-base-content/50 hover:text-primary transition-colors"
-              title={gettext("Open folder")}
+              phx-click="add_section"
+              phx-value-parent_id={section.id}
+              class="opacity-0 group-hover:opacity-100 hover:bg-primary/10 hover:text-primary min-h-6 h-6 w-6 flex items-center justify-center rounded-sm transition-opacity shrink-0"
+              title={gettext("Add section here")}
             >
-              <.icon name="hero-folder-open" class="size-4" />
+              <.icon name="hero-plus" class="size-3.5" />
             </button>
           </div>
+
+          <button
+            :if={section.children && section.children != []}
+            type="button"
+            phx-click="drill_down"
+            phx-value-id={section.id}
+            class="min-h-6 h-6 w-6 flex items-center justify-center rounded-sm hover:bg-base-300 text-base-content/50 hover:text-primary transition-colors shrink-0"
+            title={gettext("Drill down")}
+          >
+            <.icon name="hero-chevron-right" class="size-4" />
+          </button>
         </div>
 
         <div
           :if={@current_level_sections == []}
           class="text-xs text-base-content/50 italic p-4 text-center"
         >
-          <%= if @current_parent do %>
+          <%= if @viewing_parent_id do %>
             {gettext("This folder is empty.")}
           <% else %>
             {gettext("No sections yet. Create your first one!")}
@@ -116,22 +122,37 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponent do
         </div>
       </div>
 
-      <div :if={@role in [:owner, :writer]} class="pt-4 mt-auto border-t border-base-300 shrink-0">
+      <div class="flex items-center justify-around p-4 group-[.is-collapsed]/sidebar:flex-col group-[.is-collapsed]/sidebar:gap-3">
+        <% current_locale = Gettext.get_locale(AthenaWeb.Gettext) %>
+        <a
+          href={"/locale/#{if current_locale == "ru", do: "en", else: "ru"}"}
+          class="btn btn-ghost btn-sm font-bold opacity-70 hover:opacity-100"
+        >
+          {String.upcase(current_locale)}
+        </a>
+
         <button
           type="button"
-          phx-click="add_section"
-          phx-value-parent_id={@viewing_parent_id || ""}
-          class="btn btn-soft btn-sm w-full"
+          phx-click="open_quick_nav"
+          class="btn btn-ghost btn-sm btn-square opacity-70 hover:opacity-100"
+          title={gettext("Open Course Map")}
         >
-          <.icon name="hero-plus" class="size-4" />
-          {gettext("Add Here")}
+          <.icon name="hero-map" class="size-5" />
         </button>
+
+        <label class="btn btn-ghost btn-sm btn-square swap swap-rotate opacity-70 hover:opacity-100">
+          <input
+            type="checkbox"
+            value="dark"
+            onchange="window.dispatchEvent(new CustomEvent('phx:set-theme', {detail: {theme: this.checked ? 'dark' : 'light'}}))"
+          />
+          <.icon name="hero-sun" class="swap-off size-5" />
+          <.icon name="hero-moon" class="swap-on size-5" />
+        </label>
       </div>
     </div>
     """
   end
-
-  # --- Helpers ---
 
   defp find_section(_, nil), do: nil
 
@@ -143,17 +164,5 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponent do
         find_section(section.children || [], id)
       end
     end)
-  end
-
-  defp build_breadcrumbs(_sections, nil), do: []
-
-  defp build_breadcrumbs(sections, current_section) do
-    path_ids =
-      current_section.path.labels
-      |> Enum.map(&String.replace(&1, "_", "-"))
-
-    path_ids
-    |> Enum.map(fn id -> find_section(sections, id) end)
-    |> Enum.reject(&is_nil/1)
   end
 end

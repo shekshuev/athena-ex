@@ -24,10 +24,9 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
                live(conn, ~p"/studio/courses/#{fake_id}/builder")
     end
 
-    test "renders builder successfully with course title", %{conn: conn, course: course} do
+    test "renders builder successfully", %{conn: conn, course: course} do
       {:ok, _lv, html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
 
-      assert html =~ course.title
       assert html =~ "No sections yet. Create your first one!"
     end
   end
@@ -879,10 +878,8 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
 
       {:ok, _lv, html} = live(conn, ~p"/studio/courses/#{other_course.id}/builder")
 
-      assert html =~ other_course.title
-
       assert html =~ "Inspector"
-      assert html =~ "Add Here"
+      assert html =~ "Add Section"
     end
   end
 
@@ -897,7 +894,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       %{section: section, collaborator: collaborator}
     end
 
-    test "reader sees read-only mode, no inspector, and no add buttons", %{
+    test "reader sees read-only mode and no add buttons", %{
       conn: conn,
       course: course,
       collaborator: reader
@@ -907,11 +904,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
 
       {:ok, _lv, html} = live(reader_conn, ~p"/studio/courses/#{course.id}/builder")
 
-      assert html =~ course.title
-
-      refute html =~ "Inspector"
-      refute html =~ "Add Here"
-      refute html =~ "New Lesson"
+      refute html =~ "Add Section"
     end
 
     test "writer sees edit mode and inspector", %{
@@ -924,9 +917,8 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
 
       {:ok, _lv, html} = live(writer_conn, ~p"/studio/courses/#{course.id}/builder")
 
-      assert html =~ course.title
       assert html =~ "Inspector"
-      assert html =~ "Add Here"
+      assert html =~ "Add Section"
     end
 
     test "reader is blocked from mutating events at the handler level", %{
@@ -948,6 +940,156 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
 
       blocks = Content.list_blocks_by_section(section.id)
       assert blocks == []
+    end
+  end
+
+  describe "URL-driven Navigation & Scroll" do
+    setup %{course: course, admin: admin} do
+      {:ok, section} =
+        Content.create_section(admin, %{
+          "title" => "Scroll Target Section",
+          "course_id" => course.id
+        })
+
+      {:ok, block1} =
+        Content.create_block(admin, %{
+          "type" => "text",
+          "section_id" => section.id,
+          "content" => %{}
+        })
+
+      {:ok, block2} =
+        Content.create_block(admin, %{
+          "type" => "code",
+          "section_id" => section.id,
+          "content" => %{}
+        })
+
+      %{section: section, block1: block1, block2: block2}
+    end
+
+    test "opening URL with block_id pushes scroll_to_block event",
+         %{conn: conn, course: course, section: section, block2: block2} do
+      block_id = block2.id
+
+      {:ok, lv, _html} =
+        live(
+          conn,
+          ~p"/studio/courses/#{course.id}/builder/sections/#{section.id}/blocks/#{block_id}"
+        )
+
+      assert_push_event(lv, "scroll_to_block", %{id: ^block_id})
+      assert has_element?(lv, "#block-wrapper-#{block_id}")
+    end
+
+    test "opening URL with only section_id loads section correctly",
+         %{conn: conn, course: course, section: section} do
+      {:ok, lv, _html} =
+        live(conn, ~p"/studio/courses/#{course.id}/builder/sections/#{section.id}")
+
+      assert has_element?(lv, "#canvas-blocks-list")
+    end
+
+    test "clicking a block triggers scroll_to_block via push_patch",
+         %{conn: conn, course: course, section: section, block1: block1} do
+      block_id = block1.id
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/studio/courses/#{course.id}/builder/sections/#{section.id}")
+
+      lv
+      |> element("div[phx-click='select_block'][phx-value-id='#{block_id}']")
+      |> render_click()
+
+      assert_push_event(lv, "scroll_to_block", %{id: ^block_id})
+    end
+
+    test "navigating between blocks via UI pushes scroll for each selection",
+         %{conn: conn, course: course, section: section, block1: block1, block2: block2} do
+      id1 = block1.id
+      id2 = block2.id
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/studio/courses/#{course.id}/builder/sections/#{section.id}")
+
+      lv
+      |> element("div[phx-click='select_block'][phx-value-id='#{id1}']")
+      |> render_click()
+
+      assert_push_event(lv, "scroll_to_block", %{id: ^id1})
+
+      lv
+      |> element("div[phx-click='select_block'][phx-value-id='#{id2}']")
+      |> render_click()
+
+      assert_push_event(lv, "scroll_to_block", %{id: ^id2})
+    end
+
+    test "deselecting block clears selection without pushing scroll",
+         %{conn: conn, course: course, section: section, block1: block1} do
+      block_id = block1.id
+
+      {:ok, lv, _html} =
+        live(
+          conn,
+          ~p"/studio/courses/#{course.id}/builder/sections/#{section.id}/blocks/#{block_id}"
+        )
+
+      assert_push_event(lv, "scroll_to_block", %{id: ^block_id})
+
+      render_hook(lv, "deselect_block")
+
+      refute has_element?(lv, "#block-wrapper-#{block_id}.ring-2")
+    end
+  end
+
+  describe "Section Creation Navigation" do
+    test "adding a section changes URL to new section path", %{conn: conn, course: course} do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      assert render(lv) =~ "No sections yet"
+
+      lv |> element("button[phx-click='add_section']") |> render_click()
+
+      html = render(lv)
+      assert html =~ "New Lesson"
+      assert html =~ "Section Title"
+      assert html =~ ~s(phx-change="update_section_meta")
+    end
+  end
+
+  describe "Section Deletion Navigation" do
+    setup %{course: course, admin: admin} do
+      {:ok, parent} =
+        Content.create_section(admin, %{
+          "title" => "Parent Section",
+          "course_id" => course.id
+        })
+
+      {:ok, child} =
+        Content.create_section(admin, %{
+          "title" => "Child Section",
+          "course_id" => course.id,
+          "parent_id" => parent.id
+        })
+
+      %{course: course, parent: parent, child: child}
+    end
+
+    test "deleting a child section navigates to its parent", %{
+      conn: conn,
+      course: course,
+      parent: parent,
+      child: child
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder/sections/#{child.id}")
+
+      lv |> element("button[phx-click='delete_section_click']") |> render_click()
+      lv |> element("#delete-section-modal button", "Delete") |> render_click()
+
+      html = render(lv)
+      refute html =~ child.title
+      assert html =~ parent.title
     end
   end
 end

@@ -44,7 +44,7 @@ defmodule AthenaWeb.StudioLive.Builder do
          role: role,
          course: course,
          sections: sections,
-         active_section_id: active_section_id,
+         active_section_id: nil,
          active_block_id: nil,
          blocks: blocks,
          uploading_for_block: nil,
@@ -64,7 +64,8 @@ defmodule AthenaWeb.StudioLive.Builder do
          upload_type: nil,
          library_insert_after_id: nil,
          pending_uploads: %{},
-         running_tests: %{}
+         running_tests: %{},
+         hide_mobile_nav: true
        )}
     else
       _ ->
@@ -183,14 +184,59 @@ defmodule AthenaWeb.StudioLive.Builder do
   def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_params(_params, _url, socket) do
+  def handle_params(params, _url, socket) do
+    section_id = params["section_id"]
+    block_id = params["block_id"]
+
+    socket =
+      if section_id do
+        section = find_section_in_tree(socket.assigns.sections, section_id)
+
+        if section do
+          blocks = Content.list_blocks_by_section(section_id)
+
+          socket
+          |> assign(:active_section_id, section_id)
+          |> assign(:active_block_id, block_id)
+          |> assign(:blocks, blocks)
+          |> assign(:viewing_parent_id, section.parent_id)
+          |> maybe_push_scroll(block_id)
+        else
+          fallback_to_root(socket)
+        end
+      else
+        fallback_to_root(socket)
+      end
+
     {:noreply, socket}
+  end
+
+  @doc false
+  defp maybe_push_scroll(socket, nil), do: socket
+
+  defp maybe_push_scroll(socket, block_id) do
+    push_event(socket, "scroll_to_block", %{id: block_id})
+  end
+
+  @doc false
+  defp fallback_to_root(socket) do
+    sections = socket.assigns.sections
+    active_section_id = if sections != [], do: hd(sections).id, else: nil
+    blocks = if active_section_id, do: Content.list_blocks_by_section(active_section_id), else: []
+
+    socket
+    |> assign(:active_section_id, active_section_id)
+    |> assign(:active_block_id, nil)
+    |> assign(:blocks, blocks)
+    |> assign(:viewing_parent_id, nil)
   end
 
   @impl true
   def handle_event("select_section", %{"id" => id}, socket) do
-    blocks = Content.list_blocks_by_section(id)
-    {:noreply, assign(socket, active_section_id: id, active_block_id: nil, blocks: blocks)}
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/studio/courses/#{socket.assigns.course.id}/builder/sections/#{id}"
+     )}
   end
 
   def handle_event("add_section", %{"parent_id" => parent_id}, socket) do
@@ -208,6 +254,7 @@ defmodule AthenaWeb.StudioLive.Builder do
       case Content.create_section(socket.assigns.current_user, attrs) do
         {:ok, new_section} ->
           updated_sections = Content.get_course_tree(course.id)
+          Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
 
           {:noreply,
            socket
@@ -216,35 +263,24 @@ defmodule AthenaWeb.StudioLive.Builder do
              active_section_id: new_section.id,
              viewing_parent_id: clean_parent_id
            )
-           |> put_flash(:info, gettext("Section added"))}
+           |> put_flash(:info, gettext("Section added"))
+           |> push_patch(to: ~p"/studio/courses/#{course.id}/builder/sections/#{new_section.id}")}
 
         {:error, _} ->
           {:noreply, put_flash(socket, :error, gettext("Failed to add section"))}
       end
-
-      Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
-      {:noreply, socket}
     else
       {:noreply, socket}
     end
   end
 
-  def handle_event("add_section", _, socket) do
-    if can_edit?(socket) do
-      course = socket.assigns.course
-
+  def handle_event("add_section", _, socket),
+    do:
       handle_event(
         "add_section",
         %{"parent_id" => socket.assigns.viewing_parent_id || ""},
         socket
       )
-
-      Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
-  end
 
   def handle_event("update_section_meta", %{"section" => section_params}, socket) do
     id = section_params["id"]
@@ -299,19 +335,27 @@ defmodule AthenaWeb.StudioLive.Builder do
     if can_edit?(socket) do
       course = socket.assigns.course
       section = socket.assigns.section_to_delete
+      parent_id = section.parent_id
+
       {:ok, _} = Content.delete_section(socket.assigns.current_user, section)
       updated_sections = Content.get_course_tree(socket.assigns.course.id)
       Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
+
+      redirect_path =
+        if parent_id do
+          ~p"/studio/courses/#{course.id}/builder/sections/#{parent_id}"
+        else
+          ~p"/studio/courses/#{course.id}/builder"
+        end
 
       {:noreply,
        socket
        |> put_flash(:info, gettext("Section deleted"))
        |> assign(
          sections: updated_sections,
-         section_to_delete: nil,
-         active_section_id: nil,
-         blocks: []
-       )}
+         section_to_delete: nil
+       )
+       |> push_patch(to: redirect_path)}
     else
       {:noreply, socket}
     end
@@ -325,9 +369,15 @@ defmodule AthenaWeb.StudioLive.Builder do
     {:noreply, assign(socket, viewing_parent_id: id)}
   end
 
-  def handle_event("drill_up", %{"id" => id}, socket) do
-    parent_id = if id == "", do: nil, else: id
-    {:noreply, assign(socket, viewing_parent_id: parent_id)}
+  def handle_event("drill_up", %{"id" => current_parent_id}, socket) do
+    if current_parent_id == "" do
+      {:noreply, assign(socket, viewing_parent_id: nil)}
+    else
+      current_section = find_section_in_tree(socket.assigns.sections, current_parent_id)
+      new_parent_id = if current_section, do: current_section.parent_id, else: nil
+
+      {:noreply, assign(socket, viewing_parent_id: new_parent_id)}
+    end
   end
 
   def handle_event("open_quick_nav", _, socket) do
@@ -346,17 +396,10 @@ defmodule AthenaWeb.StudioLive.Builder do
     section = find_section_in_tree(socket.assigns.sections, id)
 
     if section do
-      blocks = Content.list_blocks_by_section(id)
-
       {:noreply,
        socket
-       |> assign(
-         active_section_id: id,
-         active_block_id: nil,
-         viewing_parent_id: section.parent_id,
-         blocks: blocks,
-         quick_nav_open: false
-       )}
+       |> assign(quick_nav_open: false)
+       |> push_patch(to: ~p"/studio/courses/#{socket.assigns.course.id}/builder/sections/#{id}")}
     else
       {:noreply, assign(socket, quick_nav_open: false)}
     end
@@ -403,12 +446,22 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
+  @impl true
   def handle_event("select_block", %{"id" => id}, socket) do
-    {:noreply, assign(socket, active_block_id: id)}
+    {:noreply,
+     push_patch(socket,
+       to:
+         ~p"/studio/courses/#{socket.assigns.course.id}/builder/sections/#{socket.assigns.active_section_id}/blocks/#{id}"
+     )}
   end
 
+  @impl true
   def handle_event("deselect_block", _, socket) do
-    {:noreply, assign(socket, active_block_id: nil)}
+    {:noreply,
+     push_patch(socket,
+       to:
+         ~p"/studio/courses/#{socket.assigns.course.id}/builder/sections/#{socket.assigns.active_section_id}"
+     )}
   end
 
   def handle_event("move_block_up", %{"id" => id}, socket) do
@@ -812,7 +865,10 @@ defmodule AthenaWeb.StudioLive.Builder do
       {:noreply,
        socket
        |> put_flash(:info, gettext("Block deleted"))
-       |> assign(blocks: updated_blocks, block_to_delete: nil, active_block_id: nil)}
+       |> assign(blocks: updated_blocks, block_to_delete: nil)
+       |> push_patch(
+         to: ~p"/studio/courses/#{course.id}/builder/sections/#{socket.assigns.active_section_id}"
+       )}
     else
       {:noreply, socket}
     end
@@ -1058,11 +1114,14 @@ defmodule AthenaWeb.StudioLive.Builder do
            socket
            |> assign(
              blocks: updated_blocks,
-             active_block_id: block.id,
              library_picker_open: false,
              library_insert_after_id: nil
            )
-           |> put_flash(:info, gettext("Block inserted from library!"))}
+           |> put_flash(:info, gettext("Block inserted from library!"))
+           |> push_patch(
+             to:
+               ~p"/studio/courses/#{course.id}/builder/sections/#{socket.assigns.active_section_id}/blocks/#{block.id}"
+           )}
 
         {:error, _} ->
           {:noreply, put_flash(socket, :error, gettext("Failed to insert block"))}
@@ -1319,11 +1378,15 @@ defmodule AthenaWeb.StudioLive.Builder do
     active_section = find_section_in_tree(assigns.sections, assigns.active_section_id)
     active_block = Enum.find(assigns.blocks, &(&1.id == assigns.active_block_id))
 
+    current_parent = find_section(assigns.sections, assigns.viewing_parent_id)
+    breadcrumbs = build_breadcrumbs(assigns.sections, current_parent || active_section)
+
     assigns =
       assigns
       |> assign(
         active_section: active_section,
         active_block: active_block,
+        breadcrumbs: breadcrumbs,
         image_types_str: MediaConfig.format_extensions("image"),
         video_types_str: MediaConfig.format_extensions("video"),
         attachment_types_str: MediaConfig.format_extensions("attachment"),
@@ -1332,15 +1395,8 @@ defmodule AthenaWeb.StudioLive.Builder do
 
     ~H"""
     <div class="hidden lg:flex fixed inset-0 pt-16 lg:pt-0 z-50 bg-base-200">
-      <div class="w-80 flex flex-col bg-base-100 border-r border-base-300 shrink-0 z-10">
-        <div class="p-4 border-b border-base-300 flex items-center justify-between">
-          <h2 class="font-bold truncate" title={@course.title}>{@course.title}</h2>
-          <.link navigate={~p"/studio/courses"} class="btn btn-ghost btn-xs btn-square">
-            <.icon name="hero-x-mark" class="size-4" />
-          </.link>
-        </div>
-
-        <div class="flex-1 overflow-hidden p-4 flex flex-col">
+      <div class="w-64 xl:w-80 flex flex-col bg-base-100 border-r border-base-300 shrink-0 z-10">
+        <div class="flex-1 overflow-hidden p-0">
           <.live_component
             module={AthenaWeb.StudioLive.Builder.StructureSidebarComponent}
             id="structure-sidebar"
@@ -1353,33 +1409,23 @@ defmodule AthenaWeb.StudioLive.Builder do
       </div>
 
       <div class="flex-1 flex flex-col relative overflow-hidden bg-base-200">
-        <div class="flex-1 flex flex-col relative overflow-hidden bg-base-200">
-          <div class="flex-1 overflow-y-auto p-8 relative">
-            <div class="max-w-3xl mx-auto min-h-full flex flex-col gap-4">
-              <.live_component
-                module={AthenaWeb.StudioLive.Builder.CanvasComponent}
-                id="canvas-component"
-                blocks={@blocks}
-                active_section_id={@active_section_id}
-                active_block_id={@active_block_id}
-                mode={@block_mode}
-              />
-            </div>
-          </div>
-        </div>
+        <.live_component
+          module={AthenaWeb.StudioLive.Builder.CanvasComponent}
+          id="canvas-component"
+          blocks={@blocks}
+          active_section_id={@active_section_id}
+          active_block_id={@active_block_id}
+          mode={@block_mode}
+          viewing_parent_id={@viewing_parent_id}
+          breadcrumbs={@breadcrumbs}
+        />
       </div>
 
       <div
         :if={@role in [:owner, :writer]}
-        class="w-80 flex flex-col bg-base-100 border-l border-base-300 shrink-0 z-10"
+        class="w-64 xl:w-80 flex flex-col bg-base-100 border-l border-base-300 shrink-0 z-10"
       >
-        <div class="p-4 border-b border-base-300">
-          <h3 class="font-bold text-sm uppercase tracking-wider text-base-content/70">
-            {gettext("Inspector")}
-          </h3>
-        </div>
-
-        <div class="flex-1 overflow-hidden p-4 flex flex-col">
+        <div class="flex-1 overflow-hidden p-0">
           <.live_component
             module={AthenaWeb.StudioLive.Builder.InspectorComponent}
             id="inspector-component"
@@ -1413,7 +1459,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             type="button"
             phx-click="move_section"
             phx-value-target_id="root"
-            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-md flex items-center gap-2 text-sm transition-colors font-medium mb-2 border-b border-base-200 pb-3 bg-transparent border-none text-base-content"
+            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-sm flex items-center gap-2 text-sm transition-colors font-medium mb-2 border-b border-base-200 text-base-content"
           >
             <.icon name="hero-home" class="size-4 text-primary" />
             <span class="truncate">{gettext("Course Root (Top Level)")}</span>
@@ -1434,7 +1480,7 @@ defmodule AthenaWeb.StudioLive.Builder do
           <.button
             type="button"
             phx-click="jump_to_root"
-            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-md flex items-center gap-2 text-sm transition-colors font-medium mb-2 border-b border-base-200 pb-3 bg-transparent border-none text-base-content"
+            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-sm flex items-center gap-2 text-sm transition-colors font-medium mb-2 border-b border-base-200 text-base-content"
           >
             <.icon name="hero-home" class="size-4 text-primary" />
             <span class="truncate">{gettext("View Root Level")}</span>
@@ -1498,7 +1544,7 @@ defmodule AthenaWeb.StudioLive.Builder do
           <div class="flex-1 overflow-y-auto p-6 space-y-4">
             <div
               :for={lib_block <- @library_blocks}
-              class="p-5 bg-base-100 border border-base-300 rounded-xl hover:border-primary/50 transition-colors flex flex-col gap-3"
+              class="p-5 bg-base-100 border border-base-300 rounded-sm hover:border-primary/50 transition-colors flex flex-col gap-3"
             >
               <div class="flex justify-between items-start">
                 <h4 class="font-bold text-lg leading-tight">{lib_block.title}</h4>
@@ -1546,7 +1592,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             placeholder="elixir, hard, quiz"
           />
           <div class="modal-action">
-            <.button type="button" class="btn btn-ghost" phx-click="cancel_save_library">
+            <.button type="button" class="btn btn-outline" phx-click="cancel_save_library">
               {gettext("Cancel")}
             </.button>
             <.button type="submit" class="btn btn-primary">{gettext("Save Template")}</.button>
@@ -1566,7 +1612,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             "The Course Builder requires a desktop or tablet screen to work comfortably. Please open this page on a larger device."
           )}
         </p>
-        <.link navigate={~p"/studio/courses"} class="btn btn-primary btn-lg mt-4 w-full">
+        <.link navigate={~p"/studio/courses"} class="btn btn-primary mt-4 w-full min-h-12 h-12">
           {gettext("Back to Courses")}
         </.link>
       </div>
@@ -1624,7 +1670,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             type="button"
             phx-click="move_section"
             phx-value-target_id={section.id}
-            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-md flex items-center gap-2 text-sm transition-colors group bg-transparent border-none text-base-content font-normal"
+            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-sm flex items-center gap-2 text-sm transition-colors group bg-transparent border-none text-base-content font-normal"
             style={"padding-left: #{(@level * 1.5) + 0.75}rem;"}
           >
             <.icon
@@ -1660,7 +1706,7 @@ defmodule AthenaWeb.StudioLive.Builder do
           phx-click="jump_to_section"
           phx-value-id={section.id}
           class={[
-            "w-full justify-start px-3 py-2 rounded-md flex items-center gap-2 text-sm transition-colors group bg-transparent border-none font-normal",
+            "w-full justify-start px-3 py-2 rounded-sm flex items-center gap-2 text-sm transition-colors group bg-transparent border-none font-normal",
             @active_section_id == section.id && "bg-primary/10 text-primary font-bold",
             @active_section_id != section.id && "hover:bg-base-200 text-base-content/80"
           ]}
@@ -1694,7 +1740,14 @@ defmodule AthenaWeb.StudioLive.Builder do
     case Content.create_block(socket.assigns.current_user, full_attrs) do
       {:ok, block} ->
         updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
-        {:noreply, assign(socket, blocks: updated_blocks, active_block_id: block.id)}
+
+        {:noreply,
+         socket
+         |> assign(blocks: updated_blocks)
+         |> push_patch(
+           to:
+             ~p"/studio/courses/#{socket.assigns.course.id}/builder/sections/#{socket.assigns.active_section_id}/blocks/#{block.id}"
+         )}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, error_msg)}
@@ -1834,5 +1887,29 @@ defmodule AthenaWeb.StudioLive.Builder do
     Enum.reduce(socket.assigns.uploads[upload_name].entries, socket, fn entry, acc ->
       cancel_upload(acc, upload_name, entry.ref)
     end)
+  end
+
+  defp find_section(_, nil), do: nil
+
+  defp find_section(sections, id) do
+    Enum.find_value(sections, fn section ->
+      if section.id == id do
+        section
+      else
+        find_section(section.children || [], id)
+      end
+    end)
+  end
+
+  defp build_breadcrumbs(_sections, nil), do: []
+
+  defp build_breadcrumbs(sections, current_section) do
+    path_ids =
+      current_section.path.labels
+      |> Enum.map(&String.replace(&1, "_", "-"))
+
+    path_ids
+    |> Enum.map(fn id -> find_section(sections, id) end)
+    |> Enum.reject(&is_nil/1)
   end
 end

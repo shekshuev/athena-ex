@@ -756,6 +756,22 @@ Hooks.Sidebar = {
   },
 };
 
+Hooks.DblClickDrillDown = {
+  mounted() {
+    let timer;
+    this.el.addEventListener("click", (e) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {}, 250);
+    });
+
+    this.el.addEventListener("dblclick", (e) => {
+      e.preventDefault();
+      clearTimeout(timer);
+      this.pushEvent("drill_down", { id: this.el.dataset.drillId });
+    });
+  },
+};
+
 let Uploaders = {};
 
 Uploaders.S3 = function (entries, onViewError) {
@@ -791,6 +807,27 @@ Uploaders.S3 = function (entries, onViewError) {
     xhr.send(entry.file);
   });
 };
+
+window.addEventListener("phx:scroll_to_block", (e) => {
+  const blockId = e.detail.id;
+  if (!blockId) return;
+
+  setTimeout(() => {
+    const element =
+      document.querySelector(`[data-id="${blockId}"]`) ||
+      document.querySelector(`#block-wrapper-${blockId}`);
+
+    if (!element) {
+      console.warn(`[Athena] Block ${blockId} not found for scroll`);
+      return;
+    }
+
+    element.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, 150);
+});
 
 const liveSocket = new LiveSocket("/live", Socket, {
   uploaders: Uploaders,
