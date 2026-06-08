@@ -64,7 +64,8 @@ defmodule AthenaWeb.StudioLive.Builder do
          upload_type: nil,
          library_insert_after_id: nil,
          pending_uploads: %{},
-         running_tests: %{}
+         running_tests: %{},
+         hide_mobile_nav: true
        )}
     else
       _ ->
@@ -1394,7 +1395,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
     ~H"""
     <div class="hidden lg:flex fixed inset-0 pt-16 lg:pt-0 z-50 bg-base-200">
-      <div class="w-80 flex flex-col bg-base-100 border-r border-base-300 shrink-0 z-10">
+      <div class="w-64 xl:w-80 flex flex-col bg-base-100 border-r border-base-300 shrink-0 z-10">
         <div class="flex-1 overflow-hidden p-0">
           <.live_component
             module={AthenaWeb.StudioLive.Builder.StructureSidebarComponent}
@@ -1422,7 +1423,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
       <div
         :if={@role in [:owner, :writer]}
-        class="w-80 flex flex-col bg-base-100 border-l border-base-300 shrink-0 z-10"
+        class="w-64 xl:w-80 flex flex-col bg-base-100 border-l border-base-300 shrink-0 z-10"
       >
         <div class="flex-1 overflow-hidden p-0">
           <.live_component
@@ -1458,7 +1459,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             type="button"
             phx-click="move_section"
             phx-value-target_id="root"
-            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-md flex items-center gap-2 text-sm transition-colors font-medium mb-2 border-b border-base-200 pb-3 bg-transparent border-none text-base-content"
+            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-sm flex items-center gap-2 text-sm transition-colors font-medium mb-2 border-b border-base-200 text-base-content"
           >
             <.icon name="hero-home" class="size-4 text-primary" />
             <span class="truncate">{gettext("Course Root (Top Level)")}</span>
@@ -1479,7 +1480,7 @@ defmodule AthenaWeb.StudioLive.Builder do
           <.button
             type="button"
             phx-click="jump_to_root"
-            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-md flex items-center gap-2 text-sm transition-colors font-medium mb-2 border-b border-base-200 pb-3 bg-transparent border-none text-base-content"
+            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-sm flex items-center gap-2 text-sm transition-colors font-medium mb-2 border-b border-base-200 text-base-content"
           >
             <.icon name="hero-home" class="size-4 text-primary" />
             <span class="truncate">{gettext("View Root Level")}</span>
@@ -1543,7 +1544,7 @@ defmodule AthenaWeb.StudioLive.Builder do
           <div class="flex-1 overflow-y-auto p-6 space-y-4">
             <div
               :for={lib_block <- @library_blocks}
-              class="p-5 bg-base-100 border border-base-300 rounded-xl hover:border-primary/50 transition-colors flex flex-col gap-3"
+              class="p-5 bg-base-100 border border-base-300 rounded-sm hover:border-primary/50 transition-colors flex flex-col gap-3"
             >
               <div class="flex justify-between items-start">
                 <h4 class="font-bold text-lg leading-tight">{lib_block.title}</h4>
@@ -1591,7 +1592,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             placeholder="elixir, hard, quiz"
           />
           <div class="modal-action">
-            <.button type="button" class="btn btn-ghost" phx-click="cancel_save_library">
+            <.button type="button" class="btn btn-outline" phx-click="cancel_save_library">
               {gettext("Cancel")}
             </.button>
             <.button type="submit" class="btn btn-primary">{gettext("Save Template")}</.button>
@@ -1611,7 +1612,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             "The Course Builder requires a desktop or tablet screen to work comfortably. Please open this page on a larger device."
           )}
         </p>
-        <.link navigate={~p"/studio/courses"} class="btn btn-primary btn-lg mt-4 w-full">
+        <.link navigate={~p"/studio/courses"} class="btn btn-primary mt-4 w-full min-h-12 h-12">
           {gettext("Back to Courses")}
         </.link>
       </div>
@@ -1669,7 +1670,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             type="button"
             phx-click="move_section"
             phx-value-target_id={section.id}
-            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-md flex items-center gap-2 text-sm transition-colors group bg-transparent border-none text-base-content font-normal"
+            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-sm flex items-center gap-2 text-sm transition-colors group bg-transparent border-none text-base-content font-normal"
             style={"padding-left: #{(@level * 1.5) + 0.75}rem;"}
           >
             <.icon
@@ -1705,7 +1706,7 @@ defmodule AthenaWeb.StudioLive.Builder do
           phx-click="jump_to_section"
           phx-value-id={section.id}
           class={[
-            "w-full justify-start px-3 py-2 rounded-md flex items-center gap-2 text-sm transition-colors group bg-transparent border-none font-normal",
+            "w-full justify-start px-3 py-2 rounded-sm flex items-center gap-2 text-sm transition-colors group bg-transparent border-none font-normal",
             @active_section_id == section.id && "bg-primary/10 text-primary font-bold",
             @active_section_id != section.id && "hover:bg-base-200 text-base-content/80"
           ]}
