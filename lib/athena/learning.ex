@@ -66,6 +66,30 @@ defmodule Athena.Learning do
   defdelegate get_draft(user_id, block_id, cohort_id \\ nil), to: Submissions
   defdelegate clear_draft(user_id, block_id, cohort_id \\ nil), to: Submissions
 
+  defdelegate start_exam_submission(account_id, exam_block_id, cohort_id, time_limit_seconds),
+    to: Submissions
+
+  defdelegate save_question_submission(
+                parent_submission,
+                account_id,
+                question_block_id,
+                cohort_id,
+                answer_content
+              ),
+              to: Submissions
+
+  defdelegate get_active_exam_submission(account_id, exam_block_id), to: Submissions
+  defdelegate get_child_submissions(parent_submission_id), to: Submissions
+
+  defdelegate get_or_create_exam_attempt(
+                account_id,
+                exam_block_id,
+                cohort_id,
+                time_limit_sec,
+                exam_config
+              ),
+              to: Submissions
+
   defdelegate mark_completed(account_id, block_id, cohort_id \\ nil), to: Progress
   defdelegate completed_block_ids(account_id, section_id, cohort_id \\ nil), to: Progress
 

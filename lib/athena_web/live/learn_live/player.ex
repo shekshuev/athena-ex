@@ -447,23 +447,31 @@ defmodule AthenaWeb.LearnLive.Player do
   @doc false
   defp start_exam_for_block(socket, block) do
     user = socket.assigns.current_user
-    questions = Content.generate_exam_questions(block.content)
 
-    sub_attrs = %{
-      "account_id" => user.id,
-      "block_id" => block.id,
-      "status" => :pending,
-      "cohort_id" => socket.assigns.team_id,
-      "content" => %{
-        "type" => :quiz_exam,
-        "started_at" => DateTime.utc_now(),
-        "questions" => questions,
-        "answers" => %{},
-        "cheat_count" => 0
-      }
-    }
+    time_limit_minutes = Map.get(block.content || %{}, "time_limit")
 
-    case Learning.create_submission(user, sub_attrs) do
+    time_limit_sec =
+      case time_limit_minutes do
+        nil ->
+          3600
+
+        mins when is_integer(mins) ->
+          mins * 60
+
+        mins when is_binary(mins) ->
+          case Integer.parse(mins) do
+            {m, _} -> m * 60
+            :error -> 3600
+          end
+      end
+
+    case Learning.get_or_create_exam_attempt(
+           user.id,
+           block.id,
+           socket.assigns.team_id,
+           time_limit_sec,
+           block.content
+         ) do
       {:ok, _submission} ->
         broadcast_team_progress(socket.assigns.team_id, socket.assigns.course.id)
 
@@ -477,7 +485,7 @@ defmodule AthenaWeb.LearnLive.Player do
          put_flash(
            socket,
            :error,
-           gettext("Failed to start the exam. Not enough questions in library.")
+           gettext("Failed to start the exam.")
          )}
     end
   end

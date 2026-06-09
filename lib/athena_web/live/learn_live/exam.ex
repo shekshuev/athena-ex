@@ -1,26 +1,65 @@
 defmodule AthenaWeb.LearnLive.Exam do
+  @moduledoc """
+  Student Exam LiveView.
+
+  Features:
+  - Hierarchical submissions (parent exam + child question submissions).
+  - Strict server-side time limit enforcement.
+  - Universal block rendering via BlockComponents.content_block/1.
+  - Full media upload support mirroring the Player experience.
+  """
   use AthenaWeb, :live_view
 
-  alias Athena.Content
-  alias Athena.Learning
+  alias Athena.{Content, Learning}
+  import AthenaWeb.BlockComponents
 
   @impl true
   def mount(%{"id" => course_id, "block_id" => block_id}, _session, socket) do
     user = socket.assigns.current_user
-
     cohort = Learning.get_user_cohort_for_course(user.id, course_id)
     team_id = if cohort && cohort.type == :team, do: cohort.id, else: nil
 
-    socket = assign(socket, :team_id, team_id)
+    with {:ok, block} <- Content.get_block(block_id),
+         time_limit_sec <- get_time_limit_sec(block),
+         {:ok, submission} <-
+           Learning.get_or_create_exam_attempt(
+             user.id,
+             block_id,
+             team_id,
+             time_limit_sec,
+             block.content
+           ) do
+      if DateTime.compare(DateTime.utc_now(), submission.expires_at) == :gt do
+        socket = submit_and_exit(socket, submission, course_id, :time_limit_exceeded)
+        {:ok, socket, layout: false}
+      else
+        questions = hydrate_questions(submission.content["questions"] || [])
+        child_subs = Learning.get_child_submissions(submission.id)
 
-    with true <- Learning.has_access?(user.id, course_id),
-         {:ok, _course} <- Content.get_course(course_id),
-         submission when not is_nil(submission) <-
-           Learning.get_submission(user.id, block_id, team_id),
-         :pending <- submission.status,
-         {:ok, block} <- Content.get_block(block_id),
-         {:ok, socket} <- handle_active_exam(socket, course_id, block, submission) do
-      {:ok, socket, layout: false}
+        socket =
+          socket
+          |> assign(:course_id, course_id)
+          |> assign(:team_id, team_id)
+          |> assign(:block, block)
+          |> assign(:submission, submission)
+          |> assign(:questions, questions)
+          |> assign(:current_index, 0)
+          |> assign(:current_question, Enum.at(questions, 0))
+          |> assign(:child_submissions, child_subs)
+          |> assign(:time_limit_sec, time_limit_sec)
+          |> assign(:time_left, DateTime.diff(submission.expires_at, DateTime.utc_now()))
+          |> assign(:cheat_count, Map.get(submission.content || %{}, "cheat_count", 0))
+          |> assign(:max_cheats, Map.get(block.content || %{}, "allowed_blur_attempts", 3))
+          |> assign(:pending_file_urls, %{})
+          |> assign(:show_media_modal, false)
+          |> assign(:active_upload_block_id, nil)
+          |> assign(:upload_type, nil)
+          |> assign(:max_files_for_upload, 1)
+          |> assign(:current_file_count_for_upload, 0)
+
+        maybe_start_timer(socket)
+        {:ok, socket, layout: false}
+      end
     else
       _ ->
         socket =
@@ -34,11 +73,16 @@ defmodule AthenaWeb.LearnLive.Exam do
 
   @impl true
   def handle_info(:tick, socket) do
-    time_left = socket.assigns.time_left - 1
+    time_left = DateTime.diff(socket.assigns.submission.expires_at, DateTime.utc_now())
 
     if time_left <= 0 do
-      socket = submit_and_exit(socket, socket.assigns.submission, socket.assigns.course_id)
-      {:noreply, socket}
+      {:noreply,
+       submit_and_exit(
+         socket,
+         socket.assigns.submission,
+         socket.assigns.course_id,
+         :time_limit_exceeded
+       )}
     else
       {:noreply, assign(socket, :time_left, time_left)}
     end
@@ -46,80 +90,271 @@ defmodule AthenaWeb.LearnLive.Exam do
 
   @impl true
   def handle_event("cheat_detected", _params, socket) do
-    new_count = socket.assigns.cheat_count + 1
-    max_cheats = socket.assigns.max_cheats
+    case check_time_limit(socket) do
+      {:halt, socket} ->
+        {:noreply, socket}
 
-    new_content = Map.put(socket.assigns.submission.content, "cheat_count", new_count)
+      {:ok, socket} ->
+        new_count = socket.assigns.cheat_count + 1
+        max_cheats = socket.assigns.max_cheats
 
-    {:ok, updated_sub} =
-      Learning.system_update_submission(socket.assigns.submission, %{"content" => new_content})
+        new_content = Map.put(socket.assigns.submission.content || %{}, "cheat_count", new_count)
 
-    socket = assign(socket, submission: updated_sub, cheat_count: new_count)
+        {:ok, updated_sub} =
+          Learning.system_update_submission(socket.assigns.submission, %{"content" => new_content})
 
-    if new_count >= max_cheats do
-      {:ok, _failed_sub} =
-        Learning.system_update_submission(updated_sub, %{"status" => "graded", "score" => 0})
+        socket = assign(socket, submission: updated_sub, cheat_count: new_count)
 
-      broadcast_team_progress(socket.assigns.team_id, socket.assigns.course_id)
+        if new_count >= max_cheats do
+          {:ok, _failed_sub} =
+            Learning.system_update_submission(updated_sub, %{"status" => "graded", "score" => 0})
 
-      {:noreply,
-       socket
-       |> put_flash(:error, gettext("Exam failed due to cheating violations."))
-       |> push_navigate(to: ~p"/learn/courses/#{socket.assigns.course_id}")}
-    else
-      {:noreply,
-       put_flash(
-         socket,
-         :warning,
-         gettext("Warning: You left the exam tab. Violation %{count} of %{max}.",
-           count: new_count,
-           max: max_cheats
-         )
-       )}
+          broadcast_team_progress(socket.assigns.team_id, socket.assigns.course_id)
+
+          {:noreply,
+           socket
+           |> put_flash(:error, gettext("Exam failed due to cheating violations."))
+           |> push_navigate(to: ~p"/learn/courses/#{socket.assigns.course_id}")}
+        else
+          {:noreply,
+           put_flash(
+             socket,
+             :warning,
+             gettext("Warning: You left the exam tab. Violation %{count} of %{max}.",
+               count: new_count,
+               max: max_cheats
+             )
+           )}
+        end
     end
   end
 
   @impl true
-  def handle_event("save_answer", %{"answer" => answer}, socket) do
-    if socket.assigns.current_question do
-      q_id = socket.assigns.current_question["id"] || socket.assigns.current_question[:id]
-      new_answers = Map.put(socket.assigns.answers, q_id, answer)
+  def handle_event("save_answer", params, socket) do
+    process_exam_answer(params, socket)
+  end
 
-      new_content = Map.put(socket.assigns.submission.content, "answers", new_answers)
+  @impl true
+  def handle_event("save_draft", params, socket) do
+    process_exam_answer(params, socket)
+  end
 
-      {:ok, updated_sub} =
-        Learning.system_update_submission(socket.assigns.submission, %{"content" => new_content})
+  def handle_event("save_draft", _params, socket), do: {:noreply, socket}
+  def handle_event("save_answer", _params, socket), do: {:noreply, socket}
 
-      {:noreply, assign(socket, answers: new_answers, submission: updated_sub)}
-    else
-      {:noreply, socket}
+  @impl true
+  def handle_event(
+        "request_media_upload",
+        %{"block_id" => block_id, "media_type" => "file_assignment"},
+        socket
+      ) do
+    case check_time_limit(socket) do
+      {:halt, socket} ->
+        {:noreply, socket}
+
+      {:ok, socket} ->
+        block = Enum.find(socket.assigns.questions, &(&1.id == block_id))
+
+        if block && to_string(block.type) == "file_assignment" do
+          max_files = block.content["max_files"] || 1
+          pending = socket.assigns.pending_file_urls || %{}
+          current_count = length(Map.get(pending, block_id, []))
+
+          {:noreply,
+           socket
+           |> assign(:show_media_modal, true)
+           |> assign(:active_upload_block_id, block_id)
+           |> assign(:upload_type, "file_assignment")
+           |> assign(:max_files_for_upload, max_files)
+           |> assign(:current_file_count_for_upload, current_count)}
+        else
+          {:noreply,
+           put_flash(socket, :error, gettext("Неверный тип блока для загрузки файлов."))}
+        end
     end
   end
 
-  def handle_event("save_answer", _, socket), do: {:noreply, socket}
+  def handle_event("cancel_media_upload", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_media_modal, false)
+     |> assign(:active_upload_block_id, nil)
+     |> assign(:upload_type, nil)}
+  end
+
+  def handle_event(
+        "media_upload_clipboard_success",
+        %{"block_id" => block_id, "final_url" => url},
+        socket
+      ) do
+    pending = socket.assigns.pending_file_urls || %{}
+    current_urls = Map.get(pending, block_id, [])
+
+    block = Enum.find(socket.assigns.questions, &(&1.id == block_id))
+    max_files = if block, do: block.content["max_files"] || 1, else: 1
+
+    if length(current_urls) < max_files do
+      updated_urls = current_urls ++ [url]
+      updated_pending = Map.put(pending, block_id, updated_urls)
+
+      socket = save_exam_file_assignment(socket, block_id, updated_urls)
+
+      {:noreply, assign(socket, :pending_file_urls, updated_pending)}
+    else
+      {:noreply, put_flash(socket, :error, gettext("Достигнут лимит количества файлов."))}
+    end
+  end
+
+  def handle_event(
+        "remove_pending_file",
+        %{"block_id" => block_id, "url" => url},
+        socket
+      ) do
+    pending = socket.assigns.pending_file_urls || %{}
+    current = Map.get(pending, block_id, [])
+    updated = List.delete(current, url)
+    updated_pending = Map.put(pending, block_id, updated)
+
+    socket = save_exam_file_assignment(socket, block_id, updated)
+
+    {:noreply, assign(socket, :pending_file_urls, updated_pending)}
+  end
+
+  def handle_event("submit_file_assignment", %{"block_id" => block_id}, socket) do
+    pending = socket.assigns.pending_file_urls || %{}
+    file_urls = Map.get(pending, block_id, []) |> Enum.reject(&(&1 == ""))
+
+    if file_urls == [] do
+      {:noreply, put_flash(socket, :error, gettext("Пожалуйста, загрузите хотя бы один файл."))}
+    else
+      child_sub = Map.get(socket.assigns.child_submissions, block_id)
+
+      if child_sub do
+        {:ok, updated_sub} =
+          Learning.system_update_submission(child_sub, %{"status" => "pending"})
+
+        new_child_subs = Map.put(socket.assigns.child_submissions, block_id, updated_sub)
+
+        {:noreply,
+         socket
+         |> assign(:child_submissions, new_child_subs)
+         |> put_flash(:info, gettext("Файлы успешно отправлены!"))}
+      else
+        {:noreply, put_flash(socket, :error, gettext("Ошибка отправки задания."))}
+      end
+    end
+  end
+
+  @impl true
+  def handle_info(
+        {AthenaWeb.StudioLive.MediaUploadComponent,
+         {:saved, _msg_block_id, "file_assignment", results}},
+        socket
+      ) do
+    {successes, errors} =
+      Enum.split_with(results, fn
+        {:ok, _} -> true
+        _ -> false
+      end)
+
+    file_urls =
+      successes
+      |> Enum.map(fn {:ok, file_map} -> file_map["url"] end)
+      |> Enum.reject(&is_nil/1)
+
+    block_id = socket.assigns.active_upload_block_id
+
+    pending = socket.assigns.pending_file_urls || %{}
+    current = Map.get(pending, block_id, [])
+    updated_pending = Map.put(pending, block_id, current ++ file_urls)
+
+    socket = save_exam_file_assignment(socket, block_id, updated_pending[block_id])
+
+    socket =
+      socket
+      |> assign(:pending_file_urls, updated_pending)
+      |> assign(:show_media_modal, false)
+      |> assign(:active_upload_block_id, nil)
+      |> assign(:upload_type, nil)
+
+    socket =
+      if errors != [] do
+        error_count = length(errors)
+
+        put_flash(
+          socket,
+          :error,
+          gettext("Не удалось сохранить %{count} файл(ов)", count: error_count)
+        )
+      else
+        put_flash(socket, :info, gettext("Файл(ы) готовы к отправке"))
+      end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({AthenaWeb.StudioLive.MediaUploadComponent, msg}, socket) do
+    require Logger
+    Logger.warning("⚠️ Получено неизвестное сообщение от MediaUploadComponent: #{inspect(msg)}")
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(_msg, socket) do
+    {:noreply, socket}
+  end
 
   @impl true
   def handle_event("next_question", _, socket) do
-    next_idx = min(socket.assigns.current_index + 1, max(length(socket.assigns.questions) - 1, 0))
-    {:noreply, update_question(socket, next_idx)}
+    case check_time_limit(socket) do
+      {:halt, socket} ->
+        {:noreply, socket}
+
+      {:ok, socket} ->
+        next_idx =
+          min(socket.assigns.current_index + 1, max(length(socket.assigns.questions) - 1, 0))
+
+        {:noreply, update_question(socket, next_idx)}
+    end
   end
 
   @impl true
   def handle_event("prev_question", _, socket) do
-    prev_idx = max(socket.assigns.current_index - 1, 0)
-    {:noreply, update_question(socket, prev_idx)}
+    case check_time_limit(socket) do
+      {:halt, socket} ->
+        {:noreply, socket}
+
+      {:ok, socket} ->
+        prev_idx = max(socket.assigns.current_index - 1, 0)
+        {:noreply, update_question(socket, prev_idx)}
+    end
   end
 
   @impl true
   def handle_event("jump_to", %{"index" => idx_str}, socket) do
-    idx = String.to_integer(idx_str)
-    {:noreply, update_question(socket, idx)}
+    case check_time_limit(socket) do
+      {:halt, socket} ->
+        {:noreply, socket}
+
+      {:ok, socket} ->
+        idx = String.to_integer(idx_str)
+        {:noreply, update_question(socket, idx)}
+    end
   end
 
   @impl true
   def handle_event("finish_exam", _, socket) do
-    socket = submit_and_exit(socket, socket.assigns.submission, socket.assigns.course_id)
-    {:noreply, socket}
+    case check_time_limit(socket) do
+      {:halt, socket} ->
+        {:noreply, socket}
+
+      {:ok, socket} ->
+        socket =
+          submit_and_exit(socket, socket.assigns.submission, socket.assigns.course_id, :finished)
+
+        {:noreply, socket}
+    end
   end
 
   @impl true
@@ -175,7 +410,6 @@ defmodule AthenaWeb.LearnLive.Exam do
           </div>
           <div class="flex flex-wrap gap-2 justify-center">
             <%= for {q, index} <- Enum.with_index(@questions) do %>
-              <% q_id = q["id"] || q[:id] %>
               <button
                 phx-click="jump_to"
                 phx-value-index={index}
@@ -183,8 +417,9 @@ defmodule AthenaWeb.LearnLive.Exam do
                   "size-10 rounded-lg font-bold flex items-center justify-center transition-all",
                   @current_index == index && "ring-2 ring-primary ring-offset-2 ring-offset-base-100",
                   @current_index != index && "hover:bg-base-200",
-                  has_answer?(@answers, q_id) && "bg-primary/10 text-primary border border-primary/30",
-                  not has_answer?(@answers, q_id) && "bg-base-200 text-base-content/60"
+                  Map.has_key?(@child_submissions, q.id) &&
+                    "bg-primary/10 text-primary border border-primary/30",
+                  not Map.has_key?(@child_submissions, q.id) && "bg-base-200 text-base-content/60"
                 ]}
               >
                 {index + 1}
@@ -195,11 +430,6 @@ defmodule AthenaWeb.LearnLive.Exam do
 
         <main class="flex-1 bg-base-100 p-6 md:p-10 rounded-2xl border border-base-300 w-full">
           <%= if @current_question do %>
-            <% q_id = @current_question["id"] || @current_question[:id] %>
-            <% q_type = to_string(@current_question["type"] || @current_question[:type]) %>
-            <% q_body = @current_question["question"] || @current_question[:question] || %{} %>
-            <% q_options = @current_question["options"] || @current_question[:options] || [] %>
-
             <div class="flex items-center gap-3 mb-6 pb-6 border-b border-base-200">
               <div class="size-10 bg-primary text-primary-content font-black rounded-xl flex items-center justify-center text-xl">
                 {@current_index + 1}
@@ -209,75 +439,13 @@ defmodule AthenaWeb.LearnLive.Exam do
               </h2>
             </div>
 
-            <div
-              id={"question-tiptap-#{q_id}"}
-              phx-hook="TiptapEditor"
-              data-id={q_id}
-              data-readonly="true"
-              phx-update="ignore"
-              data-content={Jason.encode!(q_body)}
-              class="prose prose-lg max-w-none mb-10 text-base-content/80"
-            >
-            </div>
-
             <form phx-change="save_answer" phx-submit="next_question">
-              <%= case q_type do %>
-                <% "exact_match" -> %>
-                  <input
-                    type="text"
-                    name="answer"
-                    value={@answers[q_id]}
-                    placeholder={gettext("Type your answer...")}
-                    class="input input-bordered input-lg w-full font-mono"
-                    phx-debounce="500"
-                  />
-                <% "open" -> %>
-                  <textarea
-                    name="answer"
-                    rows="6"
-                    placeholder={gettext("Write your essay here...")}
-                    class="textarea textarea-bordered w-full text-lg leading-relaxed"
-                    phx-debounce="1000"
-                  ><%= @answers[q_id] %></textarea>
-                <% "single" -> %>
-                  <div class="space-y-3">
-                    <%= for opt <- q_options do %>
-                      <% opt_id = opt["id"] || opt[:id] %>
-                      <% opt_text = opt["text"] || opt[:text] %>
-                      <label class="flex items-start gap-4 p-4 rounded-xl border border-base-200 hover:bg-base-200/50 cursor-pointer has-checked:bg-primary/5 has-checked:border-primary transition-all">
-                        <input
-                          type="radio"
-                          name="answer"
-                          value={opt_id}
-                          checked={@answers[q_id] == opt_id}
-                          class="radio radio-primary mt-1"
-                        />
-                        <span class="text-lg font-medium">{opt_text}</span>
-                      </label>
-                    <% end %>
-                  </div>
-                <% "multiple" -> %>
-                  <div class="space-y-3">
-                    <%= for opt <- q_options do %>
-                      <% opt_id = opt["id"] || opt[:id] %>
-                      <% opt_text = opt["text"] || opt[:text] %>
-                      <label class="flex items-start gap-4 p-4 rounded-xl border border-base-200 hover:bg-base-200/50 cursor-pointer has-checked:bg-primary/5 has-checked:border-primary transition-all">
-                        <input
-                          type="checkbox"
-                          name="answer[]"
-                          value={opt_id}
-                          checked={opt_id in List.wrap(@answers[q_id])}
-                          class="checkbox checkbox-primary mt-1"
-                        />
-                        <span class="text-lg font-medium">{opt_text}</span>
-                      </label>
-                    <% end %>
-                  </div>
-                <% _ -> %>
-                  <div class="p-4 text-warning bg-warning/10 rounded-lg">
-                    {gettext("Unknown question type:")} {q_type}
-                  </div>
-              <% end %>
+              <.content_block
+                block={@current_question}
+                mode={:play}
+                submission={Map.get(@child_submissions, @current_question.id)}
+                pending_file_urls={@pending_file_urls}
+              />
 
               <div class="flex items-center justify-between mt-12 pt-6 border-t border-base-200">
                 <button
@@ -314,8 +482,130 @@ defmodule AthenaWeb.LearnLive.Exam do
           <% end %>
         </main>
       </div>
+
+      <%= if @show_media_modal do %>
+        <.live_component
+          module={AthenaWeb.StudioLive.MediaUploadComponent}
+          id={"media-uploader-exam-#{@active_upload_block_id}"}
+          block_id={@active_upload_block_id}
+          upload_type={@upload_type}
+          current_user={@current_user}
+          course_id={@course_id}
+          context="student_submission"
+          max_files={@max_files_for_upload}
+          current_file_count={@current_file_count_for_upload}
+        />
+      <% end %>
     </div>
     """
+  end
+
+  defp check_time_limit(socket) do
+    expires_at = socket.assigns.submission.expires_at
+
+    if DateTime.compare(DateTime.utc_now(), expires_at) == :gt do
+      {:halt,
+       submit_and_exit(
+         socket,
+         socket.assigns.submission,
+         socket.assigns.course_id,
+         :time_limit_exceeded
+       )}
+    else
+      {:ok, socket}
+    end
+  end
+
+  defp process_exam_answer(params, socket) do
+    case check_time_limit(socket) do
+      {:halt, socket} ->
+        {:noreply, socket}
+
+      {:ok, socket} ->
+        q = socket.assigns.current_question
+        answer = Map.get(params, "answer")
+        answer_content = normalize_answer(q, answer)
+
+        case Learning.save_question_submission(
+               socket.assigns.submission,
+               socket.assigns.current_user.id,
+               q.id,
+               socket.assigns.team_id,
+               answer_content
+             ) do
+          {:ok, child_sub} ->
+            new_child_subs = Map.put(socket.assigns.child_submissions, q.id, child_sub)
+            {:noreply, assign(socket, :child_submissions, new_child_subs)}
+
+          {:error, :time_limit_exceeded} ->
+            {:noreply,
+             submit_and_exit(
+               socket,
+               socket.assigns.submission,
+               socket.assigns.course_id,
+               :time_limit_exceeded
+             )}
+        end
+    end
+  end
+
+  defp normalize_answer(
+         %{
+           type: :quiz_question,
+           content: %{"question_type" => q_type, "answer_type" => "rich_text"}
+         },
+         answer
+       ) do
+    parsed_answer =
+      if is_binary(answer) and String.starts_with?(answer, "{") do
+        case Jason.decode(answer) do
+          {:ok, decoded} -> decoded
+          _ -> answer
+        end
+      else
+        answer
+      end
+
+    %{"type" => :quiz_question, "rich_answer" => parsed_answer}
+  end
+
+  defp normalize_answer(%{type: :quiz_question, content: %{"question_type" => q_type}}, answer) do
+    case q_type do
+      "single" ->
+        %{"type" => :quiz_question, "selected_choices" => if(answer, do: [answer], else: [])}
+
+      "multiple" ->
+        %{"type" => :quiz_question, "selected_choices" => List.wrap(answer)}
+
+      "open" ->
+        %{"type" => :quiz_question, "text_answer" => answer || ""}
+
+      "exact_match" ->
+        %{"type" => :quiz_question, "text_answer" => answer || ""}
+
+      _ ->
+        %{"type" => :quiz_question, "text_answer" => answer || ""}
+    end
+  end
+
+  defp normalize_answer(%{type: :code}, answer) do
+    code_str =
+      cond do
+        is_map(answer) -> Map.get(answer, "code", "")
+        is_binary(answer) -> answer
+        true -> ""
+      end
+
+    %{"type" => :code, "code" => code_str}
+  end
+
+  defp normalize_answer(%{type: :file_assignment}, answer) do
+    urls = if is_list(answer), do: answer, else: [answer]
+    %{"type" => :file_assignment, "file_urls" => Enum.reject(urls, &(&1 == ""))}
+  end
+
+  defp normalize_answer(_block, answer) do
+    %{"type" => :generic, "text_answer" => answer || ""}
   end
 
   defp update_question(socket, index) do
@@ -324,91 +614,35 @@ defmodule AthenaWeb.LearnLive.Exam do
     |> assign(:current_question, Enum.at(socket.assigns.questions, index))
   end
 
-  defp submit_and_exit(socket, submission, course_id) do
-    {:ok, _} =
-      Learning.system_update_submission(submission, %{"status" => "needs_review", "score" => 0})
+  defp submit_and_exit(socket, submission, course_id, reason) do
+    status = if reason == :time_limit_exceeded, do: "time_limit_exceeded", else: "needs_review"
 
+    {:ok, _} = Learning.system_update_submission(submission, %{"status" => status})
     broadcast_team_progress(socket.assigns.team_id, course_id)
 
+    msg =
+      if reason == :time_limit_exceeded,
+        do: gettext("Time is up! Your exam has been automatically submitted."),
+        else: gettext("Exam submitted successfully!")
+
     socket
-    |> put_flash(:success, gettext("Exam submitted successfully!"))
+    |> put_flash(:info, msg)
     |> push_navigate(to: ~p"/learn/courses/#{course_id}")
   end
 
-  defp has_answer?(answers, q_id) do
-    case Map.get(answers, q_id) do
-      nil -> false
-      "" -> false
-      [] -> false
-      _ -> true
-    end
-  end
-
-  defp format_time(seconds) do
+  defp format_time(seconds) when seconds > 0 do
     m = div(seconds, 60)
     s = rem(seconds, 60)
 
     "#{String.pad_leading(Integer.to_string(m), 2, "0")}:#{String.pad_leading(Integer.to_string(s), 2, "0")}"
   end
 
-  defp parse_dt(%DateTime{} = dt), do: dt
+  defp format_time(_), do: "00:00"
 
-  defp parse_dt(str) when is_binary(str) do
-    case DateTime.from_iso8601(str) do
-      {:ok, dt, _} -> dt
-      _ -> DateTime.utc_now()
+  defp maybe_start_timer(socket) do
+    if connected?(socket) and not is_nil(socket.assigns.time_limit_sec) do
+      Process.send_after(self(), :tick, 1000)
     end
-  end
-
-  defp handle_active_exam(socket, course_id, block, submission) do
-    time_limit_sec = calc_time_limit_sec(block.content["time_limit"])
-    time_left = calc_time_left(time_limit_sec, submission.content["started_at"])
-    mount_exam_state(socket, course_id, block, submission, time_limit_sec, time_left)
-  end
-
-  defp mount_exam_state(socket, course_id, _block, submission, limit_sec, time_left)
-       when not is_nil(limit_sec) and time_left <= 0 do
-    {:ok, submit_and_exit(socket, submission, course_id)}
-  end
-
-  defp mount_exam_state(socket, course_id, block, submission, time_limit_sec, time_left) do
-    maybe_start_timer(socket, time_limit_sec)
-
-    {:ok, assign_exam_state(socket, course_id, block, submission, time_limit_sec, time_left)}
-  end
-
-  defp maybe_start_timer(socket, time_limit_sec) do
-    if connected?(socket) and not is_nil(time_limit_sec) do
-      :timer.send_interval(1000, self(), :tick)
-    end
-  end
-
-  defp assign_exam_state(socket, course_id, block, submission, time_limit_sec, time_left) do
-    content = submission.content
-    questions = Map.get(content, "questions", [])
-
-    socket
-    |> assign(:course_id, course_id)
-    |> assign(:block, block)
-    |> assign(:submission, submission)
-    |> assign(:questions, questions)
-    |> assign(:current_index, 0)
-    |> assign(:current_question, Enum.at(questions, 0))
-    |> assign(:answers, Map.get(content, "answers", %{}))
-    |> assign(:time_limit_sec, time_limit_sec)
-    |> assign(:time_left, time_left)
-    |> assign(:cheat_count, Map.get(content, "cheat_count", 0))
-    |> assign(:max_cheats, Map.get(block.content, "allowed_blur_attempts", 3))
-  end
-
-  defp calc_time_limit_sec(nil), do: nil
-  defp calc_time_limit_sec(minutes), do: minutes * 60
-
-  defp calc_time_left(nil, _started_at), do: nil
-
-  defp calc_time_left(limit_sec, started_at) do
-    time_passed = DateTime.diff(DateTime.utc_now(), parse_dt(started_at))
-    max(limit_sec - time_passed, 0)
   end
 
   defp broadcast_team_progress(nil, _course_id), do: :ok
@@ -416,5 +650,58 @@ defmodule AthenaWeb.LearnLive.Exam do
   defp broadcast_team_progress(team_id, course_id) do
     Phoenix.PubSub.broadcast(Athena.PubSub, "team_progress:#{team_id}", :team_progress_updated)
     Phoenix.PubSub.broadcast(Athena.PubSub, "leaderboard:#{course_id}", :update_leaderboard)
+  end
+
+  defp get_time_limit_sec(block) do
+    content = block.content || %{}
+
+    case Map.get(content, "time_limit") do
+      nil ->
+        3600
+
+      minutes when is_integer(minutes) ->
+        minutes * 60
+
+      minutes when is_binary(minutes) ->
+        case Integer.parse(minutes) do
+          {mins, _} -> mins * 60
+          :error -> 3600
+        end
+    end
+  end
+
+  defp hydrate_questions(questions) when is_list(questions) do
+    Enum.map(questions, fn q ->
+      q_map = if is_struct(q), do: Map.from_struct(q), else: q
+      type_raw = Map.get(q_map, "type") || Map.get(q_map, :type)
+      type = if is_binary(type_raw), do: String.to_atom(type_raw), else: type_raw
+      content = Map.get(q_map, "content") || Map.get(q_map, :content) || %{}
+      id = Map.get(q_map, "id") || Map.get(q_map, :id)
+
+      %{id: id, type: type, content: content}
+    end)
+  end
+
+  defp hydrate_questions(_), do: []
+
+  defp save_exam_file_assignment(socket, block_id, file_urls) do
+    answer_content = %{type: :file_assignment, file_urls: file_urls || []}
+
+    case Learning.save_question_submission(
+           socket.assigns.submission,
+           socket.assigns.current_user.id,
+           block_id,
+           socket.assigns.team_id,
+           answer_content
+         ) do
+      {:ok, child_sub} ->
+        new_child_subs = Map.put(socket.assigns.child_submissions || %{}, block_id, child_sub)
+        assign(socket, :child_submissions, new_child_subs)
+
+      {:error, reason} ->
+        require Logger
+        Logger.error("❌ Ошибка сохранения файлов в экзамене: #{inspect(reason)}")
+        socket
+    end
   end
 end

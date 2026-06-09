@@ -547,4 +547,53 @@ defmodule Athena.Learning.Submissions do
 
     Repo.one(query)
   end
+
+  @doc """
+  Gets all child submissions for a given parent exam submission.
+  Returns a map of %{block_id => %Submission{}} for efficient lookup in templates.
+  """
+  def get_child_submissions(parent_submission_id) do
+    from(s in Submission,
+      where: s.parent_submission_id == ^parent_submission_id
+    )
+    |> Repo.all()
+    |> Map.new(&{&1.block_id, &1})
+  end
+
+  @doc """
+  Gets an active exam attempt, or creates a new one with a fixed set of questions.
+  """
+  def get_or_create_exam_attempt(
+        account_id,
+        exam_block_id,
+        cohort_id,
+        time_limit_sec,
+        exam_config
+      ) do
+    case get_active_exam_submission(account_id, exam_block_id) do
+      nil ->
+        questions = Athena.Content.generate_exam_questions(exam_config)
+
+        expires_at = DateTime.add(DateTime.utc_now(), time_limit_sec, :second)
+
+        content = %{
+          "started_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
+          "questions" => questions
+        }
+
+        %Submission{}
+        |> Submission.changeset(%{
+          account_id: account_id,
+          block_id: exam_block_id,
+          cohort_id: cohort_id,
+          status: :pending,
+          expires_at: expires_at,
+          content: content
+        })
+        |> Repo.insert()
+
+      submission ->
+        {:ok, submission}
+    end
+  end
 end
