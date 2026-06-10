@@ -14,10 +14,12 @@ defmodule AthenaWeb.LearnLive.Exam do
   import AthenaWeb.BlockComponents
 
   @impl true
-  def mount(%{"id" => course_id, "block_id" => block_id}, _session, socket) do
+  def mount(%{"id" => course_id, "block_id" => block_id} = params, _session, socket) do
     user = socket.assigns.current_user
     cohort = Learning.get_user_cohort_for_course(user.id, course_id)
     team_id = if cohort && cohort.type == :team, do: cohort.id, else: nil
+
+    return_to = Map.get(params, "return_to", ~p"/learn/courses/#{course_id}/play")
 
     with {:ok, block} <- Content.get_block(block_id),
          time_limit_sec <- get_time_limit_sec(block),
@@ -62,6 +64,8 @@ defmodule AthenaWeb.LearnLive.Exam do
           |> assign(:time_left, DateTime.diff(submission.expires_at, DateTime.utc_now()))
           |> assign(:pending_file_urls, pending_urls)
           |> assign(:show_media_modal, false)
+          |> assign(:show_finish_modal, false)
+          |> assign(:return_to, return_to)
           |> assign(:active_upload_block_id, nil)
           |> assign(:upload_type, nil)
           |> assign(:max_files_for_upload, 1)
@@ -249,6 +253,14 @@ defmodule AthenaWeb.LearnLive.Exam do
     end
   end
 
+  def handle_event("open_finish_modal", _, socket) do
+    {:noreply, assign(socket, show_finish_modal: true)}
+  end
+
+  def handle_event("close_finish_modal", _, socket) do
+    {:noreply, assign(socket, show_finish_modal: false)}
+  end
+
   def handle_event("finish_exam", _, socket) do
     case check_time_limit(socket) do
       {:halt, socket} ->
@@ -423,8 +435,7 @@ defmodule AthenaWeb.LearnLive.Exam do
               </div>
 
               <button
-                phx-click="finish_exam"
-                data-confirm={gettext("Are you sure you want to submit the exam?")}
+                phx-click="open_finish_modal"
                 class="btn btn-error btn-sm"
               >
                 {gettext("Submit")}
@@ -507,6 +518,7 @@ defmodule AthenaWeb.LearnLive.Exam do
                         mode={:play}
                         submission={Map.get(@child_submissions, @current_question.id)}
                         pending_file_urls={@pending_file_urls}
+                        hide_submit={true}
                       />
                     </form>
                   <% :file_assignment -> %>
@@ -546,7 +558,7 @@ defmodule AthenaWeb.LearnLive.Exam do
                 <% all_answered = all_questions_answered?(@questions, @child_submissions) %>
 
                 <%= if @current_index >= length(@questions) - 1 and all_answered do %>
-                  <button type="button" phx-click="finish_exam" class="btn btn-primary btn-sm">
+                  <button type="button" phx-click="open_finish_modal" class="btn btn-primary btn-sm">
                     {gettext("Finish & Submit")} <.icon name="hero-check" class="size-4 ml-1" />
                   </button>
                 <% else %>
@@ -563,7 +575,7 @@ defmodule AthenaWeb.LearnLive.Exam do
                 {gettext("No questions available")}
               </h3>
               <p class="text-base-content/40 mb-6">{gettext("Please contact your instructor.")}</p>
-              <button type="button" phx-click="finish_exam" class="btn btn-primary">
+              <button type="button" phx-click="open_finish_modal" class="btn btn-primary">
                 {gettext("Return to Course")}
               </button>
             </div>
@@ -584,6 +596,21 @@ defmodule AthenaWeb.LearnLive.Exam do
           current_file_count={@current_file_count_for_upload}
         />
       <% end %>
+
+      <.modal
+        :if={@show_finish_modal}
+        id="finish-exam-modal"
+        show={true}
+        title={gettext("Submit Exam?")}
+        description={
+          gettext(
+            "Are you sure you want to finish? You won't be able to change your answers after submission."
+          )
+        }
+        confirm_label={gettext("Yes, Submit Exam")}
+        on_cancel={JS.push("close_finish_modal")}
+        on_confirm={JS.push("finish_exam")}
+      />
     </div>
     """
   end
@@ -715,7 +742,7 @@ defmodule AthenaWeb.LearnLive.Exam do
 
     socket
     |> put_flash(:info, msg)
-    |> push_navigate(to: ~p"/learn/courses/#{course_id}")
+    |> push_navigate(to: socket.assigns.return_to)
   end
 
   defp format_time(seconds) when seconds > 0 do

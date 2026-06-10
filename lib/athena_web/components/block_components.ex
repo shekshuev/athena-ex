@@ -21,6 +21,7 @@ defmodule AthenaWeb.BlockComponents do
   attr :attempts_count, :integer, default: 0
   attr :pending_file_urls, :map, default: %{}
   attr :draft, :map, default: nil
+  attr :hide_submit, :boolean, default: false
 
   def content_block(assigns) do
     ~H"""
@@ -42,6 +43,7 @@ defmodule AthenaWeb.BlockComponents do
             submission={@submission}
             attempts_count={@attempts_count}
             draft={@draft}
+            hide_submit={@hide_submit}
           />
         <% :quiz_question -> %>
           <.render_quiz_question
@@ -360,10 +362,11 @@ defmodule AthenaWeb.BlockComponents do
                 phx-value-block_id={@block.id}
                 class="btn btn-outline btn-sm"
               >
-                <.icon name="hero-play" class="size-4 mr-1" /> {gettext("Проверить")}
+                <.icon name="hero-play" class="size-4 mr-1" /> {gettext("Run")}
               </button>
 
               <button
+                :if={not @hide_submit}
                 type="submit"
                 class="btn btn-primary btn-sm"
                 disabled={@is_processing}
@@ -371,7 +374,7 @@ defmodule AthenaWeb.BlockComponents do
                 <%= if @is_processing do %>
                   <span class="loading loading-spinner loading-xs"></span> {gettext("Checking...")}
                 <% else %>
-                  {gettext("Отправить")}
+                  {gettext("Submit")}
                 <% end %>
               </button>
             </div>
