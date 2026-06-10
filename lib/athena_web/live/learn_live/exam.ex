@@ -31,10 +31,22 @@ defmodule AthenaWeb.LearnLive.Exam do
            ) do
       if DateTime.compare(DateTime.utc_now(), submission.expires_at) == :gt do
         socket = submit_and_exit(socket, submission, course_id, :time_limit_exceeded)
-        {:ok, socket, layout: false}
+        {:ok, socket}
       else
         questions = hydrate_questions(submission.content["questions"] || [])
         child_subs = Learning.get_child_submissions(submission.id)
+
+        pending_urls =
+          child_subs
+          |> Enum.reduce(%{}, fn {q_id, sub}, acc ->
+            content = sub.content || %{}
+
+            if content["type"] in ["file_assignment", :file_assignment] do
+              Map.put(acc, q_id, content["file_urls"] || [])
+            else
+              acc
+            end
+          end)
 
         socket =
           socket
@@ -48,9 +60,7 @@ defmodule AthenaWeb.LearnLive.Exam do
           |> assign(:child_submissions, child_subs)
           |> assign(:time_limit_sec, time_limit_sec)
           |> assign(:time_left, DateTime.diff(submission.expires_at, DateTime.utc_now()))
-          |> assign(:cheat_count, Map.get(submission.content || %{}, "cheat_count", 0))
-          |> assign(:max_cheats, Map.get(block.content || %{}, "allowed_blur_attempts", 3))
-          |> assign(:pending_file_urls, %{})
+          |> assign(:pending_file_urls, pending_urls)
           |> assign(:show_media_modal, false)
           |> assign(:active_upload_block_id, nil)
           |> assign(:upload_type, nil)
@@ -58,7 +68,7 @@ defmodule AthenaWeb.LearnLive.Exam do
           |> assign(:current_file_count_for_upload, 0)
 
         maybe_start_timer(socket)
-        {:ok, socket, layout: false}
+        {:ok, socket}
       end
     else
       _ ->
@@ -67,65 +77,7 @@ defmodule AthenaWeb.LearnLive.Exam do
           |> put_flash(:error, gettext("Exam is not active or already finished."))
           |> push_navigate(to: ~p"/learn/courses/#{course_id}")
 
-        {:ok, socket, layout: false}
-    end
-  end
-
-  @impl true
-  def handle_info(:tick, socket) do
-    time_left = DateTime.diff(socket.assigns.submission.expires_at, DateTime.utc_now())
-
-    if time_left <= 0 do
-      {:noreply,
-       submit_and_exit(
-         socket,
-         socket.assigns.submission,
-         socket.assigns.course_id,
-         :time_limit_exceeded
-       )}
-    else
-      {:noreply, assign(socket, :time_left, time_left)}
-    end
-  end
-
-  @impl true
-  def handle_event("cheat_detected", _params, socket) do
-    case check_time_limit(socket) do
-      {:halt, socket} ->
-        {:noreply, socket}
-
-      {:ok, socket} ->
-        new_count = socket.assigns.cheat_count + 1
-        max_cheats = socket.assigns.max_cheats
-
-        new_content = Map.put(socket.assigns.submission.content || %{}, "cheat_count", new_count)
-
-        {:ok, updated_sub} =
-          Learning.system_update_submission(socket.assigns.submission, %{"content" => new_content})
-
-        socket = assign(socket, submission: updated_sub, cheat_count: new_count)
-
-        if new_count >= max_cheats do
-          {:ok, _failed_sub} =
-            Learning.system_update_submission(updated_sub, %{"status" => "graded", "score" => 0})
-
-          broadcast_team_progress(socket.assigns.team_id, socket.assigns.course_id)
-
-          {:noreply,
-           socket
-           |> put_flash(:error, gettext("Exam failed due to cheating violations."))
-           |> push_navigate(to: ~p"/learn/courses/#{socket.assigns.course_id}")}
-        else
-          {:noreply,
-           put_flash(
-             socket,
-             :warning,
-             gettext("Warning: You left the exam tab. Violation %{count} of %{max}.",
-               count: new_count,
-               max: max_cheats
-             )
-           )}
-        end
+        {:ok, socket}
     end
   end
 
@@ -134,15 +86,20 @@ defmodule AthenaWeb.LearnLive.Exam do
     process_exam_answer(params, socket)
   end
 
-  @impl true
   def handle_event("save_draft", params, socket) do
     process_exam_answer(params, socket)
   end
 
-  def handle_event("save_draft", _params, socket), do: {:noreply, socket}
-  def handle_event("save_answer", _params, socket), do: {:noreply, socket}
+  def handle_event("submit_quiz", params, socket) do
+    process_exam_answer(params, socket)
+    handle_event("next_question", %{}, socket)
+  end
 
-  @impl true
+  def handle_event("submit_code", params, socket) do
+    process_exam_answer(params, socket)
+    {:noreply, put_flash(socket, :info, gettext("Code saved."))}
+  end
+
   def handle_event(
         "request_media_upload",
         %{"block_id" => block_id, "media_type" => "file_assignment"},
@@ -168,8 +125,7 @@ defmodule AthenaWeb.LearnLive.Exam do
            |> assign(:max_files_for_upload, max_files)
            |> assign(:current_file_count_for_upload, current_count)}
         else
-          {:noreply,
-           put_flash(socket, :error, gettext("Неверный тип блока для загрузки файлов."))}
+          {:noreply, put_flash(socket, :error, gettext("Invalid block for file upload."))}
         end
     end
   end
@@ -201,7 +157,7 @@ defmodule AthenaWeb.LearnLive.Exam do
 
       {:noreply, assign(socket, :pending_file_urls, updated_pending)}
     else
-      {:noreply, put_flash(socket, :error, gettext("Достигнут лимит количества файлов."))}
+      {:noreply, put_flash(socket, :error, gettext("Maximum number of files reached."))}
     end
   end
 
@@ -225,8 +181,15 @@ defmodule AthenaWeb.LearnLive.Exam do
     file_urls = Map.get(pending, block_id, []) |> Enum.reject(&(&1 == ""))
 
     if file_urls == [] do
-      {:noreply, put_flash(socket, :error, gettext("Пожалуйста, загрузите хотя бы один файл."))}
+      {:noreply, put_flash(socket, :error, gettext("Please upload at least one file."))}
     else
+      socket =
+        if Map.has_key?(socket.assigns.child_submissions, block_id) do
+          socket
+        else
+          save_exam_file_assignment(socket, block_id, file_urls)
+        end
+
       child_sub = Map.get(socket.assigns.child_submissions, block_id)
 
       if child_sub do
@@ -238,10 +201,58 @@ defmodule AthenaWeb.LearnLive.Exam do
         {:noreply,
          socket
          |> assign(:child_submissions, new_child_subs)
-         |> put_flash(:info, gettext("Файлы успешно отправлены!"))}
+         |> put_flash(:info, gettext("Files submitted successfully!"))}
       else
-        {:noreply, put_flash(socket, :error, gettext("Ошибка отправки задания."))}
+        {:noreply, put_flash(socket, :error, gettext("Error submitting assignment."))}
       end
+    end
+  end
+
+  def handle_event("next_question", _, socket) do
+    case check_time_limit(socket) do
+      {:halt, socket} ->
+        {:noreply, socket}
+
+      {:ok, socket} ->
+        next_idx =
+          min(socket.assigns.current_index + 1, max(length(socket.assigns.questions) - 1, 0))
+
+        {:noreply, update_question(socket, next_idx)}
+    end
+  end
+
+  def handle_event("prev_question", _, socket) do
+    case check_time_limit(socket) do
+      {:halt, socket} ->
+        {:noreply, socket}
+
+      {:ok, socket} ->
+        prev_idx = max(socket.assigns.current_index - 1, 0)
+        {:noreply, update_question(socket, prev_idx)}
+    end
+  end
+
+  def handle_event("jump_to", %{"index" => idx_str}, socket) do
+    case check_time_limit(socket) do
+      {:halt, socket} ->
+        {:noreply, socket}
+
+      {:ok, socket} ->
+        idx = String.to_integer(idx_str)
+        {:noreply, update_question(socket, idx)}
+    end
+  end
+
+  def handle_event("finish_exam", _, socket) do
+    case check_time_limit(socket) do
+      {:halt, socket} ->
+        {:noreply, socket}
+
+      {:ok, socket} ->
+        socket =
+          submit_and_exit(socket, socket.assigns.submission, socket.assigns.course_id, :finished)
+
+        {:noreply, socket}
     end
   end
 
@@ -284,204 +295,210 @@ defmodule AthenaWeb.LearnLive.Exam do
         put_flash(
           socket,
           :error,
-          gettext("Не удалось сохранить %{count} файл(ов)", count: error_count)
+          gettext("Failed to save %{count} file(s)", count: error_count)
         )
       else
-        put_flash(socket, :info, gettext("Файл(ы) готовы к отправке"))
+        put_flash(socket, :info, gettext("File(s) ready to submit"))
       end
 
     {:noreply, socket}
   end
 
-  @impl true
-  def handle_info({AthenaWeb.StudioLive.MediaUploadComponent, msg}, socket) do
-    require Logger
-    Logger.warning("⚠️ Получено неизвестное сообщение от MediaUploadComponent: #{inspect(msg)}")
-    {:noreply, socket}
+  def handle_info(:tick, socket) do
+    time_left = DateTime.diff(socket.assigns.submission.expires_at, DateTime.utc_now())
+
+    if time_left <= 0 do
+      {:noreply,
+       submit_and_exit(
+         socket,
+         socket.assigns.submission,
+         socket.assigns.course_id,
+         :time_limit_exceeded
+       )}
+    else
+      {:noreply, assign(socket, :time_left, time_left)}
+    end
   end
 
-  @impl true
   def handle_info(_msg, socket) do
     {:noreply, socket}
   end
 
   @impl true
-  def handle_event("next_question", _, socket) do
-    case check_time_limit(socket) do
-      {:halt, socket} ->
-        {:noreply, socket}
-
-      {:ok, socket} ->
-        next_idx =
-          min(socket.assigns.current_index + 1, max(length(socket.assigns.questions) - 1, 0))
-
-        {:noreply, update_question(socket, next_idx)}
-    end
-  end
-
-  @impl true
-  def handle_event("prev_question", _, socket) do
-    case check_time_limit(socket) do
-      {:halt, socket} ->
-        {:noreply, socket}
-
-      {:ok, socket} ->
-        prev_idx = max(socket.assigns.current_index - 1, 0)
-        {:noreply, update_question(socket, prev_idx)}
-    end
-  end
-
-  @impl true
-  def handle_event("jump_to", %{"index" => idx_str}, socket) do
-    case check_time_limit(socket) do
-      {:halt, socket} ->
-        {:noreply, socket}
-
-      {:ok, socket} ->
-        idx = String.to_integer(idx_str)
-        {:noreply, update_question(socket, idx)}
-    end
-  end
-
-  @impl true
-  def handle_event("finish_exam", _, socket) do
-    case check_time_limit(socket) do
-      {:halt, socket} ->
-        {:noreply, socket}
-
-      {:ok, socket} ->
-        socket =
-          submit_and_exit(socket, socket.assigns.submission, socket.assigns.course_id, :finished)
-
-        {:noreply, socket}
-    end
-  end
-
-  @impl true
   def render(assigns) do
     ~H"""
-    <div id="exam-container" phx-hook="AntiCheat" class="min-h-screen bg-base-200 flex flex-col">
-      <header class="bg-base-100 border-b border-base-300 p-4 sticky top-0 z-50 flex items-center justify-between">
-        <div class="font-black text-xl flex items-center gap-2">
-          <.icon name="hero-academic-cap" class="size-6 text-primary" />
-          {gettext("Final Exam")}
+    <div id="exam-container" class="flex flex-col min-h-screen">
+      <header class="bg-base-100 border-b border-base-300 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="flex items-center justify-between h-16">
+            <div class="flex items-center gap-3">
+              <.icon name="hero-academic-cap" class="size-6 text-primary" />
+              <h1 class="font-display font-black text-lg uppercase tracking-tight">
+                {gettext("Final Exam")}
+              </h1>
+            </div>
+
+            <div class="flex items-center gap-4">
+              <div
+                :if={@time_limit_sec}
+                class={[
+                  "flex items-center gap-2 font-mono text-lg font-bold px-3 py-1 rounded-sm border",
+                  if(@time_left < 60,
+                    do: "bg-error/10 border-error text-error animate-pulse",
+                    else: "bg-base-200 border-base-300 text-base-content"
+                  )
+                ]}
+              >
+                <.icon name="hero-clock" class="size-4" />
+                {format_time(@time_left)}
+              </div>
+
+              <button
+                phx-click="finish_exam"
+                data-confirm={gettext("Are you sure you want to submit the exam?")}
+                class="btn btn-error btn-sm"
+              >
+                {gettext("Submit")}
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div class="flex items-center gap-6">
-          <div
-            :if={@max_cheats > 0}
-            class={[
-              "flex items-center gap-2 font-bold",
-              if(@cheat_count > 0, do: "text-error", else: "text-base-content/50")
-            ]}
-          >
-            <.icon name="hero-eye" class="size-5" />
-            {gettext("Violations:")} {@cheat_count} / {@max_cheats}
+        <div class="border-t border-base-300 bg-base-200/50">
+          <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <div class="flex items-center gap-2 overflow-x-auto pb-1">
+              <%= for {q, index} <- Enum.with_index(@questions) do %>
+                <button
+                  phx-click="jump_to"
+                  phx-value-index={index}
+                  class={[
+                    "size-9 rounded-sm font-bold text-sm flex items-center justify-center transition-all shrink-0 border",
+                    @current_index == index && "bg-primary text-primary-content border-primary",
+                    @current_index != index && Map.has_key?(@child_submissions, q.id) &&
+                      "bg-success/10 text-success border-success/30 hover:bg-success/20",
+                    @current_index != index && not Map.has_key?(@child_submissions, q.id) &&
+                      "bg-base-100 text-base-content/60 border-base-300 hover:bg-base-200 hover:border-base-content/20"
+                  ]}
+                  title={gettext("Question %{num}", num: index + 1)}
+                >
+                  {index + 1}
+                </button>
+              <% end %>
+            </div>
           </div>
-
-          <div
-            :if={@time_limit_sec}
-            class={[
-              "flex items-center gap-2 font-mono text-2xl font-black px-4 py-1 rounded-lg",
-              if(@time_left < 60,
-                do: "bg-error text-error-content animate-pulse",
-                else: "bg-base-200"
-              )
-            ]}
-          >
-            <.icon name="hero-clock" class="size-6" />
-            {format_time(@time_left)}
-          </div>
-
-          <button
-            phx-click="finish_exam"
-            data-confirm={gettext("Are you sure you want to submit the exam?")}
-            class="btn btn-error"
-          >
-            {gettext("Submit Exam")}
-          </button>
         </div>
       </header>
 
-      <div class="flex-1 max-w-5xl w-full mx-auto p-4 md:p-8 flex flex-col md:flex-row gap-8 items-start">
-        <aside class="w-full md:w-64 shrink-0 bg-base-100 p-4 rounded-2xl border border-base-300 sticky top-24">
-          <div class="text-xs font-bold uppercase tracking-widest text-base-content/50 mb-4 text-center">
-            {gettext("Questions Navigation")}
-          </div>
-          <div class="flex flex-wrap gap-2 justify-center">
-            <%= for {q, index} <- Enum.with_index(@questions) do %>
-              <button
-                phx-click="jump_to"
-                phx-value-index={index}
-                class={[
-                  "size-10 rounded-lg font-bold flex items-center justify-center transition-all",
-                  @current_index == index && "ring-2 ring-primary ring-offset-2 ring-offset-base-100",
-                  @current_index != index && "hover:bg-base-200",
-                  Map.has_key?(@child_submissions, q.id) &&
-                    "bg-primary/10 text-primary border border-primary/30",
-                  not Map.has_key?(@child_submissions, q.id) && "bg-base-200 text-base-content/60"
-                ]}
-              >
-                {index + 1}
-              </button>
-            <% end %>
-          </div>
-        </aside>
-
-        <main class="flex-1 bg-base-100 p-6 md:p-10 rounded-2xl border border-base-300 w-full">
+      <main class="flex-1 bg-base-200 py-8 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-4xl mx-auto">
           <%= if @current_question do %>
-            <div class="flex items-center gap-3 mb-6 pb-6 border-b border-base-200">
-              <div class="size-10 bg-primary text-primary-content font-black rounded-xl flex items-center justify-center text-xl">
-                {@current_index + 1}
+            <div class="bg-base-100 border border-base-300 rounded-sm">
+              <div class="flex items-center gap-3 p-6 border-b border-base-300">
+                <div class="size-10 bg-primary text-primary-content font-black rounded-sm flex items-center justify-center text-lg">
+                  {@current_index + 1}
+                </div>
+                <div class="flex-1">
+                  <h2 class="text-sm font-bold text-base-content/50 uppercase tracking-wider">
+                    {gettext("Question")}
+                  </h2>
+                  <p class="text-xs text-base-content/40 mt-0.5">
+                    {gettext("%{current} of %{total}",
+                      current: @current_index + 1,
+                      total: length(@questions)
+                    )}
+                  </p>
+                </div>
               </div>
-              <h2 class="text-xl font-bold text-base-content/50 uppercase tracking-widest">
-                {gettext("Question")}
-              </h2>
-            </div>
 
-            <form phx-change="save_answer" phx-submit="next_question">
-              <.content_block
-                block={@current_question}
-                mode={:play}
-                submission={Map.get(@child_submissions, @current_question.id)}
-                pending_file_urls={@pending_file_urls}
-              />
+              <div class="p-6">
+                <%= case @current_question.type do %>
+                  <% :quiz_question -> %>
+                    <form
+                      phx-change="save_answer"
+                      phx-submit="submit_quiz"
+                      id={"exam-quiz-#{@current_question.id}"}
+                    >
+                      <input type="hidden" name="block_id" value={@current_question.id} />
+                      <.content_block
+                        block={@current_question}
+                        mode={:play}
+                        submission={Map.get(@child_submissions, @current_question.id)}
+                        pending_file_urls={@pending_file_urls}
+                      />
+                    </form>
+                  <% :code -> %>
+                    <form
+                      phx-change="save_answer"
+                      phx-submit="submit_code"
+                      id={"exam-code-#{@current_question.id}"}
+                    >
+                      <input type="hidden" name="block_id" value={@current_question.id} />
+                      <.content_block
+                        block={@current_question}
+                        mode={:play}
+                        submission={Map.get(@child_submissions, @current_question.id)}
+                        pending_file_urls={@pending_file_urls}
+                      />
+                    </form>
+                  <% :file_assignment -> %>
+                    <form
+                      phx-change="save_answer"
+                      phx-submit="submit_file_assignment"
+                      id={"exam-file-#{@current_question.id}"}
+                    >
+                      <input type="hidden" name="block_id" value={@current_question.id} />
+                      <.content_block
+                        block={@current_question}
+                        mode={:play}
+                        submission={Map.get(@child_submissions, @current_question.id)}
+                        pending_file_urls={@pending_file_urls}
+                      />
+                    </form>
+                  <% _ -> %>
+                    <.content_block
+                      block={@current_question}
+                      mode={:play}
+                      submission={Map.get(@child_submissions, @current_question.id)}
+                      pending_file_urls={@pending_file_urls}
+                    />
+                <% end %>
+              </div>
 
-              <div class="flex items-center justify-between mt-12 pt-6 border-t border-base-200">
+              <div class="flex items-center justify-between p-6 border-t border-base-300 bg-base-200/30">
                 <button
                   type="button"
                   phx-click="prev_question"
-                  class="btn btn-outline"
+                  class="btn btn-outline btn-sm"
                   disabled={@current_index == 0}
                 >
-                  <.icon name="hero-arrow-left" class="size-5 mr-2" /> {gettext("Previous")}
+                  <.icon name="hero-arrow-left" class="size-4 mr-1" /> {gettext("Previous")}
                 </button>
 
                 <%= if @current_index >= length(@questions) - 1 do %>
-                  <button type="button" phx-click="finish_exam" class="btn btn-primary px-8">
-                    {gettext("Finish & Submit")} <.icon name="hero-check" class="size-5 ml-2" />
+                  <button type="button" phx-click="finish_exam" class="btn btn-primary btn-sm">
+                    {gettext("Finish & Submit")} <.icon name="hero-check" class="size-4 ml-1" />
                   </button>
                 <% else %>
-                  <button type="submit" class="btn btn-primary px-8">
-                    {gettext("Next")} <.icon name="hero-arrow-right" class="size-5 ml-2" />
+                  <button type="button" phx-click="next_question" class="btn btn-primary btn-sm">
+                    {gettext("Next")} <.icon name="hero-arrow-right" class="size-4 ml-1" />
                   </button>
                 <% end %>
               </div>
-            </form>
+            </div>
           <% else %>
-            <div class="p-10 text-center">
-              <.icon name="hero-exclamation-circle" class="size-12 text-base-content/30 mx-auto mb-4" />
-              <h3 class="text-xl font-bold text-base-content/50">
+            <div class="bg-base-100 border border-base-300 rounded-sm p-12 text-center">
+              <.icon name="hero-exclamation-circle" class="size-16 text-base-content/20 mx-auto mb-6" />
+              <h3 class="text-xl font-bold text-base-content/60 mb-2">
                 {gettext("No questions available")}
               </h3>
-              <p class="text-base-content/40 mt-2">{gettext("Please contact your instructor.")}</p>
-              <button type="button" phx-click="finish_exam" class="btn btn-primary mt-6">
+              <p class="text-base-content/40 mb-6">{gettext("Please contact your instructor.")}</p>
+              <button type="button" phx-click="finish_exam" class="btn btn-primary">
                 {gettext("Return to Course")}
               </button>
             </div>
           <% end %>
-        </main>
-      </div>
+        </div>
+      </main>
 
       <%= if @show_media_modal do %>
         <.live_component
@@ -552,7 +569,7 @@ defmodule AthenaWeb.LearnLive.Exam do
   defp normalize_answer(
          %{
            type: :quiz_question,
-           content: %{"question_type" => q_type, "answer_type" => "rich_text"}
+           content: %{"question_type" => _q_type, "answer_type" => "rich_text"}
          },
          answer
        ) do
@@ -700,7 +717,7 @@ defmodule AthenaWeb.LearnLive.Exam do
 
       {:error, reason} ->
         require Logger
-        Logger.error("❌ Ошибка сохранения файлов в экзамене: #{inspect(reason)}")
+        Logger.error("Failed to save exam file assignment: #{inspect(reason)}")
         socket
     end
   end
