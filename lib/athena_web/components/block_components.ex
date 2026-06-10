@@ -195,13 +195,37 @@ defmodule AthenaWeb.BlockComponents do
       )
 
     lang = assigns.block.content["language"] || "python3"
-    readonly = assigns.mode not in [:edit, :play]
+    is_processing = assigns.submission && assigns.submission.status in [:pending, :processing]
+    readonly = assigns.mode not in [:edit, :play] or is_processing
+
+    draft_results =
+      if assigns.draft, do: Map.get(assigns.draft, "execution_results") || [], else: []
+
+    execution_results =
+      cond do
+        draft_results != [] ->
+          draft_results
+
+        assigns.submission ->
+          content_map =
+            if is_struct(assigns.submission.content),
+              do: Map.from_struct(assigns.submission.content),
+              else: assigns.submission.content || %{}
+
+          Map.get(content_map, "execution_results") || Map.get(content_map, :execution_results) ||
+            []
+
+        true ->
+          []
+      end
 
     assigns =
       assigns
       |> assign(:code, code)
       |> assign(:cm_lang, map_cm_lang(lang))
       |> assign(:readonly, readonly)
+      |> assign(:execution_results, execution_results)
+      |> assign(:is_processing, is_processing)
 
     ~H"""
     <div class="relative w-full">
@@ -271,6 +295,93 @@ defmodule AthenaWeb.BlockComponents do
           </div>
         </div>
       </div>
+
+      <%= if @execution_results != [] do %>
+        <div class="mt-2 bg-base-300/20 rounded-sm border border-base-300 overflow-hidden">
+          <table class="table table-xs w-full font-mono">
+            <thead class="bg-base-300/50 uppercase tracking-widest text-[10px]">
+              <tr>
+                <th class="w-12">#</th>
+                <th class="w-32">{gettext("Result")}</th>
+                <th>{gettext("Details")}</th>
+                <th class="text-right">{gettext("Time")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for {res, idx} <- Enum.with_index(@execution_results) do %>
+                <tr class="border-base-300">
+                  <td class="opacity-40">{idx + 1}</td>
+                  <td class={
+                    if res["status"] == "accepted",
+                      do: "text-success font-bold",
+                      else: "text-error font-bold"
+                  }>
+                    {String.upcase(res["status"])}
+                  </td>
+                  <td>
+                    <%= if res["is_hidden"] do %>
+                      <span class="opacity-30 italic flex items-center gap-1 text-[10px]">
+                        <.icon name="hero-eye-slash" class="size-3" />
+                        {gettext("Hidden Test")}
+                      </span>
+                    <% else %>
+                      <%= if res["status"] != "accepted" do %>
+                        <div class="text-[10px] space-y-1">
+                          <div class="flex gap-1">
+                            <span class="font-bold opacity-40">IN:</span><span>{res["input"]}</span>
+                          </div>
+                          <div class="flex gap-1">
+                            <span class="font-bold text-error/60">GOT:</span><span class="text-error">{res["stdout"]}</span>
+                          </div>
+                          <div class="flex gap-1 border-t border-base-300 pt-1">
+                            <span class="font-bold text-success/60">EXP:</span><span class="text-success">{res["expected"]}</span>
+                          </div>
+                        </div>
+                      <% else %>
+                        <span class="opacity-20 text-[10px]">---</span>
+                      <% end %>
+                    <% end %>
+                  </td>
+                  <td class="text-right opacity-50 text-[10px]">{res["time"]}s</td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% end %>
+
+      <%= if @mode == :play do %>
+        <div class="mt-6 space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <button
+                type="button"
+                phx-click="run_code"
+                phx-value-block_id={@block.id}
+                class="btn btn-outline btn-sm"
+              >
+                <.icon name="hero-play" class="size-4 mr-1" /> {gettext("Проверить")}
+              </button>
+
+              <button
+                type="submit"
+                class="btn btn-primary btn-sm"
+                disabled={@is_processing}
+              >
+                <%= if @is_processing do %>
+                  <span class="loading loading-spinner loading-xs"></span> {gettext("Checking...")}
+                <% else %>
+                  {gettext("Отправить")}
+                <% end %>
+              </button>
+            </div>
+
+            <span :if={@block.content["max_attempts"]} class="text-xs text-base-content/50">
+              {gettext("Attempts:")} {@block.content["max_attempts"]}
+            </span>
+          </div>
+        </div>
+      <% end %>
     </div>
     """
   end
@@ -280,8 +391,8 @@ defmodule AthenaWeb.BlockComponents do
     do: block.content["initial_code"] || ""
 
   defp compute_code_for_mode(:play, block, draft, answers, submission) do
-    extract_code_answer(%{block: block, answers: answers, submission: submission}) ||
-      extract_draft_code(draft) ||
+    extract_draft_code(draft) ||
+      extract_code_answer(%{block: block, answers: answers, submission: submission}) ||
       block.content["initial_code"] ||
       ""
   end
@@ -372,18 +483,24 @@ defmodule AthenaWeb.BlockComponents do
   end
 
   defp extract_quiz_answer(assigns, q_type) do
-    live_answer = Map.get(assigns.answers || %{}, assigns.block.id)
     answer_type = assigns.block.content["answer_type"] || "plain_text"
 
-    if live_answer do
-      if is_struct(live_answer, Athena.Learning.Submission) do
-        extract_from_submission(live_answer, q_type, answer_type)
-      else
-        live_answer
-      end
+    draft_answer = extract_from_draft(assigns[:draft], q_type, answer_type)
+
+    if not is_nil(draft_answer) and draft_answer != "" and draft_answer != [] do
+      draft_answer
     else
-      extract_from_submission(assigns[:submission], q_type, answer_type) ||
-        extract_from_draft(assigns[:draft], q_type, answer_type)
+      live_answer = Map.get(assigns.answers || %{}, assigns.block.id)
+
+      if live_answer do
+        if is_struct(live_answer, Athena.Learning.Submission) do
+          extract_from_submission(live_answer, q_type, answer_type)
+        else
+          live_answer
+        end
+      else
+        extract_from_submission(assigns[:submission], q_type, answer_type)
+      end
     end
   end
 

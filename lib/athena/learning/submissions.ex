@@ -154,6 +154,58 @@ defmodule Athena.Learning.Submissions do
   end
 
   @doc """
+  Enqueues the code execution worker for a specific submission.
+  Updates the status to :processing immediately.
+  Works for both regular blocks and generated exam questions.
+  """
+  def enqueue_code_execution(%Submission{} = submission) do
+    is_code_content = submission.content["type"] in [:code, "code"]
+
+    if is_code_content do
+      do_enqueue(submission)
+    else
+      block = Repo.get(Block, submission.block_id)
+
+      if block && block.type == :code do
+        do_enqueue(submission)
+      else
+        {:error, :not_a_code_block}
+      end
+    end
+  end
+
+  @doc false
+  defp do_enqueue(submission) do
+    {:ok, processing_sub} = system_update_submission(submission, %{status: :processing})
+
+    %{submission_id: processing_sub.id}
+    |> Athena.Execution.Worker.new()
+    |> Oban.insert()
+
+    {:ok, processing_sub}
+  end
+
+  @doc """
+  Initiates a test run for code by updating the draft and enqueuing an Oban worker.
+  Does NOT count as a formal submission attempt.
+  """
+  def test_code(user, block, code) do
+    content = %{"type" => :code, "code" => code, "is_test_run" => true}
+
+    case save_draft(user, block.id, content, nil) do
+      {:ok, draft} ->
+        %{submission_id: draft.id}
+        |> Athena.Execution.TestWorker.new()
+        |> Oban.insert()
+
+        {:ok, draft}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  @doc """
   Updates a submission manually (e.g. manual grading by an instructor).
   Enforces ACL: only users with grading.update can do this.
   """
@@ -195,12 +247,15 @@ defmodule Athena.Learning.Submissions do
     query =
       if cohort_id do
         from s in Submission,
-          where: s.cohort_id == ^cohort_id and s.block_id in ^block_ids and s.status != :draft
+          where:
+            s.cohort_id == ^cohort_id and s.block_id in ^block_ids and s.status != :draft and
+              fragment("?->>'is_test_run' IS NULL", s.content)
       else
         from s in Submission,
           where:
             s.account_id == ^account_id and is_nil(s.cohort_id) and
-              s.block_id in ^block_ids and s.status != :draft
+              s.block_id in ^block_ids and s.status != :draft and
+              fragment("?->>'is_test_run' IS NULL", s.content)
       end
 
     query
@@ -434,12 +489,15 @@ defmodule Athena.Learning.Submissions do
     query =
       if cohort_id do
         from s in Submission,
-          where: s.cohort_id == ^cohort_id and s.block_id == ^block_id and s.status == :draft
+          where:
+            s.cohort_id == ^cohort_id and s.block_id == ^block_id and
+              (s.status == :draft or fragment("?->>'is_test_run' = 'true'", s.content))
       else
         from s in Submission,
           where:
             s.account_id == ^user_id and s.block_id == ^block_id and
-              s.status == :draft and is_nil(s.cohort_id)
+              (s.status == :draft or fragment("?->>'is_test_run' = 'true'", s.content)) and
+              is_nil(s.cohort_id)
       end
 
     query

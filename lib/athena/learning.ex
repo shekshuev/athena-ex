@@ -65,6 +65,8 @@ defmodule Athena.Learning do
   defdelegate save_draft(user, block_id, content, cohort_id \\ nil), to: Submissions
   defdelegate get_draft(user_id, block_id, cohort_id \\ nil), to: Submissions
   defdelegate clear_draft(user_id, block_id, cohort_id \\ nil), to: Submissions
+  defdelegate enqueue_code_execution(submission), to: Submissions
+  defdelegate test_code(user, block, code), to: Submissions
 
   defdelegate start_exam_submission(account_id, exam_block_id, cohort_id, time_limit_seconds),
     to: Submissions

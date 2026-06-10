@@ -67,6 +67,12 @@ defmodule AthenaWeb.LearnLive.Exam do
           |> assign(:max_files_for_upload, 1)
           |> assign(:current_file_count_for_upload, 0)
 
+        if connected?(socket) do
+          for q <- questions do
+            Phoenix.PubSub.subscribe(Athena.PubSub, "submission:#{user.id}:#{q.id}")
+          end
+        end
+
         maybe_start_timer(socket)
         {:ok, socket}
       end
@@ -257,6 +263,49 @@ defmodule AthenaWeb.LearnLive.Exam do
   end
 
   @impl true
+  def handle_event("run_code", %{"block_id" => block_id}, socket) do
+    case check_time_limit(socket) do
+      {:halt, socket} ->
+        {:noreply, socket}
+
+      {:ok, socket} ->
+        child_sub = Map.get(socket.assigns.child_submissions, block_id)
+
+        submission_to_run =
+          if child_sub do
+            child_sub
+          else
+            answer_content = %{"type" => :code, "code" => ""}
+
+            case Learning.save_question_submission(
+                   socket.assigns.submission,
+                   socket.assigns.current_user.id,
+                   block_id,
+                   socket.assigns.team_id,
+                   answer_content
+                 ) do
+              {:ok, new_sub} -> new_sub
+              {:error, _} -> nil
+            end
+          end
+
+        if submission_to_run do
+          case Learning.enqueue_code_execution(submission_to_run) do
+            {:ok, processing_sub} ->
+              new_child_subs = Map.put(socket.assigns.child_submissions, block_id, processing_sub)
+              {:noreply, assign(socket, :child_submissions, new_child_subs)}
+
+            {:error, err} ->
+              dbg(err)
+              {:noreply, put_flash(socket, :error, gettext("Failed to start code execution."))}
+          end
+        else
+          {:noreply, socket}
+        end
+    end
+  end
+
+  @impl true
   def handle_info(
         {AthenaWeb.StudioLive.MediaUploadComponent,
          {:saved, _msg_block_id, "file_assignment", results}},
@@ -316,8 +365,28 @@ defmodule AthenaWeb.LearnLive.Exam do
          :time_limit_exceeded
        )}
     else
-      {:noreply, assign(socket, :time_left, time_left)}
+      socket = assign(socket, :time_left, time_left)
+
+      Process.send_after(self(), :tick, 1000)
+
+      {:noreply, socket}
     end
+  end
+
+  @impl true
+  def handle_info({:submission_updated, updated_sub}, socket) do
+    new_child_subs = Map.put(socket.assigns.child_submissions, updated_sub.block_id, updated_sub)
+
+    flash_msg =
+      case updated_sub.status do
+        :accepted -> gettext("Success! Code passed all tests.")
+        :rejected -> gettext("Execution failed. Check the details below.")
+        _ -> nil
+      end
+
+    socket = if flash_msg, do: put_flash(socket, :info, flash_msg), else: socket
+
+    {:noreply, assign(socket, :child_submissions, new_child_subs)}
   end
 
   def handle_info(_msg, socket) do
@@ -334,7 +403,7 @@ defmodule AthenaWeb.LearnLive.Exam do
             <div class="flex items-center gap-3">
               <.icon name="hero-academic-cap" class="size-6 text-primary" />
               <h1 class="font-display font-black text-lg uppercase tracking-tight">
-                {gettext("Final Exam")}
+                {gettext("Assessment Session")}
               </h1>
             </div>
 
@@ -474,7 +543,9 @@ defmodule AthenaWeb.LearnLive.Exam do
                   <.icon name="hero-arrow-left" class="size-4 mr-1" /> {gettext("Previous")}
                 </button>
 
-                <%= if @current_index >= length(@questions) - 1 do %>
+                <% all_answered = all_questions_answered?(@questions, @child_submissions) %>
+
+                <%= if @current_index >= length(@questions) - 1 and all_answered do %>
                   <button type="button" phx-click="finish_exam" class="btn btn-primary btn-sm">
                     {gettext("Finish & Submit")} <.icon name="hero-check" class="size-4 ml-1" />
                   </button>
@@ -721,4 +792,9 @@ defmodule AthenaWeb.LearnLive.Exam do
         socket
     end
   end
+
+  defp all_questions_answered?(questions, child_submissions),
+    do:
+      questions
+      |> Enum.all?(fn q -> Map.has_key?(child_submissions, q.id) end)
 end

@@ -1,51 +1,30 @@
-defmodule Athena.Execution.Worker do
+defmodule Athena.Execution.TestWorker do
   @moduledoc """
-  An Oban worker responsible for asynchronous code challenge execution.
-
-  Fetches the submission and its associated code block, manages the lifecycle
-  states (`:processing`, then final execution status), invokes the verification
-  sandbox, and broadcasts real-time updates to the frontend via Phoenix PubSub.
-
-  ## Configuration
-
-  The maximum execution time for a single challenge is controlled by the
-  `@timeout` module attribute (default: 60_000 ms / 1 minute). If you need
-  to tweak it globally, override it via application config:
-
-      config :athena, Athena.Execution.Worker, timeout: 90_000
+  Oban worker for test-running code submissions without consuming formal attempts.
+  Updates the draft with execution results and reverts status to :draft.
   """
+  use Oban.Worker, queue: :code_execution, max_attempts: 1
 
-  use Oban.Worker,
-    queue: :code_execution,
-    max_attempts: 1
-
-  alias Athena.Repo
+  alias Athena.{Repo, Content}
   alias Athena.Learning.{Submission, Submissions}
-  alias Athena.Content.{Block, CodeChallenge}
   alias Athena.Execution.Verifier
 
-  @timeout Application.compile_env(:athena, [Athena.Execution.Worker, :timeout], 60_000)
+  @timeout Application.compile_env(:athena, [Athena.Execution.TestWorker, :timeout], 60_000)
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"submission_id" => id}}) do
     submission = Repo.get!(Submission, id)
+    block = Repo.get!(Content.Block, submission.block_id)
 
-    block = Repo.get(Block, submission.block_id)
+    {:ok, _} = Submissions.system_update_submission(submission, %{status: :processing})
+    broadcast_update(submission)
 
-    challenge_attrs =
-      if block do
-        block.content
-      else
-        parent = Repo.get!(Submission, submission.parent_submission_id)
-
-        question =
-          Enum.find(parent.content["questions"] || [], &(&1["id"] == submission.block_id))
-
-        question["content"] || %{}
-      end
+    challenge_attrs = block.content
 
     challenge =
-      Ecto.Changeset.apply_changes(CodeChallenge.changeset(%CodeChallenge{}, challenge_attrs))
+      Ecto.Changeset.apply_changes(
+        Content.CodeChallenge.changeset(%Content.CodeChallenge{}, challenge_attrs)
+      )
 
     code = submission.content["code"] || ""
     box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
@@ -62,7 +41,7 @@ defmodule Athena.Execution.Worker do
         catch
           :exit, reason ->
             require Logger
-            Logger.error("Remote execution failed: #{inspect(reason)}")
+            Logger.error("Remote test execution failed: #{inspect(reason)}")
 
             %Verifier.Result{
               status: :rejected,
@@ -81,7 +60,7 @@ defmodule Athena.Execution.Worker do
         end
       else
         require Logger
-        Logger.error("Runner node is not connected during worker execution!")
+        Logger.error("Runner node is not connected during test worker execution!")
 
         %Verifier.Result{
           status: :rejected,
@@ -109,8 +88,7 @@ defmodule Athena.Execution.Worker do
     new_content = Map.put(submission.content || %{}, "execution_results", clean_test_results)
 
     attrs = %{
-      status: result.status,
-      score: result.score,
+      status: :draft,
       content: new_content
     }
 
@@ -121,7 +99,7 @@ defmodule Athena.Execution.Worker do
 
       {:error, changeset} ->
         require Logger
-        Logger.error("Failed to update submission: #{inspect(changeset.errors)}")
+        Logger.error("Failed to update test submission: #{inspect(changeset.errors)}")
         :error
     end
   end
@@ -130,7 +108,12 @@ defmodule Athena.Execution.Worker do
     Phoenix.PubSub.broadcast(
       Athena.PubSub,
       "submission:#{submission.account_id}:#{submission.block_id}",
-      {:submission_updated, submission}
+      {:draft_updated,
+       %{
+         block_id: submission.block_id,
+         content: submission.content,
+         updater_id: "test_worker"
+       }}
     )
   end
 end
