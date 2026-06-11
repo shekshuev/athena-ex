@@ -426,7 +426,7 @@ defmodule AthenaWeb.LearnLive.Exam do
                   "flex items-center gap-2 font-mono text-lg font-bold px-3 py-1 rounded-sm border",
                   if(@time_left < 60,
                     do: "bg-error/10 border-error text-error animate-pulse",
-                    else: "bg-base-200 border-base-300 text-base-content"
+                    else: "bg-base-100 border-base-300 text-base-content"
                   )
                 ]}
               >
@@ -444,9 +444,9 @@ defmodule AthenaWeb.LearnLive.Exam do
           </div>
         </div>
 
-        <div class="border-t border-base-300 bg-base-200/50">
+        <div class="border-t border-base-300 bg-base-100">
           <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-            <div class="flex items-center gap-2 overflow-x-auto pb-1">
+            <div class="flex items-center gap-2 overflow-x-auto scrollbar-thin scrollbar-thumb-base-300 scrollbar-track-transparent pb-1">
               <%= for {q, index} <- Enum.with_index(@questions) do %>
                 <button
                   phx-click="jump_to"
@@ -455,9 +455,9 @@ defmodule AthenaWeb.LearnLive.Exam do
                     "size-9 rounded-sm font-bold text-sm flex items-center justify-center transition-all shrink-0 border",
                     @current_index == index && "bg-primary text-primary-content border-primary",
                     @current_index != index && Map.has_key?(@child_submissions, q.id) &&
-                      "bg-success/10 text-success border-success/30 hover:bg-success/20",
+                      "bg-success/10 text-success border-success hover:bg-success/20",
                     @current_index != index && not Map.has_key?(@child_submissions, q.id) &&
-                      "bg-base-100 text-base-content/60 border-base-300 hover:bg-base-200 hover:border-base-content/20"
+                      "bg-base-100 text-base-content/60 border-base-300 hover:border-primary hover:text-primary"
                   ]}
                   title={gettext("Question %{num}", num: index + 1)}
                 >
@@ -469,7 +469,7 @@ defmodule AthenaWeb.LearnLive.Exam do
         </div>
       </header>
 
-      <main class="flex-1 bg-base-200 py-8 px-4 sm:px-6 lg:px-8">
+      <main class="flex-1 bg-base-100 py-8 px-4 sm:px-6 lg:px-8">
         <div class="max-w-4xl mx-auto">
           <%= if @current_question do %>
             <div class="bg-base-100 border border-base-300 rounded-sm">
@@ -545,7 +545,7 @@ defmodule AthenaWeb.LearnLive.Exam do
                 <% end %>
               </div>
 
-              <div class="flex items-center justify-between p-6 border-t border-base-300 bg-base-200/30">
+              <div class="flex items-center justify-between p-6 border-t border-base-300">
                 <button
                   type="button"
                   phx-click="prev_question"

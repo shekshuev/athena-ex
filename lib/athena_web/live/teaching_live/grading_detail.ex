@@ -279,16 +279,16 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
 
               <div
                 :for={{q_block, index} <- Enum.with_index(@questions)}
-                class="p-6 bg-base-100 border border-base-200 relative group hover:border-primary/30 transition-all"
+                class="p-6 bg-base-100 border border-base-300 rounded-sm relative group hover:border-primary/30 transition-all"
               >
                 <div class="absolute -top-3 -left-3 size-7 bg-base-200 text-base-content/70 font-bold rounded-sm flex items-center justify-center border border-base-300 text-xs group-hover:bg-primary group-hover:text-primary-content group-hover:border-primary transition-colors">
                   {index + 1}
                 </div>
 
-                <div class="flex items-center justify-between mb-6 pb-4 border-b border-base-100">
+                <div class="flex items-center justify-between mb-6 pb-4 border-b border-base-300">
                   <h2 class="text-lg font-bold">{gettext("Question Content")}</h2>
                   <div class="flex items-center gap-2">
-                    <span class="badge badge-sm rounded-sm font-bold bg-base-200 border-0 text-base-content/70 uppercase tracking-widest text-[10px]">
+                    <span class="badge badge-sm rounded-sm font-bold bg-base-200 border border-base-300 text-base-content/70 uppercase tracking-widest text-[10px]">
                       {q_block.content["question_type"] || q_block.type}
                     </span>
                   </div>
@@ -314,7 +314,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                         value={
                           Map.get(grade_params, "score") || if child_sub, do: child_sub.score, else: 0
                         }
-                        class="input input-sm w-full border-base-300 bg-base-100"
+                        class="input input-sm w-full"
                         min="0"
                         max="100"
                       />
@@ -326,7 +326,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                       <textarea
                         form="grading-form"
                         name={"child_grades[#{q_block.id}][feedback]"}
-                        class="textarea textarea-sm w-full border-base-300 bg-base-100 resize-none"
+                        class="textarea textarea-sm w-full resize-none"
                         rows="2"
                         placeholder={gettext("Specific feedback for this answer...")}
                       ><%= Map.get(grade_params, "feedback") || (if child_sub, do: child_sub.feedback, else: "") %></textarea>
@@ -336,8 +336,8 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
               </div>
             </div>
           <% else %>
-            <div class="p-6 bg-base-100 border border-base-200 rounded-sm">
-              <div class="flex items-center justify-between mb-6 pb-4 border-b border-base-100">
+            <div class="p-6 bg-base-100 border border-base-300 rounded-sm">
+              <div class="flex items-center justify-between mb-6 pb-4 border-b border-base-300">
                 <h2 class="text-lg font-bold">{gettext("Question Content")}</h2>
               </div>
               <.content_block block={@block} mode={:review} submission={@submission} />
@@ -346,7 +346,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
         </div>
 
         <div class="w-full lg:w-100 shrink-0 bg-base-100 rounded-sm border border-base-300 sticky top-8 flex flex-col overflow-hidden">
-          <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-200 bg-base-200/30">
+          <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-300">
             <div>
               <div class="text-[10px] font-bold text-base-content/50 uppercase tracking-widest mb-0.5">
                 {gettext("Grading Panel")}
@@ -401,7 +401,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                   <div class="text-xs font-bold text-error uppercase tracking-wider">
                     {gettext("Violations")}
                   </div>
-                  <div class="p-4 bg-error/10 text-error rounded-md border border-error/20">
+                  <div class="p-4 bg-error/10 text-error rounded-sm border border-error/30">
                     <div class="font-bold flex items-center gap-2 mb-1">
                       <.icon name="hero-eye" class="size-4" />
                       {gettext("Cheating Detected")}
@@ -418,14 +418,14 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
             </.form>
           </div>
 
-          <div class="p-6 border-t border-base-200 bg-base-200/20 flex flex-col gap-4">
+          <div class="p-6 border-t border-base-300 flex flex-col gap-4">
             <div class="flex gap-4">
               <button
                 form="grading-form"
                 type="submit"
                 name="action"
                 value="reject"
-                class="btn btn-outline btn-error w-1/3"
+                class="btn btn-outline btn-error"
               >
                 <.icon name="hero-x-mark" class="size-5 mr-1" />
                 {gettext("Reject")}
@@ -436,22 +436,22 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                 type="submit"
                 name="action"
                 value="grade"
-                class="btn btn-primary w-2/3"
+                class="btn btn-primary"
               >
                 <.icon name="hero-check-circle" class="size-5 mr-2" />
                 {gettext("Save & Grade")}
               </button>
             </div>
 
-            <div class="divider my-0 opacity-50"></div>
+            <div class="divider my-0"></div>
 
             <button
               type="button"
               phx-click="open_delete_modal"
-              class="btn btn-ghost btn-error btn-sm w-full opacity-70 hover:opacity-100"
+              class="btn btn-outline btn-error w-full"
             >
               <.icon name="hero-trash" class="size-4 mr-1" />
-              {gettext("Delete & Rollback Submission")}
+              {gettext("Delete Submission")}
             </button>
           </div>
         </div>
@@ -478,11 +478,11 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
   defp status_badge(assigns) do
     ~H"""
     <span class={[
-      "badge font-bold border-0 tracking-wide rounded-md",
-      @status == :graded && "bg-success/10 text-success",
-      @status == :needs_review && "bg-warning/10 text-warning",
-      @status in [:pending, :processing] && "bg-base-200 text-base-content/70",
-      @status == :rejected && "bg-error/10 text-error"
+      "badge font-bold border tracking-wide rounded-sm",
+      @status == :graded && "bg-success/10 text-success border-success/30",
+      @status == :needs_review && "bg-warning/10 text-warning border-warning/30",
+      @status in [:pending, :processing] && "bg-base-200 text-base-content/70 border-base-300",
+      @status == :rejected && "bg-error/10 text-error border-error/30"
     ]}>
       {Atom.to_string(@status) |> String.replace("_", " ") |> String.capitalize()}
     </span>

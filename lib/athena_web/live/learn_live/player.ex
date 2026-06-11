@@ -1113,35 +1113,6 @@ defmodule AthenaWeb.LearnLive.Player do
                     mode={exam_mode}
                     submission={submission}
                   />
-
-                  <%= if submission do %>
-                    <div class="mt-6 flex justify-center">
-                      <%= cond do %>
-                        <% submission.status == :graded && (submission.content["cheat_count"] || 0) >= (block.content["allowed_blur_attempts"] || 3) -> %>
-                          <div class="inline-flex items-center gap-2 text-xl font-black text-error bg-error/10 px-6 py-3 rounded-2xl">
-                            <.icon name="hero-x-circle-solid" class="size-6" />
-                            {gettext("Exam Failed (Violations)")}
-                          </div>
-                        <% submission.status in [:graded, :needs_review] -> %>
-                          <div class="inline-flex items-center gap-2 text-xl font-black text-success bg-success/10 px-6 py-3 rounded-2xl">
-                            <.icon name="hero-check-circle-solid" class="size-6" />
-                            {gettext("Exam Completed")}
-                            <span class="ml-2 text-success/50">|</span>
-                            <span class="ml-2">{submission.score} / 100</span>
-                          </div>
-                        <% submission.status == :pending -> %>
-                          <button
-                            phx-click="continue_exam"
-                            phx-value-block_id={block.id}
-                            class="btn btn-primary btn-lg px-12"
-                          >
-                            {gettext("Continue Exam")}
-                            <.icon name="hero-arrow-right" class="size-5 ml-2" />
-                          </button>
-                        <% true -> %>
-                      <% end %>
-                    </div>
-                  <% end %>
                 </div>
               <% :code -> %>
                 <div class="space-y-4">

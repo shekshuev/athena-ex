@@ -751,12 +751,11 @@ defmodule AthenaWeb.BlockComponents do
 
   defp render_quiz_exam(assigns) do
     ~H"""
-    <div class="p-8 bg-base-100 rounded-sm border border-base-200 text-center relative overflow-hidden">
-      <div class="absolute top-0 left-0 w-full h-1 bg-primary"></div>
+    <div class="p-8 bg-base-100 rounded-sm border border-base-300 text-center">
       <div class="size-16 bg-primary/10 text-primary rounded-sm flex items-center justify-center mx-auto mb-4">
         <.icon name="hero-academic-cap-solid" class="size-8" />
       </div>
-      <h3 class="text-2xl font-black mb-2">{gettext("Final Exam")}</h3>
+      <h3 class="text-2xl font-black mb-2">{gettext("Assessment Session")}</h3>
       <div class="flex items-center justify-center gap-4 text-sm font-bold text-base-content/60 uppercase tracking-widest">
         <span>{@block.content["count"] || 10} {gettext("Questions")}</span>
         <span :if={@block.content["time_limit"]}>
@@ -764,17 +763,67 @@ defmodule AthenaWeb.BlockComponents do
         </span>
       </div>
 
-      <%= if @mode == :play do %>
-        <div class="mt-8">
-          <button
-            phx-click="start_exam"
-            phx-value-block_id={@block.id}
-            class="btn btn-primary px-10"
-          >
-            {gettext("Start Exam")} <.icon name="hero-play-solid" class="size-4 ml-2" />
-          </button>
-        </div>
-      <% end %>
+      <div class="mt-8">
+        <%= if @submission do %>
+          <%= cond do %>
+            <% @submission.status == :graded && (@submission.content["cheat_count"] || 0) >= (@block.content["allowed_blur_attempts"] || 3) -> %>
+              <div class="inline-flex items-center gap-2 text-xl font-black text-error bg-error/10 border border-error/30 px-6 py-3 rounded-sm">
+                <.icon name="hero-x-circle-solid" class="size-6" />
+                {gettext("Assessment Failed (Violations)")}
+              </div>
+            <% @submission.status in [:graded, :needs_review, :rejected] -> %>
+              <div class="inline-flex flex-col items-center gap-2">
+                <div class={[
+                  "inline-flex items-center gap-3 text-lg font-black px-4 py-2 rounded-sm border",
+                  @submission.status == :graded && "text-success bg-success/10 border-success/30",
+                  @submission.status == :needs_review &&
+                    "text-warning bg-warning/10 border-warning/30",
+                  @submission.status == :rejected && "text-error bg-error/10 border-error/30"
+                ]}>
+                  <.icon
+                    name={
+                      case @submission.status do
+                        :graded -> "hero-check-circle-solid"
+                        :needs_review -> "hero-clock-solid"
+                        :rejected -> "hero-x-circle-solid"
+                        _ -> "hero-information-circle-solid"
+                      end
+                    }
+                    class="size-5"
+                  />
+                  {gettext("Assessment Completed")}
+                  <span class="opacity-30">|</span>
+                  <span>{@submission.score || 0} / 100</span>
+                </div>
+                <%= if @submission.status == :needs_review do %>
+                  <span class="text-xs font-bold uppercase tracking-widest mt-2">
+                    {gettext("Pending Instructor Review")}
+                  </span>
+                <% end %>
+              </div>
+            <% @submission.status in [:pending, :draft, :processing] -> %>
+              <button
+                phx-click="continue_exam"
+                phx-value-block_id={@block.id}
+                class="btn btn-primary px-12"
+              >
+                {gettext("Continue Assessment")}
+                <.icon name="hero-arrow-right" class="size-5 ml-2" />
+              </button>
+            <% true -> %>
+          <% end %>
+        <% else %>
+          <%= if @mode == :play do %>
+            <button
+              phx-click="start_exam"
+              phx-value-block_id={@block.id}
+              class="btn btn-primary px-10"
+            >
+              {gettext("Start Assessment")} <.icon name="hero-play-solid" class="size-4 ml-2" />
+            </button>
+          <% end %>
+        <% end %>
+      </div>
     </div>
     """
   end
