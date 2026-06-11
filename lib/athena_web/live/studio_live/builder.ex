@@ -1409,16 +1409,20 @@ defmodule AthenaWeb.StudioLive.Builder do
       </div>
 
       <div class="flex-1 flex flex-col relative overflow-hidden bg-base-200">
-        <.live_component
-          module={AthenaWeb.StudioLive.Builder.CanvasComponent}
-          id="canvas-component"
-          blocks={@blocks}
-          active_section_id={@active_section_id}
-          active_block_id={@active_block_id}
-          mode={@block_mode}
-          viewing_parent_id={@viewing_parent_id}
-          breadcrumbs={@breadcrumbs}
-        />
+        <div class="flex-1 overflow-y-auto p-8 relative">
+          <div class="max-w-3xl mx-auto min-h-full flex flex-col gap-4">
+            <.live_component
+              module={AthenaWeb.StudioLive.Builder.CanvasComponent}
+              id="canvas-component"
+              blocks={@blocks}
+              active_section_id={@active_section_id}
+              active_block_id={@active_block_id}
+              mode={@block_mode}
+              viewing_parent_id={@viewing_parent_id}
+              breadcrumbs={@breadcrumbs}
+            />
+          </div>
+        </div>
       </div>
 
       <div
