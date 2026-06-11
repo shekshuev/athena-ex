@@ -15,6 +15,10 @@ defmodule AthenaWeb.TeachingLive.Grading do
   def mount(_params, _session, socket) do
     cohort_options = Learning.get_cohort_options(socket.assigns.current_user)
 
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(Athena.PubSub, "grading:updates")
+    end
+
     {:ok,
      socket
      |> assign(:accounts, %{})
@@ -29,6 +33,21 @@ defmodule AthenaWeb.TeachingLive.Grading do
     uri = URI.parse(url)
     current_path = if uri.query, do: "#{uri.path}?#{uri.query}", else: uri.path
 
+    socket = assign(socket, :current_path, current_path)
+
+    {:noreply, load_submissions(socket, params)}
+  end
+
+  @impl true
+  def handle_info({:submission_changed, _sub}, socket) do
+    params = build_query_params(socket.assigns, %{})
+
+    {:noreply, load_submissions(socket, params)}
+  end
+
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
+  defp load_submissions(socket, params) do
     status = Map.get(params, "status", "all")
     login = Map.get(params, "login", "")
     cohort_id = Map.get(params, "cohort_id", "")
@@ -50,26 +69,22 @@ defmodule AthenaWeb.TeachingLive.Grading do
         accounts = Identity.get_accounts_map(account_ids)
         blocks = Content.get_blocks_map(block_ids)
 
-        socket =
-          socket
-          |> assign(:meta, meta)
-          |> assign(:current_path, current_path)
-          |> assign(:current_status, status)
-          |> assign(:login, login)
-          |> assign(:cohort_id, cohort_id)
-          |> assign(:date_from, date_from)
-          |> assign(:date_to, date_to)
-          |> assign(:has_cheats, has_cheats)
-          |> assign(:block_id, block_id)
-          |> assign(:accounts, accounts)
-          |> assign(:blocks, blocks)
-          |> assign(:has_submissions, submissions != [])
-          |> stream(:submissions, submissions, reset: true)
-
-        {:noreply, socket}
+        socket
+        |> assign(:meta, meta)
+        |> assign(:current_status, status)
+        |> assign(:login, login)
+        |> assign(:cohort_id, cohort_id)
+        |> assign(:date_from, date_from)
+        |> assign(:date_to, date_to)
+        |> assign(:has_cheats, has_cheats)
+        |> assign(:block_id, block_id)
+        |> assign(:accounts, accounts)
+        |> assign(:blocks, blocks)
+        |> assign(:has_submissions, submissions != [])
+        |> stream(:submissions, submissions, reset: true)
 
       {:error, _meta} ->
-        {:noreply, push_patch(socket, to: ~p"/teaching/grading")}
+        push_patch(socket, to: ~p"/teaching/grading")
     end
   end
 

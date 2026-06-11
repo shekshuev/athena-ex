@@ -35,6 +35,17 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
           []
         end
 
+      if connected?(socket) do
+        Phoenix.PubSub.subscribe(
+          Athena.PubSub,
+          "submission:#{submission.account_id}:#{submission.block_id}"
+        )
+
+        for q <- questions do
+          Phoenix.PubSub.subscribe(Athena.PubSub, "submission:#{submission.account_id}:#{q.id}")
+        end
+      end
+
       {:ok,
        socket
        |> assign(
@@ -66,7 +77,17 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
         socket
       ) do
     status = if action == "reject", do: "rejected", else: "graded"
-    final_score = if action == "reject", do: 0, else: String.to_integer(score)
+
+    # Безопасно парсим итоговый балл
+    final_score =
+      if action == "reject" do
+        0
+      else
+        case Integer.parse(to_string(score)) do
+          {val, _} -> val
+          :error -> 0
+        end
+      end
 
     attrs = %{
       "score" => final_score,
@@ -82,8 +103,14 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
           child_sub = Map.get(socket.assigns.child_submissions, child_block_id)
 
           if child_sub do
+            child_score =
+              case Integer.parse(to_string(grade_data["score"])) do
+                {val, _} -> val
+                :error -> child_sub.score || 0
+              end
+
             child_attrs = %{
-              "score" => String.to_integer(grade_data["score"] || "0"),
+              "score" => child_score,
               "feedback" => grade_data["feedback"],
               "status" => status
             }
@@ -179,6 +206,49 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
          |> put_flash(:error, gettext("Failed to delete submission."))}
     end
   end
+
+  @impl true
+  def handle_info({:submission_updated, updated_sub}, socket) do
+    if updated_sub.id == socket.assigns.submission.id do
+      new_score =
+        if not socket.assigns.manual_score_override do
+          updated_sub.score || 0
+        else
+          socket.assigns.form.params["score"] || updated_sub.score
+        end
+
+      form =
+        to_form(%{
+          "score" => new_score,
+          "feedback" => socket.assigns.form.params["feedback"] || ""
+        })
+
+      {:noreply, assign(socket, submission: updated_sub, form: form)}
+    else
+      new_subs = Map.put(socket.assigns.child_submissions, updated_sub.block_id, updated_sub)
+
+      new_score =
+        if not socket.assigns.manual_score_override do
+          recalculate_overall_score(
+            socket.assigns.questions,
+            new_subs,
+            socket.assigns.child_grades_params
+          )
+        else
+          socket.assigns.form.params["score"] || socket.assigns.submission.score
+        end
+
+      form =
+        to_form(%{
+          "score" => new_score,
+          "feedback" => socket.assigns.form.params["feedback"] || ""
+        })
+
+      {:noreply, assign(socket, child_submissions: new_subs, form: form)}
+    end
+  end
+
+  def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do

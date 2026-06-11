@@ -285,7 +285,7 @@ defmodule AthenaWeb.BlockComponents do
           <% end %>
 
           <div
-            id={"code-editor-#{@mode}-#{@block.id}"}
+            id={"code-editor-#{@mode}-#{@block.id}-#{if @mode == :review, do: :erlang.phash2(@code), else: "static"}"}
             phx-hook="CodeEditor"
             data-language={@cm_lang}
             data-readonly={to_string(@readonly)}
@@ -671,7 +671,7 @@ defmodule AthenaWeb.BlockComponents do
       <div class="editor-wrapper group/tiptap relative outline-none" tabindex="-1">
         <.tiptap_toolbar mode={:edit} />
         <div
-          id={"tiptap-open-answer-#{@mode}-#{@block.id}"}
+          id={"tiptap-open-answer-#{@mode}-#{@block.id}-#{if @mode == :review, do: :erlang.phash2(@initial_content), else: "static"}"}
           phx-hook="TiptapEditor"
           data-id={@block.id}
           data-input-id={"open-answer-#{@block.id}"}

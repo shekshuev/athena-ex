@@ -20,7 +20,8 @@ defmodule Athena.Execution.Worker do
     max_attempts: 1
 
   alias Athena.Repo
-  alias Athena.Learning.{Submission, Submissions}
+  alias Athena.Learning
+  alias Athena.Learning.Submission
   alias Athena.Content.{Block, CodeChallenge}
   alias Athena.Execution.Verifier
 
@@ -114,7 +115,7 @@ defmodule Athena.Execution.Worker do
       content: new_content
     }
 
-    case Submissions.system_update_submission(submission, attrs) do
+    case Learning.system_update_submission(submission, attrs) do
       {:ok, updated_sub} ->
         broadcast_update(updated_sub)
         :ok

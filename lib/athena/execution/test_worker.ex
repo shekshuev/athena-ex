@@ -6,7 +6,8 @@ defmodule Athena.Execution.TestWorker do
   use Oban.Worker, queue: :code_execution, max_attempts: 1
 
   alias Athena.{Repo, Content}
-  alias Athena.Learning.{Submission, Submissions}
+  alias Athena.Learning
+  alias Athena.Learning.Submission
   alias Athena.Execution.Verifier
 
   @timeout Application.compile_env(:athena, [Athena.Execution.TestWorker, :timeout], 60_000)
@@ -16,7 +17,7 @@ defmodule Athena.Execution.TestWorker do
     submission = Repo.get!(Submission, id)
     block = Repo.get!(Content.Block, submission.block_id)
 
-    {:ok, _} = Submissions.system_update_submission(submission, %{status: :processing})
+    {:ok, _} = Learning.system_update_submission(submission, %{status: :processing})
     broadcast_update(submission)
 
     challenge_attrs = block.content
@@ -92,7 +93,7 @@ defmodule Athena.Execution.TestWorker do
       content: new_content
     }
 
-    case Submissions.system_update_submission(submission, attrs) do
+    case Learning.system_update_submission(submission, attrs) do
       {:ok, updated_sub} ->
         broadcast_update(updated_sub)
         :ok

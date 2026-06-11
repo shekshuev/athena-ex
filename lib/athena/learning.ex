@@ -54,9 +54,22 @@ defmodule Athena.Learning do
 
   defdelegate list_submissions(user, params \\ %{}), to: Submissions
   defdelegate get_submission(account_id, block_id, cohort_id \\ nil), to: Submissions
-  defdelegate create_submission(user, attrs), to: Submissions
-  defdelegate update_submission(user, submission, attrs), to: Submissions
-  defdelegate system_update_submission(submission, attrs), to: Submissions
+
+  def create_submission(user, attrs) do
+    Submissions.create_submission(user, attrs)
+    |> notify_submission_subscribers()
+  end
+
+  def update_submission(user, submission, attrs) do
+    Submissions.update_submission(user, submission, attrs)
+    |> notify_submission_subscribers()
+  end
+
+  def system_update_submission(submission, attrs) do
+    Submissions.system_update_submission(submission, attrs)
+    |> notify_submission_subscribers()
+  end
+
   defdelegate get_latest_submissions(account_id, block_ids, cohort_id \\ nil), to: Submissions
   defdelegate get_submission!(user, id), to: Submissions
   defdelegate get_team_leaderboard(course_id), to: Submissions
@@ -71,26 +84,50 @@ defmodule Athena.Learning do
   defdelegate start_exam_submission(account_id, exam_block_id, cohort_id, time_limit_seconds),
     to: Submissions
 
-  defdelegate save_question_submission(
-                parent_submission,
-                account_id,
-                question_block_id,
-                cohort_id,
-                answer_content
-              ),
-              to: Submissions
+  @doc """
+  Saves a question submission and broadcasts the update via PubSub
+  for real-time grading monitoring.
+  """
+  def save_question_submission(
+        parent_submission,
+        account_id,
+        question_block_id,
+        cohort_id,
+        answer_content
+      ) do
+    Submissions.save_question_submission(
+      parent_submission,
+      account_id,
+      question_block_id,
+      cohort_id,
+      answer_content
+    )
+    |> notify_submission_subscribers()
+  end
 
   defdelegate get_active_exam_submission(account_id, exam_block_id), to: Submissions
   defdelegate get_child_submissions(parent_submission_id), to: Submissions
 
-  defdelegate get_or_create_exam_attempt(
-                account_id,
-                exam_block_id,
-                cohort_id,
-                time_limit_sec,
-                exam_config
-              ),
-              to: Submissions
+  @doc """
+  Gets an active exam attempt or creates a new one,
+  and broadcasts the result so the Grading dashboard updates in real-time.
+  """
+  def get_or_create_exam_attempt(
+        account_id,
+        exam_block_id,
+        cohort_id,
+        time_limit_sec,
+        exam_config
+      ) do
+    Submissions.get_or_create_exam_attempt(
+      account_id,
+      exam_block_id,
+      cohort_id,
+      time_limit_sec,
+      exam_config
+    )
+    |> notify_submission_subscribers()
+  end
 
   defdelegate mark_completed(account_id, block_id, cohort_id \\ nil), to: Progress
   defdelegate completed_block_ids(account_id, section_id, cohort_id \\ nil), to: Progress
@@ -112,4 +149,24 @@ defmodule Athena.Learning do
   defdelegate clear_override(user, cohort, course, resource_type, resource_id), to: Schedules
 
   defdelegate subscribe_to_draft_updates(cohort_id, block_id), to: DraftCache
+
+  defp notify_submission_subscribers({:ok, submission} = result) do
+    Phoenix.PubSub.broadcast(
+      Athena.PubSub,
+      "submission:#{submission.account_id}:#{submission.block_id}",
+      {:submission_updated, submission}
+    )
+
+    if submission.status != :draft do
+      Phoenix.PubSub.broadcast(
+        Athena.PubSub,
+        "grading:updates",
+        {:submission_changed, submission}
+      )
+    end
+
+    result
+  end
+
+  defp notify_submission_subscribers(result), do: result
 end

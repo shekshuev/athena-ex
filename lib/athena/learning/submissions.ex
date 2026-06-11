@@ -48,7 +48,10 @@ defmodule Athena.Learning.Submissions do
 
   @doc false
   defp scope_submissions(query, user, permission) do
-    query = where(query, [s], s.status != :draft)
+    query =
+      query
+      |> where([s], s.status != :draft)
+      |> where([s], is_nil(s.parent_submission_id))
 
     cond do
       "admin" in user.role.permissions ->

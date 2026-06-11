@@ -808,7 +808,7 @@ defmodule AthenaWeb.LearnLive.Exam do
   defp hydrate_questions(_), do: []
 
   defp save_exam_file_assignment(socket, block_id, file_urls) do
-    answer_content = %{type: :file_assignment, file_urls: file_urls || []}
+    answer_content = %{"type" => "file_assignment", "file_urls" => file_urls || []}
 
     case Learning.save_question_submission(
            socket.assigns.submission,
