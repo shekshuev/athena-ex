@@ -197,8 +197,8 @@ defmodule AthenaWeb.BlockComponents do
       )
 
     lang = assigns.block.content["language"] || "python3"
-    is_processing = assigns.submission && assigns.submission.status in [:pending, :processing]
-    readonly = assigns.mode not in [:edit, :play] or is_processing
+    is_processing = !!(assigns.submission && assigns.submission.status in [:pending, :processing])
+    readonly = !!(assigns.mode not in [:edit, :play] or is_processing)
     execution_results = resolve_execution_results(assigns.draft, assigns.submission)
 
     assigns =
@@ -332,7 +332,7 @@ defmodule AthenaWeb.BlockComponents do
         </div>
       <% end %>
 
-      <%= if @mode == :play do %>
+      <%= if @mode in [:play, :review] do %>
         <div class="mt-6 space-y-4">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
@@ -341,6 +341,7 @@ defmodule AthenaWeb.BlockComponents do
                 phx-click="run_code"
                 phx-value-block_id={@block.id}
                 class="btn btn-outline btn-sm"
+                disabled={@readonly}
               >
                 <.icon name="hero-play" class="size-4 mr-1" /> {gettext("Run")}
               </button>
@@ -349,18 +350,23 @@ defmodule AthenaWeb.BlockComponents do
                 :if={not @hide_submit}
                 type="submit"
                 class="btn btn-primary btn-sm"
-                disabled={@is_processing}
+                disabled={@readonly || @is_processing}
               >
-                <%= if @is_processing do %>
-                  <span class="loading loading-spinner loading-xs"></span> {gettext("Checking...")}
-                <% else %>
-                  {gettext("Submit")}
+                <%= cond do %>
+                  <% @is_processing -> %>
+                    <span class="loading loading-spinner loading-xs"></span> {gettext("Checking...")}
+                  <% @readonly -> %>
+                    {gettext("Locked")}
+                  <% @submission != nil -> %>
+                    {gettext("Resubmit")}
+                  <% true -> %>
+                    {gettext("Submit")}
                 <% end %>
               </button>
             </div>
 
             <span :if={@block.content["max_attempts"]} class="text-xs text-base-content/50">
-              {gettext("Attempts:")} {@block.content["max_attempts"]}
+              {gettext("Attempts:")} {@attempts_count} / {@block.content["max_attempts"]}
             </span>
           </div>
         </div>

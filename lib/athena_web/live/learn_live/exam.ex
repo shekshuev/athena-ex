@@ -111,6 +111,11 @@ defmodule AthenaWeb.LearnLive.Exam do
     process_exam_answer(params, socket)
   end
 
+  def handle_event("update_content", %{"id" => block_id, "content" => content}, socket) do
+    params = %{"block_id" => block_id, "answer" => content}
+    process_exam_answer(params, socket)
+  end
+
   def handle_event("submit_quiz", params, socket) do
     process_exam_answer(params, socket)
     handle_event("next_question", %{}, socket)
@@ -148,6 +153,84 @@ defmodule AthenaWeb.LearnLive.Exam do
         else
           {:noreply, put_flash(socket, :error, gettext("Invalid block for file upload."))}
         end
+    end
+  end
+
+  def handle_event(
+        "request_media_upload",
+        %{"block_id" => block_id, "media_type" => type},
+        socket
+      ) do
+    case check_time_limit(socket) do
+      {:halt, socket} ->
+        {:noreply, socket}
+
+      {:ok, socket} ->
+        {:noreply,
+         socket
+         |> assign(:show_media_modal, true)
+         |> assign(:active_upload_block_id, block_id)
+         |> assign(:upload_type, type)
+         |> assign(:max_files_for_upload, 1)
+         |> assign(:current_file_count_for_upload, 0)}
+    end
+  end
+
+  def handle_event("media_upload_clipboard_request", params, socket) do
+    %{"file_name" => file_name, "temp_id" => temp_id} = params
+
+    bucket = Application.get_env(:athena, Athena.Media)[:bucket] || "athena"
+    course_id = socket.assigns.course_id
+    unique_id = Ecto.UUID.generate()
+    clean_name = file_name |> String.replace(~r/[^a-zA-Z0-9_\-\.]/, "_")
+    key = "courses/#{course_id}/#{unique_id}-#{clean_name}"
+
+    case Athena.Media.generate_upload_url(bucket, key) do
+      {:ok, upload_url} ->
+        path_segments = String.split(key, "/")
+        final_url = ~p"/media/#{path_segments}"
+
+        {:noreply,
+         push_event(socket, "media_upload_presigned", %{
+           temp_id: temp_id,
+           upload_url: upload_url,
+           final_url: final_url
+         })}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, gettext("Could not generate upload URL"))}
+    end
+  end
+
+  def handle_event(
+        "media_upload_clipboard_success",
+        %{"block_id" => block_id, "final_url" => url},
+        socket
+      ) do
+    block = Enum.find(socket.assigns.questions, &(&1.id == block_id))
+
+    if block && to_string(block.type) == "file_assignment" do
+      pending = socket.assigns.pending_file_urls || %{}
+      current_urls = Map.get(pending, block_id, [])
+      max_files = block.content["max_files"] || 1
+
+      if length(current_urls) < max_files do
+        updated_urls = current_urls ++ [url]
+        updated_pending = Map.put(pending, block_id, updated_urls)
+
+        socket = save_exam_file_assignment(socket, block_id, updated_urls)
+
+        {:noreply, assign(socket, :pending_file_urls, updated_pending)}
+      else
+        {:noreply, put_flash(socket, :error, gettext("Maximum number of files reached."))}
+      end
+    else
+      {:noreply,
+       push_event(socket, "insert_media", %{
+         block_id: block_id,
+         url: url,
+         type: "tiptap_image"
+       })}
     end
   end
 
@@ -377,6 +460,33 @@ defmodule AthenaWeb.LearnLive.Exam do
       end
 
     {:noreply, socket}
+  end
+
+  def handle_info(
+        {AthenaWeb.StudioLive.MediaUploadComponent, {:saved, block_id, "tiptap_image", results}},
+        socket
+      ) do
+    {successes, _errors} = Enum.split_with(results, &match?({:ok, _}, &1))
+    file_urls = Enum.map(successes, fn {:ok, map} -> map["url"] end) |> Enum.reject(&is_nil/1)
+
+    socket =
+      socket
+      |> assign(:show_media_modal, false)
+      |> assign(:active_upload_block_id, nil)
+      |> assign(:upload_type, nil)
+
+    case List.first(file_urls) do
+      nil ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to upload image"))}
+
+      url ->
+        {:noreply,
+         push_event(socket, "insert_media", %{
+           block_id: block_id,
+           url: url,
+           type: "tiptap_image"
+         })}
+    end
   end
 
   def handle_info(:tick, socket) do

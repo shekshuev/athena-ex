@@ -273,6 +273,75 @@ defmodule AthenaWeb.LearnLive.Player do
     end
   end
 
+  def handle_event(
+        "request_media_upload",
+        %{"block_id" => block_id, "media_type" => type},
+        socket
+      ) do
+    {:noreply,
+     socket
+     |> assign(:show_media_modal, true)
+     |> assign(:active_upload_block_id, block_id)
+     |> assign(:upload_type, type)
+     |> assign(:max_files_for_upload, 1)
+     |> assign(:current_file_count_for_upload, 0)}
+  end
+
+  def handle_event("media_upload_clipboard_request", params, socket) do
+    %{"file_name" => file_name, "temp_id" => temp_id} = params
+
+    bucket = Application.get_env(:athena, Athena.Media)[:bucket] || "athena"
+    course_id = socket.assigns.course.id
+    unique_id = Ecto.UUID.generate()
+    clean_name = file_name |> String.replace(~r/[^a-zA-Z0-9_\-\.]/, "_")
+    key = "courses/#{course_id}/#{unique_id}-#{clean_name}"
+
+    case Athena.Media.generate_upload_url(bucket, key) do
+      {:ok, upload_url} ->
+        path_segments = String.split(key, "/")
+        final_url = ~p"/media/#{path_segments}"
+
+        {:noreply,
+         push_event(socket, "media_upload_presigned", %{
+           temp_id: temp_id,
+           upload_url: upload_url,
+           final_url: final_url
+         })}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, gettext("Could not generate upload URL"))}
+    end
+  end
+
+  def handle_event(
+        "media_upload_clipboard_success",
+        %{"block_id" => block_id, "final_url" => url},
+        socket
+      ) do
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
+    if block && to_string(block.type) == "file_assignment" do
+      pending = socket.assigns[:pending_file_urls] || %{}
+      current_urls = Map.get(pending, block_id, [])
+      max_files = block.content["max_files"] || 1
+
+      if length(current_urls) < max_files do
+        updated_pending = Map.put(pending, block_id, current_urls ++ [url])
+        save_file_assignment_draft(socket, block_id, updated_pending[block_id])
+        {:noreply, assign(socket, :pending_file_urls, updated_pending)}
+      else
+        {:noreply, put_flash(socket, :error, gettext("Maximum number of files reached."))}
+      end
+    else
+      {:noreply,
+       push_event(socket, "insert_media", %{
+         block_id: block_id,
+         url: url,
+         type: "tiptap_image"
+       })}
+    end
+  end
+
   def handle_event("cancel_media_upload", _, socket) do
     {:noreply,
      socket
@@ -398,6 +467,11 @@ defmodule AthenaWeb.LearnLive.Player do
       {:error, _changeset} ->
         {:noreply, socket}
     end
+  end
+
+  def handle_event("update_content", %{"id" => block_id, "content" => content}, socket) do
+    params = %{"block_id" => block_id, "answer" => content}
+    handle_event("save_draft", params, socket)
   end
 
   def handle_event("save_draft", _params, socket) do
@@ -620,21 +694,21 @@ defmodule AthenaWeb.LearnLive.Player do
 
   @doc false
   defp build_submission_for_type("exact_match", _answer_type, answer),
-    do: %{type: :quiz_question, text_answer: answer || ""}
+    do: %{"type" => "quiz_question", "text_answer" => answer || ""}
 
   defp build_submission_for_type("open", "rich_text", answer),
-    do: %{type: :quiz_question, rich_answer: parse_rich_answer(answer)}
+    do: %{"type" => "quiz_question", "rich_answer" => parse_rich_answer(answer)}
 
   defp build_submission_for_type("open", _answer_type, answer),
-    do: %{type: :quiz_question, text_answer: answer || ""}
+    do: %{"type" => "quiz_question", "text_answer" => answer || ""}
 
   defp build_submission_for_type("single", _answer_type, answer),
-    do: %{type: :quiz_question, selected_choices: if(answer, do: [answer], else: [])}
+    do: %{"type" => "quiz_question", "selected_choices" => if(answer, do: [answer], else: [])}
 
   defp build_submission_for_type("multiple", _answer_type, answer),
-    do: %{type: :quiz_question, selected_choices: List.wrap(answer)}
+    do: %{"type" => "quiz_question", "selected_choices" => List.wrap(answer)}
 
-  defp build_submission_for_type(_q_type, _answer_type, _answer), do: %{type: :quiz_question}
+  defp build_submission_for_type(_q_type, _answer_type, _answer), do: %{"type" => "quiz_question"}
 
   @doc false
   defp parse_rich_answer(nil), do: ""
@@ -851,6 +925,33 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   def handle_info(
+        {AthenaWeb.StudioLive.MediaUploadComponent, {:saved, block_id, "tiptap_image", results}},
+        socket
+      ) do
+    {successes, _errors} = Enum.split_with(results, &match?({:ok, _}, &1))
+    file_urls = Enum.map(successes, fn {:ok, map} -> map["url"] end) |> Enum.reject(&is_nil/1)
+
+    socket =
+      socket
+      |> assign(:show_media_modal, false)
+      |> assign(:active_upload_block_id, nil)
+      |> assign(:upload_type, nil)
+
+    case List.first(file_urls) do
+      nil ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to upload image"))}
+
+      url ->
+        {:noreply,
+         push_event(socket, "insert_media", %{
+           block_id: block_id,
+           url: url,
+           type: "tiptap_image"
+         })}
+    end
+  end
+
+  def handle_info(
         {AthenaWeb.StudioLive.MediaUploadComponent, {:saved, _block_id, _type, _results}},
         socket
       ) do
@@ -1064,6 +1165,7 @@ defmodule AthenaWeb.LearnLive.Player do
                     submission={submission}
                     answers={@submissions}
                     draft={Map.get(@drafts || %{}, block.id)}
+                    attempts_count={attempts}
                   />
 
                   <div
@@ -1131,6 +1233,7 @@ defmodule AthenaWeb.LearnLive.Player do
                       submission={submission}
                       answers={@submissions}
                       draft={Map.get(@drafts || %{}, block.id)}
+                      attempts_count={attempts}
                     />
                   </form>
                 </div>

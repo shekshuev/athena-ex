@@ -31,9 +31,18 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
     context_id = socket.assigns[:course_id] || "library"
 
     upload_context =
-      if socket.assigns.upload_type == "file_assignment",
-        do: "submission",
-        else: "course_material"
+      case socket.assigns[:context] do
+        "student_submission" ->
+          "submission"
+
+        "submission" ->
+          "submission"
+
+        _ ->
+          if socket.assigns.upload_type == "file_assignment",
+            do: "submission",
+            else: "course_material"
+      end
 
     case Content.prepare_media_upload(
            socket.assigns.current_user,
@@ -45,7 +54,7 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
         {:ok, meta, socket}
 
       {:error, _} ->
-        {:error, gettext("Could not generate upload URL")}
+        {:error, %{reason: gettext("Could not generate upload URL")}, socket}
     end
   end
 
@@ -62,9 +71,17 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
     block_id = socket.assigns.block_id
 
     file_context =
-      case upload_type do
-        "file_assignment" -> "submission"
-        _ -> "course_material"
+      case socket.assigns[:context] do
+        "student_submission" ->
+          "submission"
+
+        "submission" ->
+          "submission"
+
+        _ ->
+          if upload_type == "file_assignment",
+            do: "submission",
+            else: "course_material"
       end
 
     results =

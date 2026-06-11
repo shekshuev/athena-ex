@@ -639,7 +639,9 @@ defmodule Athena.Learning.Submissions do
 
         content = %{
           "started_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
-          "questions" => questions
+          "questions" => questions,
+          "type" => "quiz_exam",
+          "cheat_count" => 0
         }
 
         %Submission{}
