@@ -730,9 +730,17 @@ defmodule AthenaWeb.LearnLive.Exam do
   end
 
   defp submit_and_exit(socket, submission, course_id, reason) do
-    status = if reason == :time_limit_exceeded, do: "time_limit_exceeded", else: "needs_review"
+    initial_status = if reason == :time_limit_exceeded, do: "time_limit_exceeded", else: "pending"
 
-    {:ok, _} = Learning.system_update_submission(submission, %{"status" => status})
+    {:ok, pending_sub} =
+      Learning.system_update_submission(submission, %{"status" => initial_status})
+
+    if initial_status == "pending" do
+      eval_results = Athena.Learning.Evaluator.evaluate_sync(pending_sub)
+
+      {:ok, _} = Learning.system_update_submission(pending_sub, eval_results)
+    end
+
     broadcast_team_progress(socket.assigns.team_id, course_id)
 
     msg =

@@ -32,7 +32,9 @@ IEx.configure(
     eval_info: eval_info
   ],
   inspect: [
-    width: 100
+    width: 100,
+    limit: :infinity,
+    charlists: :as_lists
   ],
   width: 100,
   history_size: 30,
@@ -54,7 +56,6 @@ IEx.configure(
     |> IO.chardata_to_string()
 )
 
-alias Decimal, as: D
 alias Athena.Content
 alias Athena.Identity
 alias Athena.Learning

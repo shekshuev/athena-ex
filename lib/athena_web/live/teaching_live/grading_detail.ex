@@ -28,7 +28,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
           %{}
         end
 
-        questions =
+      questions =
         if block.type == :quiz_exam do
           hydrate_questions(submission.content["questions"] || [])
         else
@@ -46,7 +46,9 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
          return_to: return_to,
          show_delete_modal: false,
          child_submissions: child_subs,
-         questions: questions
+         questions: questions,
+         manual_score_override: false,
+         child_grades_params: %{}
        )}
     else
       _ ->
@@ -72,11 +74,8 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
       "status" => status
     }
 
-
     case Learning.update_submission(socket.assigns.current_user, socket.assigns.submission, attrs) do
-      {:ok, updated_sub} ->
-
-
+      {:ok, _updated_sub} ->
         child_grades = Map.get(params, "child_grades", %{})
 
         Enum.each(child_grades, fn {child_block_id, grade_data} ->
@@ -88,6 +87,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
               "feedback" => grade_data["feedback"],
               "status" => status
             }
+
             Learning.update_submission(socket.assigns.current_user, child_sub, child_attrs)
           end
         end)
@@ -108,6 +108,38 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
   end
 
   @impl true
+  def handle_event("validate_grade", params, socket) do
+    target = params["_target"] || []
+
+    manual_override =
+      case target do
+        ["score"] -> true
+        ["child_grades" | _rest] -> false
+        _ -> socket.assigns.manual_score_override
+      end
+
+    child_grades = params["child_grades"] || %{}
+
+    new_score =
+      if not manual_override and socket.assigns.block.type == :quiz_exam do
+        recalculate_overall_score(
+          socket.assigns.questions,
+          socket.assigns.child_submissions,
+          child_grades
+        )
+      else
+        params["score"]
+      end
+
+    form = to_form(%{"score" => new_score, "feedback" => params["feedback"]})
+
+    {:noreply,
+     socket
+     |> assign(form: form)
+     |> assign(child_grades_params: child_grades)
+     |> assign(manual_score_override: manual_override)}
+  end
+
   def handle_event("open_delete_modal", _, socket) do
     {:noreply, assign(socket, show_delete_modal: true)}
   end
@@ -193,37 +225,44 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                 </div>
 
                 <% child_sub = Map.get(@child_submissions, q_block.id) %>
+                <% grade_params = Map.get(@child_grades_params, q_block.id) || %{} %>
 
                 <.content_block block={q_block} mode={:review} submission={child_sub} />
-                  <div class="mt-4">
-                    <div class="text-xs font-bold uppercase tracking-wider mb-3">
-                      {gettext("Instructor Feedback for this answer")}
+                <div class="mt-4">
+                  <div class="text-xs font-bold uppercase tracking-wider mb-3">
+                    {gettext("Instructor Feedback for this answer")}
+                  </div>
+                  <div class="flex flex-col sm:flex-row gap-4">
+                    <div class="w-full sm:w-24 shrink-0">
+                      <label class="label text-xs font-bold text-base-content/70 pb-1 px-0">
+                        {gettext("Score")}
+                      </label>
+                      <input
+                        type="number"
+                        form="grading-form"
+                        name={"child_grades[#{q_block.id}][score]"}
+                        value={
+                          Map.get(grade_params, "score") || if child_sub, do: child_sub.score, else: 0
+                        }
+                        class="input input-sm w-full border-base-300 bg-base-100"
+                        min="0"
+                        max="100"
+                      />
                     </div>
-                    <div class="flex flex-col sm:flex-row gap-4">
-                      <div class="w-full sm:w-24 shrink-0">
-                        <label class="label text-xs font-bold text-base-content/70 pb-1 px-0">{gettext("Score")}</label>
-                        <input
-                          type="number"
-                          form="grading-form"
-                          name={"child_grades[#{q_block.id}][score]"}
-                          value={if child_sub, do: child_sub.score, else: 0}
-                          class="input input-sm w-full border-base-300 bg-base-100"
-                          min="0"
-                          max="100"
-                        />
-                      </div>
-                      <div class="flex-1">
-                        <label class="label text-xs font-bold text-base-content/70 pb-1 px-0">{gettext("Comment")}</label>
-                        <textarea
-                          form="grading-form"
-                          name={"child_grades[#{q_block.id}][feedback]"}
-                          class="textarea textarea-sm w-full border-base-300 bg-base-100 resize-none"
-                          rows="2"
-                          placeholder={gettext("Specific feedback for this answer...")}
-                        ><%= if child_sub, do: child_sub.feedback, else: "" %></textarea>
-                      </div>
+                    <div class="flex-1">
+                      <label class="label text-xs font-bold text-base-content/70 pb-1 px-0">
+                        {gettext("Comment")}
+                      </label>
+                      <textarea
+                        form="grading-form"
+                        name={"child_grades[#{q_block.id}][feedback]"}
+                        class="textarea textarea-sm w-full border-base-300 bg-base-100 resize-none"
+                        rows="2"
+                        placeholder={gettext("Specific feedback for this answer...")}
+                      ><%= Map.get(grade_params, "feedback") || (if child_sub, do: child_sub.feedback, else: "") %></textarea>
                     </div>
                   </div>
+                </div>
               </div>
             </div>
           <% else %>
@@ -250,7 +289,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
           </div>
 
           <div class="p-6 space-y-6">
-            <.form for={@form} id="grading-form" phx-submit="save_grade">
+            <.form for={@form} id="grading-form" phx-change="validate_grade" phx-submit="save_grade">
               <div class="space-y-4 mb-6">
                 <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider">
                   {gettext("Score Settings")}
@@ -381,15 +420,40 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
   end
 
   @doc false
-  defp hydrate_questions(questions) when is_list(questions), do: Enum.map(questions, fn q ->
-      q_map = if is_struct(q), do: Map.from_struct(q), else: q
-      type_raw = Map.get(q_map, "type") || Map.get(q_map, :type)
-      type = if is_binary(type_raw), do: String.to_atom(type_raw), else: type_raw
-      content = Map.get(q_map, "content") || Map.get(q_map, :content) || %{}
-      id = Map.get(q_map, "id") || Map.get(q_map, :id)
+  defp hydrate_questions(questions) when is_list(questions),
+    do:
+      Enum.map(questions, fn q ->
+        q_map = if is_struct(q), do: Map.from_struct(q), else: q
+        type_raw = Map.get(q_map, "type") || Map.get(q_map, :type)
+        type = if is_binary(type_raw), do: String.to_atom(type_raw), else: type_raw
+        content = Map.get(q_map, "content") || Map.get(q_map, :content) || %{}
+        id = Map.get(q_map, "id") || Map.get(q_map, :id)
 
-      %{id: id, type: type, content: content}
-    end)
+        %{id: id, type: type, content: content}
+      end)
 
   defp hydrate_questions(_), do: []
+
+  @doc false
+  defp recalculate_overall_score(questions, child_submissions, child_grades_params) do
+    total_earned =
+      Enum.reduce(questions, 0, fn q, acc ->
+        score_str = get_in(child_grades_params, [q.id, "score"])
+
+        score =
+          case Integer.parse(to_string(score_str)) do
+            {val, _} ->
+              val
+
+            :error ->
+              sub = Map.get(child_submissions, q.id)
+              (sub && sub.score) || 0
+          end
+
+        acc + score
+      end)
+
+    total_questions = length(questions)
+    if total_questions > 0, do: round(total_earned / total_questions), else: 0
+  end
 end
