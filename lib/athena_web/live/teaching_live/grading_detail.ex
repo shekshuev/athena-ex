@@ -21,6 +21,20 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
          {:ok, block} <- Content.get_block(submission.block_id) do
       form = to_form(%{"score" => submission.score, "feedback" => submission.feedback || ""})
 
+      child_subs =
+        if block.type == :quiz_exam do
+          Learning.get_child_submissions(submission.id)
+        else
+          %{}
+        end
+
+        questions =
+        if block.type == :quiz_exam do
+          hydrate_questions(submission.content["questions"] || [])
+        else
+          []
+        end
+
       {:ok,
        socket
        |> assign(
@@ -30,7 +44,9 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
          block: block,
          form: form,
          return_to: return_to,
-         show_delete_modal: false
+         show_delete_modal: false,
+         child_submissions: child_subs,
+         questions: questions
        )}
     else
       _ ->
@@ -44,7 +60,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
   @impl true
   def handle_event(
         "save_grade",
-        %{"action" => action, "score" => score, "feedback" => feedback},
+        %{"action" => action, "score" => score, "feedback" => feedback} = params,
         socket
       ) do
     status = if action == "reject", do: "rejected", else: "graded"
@@ -56,8 +72,26 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
       "status" => status
     }
 
+
     case Learning.update_submission(socket.assigns.current_user, socket.assigns.submission, attrs) do
-      {:ok, _updated_sub} ->
+      {:ok, updated_sub} ->
+
+
+        child_grades = Map.get(params, "child_grades", %{})
+
+        Enum.each(child_grades, fn {child_block_id, grade_data} ->
+          child_sub = Map.get(socket.assigns.child_submissions, child_block_id)
+
+          if child_sub do
+            child_attrs = %{
+              "score" => String.to_integer(grade_data["score"] || "0"),
+              "feedback" => grade_data["feedback"],
+              "status" => status
+            }
+            Learning.update_submission(socket.assigns.current_user, child_sub, child_attrs)
+          end
+        end)
+
         msg =
           if action == "reject",
             do: gettext("Submission rejected!"),
@@ -142,7 +176,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
               <.content_block block={@block} mode={:review} submission={@submission} />
 
               <div
-                :for={{q, index} <- Enum.with_index(@submission.content["questions"] || [])}
+                :for={{q_block, index} <- Enum.with_index(@questions)}
                 class="p-6 bg-base-100 border border-base-200 relative group hover:border-primary/30 transition-all"
               >
                 <div class="absolute -top-3 -left-3 size-7 bg-base-200 text-base-content/70 font-bold rounded-sm flex items-center justify-center border border-base-300 text-xs group-hover:bg-primary group-hover:text-primary-content group-hover:border-primary transition-colors">
@@ -153,36 +187,43 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                   <h2 class="text-lg font-bold">{gettext("Question Content")}</h2>
                   <div class="flex items-center gap-2">
                     <span class="badge badge-sm rounded-sm font-bold bg-base-200 border-0 text-base-content/70 uppercase tracking-widest text-[10px]">
-                      {q["question_type"] || q["type"]}
+                      {q_block.content["question_type"] || q_block.type}
                     </span>
-                    <%= if q["question_type"] == "open" do %>
-                      <span class="badge badge-warning badge-soft badge-sm rounded-sm font-bold uppercase tracking-widest text-[10px]">
-                        <.icon name="hero-hand-raised" class="size-3 mr-1" /> {gettext(
-                          "Manual Review"
-                        )}
-                      </span>
-                    <% end %>
                   </div>
                 </div>
 
-                <% fake_block = %{id: q["id"], type: :quiz_question, content: q}
+                <% child_sub = Map.get(@child_submissions, q_block.id) %>
 
-                ans = (@submission.content["answers"] || %{})[q["id"]]
-
-                fake_sub_content =
-                  case q["question_type"] do
-                    "exact_match" -> %{"text_answer" => ans}
-                    "open" -> %{"text_answer" => ans}
-                    _ -> %{"selected_choices" => ans}
-                  end
-
-                fake_submission = %{
-                  content: fake_sub_content,
-                  status: @submission.status,
-                  score: @submission.score
-                } %>
-
-                <.content_block block={fake_block} mode={:review} submission={fake_submission} />
+                <.content_block block={q_block} mode={:review} submission={child_sub} />
+                  <div class="mt-4">
+                    <div class="text-xs font-bold uppercase tracking-wider mb-3">
+                      {gettext("Instructor Feedback for this answer")}
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-4">
+                      <div class="w-full sm:w-24 shrink-0">
+                        <label class="label text-xs font-bold text-base-content/70 pb-1 px-0">{gettext("Score")}</label>
+                        <input
+                          type="number"
+                          form="grading-form"
+                          name={"child_grades[#{q_block.id}][score]"}
+                          value={if child_sub, do: child_sub.score, else: 0}
+                          class="input input-sm w-full border-base-300 bg-base-100"
+                          min="0"
+                          max="100"
+                        />
+                      </div>
+                      <div class="flex-1">
+                        <label class="label text-xs font-bold text-base-content/70 pb-1 px-0">{gettext("Comment")}</label>
+                        <textarea
+                          form="grading-form"
+                          name={"child_grades[#{q_block.id}][feedback]"}
+                          class="textarea textarea-sm w-full border-base-300 bg-base-100 resize-none"
+                          rows="2"
+                          placeholder={gettext("Specific feedback for this answer...")}
+                        ><%= if child_sub, do: child_sub.feedback, else: "" %></textarea>
+                      </div>
+                    </div>
+                  </div>
               </div>
             </div>
           <% else %>
@@ -338,4 +379,17 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
     </span>
     """
   end
+
+  @doc false
+  defp hydrate_questions(questions) when is_list(questions), do: Enum.map(questions, fn q ->
+      q_map = if is_struct(q), do: Map.from_struct(q), else: q
+      type_raw = Map.get(q_map, "type") || Map.get(q_map, :type)
+      type = if is_binary(type_raw), do: String.to_atom(type_raw), else: type_raw
+      content = Map.get(q_map, "content") || Map.get(q_map, :content) || %{}
+      id = Map.get(q_map, "id") || Map.get(q_map, :id)
+
+      %{id: id, type: type, content: content}
+    end)
+
+  defp hydrate_questions(_), do: []
 end
