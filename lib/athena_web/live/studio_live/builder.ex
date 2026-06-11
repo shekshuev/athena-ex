@@ -585,7 +585,7 @@ defmodule AthenaWeb.StudioLive.Builder do
         }
       }
 
-      create_and_assign_block(socket, attrs, gettext("Failed to create quiz exam block"))
+      create_and_assign_block(socket, attrs, gettext("Failed to create assessment session block"))
     else
       {:noreply, socket}
     end

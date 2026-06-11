@@ -49,74 +49,78 @@ defmodule Athena.Learning.Evaluator do
     questions = parent_submission.content["questions"] || []
     total_questions = length(questions)
 
-    results =
-      Enum.map(questions, fn q ->
-        child_sub = Map.get(child_subs, q["id"])
-        block_type = to_string(q["type"] || "quiz_question")
-        q_content = q["content"] || %{}
-
-        cond do
-          is_nil(child_sub) ->
-            is_manual =
-              block_type in ["code", "file_assignment"] or q_content["question_type"] == "open"
-
-            blank_content =
-              case block_type do
-                "code" -> %{"type" => "code", "code" => ""}
-                "file_assignment" -> %{"type" => "file_assignment", "file_urls" => []}
-                _ -> %{"type" => "quiz_question", "text_answer" => ""}
-              end
-
-            {:ok, new_sub} =
-              Submissions.save_question_submission(
-                parent_submission,
-                parent_submission.account_id,
-                q["id"],
-                parent_submission.cohort_id,
-                blank_content
-              )
-
-            if is_manual do
-              {:ok, _} =
-                Submissions.system_update_submission(new_sub, %{score: nil, status: :needs_review})
-
-              {nil, :needs_review}
-            else
-              {:ok, _} =
-                Submissions.system_update_submission(new_sub, %{score: 0, status: :graded})
-
-              {0, :graded}
-            end
-
-          child_sub.status in [:needs_review, :graded, :rejected] ->
-            {child_sub.score || 0, child_sub.status}
-
-          block_type == "code" ->
-            {:ok, _} = Submissions.enqueue_code_execution(child_sub)
-            {nil, :processing}
-
-          block_type == "file_assignment" ->
-            {:ok, _} =
-              Submissions.system_update_submission(child_sub, %{score: nil, status: :needs_review})
-
-            {nil, :needs_review}
-
-          true ->
-            question_data =
-              %QuizQuestion{}
-              |> QuizQuestion.changeset(q_content)
-              |> Ecto.Changeset.apply_changes()
-
-            {score, status} = calculate_score(question_data, child_sub.content)
-
-            {:ok, _} =
-              Submissions.system_update_submission(child_sub, %{score: score, status: status})
-
-            {score, status}
-        end
-      end)
+    results = Enum.map(questions, &evaluate_exam_question(&1, parent_submission, child_subs))
 
     calculate_exam_totals(results, total_questions)
+  end
+
+  @doc false
+  defp evaluate_exam_question(q, parent_sub, child_subs) do
+    child_sub = Map.get(child_subs, q["id"])
+    block_type = to_string(q["type"] || "quiz_question")
+    q_content = q["content"] || %{}
+
+    cond do
+      is_nil(child_sub) ->
+        handle_missing_child_submission(parent_sub, q, block_type, q_content)
+
+      child_sub.status in [:needs_review, :graded, :rejected] ->
+        {child_sub.score || 0, child_sub.status}
+
+      block_type == "code" ->
+        {:ok, _} = Submissions.enqueue_code_execution(child_sub)
+        {nil, :processing}
+
+      block_type == "file_assignment" ->
+        {:ok, _} =
+          Submissions.system_update_submission(child_sub, %{score: nil, status: :needs_review})
+
+        {nil, :needs_review}
+
+      true ->
+        question_data =
+          %QuizQuestion{}
+          |> QuizQuestion.changeset(q_content)
+          |> Ecto.Changeset.apply_changes()
+
+        {score, status} = calculate_score(question_data, child_sub.content)
+
+        {:ok, _} =
+          Submissions.system_update_submission(child_sub, %{score: score, status: status})
+
+        {score, status}
+    end
+  end
+
+  @doc false
+  defp handle_missing_child_submission(parent_sub, q, block_type, q_content) do
+    is_manual = block_type in ["code", "file_assignment"] or q_content["question_type"] == "open"
+
+    blank_content =
+      case block_type do
+        "code" -> %{"type" => "code", "code" => ""}
+        "file_assignment" -> %{"type" => "file_assignment", "file_urls" => []}
+        _ -> %{"type" => "quiz_question", "text_answer" => ""}
+      end
+
+    {:ok, new_sub} =
+      Submissions.save_question_submission(
+        parent_sub,
+        parent_sub.account_id,
+        q["id"],
+        parent_sub.cohort_id,
+        blank_content
+      )
+
+    if is_manual do
+      {:ok, _} =
+        Submissions.system_update_submission(new_sub, %{score: nil, status: :needs_review})
+
+      {nil, :needs_review}
+    else
+      {:ok, _} = Submissions.system_update_submission(new_sub, %{score: 0, status: :graded})
+      {0, :graded}
+    end
   end
 
   defp calculate_exam_totals([], _), do: %{status: :graded, score: 0, feedback: nil}

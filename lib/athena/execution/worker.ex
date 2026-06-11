@@ -30,9 +30,17 @@ defmodule Athena.Execution.Worker do
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"submission_id" => id}}) do
     submission = Repo.get!(Submission, id)
-
     block = Repo.get(Block, submission.block_id)
 
+    challenge = build_challenge(submission, block)
+    code = submission.content["code"] || ""
+    box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
+
+    result = execute_code(code, challenge, box_id)
+    update_submission_with_result(submission, result)
+  end
+
+  defp build_challenge(submission, block) do
     challenge_attrs =
       if block do
         block.content
@@ -45,61 +53,49 @@ defmodule Athena.Execution.Worker do
         question["content"] || %{}
       end
 
-    challenge =
-      Ecto.Changeset.apply_changes(CodeChallenge.changeset(%CodeChallenge{}, challenge_attrs))
+    Ecto.Changeset.apply_changes(CodeChallenge.changeset(%CodeChallenge{}, challenge_attrs))
+  end
 
-    code = submission.content["code"] || ""
-    box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
+  defp execute_code(code, challenge, box_id) do
+    if :global.whereis_name(:code_runner) != :undefined do
+      task =
+        Task.Supervisor.async({:via, :global, :code_runner}, fn ->
+          Verifier.verify(code, challenge, box_id)
+        end)
 
-    result =
-      if :global.whereis_name(:code_runner) != :undefined do
-        task =
-          Task.Supervisor.async({:via, :global, :code_runner}, fn ->
-            Verifier.verify(code, challenge, box_id)
-          end)
-
-        try do
-          Task.await(task, @timeout)
-        catch
-          :exit, reason ->
-            require Logger
-            Logger.error("Remote execution failed: #{inspect(reason)}")
-
-            %Verifier.Result{
-              status: :rejected,
-              score: 0,
-              test_results: [
-                %{
-                  status: :error,
-                  expected: "",
-                  stdout: "Runner node crashed or timed out.",
-                  input: "",
-                  time: 0.0,
-                  is_hidden: false
-                }
-              ]
-            }
-        end
-      else
-        require Logger
-        Logger.error("Runner node is not connected during worker execution!")
-
-        %Verifier.Result{
-          status: :rejected,
-          score: 0,
-          test_results: [
-            %{
-              status: :error,
-              expected: "",
-              stdout: "Runner node is not connected!",
-              input: "",
-              time: 0.0,
-              is_hidden: false
-            }
-          ]
-        }
+      try do
+        Task.await(task, @timeout)
+      catch
+        :exit, reason ->
+          require Logger
+          Logger.error("Remote execution failed: #{inspect(reason)}")
+          build_error_result("Runner node crashed or timed out.")
       end
+    else
+      require Logger
+      Logger.error("Runner node is not connected during worker execution!")
+      build_error_result("Runner node is not connected!")
+    end
+  end
 
+  defp build_error_result(message) do
+    %Verifier.Result{
+      status: :rejected,
+      score: 0,
+      test_results: [
+        %{
+          status: :error,
+          expected: "",
+          stdout: message,
+          input: "",
+          time: 0.0,
+          is_hidden: false
+        }
+      ]
+    }
+  end
+
+  defp update_submission_with_result(submission, result) do
     clean_test_results =
       Enum.map(result.test_results, fn tr ->
         Map.new(tr, fn {k, v} ->

@@ -14,53 +14,11 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
   @impl true
   def mount(%{"id" => id} = params, _session, socket) do
     return_to = Map.get(params, "return_to", ~p"/teaching/grading")
-
     submission = Learning.get_submission!(socket.assigns.current_user, id)
 
     with {:ok, account} <- Identity.get_account(submission.account_id),
          {:ok, block} <- Content.get_block(submission.block_id) do
-      form = to_form(%{"score" => submission.score, "feedback" => submission.feedback || ""})
-
-      child_subs =
-        if block.type == :quiz_exam do
-          Learning.get_child_submissions(submission.id)
-        else
-          %{}
-        end
-
-      questions =
-        if block.type == :quiz_exam do
-          hydrate_questions(submission.content["questions"] || [])
-        else
-          []
-        end
-
-      if connected?(socket) do
-        Phoenix.PubSub.subscribe(
-          Athena.PubSub,
-          "submission:#{submission.account_id}:#{submission.block_id}"
-        )
-
-        for q <- questions do
-          Phoenix.PubSub.subscribe(Athena.PubSub, "submission:#{submission.account_id}:#{q.id}")
-        end
-      end
-
-      {:ok,
-       socket
-       |> assign(
-         page_title: gettext("Grade Submission"),
-         submission: submission,
-         account: account,
-         block: block,
-         form: form,
-         return_to: return_to,
-         show_delete_modal: false,
-         child_submissions: child_subs,
-         questions: questions,
-         manual_score_override: false,
-         child_grades_params: %{}
-       )}
+      setup_grading_state(socket, submission, account, block, return_to)
     else
       _ ->
         {:ok,
@@ -68,6 +26,30 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
          |> put_flash(:error, gettext("Submission data is no longer available."))
          |> push_navigate(to: return_to)}
     end
+  end
+
+  defp setup_grading_state(socket, submission, account, block, return_to) do
+    form = to_form(%{"score" => submission.score, "feedback" => submission.feedback || ""})
+    is_exam = block.type == :quiz_exam
+
+    child_subs = if is_exam, do: Learning.get_child_submissions(submission.id), else: %{}
+    questions = if is_exam, do: hydrate_questions(submission.content["questions"] || []), else: []
+
+    {:ok,
+     socket
+     |> assign(
+       page_title: gettext("Grade Submission"),
+       submission: submission,
+       account: account,
+       block: block,
+       form: form,
+       return_to: return_to,
+       show_delete_modal: false,
+       child_submissions: child_subs,
+       questions: questions,
+       manual_score_override: false,
+       child_grades_params: %{}
+     )}
   end
 
   @impl true
@@ -78,7 +60,6 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
       ) do
     status = if action == "reject", do: "rejected", else: "graded"
 
-    # Безопасно парсим итоговый балл
     final_score =
       if action == "reject" do
         0
@@ -89,35 +70,11 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
         end
       end
 
-    attrs = %{
-      "score" => final_score,
-      "feedback" => feedback,
-      "status" => status
-    }
+    attrs = %{"score" => final_score, "feedback" => feedback, "status" => status}
 
     case Learning.update_submission(socket.assigns.current_user, socket.assigns.submission, attrs) do
       {:ok, _updated_sub} ->
-        child_grades = Map.get(params, "child_grades", %{})
-
-        Enum.each(child_grades, fn {child_block_id, grade_data} ->
-          child_sub = Map.get(socket.assigns.child_submissions, child_block_id)
-
-          if child_sub do
-            child_score =
-              case Integer.parse(to_string(grade_data["score"])) do
-                {val, _} -> val
-                :error -> child_sub.score || 0
-              end
-
-            child_attrs = %{
-              "score" => child_score,
-              "feedback" => grade_data["feedback"],
-              "status" => status
-            }
-
-            Learning.update_submission(socket.assigns.current_user, child_sub, child_attrs)
-          end
-        end)
+        update_all_child_grades(socket, params["child_grades"] || %{}, status)
 
         msg =
           if action == "reject",
@@ -207,14 +164,39 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
     end
   end
 
+  defp update_all_child_grades(socket, child_grades, status) do
+    Enum.each(child_grades, fn {child_block_id, grade_data} ->
+      child_sub = Map.get(socket.assigns.child_submissions, child_block_id)
+      update_single_child_grade(socket.assigns.current_user, child_sub, grade_data, status)
+    end)
+  end
+
+  defp update_single_child_grade(_user, nil, _grade_data, _status), do: :ok
+
+  defp update_single_child_grade(user, child_sub, grade_data, status) do
+    child_score =
+      case Integer.parse(to_string(grade_data["score"])) do
+        {val, _} -> val
+        :error -> child_sub.score || 0
+      end
+
+    child_attrs = %{
+      "score" => child_score,
+      "feedback" => grade_data["feedback"],
+      "status" => status
+    }
+
+    Learning.update_submission(user, child_sub, child_attrs)
+  end
+
   @impl true
   def handle_info({:submission_updated, updated_sub}, socket) do
     if updated_sub.id == socket.assigns.submission.id do
       new_score =
-        if not socket.assigns.manual_score_override do
-          updated_sub.score || 0
-        else
+        if socket.assigns.manual_score_override do
           socket.assigns.form.params["score"] || updated_sub.score
+        else
+          updated_sub.score || 0
         end
 
       form =
@@ -228,14 +210,14 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
       new_subs = Map.put(socket.assigns.child_submissions, updated_sub.block_id, updated_sub)
 
       new_score =
-        if not socket.assigns.manual_score_override do
+        if socket.assigns.manual_score_override do
+          socket.assigns.form.params["score"] || socket.assigns.submission.score
+        else
           recalculate_overall_score(
             socket.assigns.questions,
             new_subs,
             socket.assigns.child_grades_params
           )
-        else
-          socket.assigns.form.params["score"] || socket.assigns.submission.score
         end
 
       form =
@@ -408,7 +390,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                     </div>
                     <div class="text-sm font-medium">
                       {gettext(
-                        "The student triggered %{count} window blur violations during this exam.",
+                        "The student triggered %{count} violations during this session.",
                         count: @submission.content["cheat_count"]
                       )}
                     </div>

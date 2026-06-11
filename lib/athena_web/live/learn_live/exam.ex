@@ -31,64 +31,75 @@ defmodule AthenaWeb.LearnLive.Exam do
              time_limit_sec,
              block.content
            ) do
-      if DateTime.compare(DateTime.utc_now(), submission.expires_at) == :gt do
-        socket = submit_and_exit(socket, submission, course_id, :time_limit_exceeded)
-        {:ok, socket}
-      else
-        questions = hydrate_questions(submission.content["questions"] || [])
-        child_subs = Learning.get_child_submissions(submission.id)
-
-        pending_urls =
-          child_subs
-          |> Enum.reduce(%{}, fn {q_id, sub}, acc ->
-            content = sub.content || %{}
-
-            if content["type"] in ["file_assignment", :file_assignment] do
-              Map.put(acc, q_id, content["file_urls"] || [])
-            else
-              acc
-            end
-          end)
-
-        socket =
-          socket
-          |> assign(:course_id, course_id)
-          |> assign(:team_id, team_id)
-          |> assign(:block, block)
-          |> assign(:submission, submission)
-          |> assign(:questions, questions)
-          |> assign(:current_index, 0)
-          |> assign(:current_question, Enum.at(questions, 0))
-          |> assign(:child_submissions, child_subs)
-          |> assign(:time_limit_sec, time_limit_sec)
-          |> assign(:time_left, DateTime.diff(submission.expires_at, DateTime.utc_now()))
-          |> assign(:pending_file_urls, pending_urls)
-          |> assign(:show_media_modal, false)
-          |> assign(:show_finish_modal, false)
-          |> assign(:return_to, return_to)
-          |> assign(:active_upload_block_id, nil)
-          |> assign(:upload_type, nil)
-          |> assign(:max_files_for_upload, 1)
-          |> assign(:current_file_count_for_upload, 0)
-
-        if connected?(socket) do
-          for q <- questions do
-            Phoenix.PubSub.subscribe(Athena.PubSub, "submission:#{user.id}:#{q.id}")
-          end
-        end
-
-        maybe_start_timer(socket)
-        {:ok, socket}
-      end
+      handle_exam_mount(socket, block, submission, course_id, team_id, time_limit_sec, return_to)
     else
       _ ->
-        socket =
-          socket
-          |> put_flash(:error, gettext("Exam is not active or already finished."))
-          |> push_navigate(to: ~p"/learn/courses/#{course_id}")
-
-        {:ok, socket}
+        {:ok,
+         socket
+         |> put_flash(:error, gettext("Assessment session is not active or already finished."))
+         |> push_navigate(to: ~p"/learn/courses/#{course_id}")}
     end
+  end
+
+  defp handle_exam_mount(socket, block, submission, course_id, team_id, time_limit_sec, return_to) do
+    if DateTime.compare(DateTime.utc_now(), submission.expires_at) == :gt do
+      {:ok, submit_and_exit(socket, submission, course_id, :time_limit_exceeded)}
+    else
+      setup_exam_state(socket, block, submission, course_id, team_id, time_limit_sec, return_to)
+    end
+  end
+
+  defp setup_exam_state(socket, block, submission, course_id, team_id, time_limit_sec, return_to) do
+    questions = hydrate_questions(submission.content["questions"] || [])
+    child_subs = Learning.get_child_submissions(submission.id)
+    pending_urls = build_pending_urls(child_subs)
+
+    if connected?(socket) do
+      Enum.each(questions, fn q ->
+        Phoenix.PubSub.subscribe(
+          Athena.PubSub,
+          "submission:#{socket.assigns.current_user.id}:#{q.id}"
+        )
+      end)
+    end
+
+    socket =
+      socket
+      |> assign(
+        course_id: course_id,
+        team_id: team_id,
+        block: block,
+        submission: submission,
+        questions: questions,
+        current_index: 0,
+        current_question: Enum.at(questions, 0),
+        child_submissions: child_subs,
+        time_limit_sec: time_limit_sec,
+        time_left: DateTime.diff(submission.expires_at, DateTime.utc_now()),
+        pending_file_urls: pending_urls,
+        show_media_modal: false,
+        show_finish_modal: false,
+        return_to: return_to,
+        active_upload_block_id: nil,
+        upload_type: nil,
+        max_files_for_upload: 1,
+        current_file_count_for_upload: 0
+      )
+
+    maybe_start_timer(socket)
+    {:ok, socket}
+  end
+
+  defp build_pending_urls(child_subs) do
+    Enum.reduce(child_subs, %{}, fn {q_id, sub}, acc ->
+      content = sub.content || %{}
+
+      if content["type"] in ["file_assignment", :file_assignment] do
+        Map.put(acc, q_id, content["file_urls"] || [])
+      else
+        acc
+      end
+    end)
   end
 
   @impl true
@@ -277,43 +288,46 @@ defmodule AthenaWeb.LearnLive.Exam do
   @impl true
   def handle_event("run_code", %{"block_id" => block_id}, socket) do
     case check_time_limit(socket) do
-      {:halt, socket} ->
-        {:noreply, socket}
+      {:halt, socket} -> {:noreply, socket}
+      {:ok, socket} -> execute_run_code(socket, block_id)
+    end
+  end
 
-      {:ok, socket} ->
-        child_sub = Map.get(socket.assigns.child_submissions, block_id)
+  defp execute_run_code(socket, block_id) do
+    submission_to_run = resolve_submission_for_run(socket, block_id)
 
-        submission_to_run =
-          if child_sub do
-            child_sub
-          else
-            answer_content = %{"type" => :code, "code" => ""}
+    if submission_to_run do
+      case Learning.enqueue_code_execution(submission_to_run) do
+        {:ok, processing_sub} ->
+          new_child_subs = Map.put(socket.assigns.child_submissions, block_id, processing_sub)
+          {:noreply, assign(socket, :child_submissions, new_child_subs)}
 
-            case Learning.save_question_submission(
-                   socket.assigns.submission,
-                   socket.assigns.current_user.id,
-                   block_id,
-                   socket.assigns.team_id,
-                   answer_content
-                 ) do
-              {:ok, new_sub} -> new_sub
-              {:error, _} -> nil
-            end
-          end
+        {:error, _err} ->
+          {:noreply, put_flash(socket, :error, gettext("Failed to start code execution."))}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
 
-        if submission_to_run do
-          case Learning.enqueue_code_execution(submission_to_run) do
-            {:ok, processing_sub} ->
-              new_child_subs = Map.put(socket.assigns.child_submissions, block_id, processing_sub)
-              {:noreply, assign(socket, :child_submissions, new_child_subs)}
+  defp resolve_submission_for_run(socket, block_id) do
+    child_sub = Map.get(socket.assigns.child_submissions, block_id)
 
-            {:error, err} ->
-              dbg(err)
-              {:noreply, put_flash(socket, :error, gettext("Failed to start code execution."))}
-          end
-        else
-          {:noreply, socket}
-        end
+    if child_sub do
+      child_sub
+    else
+      answer_content = %{"type" => :code, "code" => ""}
+
+      case Learning.save_question_submission(
+             socket.assigns.submission,
+             socket.assigns.current_user.id,
+             block_id,
+             socket.assigns.team_id,
+             answer_content
+           ) do
+        {:ok, new_sub} -> new_sub
+        {:error, _} -> nil
+      end
     end
   end
 
@@ -601,13 +615,13 @@ defmodule AthenaWeb.LearnLive.Exam do
         :if={@show_finish_modal}
         id="finish-exam-modal"
         show={true}
-        title={gettext("Submit Exam?")}
+        title={gettext("Submit Assessment Session?")}
         description={
           gettext(
             "Are you sure you want to finish? You won't be able to change your answers after submission."
           )
         }
-        confirm_label={gettext("Yes, Submit Exam")}
+        confirm_label={gettext("Yes, Submit")}
         on_cancel={JS.push("close_finish_modal")}
         on_confirm={JS.push("finish_exam")}
       />
@@ -684,23 +698,19 @@ defmodule AthenaWeb.LearnLive.Exam do
     %{"type" => :quiz_question, "rich_answer" => parsed_answer}
   end
 
-  defp normalize_answer(%{type: :quiz_question, content: %{"question_type" => q_type}}, answer) do
-    case q_type do
-      "single" ->
-        %{"type" => :quiz_question, "selected_choices" => if(answer, do: [answer], else: [])}
+  defp normalize_answer(%{type: :quiz_question, content: %{"question_type" => "single"}}, answer) do
+    %{"type" => :quiz_question, "selected_choices" => if(answer, do: [answer], else: [])}
+  end
 
-      "multiple" ->
-        %{"type" => :quiz_question, "selected_choices" => List.wrap(answer)}
+  defp normalize_answer(
+         %{type: :quiz_question, content: %{"question_type" => "multiple"}},
+         answer
+       ) do
+    %{"type" => :quiz_question, "selected_choices" => List.wrap(answer)}
+  end
 
-      "open" ->
-        %{"type" => :quiz_question, "text_answer" => answer || ""}
-
-      "exact_match" ->
-        %{"type" => :quiz_question, "text_answer" => answer || ""}
-
-      _ ->
-        %{"type" => :quiz_question, "text_answer" => answer || ""}
-    end
+  defp normalize_answer(%{type: :quiz_question, content: %{"question_type" => _other}}, answer) do
+    %{"type" => :quiz_question, "text_answer" => answer || ""}
   end
 
   defp normalize_answer(%{type: :code}, answer) do
@@ -745,8 +755,8 @@ defmodule AthenaWeb.LearnLive.Exam do
 
     msg =
       if reason == :time_limit_exceeded,
-        do: gettext("Time is up! Your exam has been automatically submitted."),
-        else: gettext("Exam submitted successfully!")
+        do: gettext("Time is up! Your assessment session has been automatically submitted."),
+        else: gettext("Assessment session submitted successfully!")
 
     socket
     |> put_flash(:info, msg)

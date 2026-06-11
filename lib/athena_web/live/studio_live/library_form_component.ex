@@ -17,7 +17,7 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
       {gettext("Text Block"), :text},
       {gettext("Code Sandbox"), :code},
       {gettext("Quiz Question"), :quiz_question},
-      {gettext("Quiz Exam"), :quiz_exam},
+      {gettext("Assessment Session"), :quiz_exam},
       {gettext("Image"), :image},
       {gettext("Video"), :video},
       {gettext("Files & Materials"), :attachment}

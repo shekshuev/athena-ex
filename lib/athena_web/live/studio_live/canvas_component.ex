@@ -176,7 +176,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         class="btn btn-outline rounded-sm bg-base-100 border-base-200 hover:border-primary hover:text-primary hover:bg-base-100 flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-academic-cap" class="size-6 opacity-70" />
-        <span>{gettext("Exam")}</span>
+        <span>{gettext("Assessment Session")}</span>
       </.button>
 
       <.button
@@ -270,7 +270,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         id={"inline-add-exam-#{@after_id}"}
         phx-hook="TippyTooltip"
-        data-tippy-content={gettext("Quiz Exam")}
+        data-tippy-content={gettext("Assessment Session")}
         phx-click="add_quiz_exam_block"
         phx-value-after_id={@after_id}
         class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary"

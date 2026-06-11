@@ -347,8 +347,14 @@ defmodule AthenaWeb.LearnLive.Player do
     draft = Map.get(socket.assigns.drafts || %{}, block_id, %{})
     code = Map.get(draft, "code", "")
 
-    if block && block.type == :code do
-      if code_runner_available?() do
+    cond do
+      is_nil(block) or block.type != :code ->
+        {:noreply, socket}
+
+      not code_runner_available?() ->
+        {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
+
+      true ->
         case Learning.test_code(socket.assigns.current_user, block, code) do
           {:ok, _draft} ->
             new_drafts =
@@ -359,11 +365,6 @@ defmodule AthenaWeb.LearnLive.Player do
           {:error, _} ->
             {:noreply, put_flash(socket, :error, gettext("Failed to enqueue code execution."))}
         end
-      else
-        {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
-      end
-    else
-      {:noreply, socket}
     end
   end
 
@@ -508,7 +509,7 @@ defmodule AthenaWeb.LearnLive.Player do
          put_flash(
            socket,
            :error,
-           gettext("Failed to start the exam.")
+           gettext("Failed to start the assessment session.")
          )}
     end
   end

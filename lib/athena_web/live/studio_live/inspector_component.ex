@@ -283,7 +283,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
           <%= if @block.type == :quiz_exam do %>
             <div class="space-y-4 mb-6">
               <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
-                {gettext("Exam Configuration")}
+                {gettext("Assessment Session Configuration")}
               </div>
 
               <div class="flex flex-col gap-3">

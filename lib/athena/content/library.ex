@@ -78,7 +78,7 @@ defmodule Athena.Content.Library do
   end
 
   @doc """
-  Generates a snapshot of questions for a Quiz Exam based on tag rules.
+  Generates a snapshot of questions for a quiz_exam based on tag rules.
   Uses PostgreSQL array intersection operator (&&) for massive performance.
   """
   @spec generate_exam_questions(map() | nil) :: [Block.t()]

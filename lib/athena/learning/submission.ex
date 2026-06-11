@@ -113,14 +113,14 @@ defmodule Athena.Learning.Submission do
     parent_id = get_field(changeset, :parent_submission_id)
     expires_at = get_field(changeset, :expires_at)
 
-    cond do
-      parent_id && expires_at ->
+    changeset =
+      if parent_id && expires_at do
         add_error(changeset, :expires_at, "Child submissions cannot have their own expires_at")
-
-      true ->
+      else
         changeset
-    end
-    |> validate_required_if_parent_missing()
+      end
+
+    validate_required_if_parent_missing(changeset)
   end
 
   @doc false

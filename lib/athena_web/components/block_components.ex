@@ -199,27 +199,7 @@ defmodule AthenaWeb.BlockComponents do
     lang = assigns.block.content["language"] || "python3"
     is_processing = assigns.submission && assigns.submission.status in [:pending, :processing]
     readonly = assigns.mode not in [:edit, :play] or is_processing
-
-    draft_results =
-      if assigns.draft, do: Map.get(assigns.draft, "execution_results") || [], else: []
-
-    execution_results =
-      cond do
-        draft_results != [] ->
-          draft_results
-
-        assigns.submission ->
-          content_map =
-            if is_struct(assigns.submission.content),
-              do: Map.from_struct(assigns.submission.content),
-              else: assigns.submission.content || %{}
-
-          Map.get(content_map, "execution_results") || Map.get(content_map, :execution_results) ||
-            []
-
-        true ->
-          []
-      end
+    execution_results = resolve_execution_results(assigns.draft, assigns.submission)
 
     assigns =
       assigns
@@ -389,6 +369,27 @@ defmodule AthenaWeb.BlockComponents do
     """
   end
 
+  defp resolve_execution_results(draft, submission) do
+    draft_results = if draft, do: Map.get(draft, "execution_results") || [], else: []
+
+    if draft_results != [] do
+      draft_results
+    else
+      extract_execution_results(submission)
+    end
+  end
+
+  defp extract_execution_results(nil), do: []
+
+  defp extract_execution_results(submission) do
+    content_map =
+      if is_struct(submission.content),
+        do: Map.from_struct(submission.content),
+        else: submission.content || %{}
+
+    Map.get(content_map, "execution_results") || Map.get(content_map, :execution_results) || []
+  end
+
   @doc false
   defp compute_code_for_mode(:edit, block, _draft, _answers, _submission),
     do: block.content["initial_code"] || ""
@@ -487,25 +488,25 @@ defmodule AthenaWeb.BlockComponents do
 
   defp extract_quiz_answer(assigns, q_type) do
     answer_type = assigns.block.content["answer_type"] || "plain_text"
-
     draft_answer = extract_from_draft(assigns[:draft], q_type, answer_type)
 
-    if not is_nil(draft_answer) and draft_answer != "" and draft_answer != [] do
-      draft_answer
-    else
-      live_answer = Map.get(assigns.answers || %{}, assigns.block.id)
+    cond do
+      present?(draft_answer) ->
+        draft_answer
 
-      if live_answer do
+      live_answer = Map.get(assigns.answers || %{}, assigns.block.id) ->
         if is_struct(live_answer, Athena.Learning.Submission) do
           extract_from_submission(live_answer, q_type, answer_type)
         else
           live_answer
         end
-      else
+
+      true ->
         extract_from_submission(assigns[:submission], q_type, answer_type)
-      end
     end
   end
+
+  defp present?(val), do: not is_nil(val) and val != "" and val != []
 
   defp extract_from_draft(nil, _q_type, _answer_type), do: nil
 
