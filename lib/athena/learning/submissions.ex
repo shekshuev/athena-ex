@@ -539,9 +539,15 @@ defmodule Athena.Learning.Submissions do
         cohort_id,
         answer_content
       ) do
-    DateTime.utc_now()
-    |> DateTime.compare(parent_submission.expires_at)
-    |> do_save_question_submission(
+    limit_check =
+      if parent_submission.expires_at do
+        DateTime.compare(DateTime.utc_now(), parent_submission.expires_at)
+      else
+        :lt
+      end
+
+    do_save_question_submission(
+      limit_check,
       parent_submission,
       account_id,
       question_block_id,

@@ -396,38 +396,35 @@ defmodule AthenaWeb.BlockComponents do
     Map.get(content_map, "execution_results") || Map.get(content_map, :execution_results) || []
   end
 
-  @doc false
   defp compute_code_for_mode(:edit, block, _draft, _answers, _submission),
     do: block.content["initial_code"] || ""
 
   defp compute_code_for_mode(:play, block, draft, answers, submission) do
-    extract_draft_code(draft) ||
-      extract_code_answer(%{block: block, answers: answers, submission: submission}) ||
-      block.content["initial_code"] ||
-      ""
+    extract_code_answer(block.id, answers, submission, draft) ||
+      block.content["initial_code"] || ""
   end
 
   defp compute_code_for_mode(_other_mode, block, _draft, answers, submission) do
-    extract_code_answer(%{block: block, answers: answers, submission: submission}) ||
-      block.content["initial_code"] ||
-      ""
+    extract_code_answer(block.id, answers, submission, nil) ||
+      block.content["initial_code"] || ""
   end
 
-  @doc false
-  defp extract_draft_code(nil), do: nil
+  defp extract_code_answer(block_id, answers, submission, draft) do
+    live_answer = Map.get(answers || %{}, block_id)
 
-  defp extract_draft_code(draft) when is_map(draft) do
-    draft["code"] || draft[:code]
-  end
+    cond do
+      present?(live_answer) ->
+        do_extract_code(live_answer)
 
-  defp map_cm_lang("cpp"), do: "cpp"
-  defp map_cm_lang("sql"), do: "sql"
-  defp map_cm_lang(_), do: "python"
+      present?(submission) and present?(do_extract_code(submission)) ->
+        do_extract_code(submission)
 
-  defp extract_code_answer(assigns) do
-    answer = Map.get(assigns[:answers] || %{}, assigns.block.id)
+      present?(draft) ->
+        do_extract_code(draft)
 
-    do_extract_code(answer) || do_extract_code(assigns[:submission])
+      true ->
+        nil
+    end
   end
 
   defp do_extract_code(%Athena.Learning.Submission{content: content}),
@@ -437,12 +434,19 @@ defmodule AthenaWeb.BlockComponents do
     Map.get(content, :code) || Map.get(content, :text_answer)
   end
 
+  defp do_extract_code(%{content: content}) when is_map(content), do: do_extract_code(content)
+  defp do_extract_code(%{"content" => content}) when is_map(content), do: do_extract_code(content)
+
   defp do_extract_code(%{} = map) when not is_struct(map) do
     map["code"] || map[:code] || map["text_answer"] || map[:text_answer]
   end
 
-  defp do_extract_code(val) when is_binary(val), do: val
+  defp do_extract_code(val) when is_binary(val) and val != "", do: val
   defp do_extract_code(_), do: nil
+
+  defp map_cm_lang("cpp"), do: "cpp"
+  defp map_cm_lang("sql"), do: "sql"
+  defp map_cm_lang(_), do: "python"
 
   defp render_quiz_question(assigns) do
     q_type = assigns.block.content["question_type"] || "open"
@@ -494,22 +498,57 @@ defmodule AthenaWeb.BlockComponents do
 
   defp extract_quiz_answer(assigns, q_type) do
     answer_type = assigns.block.content["answer_type"] || "plain_text"
-    draft_answer = extract_from_draft(assigns[:draft], q_type, answer_type)
 
-    cond do
-      present?(draft_answer) ->
-        draft_answer
+    live_answer = Map.get(assigns.answers || %{}, assigns.block.id)
 
-      live_answer = Map.get(assigns.answers || %{}, assigns.block.id) ->
-        if is_struct(live_answer, Athena.Learning.Submission) do
-          extract_from_submission(live_answer, q_type, answer_type)
-        else
-          live_answer
-        end
+    if present?(live_answer) do
+      if is_struct(live_answer, Athena.Learning.Submission) do
+        extract_from_submission(live_answer, q_type, answer_type)
+      else
+        live_answer
+      end
+    else
+      sub_answer = extract_from_submission(assigns[:submission], q_type, answer_type)
 
-      true ->
-        extract_from_submission(assigns[:submission], q_type, answer_type)
+      if present?(sub_answer) do
+        sub_answer
+      else
+        extract_from_draft(assigns[:draft], q_type, answer_type)
+      end
     end
+  end
+
+  defp extract_from_submission(nil, _q_type, _answer_type), do: nil
+
+  defp extract_from_submission(submission, q_type, answer_type)
+       when q_type in ["exact_match", "open"] do
+    content =
+      if is_struct(submission) do
+        if is_struct(submission.content),
+          do: Map.from_struct(submission.content),
+          else: submission.content || %{}
+      else
+        Map.get(submission, :content) || Map.get(submission, "content") || %{}
+      end
+
+    if answer_type == "rich_text" do
+      Map.get(content, "rich_answer") || Map.get(content, :rich_answer)
+    else
+      Map.get(content, "text_answer") || Map.get(content, :text_answer)
+    end
+  end
+
+  defp extract_from_submission(submission, _q_type, _answer_type) do
+    content =
+      if is_struct(submission) do
+        if is_struct(submission.content),
+          do: Map.from_struct(submission.content),
+          else: submission.content || %{}
+      else
+        Map.get(submission, :content) || Map.get(submission, "content") || %{}
+      end
+
+    Map.get(content, "selected_choices") || Map.get(content, :selected_choices)
   end
 
   defp present?(val), do: not is_nil(val) and val != "" and val != []
@@ -526,21 +565,6 @@ defmodule AthenaWeb.BlockComponents do
 
   defp extract_from_draft(draft, _q_type, _answer_type) do
     draft["selected_choices"] || draft[:selected_choices]
-  end
-
-  defp extract_from_submission(nil, _q_type, _answer_type), do: nil
-
-  defp extract_from_submission(%{content: content}, q_type, answer_type)
-       when q_type in ["exact_match", "open"] do
-    if answer_type == "rich_text" do
-      Map.get(content, "rich_answer") || Map.get(content, :rich_answer)
-    else
-      Map.get(content, "text_answer") || Map.get(content, :text_answer)
-    end
-  end
-
-  defp extract_from_submission(%{content: content}, _q_type, _answer_type) do
-    Map.get(content, "selected_choices") || Map.get(content, :selected_choices)
   end
 
   defp render_quiz_inputs(%{q_type: "exact_match"} = assigns) do

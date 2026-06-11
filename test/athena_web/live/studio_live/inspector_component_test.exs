@@ -350,13 +350,10 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
         )
 
       assert html =~ "quiz exam Block"
-      assert html =~ "Exam Configuration"
+      assert html =~ "Assessment Session Configuration"
 
       assert html =~ ~s(name="block[content][count]")
       assert html =~ ~s(value="10")
-
-      assert html =~ ~s(name="block[content][allowed_blur_attempts]")
-      assert html =~ ~s(value="3")
     end
 
     test "renders quiz exam configuration fields", %{block: base_block} do
@@ -365,7 +362,6 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
         | type: :quiz_exam,
           content: %{
             "count" => 15,
-            "allowed_blur_attempts" => 4,
             "time_limit" => 30,
             "mandatory_tags" => ["elixir", "math"],
             "include_tags" => ["hard"],
@@ -381,7 +377,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
         )
 
       assert html =~ "quiz exam Block"
-      assert html =~ "Exam Configuration"
+      assert html =~ "Assessment Session Configuration"
 
       assert html =~ ~s(name="block[content][count]")
       assert html =~ "15"
@@ -397,9 +393,6 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
 
       assert html =~ ~s(name="tags_exclude")
       assert html =~ "draft"
-
-      assert html =~ ~s(name="block[content][allowed_blur_attempts]")
-      assert html =~ "4"
     end
 
     test "renders correct progression rules for quiz exam blocks", %{block: base_block} do

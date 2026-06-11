@@ -141,7 +141,7 @@ defmodule Athena.Learning.Evaluator do
 
   defp calculate_score(%QuizQuestion{question_type: :exact_match} = q, a) do
     correct = q.correct_answer || ""
-    student = Map.get(a, "text_answer") || ""
+    student = Map.get(a, "text_answer") || Map.get(a, :text_answer) || ""
 
     match? =
       if q.case_sensitive do
@@ -155,7 +155,9 @@ defmodule Athena.Learning.Evaluator do
 
   defp calculate_score(%QuizQuestion{question_type: :single} = q, a) do
     correct_option = Enum.find(q.options || [], & &1.is_correct)
-    student_choice = List.first(Map.get(a, "selected_choices") || [])
+
+    student_choice =
+      List.first(Map.get(a, "selected_choices") || Map.get(a, :selected_choices) || [])
 
     if correct_option && student_choice == correct_option.id,
       do: {100, :graded},
@@ -164,7 +166,7 @@ defmodule Athena.Learning.Evaluator do
 
   defp calculate_score(%QuizQuestion{question_type: :multiple} = q, a) do
     correct_ids = q.options |> Enum.filter(& &1.is_correct) |> Enum.map(& &1.id) |> Enum.sort()
-    student_ids = Enum.sort(Map.get(a, "selected_choices") || [])
+    student_ids = Enum.sort(Map.get(a, "selected_choices") || Map.get(a, :selected_choices) || [])
 
     if correct_ids == student_ids and correct_ids != [], do: {100, :graded}, else: {0, :graded}
   end

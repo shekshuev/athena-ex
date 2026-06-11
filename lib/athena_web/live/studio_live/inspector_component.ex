@@ -303,14 +303,6 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                   placeholder={gettext("Optional")}
                   min="1"
                 />
-                <.input
-                  type="number"
-                  name="block[content][allowed_blur_attempts]"
-                  value={@block.content["allowed_blur_attempts"] || 3}
-                  label={gettext("Max Cheat Attempts")}
-                  placeholder="3"
-                  min="0"
-                />
               </div>
 
               <div class="divider my-2"></div>
@@ -320,18 +312,18 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
 
               <.input
                 type="text"
-                name="tags_mandatory"
-                value={Enum.join(@block.content["mandatory_tags"] || [], ", ")}
-                label={gettext("Mandatory Tags (Must include)")}
-                placeholder="elixir, basic"
-              />
-
-              <.input
-                type="text"
                 name="tags_include"
                 value={Enum.join(@block.content["include_tags"] || [], ", ")}
                 label={gettext("Include Tags (Random pool)")}
                 placeholder="advanced, tricky"
+              />
+
+              <.input
+                type="text"
+                name="tags_mandatory"
+                value={Enum.join(@block.content["mandatory_tags"] || [], ", ")}
+                label={gettext("Mandatory Tags (Must include)")}
+                placeholder="elixir, basic"
               />
 
               <.input
