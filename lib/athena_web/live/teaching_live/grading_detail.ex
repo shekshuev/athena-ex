@@ -247,8 +247,16 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
           <h1 class="text-2xl font-black font-display tracking-tight">
             {gettext("Submission from %{name}", name: @account.login)}
           </h1>
-          <div class="text-xs font-bold text-base-content/50 uppercase tracking-widest mt-1">
-            {gettext("Block Type:")} {Atom.to_string(@block.type) |> String.replace("_", " ")}
+          <div class="text-xs font-bold text-base-content/50 uppercase tracking-widest mt-1 flex items-center gap-2">
+            <span>
+              {gettext("Block Type:")} {Atom.to_string(@block.type) |> String.replace("_", " ")}
+            </span>
+            <span
+              :if={manual_review_required?(@block)}
+              class="badge badge-sm rounded-sm font-bold bg-warning/10 text-warning border border-warning/30 uppercase tracking-widest text-[10px]"
+            >
+              {gettext("Manual Review")}
+            </span>
           </div>
         </div>
       </div>
@@ -272,6 +280,12 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                   <div class="flex items-center gap-2">
                     <span class="badge badge-sm rounded-sm font-bold bg-base-200 border border-base-300 text-base-content/70 uppercase tracking-widest text-[10px]">
                       {q_block.content["question_type"] || q_block.type}
+                    </span>
+                    <span
+                      :if={manual_review_required?(q_block)}
+                      class="badge badge-sm rounded-sm font-bold bg-warning/10 text-warning border border-warning/30 uppercase tracking-widest text-[10px]"
+                    >
+                      {gettext("Manual Review")}
                     </span>
                   </div>
                 </div>
@@ -508,4 +522,13 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
     total_questions = length(questions)
     if total_questions > 0, do: round(total_earned / total_questions), else: 0
   end
+
+  # Helper to identify if a block requires manual review
+  defp manual_review_required?(%{type: type, content: content}) do
+    type in [:code, :file_assignment, "code", "file_assignment"] or
+      (type in [:quiz_question, "quiz_question"] and is_map(content) and
+         content["question_type"] == "open")
+  end
+
+  defp manual_review_required?(_), do: false
 end
