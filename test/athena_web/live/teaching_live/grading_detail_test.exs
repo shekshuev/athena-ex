@@ -293,7 +293,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
 
       {:ok, lv, html} = live(conn, ~p"/teaching/grading/#{sub.id}")
 
-      assert html =~ "Delete &amp; Rollback Submission"
+      assert html =~ "Delete Submission"
       assert html =~ "open_delete_modal"
 
       html =
