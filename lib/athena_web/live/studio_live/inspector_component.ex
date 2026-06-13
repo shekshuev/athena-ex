@@ -16,8 +16,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   def update(assigns, socket) do
     {:ok,
      socket
-     |> assign(assigns)
-     |> assign_new(:server_now, fn -> DateTime.utc_now() |> DateTime.truncate(:second) end)}
+     |> assign(assigns)}
   end
 
   @doc """
@@ -35,9 +34,9 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
       </div>
       <%= cond do %>
         <% @active_block -> %>
-          <.block_inspector block={@active_block} server_now={@server_now} />
+          <.block_inspector block={@active_block} />
         <% @active_section -> %>
-          <.section_inspector section={@active_section} server_now={@server_now} />
+          <.section_inspector section={@active_section} />
         <% true -> %>
           <div class="flex-1 flex items-center justify-center p-4 text-center">
             <p class="text-sm text-base-content/50 italic">
@@ -99,9 +98,8 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
               label={gettext("Who can see this section?")}
               options={[
                 {gettext("Enrolled Students"), "enrolled"},
-                {gettext("Public (Everyone)"), "public"},
-                {gettext("Restricted (Time)"), "restricted"},
-                {gettext("Hidden (Draft)"), "hidden"}
+                {gettext("Restricted"), "restricted"},
+                {gettext("Hidden"), "hidden"}
               ]}
             />
 
@@ -126,26 +124,6 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                   </div>
                 </label>
               </div>
-
-              <%= if to_string(@form[:visibility].value) == "restricted" do %>
-                <div class="bg-base-200 p-2 rounded-sm border border-base-300 text-xs font-mono text-center text-base-content/70 mt-4">
-                  SERVER TIME:
-                  <span class="font-bold text-base-content">
-                    {Calendar.strftime(@server_now, "%Y-%m-%d %H:%M:%S")}
-                  </span>
-                </div>
-
-                <.input
-                  type="datetime-local"
-                  field={ar[:unlock_at]}
-                  label={gettext("Unlock At (Optional)")}
-                />
-                <.input
-                  type="datetime-local"
-                  field={ar[:lock_at]}
-                  label={gettext("Lock At (Optional)")}
-                />
-              <% end %>
             </.inputs_for>
           </div>
         </.form>
@@ -199,7 +177,11 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
             {gettext("Type")}
           </div>
           <div class="text-sm font-medium capitalize">
-            {Atom.to_string(@block.type) |> String.replace("_", " ")} {gettext("Block")}
+            <%= if @block.type == :quiz_exam do %>
+              {gettext("Assessment Session")} {gettext("Block")}
+            <% else %>
+              {Atom.to_string(@block.type) |> String.replace("_", " ")} {gettext("Block")}
+            <% end %>
           </div>
         </div>
       </div>
@@ -496,9 +478,8 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
               options={[
                 {gettext("Inherit from Section"), "inherit"},
                 {gettext("Enrolled Students"), "enrolled"},
-                {gettext("Public (Everyone)"), "public"},
-                {gettext("Restricted (Time)"), "restricted"},
-                {gettext("Hidden (Draft)"), "hidden"}
+                {gettext("Restricted"), "restricted"},
+                {gettext("Hidden"), "hidden"}
               ]}
             />
 
@@ -523,26 +504,6 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                   </div>
                 </label>
               </div>
-
-              <%= if to_string(@form[:visibility].value) == "restricted" do %>
-                <div class="bg-base-200 p-2 rounded-sm border border-base-300 text-xs font-mono text-center text-base-content/70 mt-4">
-                  SERVER TIME:
-                  <span class="font-bold text-base-content">
-                    {Calendar.strftime(@server_now, "%Y-%m-%d %H:%M:%S")}
-                  </span>
-                </div>
-
-                <.input
-                  type="datetime-local"
-                  field={ar[:unlock_at]}
-                  label={gettext("Unlock At (Optional)")}
-                />
-                <.input
-                  type="datetime-local"
-                  field={ar[:lock_at]}
-                  label={gettext("Lock At (Optional)")}
-                />
-              <% end %>
             </.inputs_for>
           </div>
         </.form>

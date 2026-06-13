@@ -4,7 +4,6 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
 
   import Athena.Factory
   alias AthenaWeb.StudioLive.Builder.InspectorComponent
-  alias Athena.Content.AccessRules
 
   describe "Empty State" do
     test "prompts user to select an item when nothing is active" do
@@ -41,36 +40,6 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
 
       assert html =~ "Move To..."
       assert html =~ "Delete Section"
-    end
-
-    test "shows access rules inputs when visibility is restricted", %{section: base_section} do
-      section = %{base_section | visibility: :restricted, access_rules: %AccessRules{}}
-
-      html =
-        render_component(InspectorComponent,
-          id: "inspector",
-          active_section: section,
-          active_block: nil
-        )
-
-      assert html =~ "Unlock At (Optional)"
-      assert html =~ "Lock At (Optional)"
-      assert html =~ ~s(name="section[access_rules][unlock_at]")
-      assert html =~ ~s(name="section[access_rules][lock_at]")
-    end
-
-    test "hides access rules inputs when visibility is public", %{section: base_section} do
-      section = %{base_section | visibility: :public}
-
-      html =
-        render_component(InspectorComponent,
-          id: "inspector",
-          active_section: section,
-          active_block: nil
-        )
-
-      refute html =~ "Unlock At (Optional)"
-      refute html =~ "Lock At (Optional)"
     end
 
     test "renders reset_waterline checkbox regardless of visibility", %{section: section} do
@@ -182,20 +151,6 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "Minimum Score to Pass"
       assert html =~ ~s(name="block[completion_rule][min_score]")
       assert html =~ "85"
-    end
-
-    test "shows access rules inputs when block visibility is restricted", %{block: base_block} do
-      block = %{base_block | visibility: :restricted, access_rules: %AccessRules{}}
-
-      html =
-        render_component(InspectorComponent,
-          id: "inspector",
-          active_section: nil,
-          active_block: block
-        )
-
-      assert html =~ "Unlock At (Optional)"
-      assert html =~ ~s(name="block[access_rules][unlock_at]")
     end
 
     test "renders image block media settings", %{block: base_block} do
@@ -349,7 +304,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
           active_block: block
         )
 
-      assert html =~ "quiz exam Block"
+      assert html =~ "Assessment Session Block"
       assert html =~ "Assessment Session Configuration"
 
       assert html =~ ~s(name="block[content][count]")
@@ -376,7 +331,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
           active_block: block
         )
 
-      assert html =~ "quiz exam Block"
+      assert html =~ "Assessment Session Block"
       assert html =~ "Assessment Session Configuration"
 
       assert html =~ ~s(name="block[content][count]")
