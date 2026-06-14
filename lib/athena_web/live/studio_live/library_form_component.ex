@@ -151,7 +151,6 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
     })
   end
 
-  # <-- Добавили генерацию дефолтного контента для File Assignment
   defp put_default_content(%{"type" => "file_assignment"} = params) do
     Map.put_new(params, "content", %{
       "max_files" => 1,
