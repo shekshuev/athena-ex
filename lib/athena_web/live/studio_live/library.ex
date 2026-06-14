@@ -57,8 +57,6 @@ defmodule AthenaWeb.StudioLive.Library do
         |> apply_action(socket.assigns.live_action, params)
 
       {:error, _meta} ->
-        # Если Flop не провалидировал параметры (например, кривой оператор),
-        # не сбрасываем форму, а просто показываем пустоту, оставляя параметры на месте.
         socket
         |> assign(search: search, type_filter: type, tag_filter: tag, has_blocks: false)
         |> stream(:library_blocks, [], reset: true)
@@ -262,11 +260,10 @@ defmodule AthenaWeb.StudioLive.Library do
         else: filters
 
     filters =
-      if type not in ["", "all"],
-        do: [%{"field" => "type", "op" => "==", "value" => type} | filters],
-        else: filters
+      if type in ["", "all"],
+        do: filters,
+        else: [%{"field" => "type", "op" => "==", "value" => type} | filters]
 
-    # Если есть теги (через запятую), добавляем отдельный фильтр `contains` для КАЖДОГО тега
     tags_list =
       (tag || "")
       |> String.split(",")
@@ -441,9 +438,7 @@ defmodule AthenaWeb.StudioLive.Library do
             <div class="flex justify-end gap-2">
               <.button
                 :if={can_view}
-                navigate={
-                  ~p"/studio/library/#{block.id}/editor?return_to=#{URI.encode_www_form(@current_path)}"
-                }
+                navigate={~p"/studio/library/#{block.id}/editor?#{[return_to: @current_path]}"}
                 class="btn btn-primary btn-xs btn-square btn-soft"
                 title={if can_edit, do: gettext("Open Editor"), else: gettext("View Template")}
               >

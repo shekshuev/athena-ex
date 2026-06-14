@@ -1,7 +1,7 @@
 defmodule AthenaWeb.StudioLive.LibraryTest do
   use AthenaWeb.ConnCase, async: true
-  import Phoenix.LiveViewTest
 
+  import Phoenix.LiveViewTest
   import Athena.Factory
 
   setup %{conn: conn} do
@@ -12,6 +12,7 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
 
     admin = insert(:account, role: role)
     conn = init_test_session(conn, %{"account_id" => admin.id})
+
     %{conn: conn, admin: admin}
   end
 
@@ -35,7 +36,7 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
 
       html =
         lv
-        |> form("form[phx-change='search']", %{"search" => "Python"})
+        |> form("form[phx-change='update_filters']", %{"search" => "Python"})
         |> render_change()
 
       assert html =~ "Python Basics Exam"
@@ -49,7 +50,9 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
   end
 
   describe "Library page (Pagination & Sorting)" do
-    test "changes page size and updates URL", %{conn: conn} do
+    test "changes page size and updates URL", %{conn: conn, admin: admin} do
+      insert(:library_block, owner_id: admin.id)
+
       {:ok, lv, _html} = live(conn, ~p"/studio/library")
 
       lv
@@ -77,6 +80,65 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
         ~p"/studio/library?order_by[]=title&order_directions[]=asc&page=1&page_size=10"
       )
     end
+
+    test "filters by block type and tags", %{conn: conn, admin: admin} do
+      insert(:library_block,
+        title: "Python Task",
+        type: :code,
+        tags: ["python", "basics"],
+        owner_id: admin.id
+      )
+
+      insert(:library_block,
+        title: "Math Quiz",
+        type: :quiz_question,
+        tags: ["math", "exam"],
+        owner_id: admin.id
+      )
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library")
+
+      html =
+        lv
+        |> form("form[phx-change='update_filters']", %{"type" => "code"})
+        |> render_change()
+
+      assert html =~ "Python Task"
+      refute html =~ "Math Quiz"
+
+      html =
+        lv
+        |> form("form[phx-change='update_filters']", %{"tag" => "math", "type" => "all"})
+        |> render_change()
+
+      refute html =~ "Python Task"
+      assert html =~ "Math Quiz"
+    end
+
+    test "resets all filters", %{conn: conn, admin: admin} do
+      insert(:library_block, title: "Target Block", owner_id: admin.id)
+      {:ok, lv, _html} = live(conn, ~p"/studio/library?search=NonExistent")
+
+      html = render_click(lv, "reset_filters")
+      assert html =~ "Target Block"
+      assert_patched(lv, ~p"/studio/library")
+    end
+
+    test "shows empty state when no blocks match criteria", %{conn: conn, admin: admin} do
+      insert(:library_block, title: "Unique Name Block", owner_id: admin.id)
+      {:ok, lv, _html} = live(conn, ~p"/studio/library")
+
+      html =
+        lv
+        |> form("form[phx-change='update_filters']", %{
+          "search" => "Absolutely Nothing Matches This"
+        })
+        |> render_change()
+
+      assert html =~ "No templates found"
+      assert html =~ "No library blocks match your search or filter criteria."
+      refute html =~ "Unique Name Block"
+    end
   end
 
   describe "Library page (Create/Edit actions)" do
@@ -98,6 +160,21 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
 
       assert html =~ "Edit Template"
       assert html =~ "Target Template"
+    end
+
+    test "shows validation errors on invalid form submission", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/new")
+
+      html =
+        lv
+        |> form("#library-form", %{
+          "library_block" => %{"title" => "", "type" => "text"},
+          "tags_string" => ""
+        })
+        |> render_submit()
+
+      assert html =~ "can&#39;t be blank"
+      refute html =~ "Template created successfully"
     end
   end
 
@@ -173,6 +250,7 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
       conn: conn
     } do
       target = insert(:library_block, owner_id: Ecto.UUID.generate(), is_public: true)
+
       {:ok, lv, _html} = live(conn, ~p"/studio/library")
 
       html = render_click(lv, "delete_click", %{"id" => target.id})
@@ -182,7 +260,9 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
 
     test "can access Editor in preview mode for public blocks", %{conn: conn} do
       target = insert(:library_block, owner_id: Ecto.UUID.generate(), is_public: true)
+
       {:ok, _lv, html} = live(conn, ~p"/studio/library/#{target.id}/editor")
+
       assert html =~ target.title
     end
   end
@@ -191,7 +271,6 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
     setup %{admin: owner} do
       role = insert(:role, permissions: ["library.read"])
       collaborator = insert(:account, role: role)
-
       block = insert(:library_block, title: "Collab Block", owner_id: owner.id)
 
       %{block: block, collaborator: collaborator}
@@ -222,7 +301,8 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
 
       assert html_editor =~ block.title
       refute html_editor =~ "Inspector"
-      refute html_editor =~ "Template Settings"
+
+      refute html_editor =~ "General Settings"
       assert html_editor =~ "data-readonly=\"true\""
     end
 
@@ -250,7 +330,22 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
 
       assert html_editor =~ block.title
       assert html_editor =~ "Inspector"
-      assert html_editor =~ "Template Settings"
+
+      assert html_editor =~ "General Settings"
+    end
+
+    test "opens share modal when share button is clicked", %{conn: conn, admin: admin} do
+      block = insert(:library_block, title: "Shareable Block", owner_id: admin.id)
+      {:ok, lv, _html} = live(conn, ~p"/studio/library")
+
+      html =
+        lv
+        |> element("button[phx-click='share_click'][phx-value-id='#{block.id}']")
+        |> render_click()
+
+      assert html =~ "Share Template: Shareable Block"
+
+      assert html =~ "share-#{block.id}"
     end
   end
 end

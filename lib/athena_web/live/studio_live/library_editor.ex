@@ -397,8 +397,9 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
   def handle_event("run_instructor_test", _, socket) do
     if can_edit?(socket) do
       block = socket.assigns.block
-      code = block.content["solution_code"] || ""
-      test_cases = block.content["test_cases"] || []
+      content_map = normalize_content(block.content || %{})
+      code = content_map["solution_code"] || ""
+      test_cases = content_map["test_cases"] || []
 
       dispatch_test_run(socket, block, code, test_cases)
     else
@@ -451,6 +452,28 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
       _ ->
         {:noreply, socket}
+    end
+  end
+
+  def handle_event("update_block_meta", %{"block" => block_params} = params, socket) do
+    id = block_params["id"]
+
+    if can_edit?(socket) and socket.assigns.block.id == id do
+      block = socket.assigns.block
+      content_map = normalize_content(block.content || %{})
+      content_overrides = Map.get(block_params, "content", %{})
+
+      content_overrides =
+        content_map
+        |> apply_quiz_meta_overrides(content_overrides)
+        |> apply_exam_meta_overrides(block.type, params)
+
+      new_content = Map.merge(content_map, content_overrides)
+      final_params = Map.put(block_params, "content", new_content)
+
+      update_and_assign(socket, block, final_params)
+    else
+      {:noreply, socket}
     end
   end
 
@@ -597,7 +620,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
         <div
           :if={@role in [:owner, :writer]}
-          class="w-full lg:w-[400px] shrink-0 bg-base-100 rounded-sm border border-base-300 sticky top-8 flex flex-col overflow-hidden"
+          class="w-full lg:w-100 shrink-0 bg-base-100 rounded-sm border border-base-300 sticky top-8 flex flex-col overflow-hidden"
         >
           <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-200 bg-base-200/30">
             <div>
@@ -891,7 +914,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
       share = Enum.find(shares, &(&1.account_id == user.id)) -> share.role
       Identity.can?(user, "library.update", block) -> :writer
       block.is_public -> :reader
-      true -> :reader
+      true -> :none
     end
   end
 
@@ -911,14 +934,43 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     |> Enum.sort_by(fn {k, _} -> String.to_integer(k) end)
     |> Enum.map(fn {_, v} ->
       is_correct =
-        if correct_id, do: v["id"] == correct_id, else: v["is_correct"] in ["true", true]
+        if correct_id do
+          v["id"] == correct_id
+        else
+          v["is_correct"] in ["true", true]
+        end
 
-      %{v | "is_correct" => is_correct}
+      text_map =
+        case Jason.decode(v["text"]) do
+          {:ok, decoded} ->
+            decoded
+
+          _ ->
+            %{
+              "type" => "doc",
+              "content" => [
+                %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => v["text"]}]}
+              ]
+            }
+        end
+
+      %{v | "is_correct" => is_correct, "text" => text_map}
     end)
   end
 
-  defp apply_quiz_meta_overrides(original, overrides) do
-    overrides |> apply_exact_match_default(original) |> apply_single_choice_fix(original)
+  defp apply_quiz_meta_overrides(original_content, overrides) do
+    overrides
+    |> apply_exact_match_default(original_content)
+    |> apply_single_choice_fix(original_content)
+    |> apply_case_sensitive_fix()
+  end
+
+  defp apply_case_sensitive_fix(overrides) do
+    if Map.has_key?(overrides, "case_sensitive") do
+      Map.put(overrides, "case_sensitive", overrides["case_sensitive"] in ["true", true])
+    else
+      overrides
+    end
   end
 
   defp apply_exact_match_default(overrides, original) do
