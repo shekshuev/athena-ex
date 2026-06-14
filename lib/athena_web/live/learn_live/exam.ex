@@ -243,29 +243,6 @@ defmodule AthenaWeb.LearnLive.Exam do
   end
 
   def handle_event(
-        "media_upload_clipboard_success",
-        %{"block_id" => block_id, "final_url" => url},
-        socket
-      ) do
-    pending = socket.assigns.pending_file_urls || %{}
-    current_urls = Map.get(pending, block_id, [])
-
-    block = Enum.find(socket.assigns.questions, &(&1.id == block_id))
-    max_files = if block, do: block.content["max_files"] || 1, else: 1
-
-    if length(current_urls) < max_files do
-      updated_urls = current_urls ++ [url]
-      updated_pending = Map.put(pending, block_id, updated_urls)
-
-      socket = save_exam_file_assignment(socket, block_id, updated_urls)
-
-      {:noreply, assign(socket, :pending_file_urls, updated_pending)}
-    else
-      {:noreply, put_flash(socket, :error, gettext("Maximum number of files reached."))}
-    end
-  end
-
-  def handle_event(
         "remove_pending_file",
         %{"block_id" => block_id, "url" => url},
         socket
@@ -856,7 +833,7 @@ defmodule AthenaWeb.LearnLive.Exam do
       Learning.system_update_submission(submission, %{"status" => initial_status})
 
     if initial_status == "pending" do
-      eval_results = Athena.Learning.Evaluator.evaluate_sync(pending_sub)
+      eval_results = Learning.evaluate_sync(pending_sub)
 
       {:ok, _} = Learning.system_update_submission(pending_sub, eval_results)
     end
