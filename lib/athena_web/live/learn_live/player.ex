@@ -350,31 +350,6 @@ defmodule AthenaWeb.LearnLive.Player do
      |> assign(:upload_type, nil)}
   end
 
-  def handle_event(
-        "media_upload_clipboard_success",
-        %{"block_id" => block_id, "final_url" => url},
-        socket
-      ) do
-    pending = Map.get(socket.assigns, :pending_file_urls, %{})
-    current_urls = Map.get(pending, block_id, [])
-
-    max_files =
-      case Athena.Content.get_block(block_id) do
-        {:ok, %{content: %{"max_files" => n}}} when is_integer(n) -> n
-        _ -> 1
-      end
-
-    if length(current_urls) < max_files do
-      updated_pending = Map.put(pending, block_id, current_urls ++ [url])
-
-      save_file_assignment_draft(socket, block_id, updated_pending[block_id])
-
-      {:noreply, assign(socket, :pending_file_urls, updated_pending)}
-    else
-      {:noreply, put_flash(socket, :error, gettext("Maximum number of files reached"))}
-    end
-  end
-
   def handle_event("submit_file_assignment", %{"block_id" => block_id}, socket) do
     file_urls =
       socket.assigns.pending_file_urls
