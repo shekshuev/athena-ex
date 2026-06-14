@@ -588,10 +588,10 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
     ~H"""
     <div class="max-w-7xl mx-auto pb-20 pt-4">
-      <div class="flex items-center gap-4 mb-8 border-b border-base-200 pb-6">
+      <div class="flex items-center gap-4 mb-8 border-b border-base-300 pb-6">
         <.link
           navigate={@return_to}
-          class="btn btn-ghost btn-sm btn-square rounded-md hover:bg-base-200"
+          class="btn btn-ghost btn-sm btn-square rounded-sm hover:bg-base-200"
         >
           <.icon name="hero-arrow-left" class="size-5" />
         </.link>
@@ -606,9 +606,9 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
       </div>
 
       <div class="flex flex-col lg:flex-row items-start gap-8">
-        <div class="flex-1 w-full min-w-0 space-y-6">
-          <div class="p-6 bg-base-100 border border-base-200 rounded-sm">
-            <div class="flex items-center justify-between mb-6 pb-4 border-b border-base-100">
+        <div class="flex-1 w-full min-w-0 lg:min-w-125 space-y-6">
+          <div class="p-6 bg-base-100 border border-base-300 rounded-sm">
+            <div class="flex items-center justify-between mb-6 pb-4 border-b border-base-300">
               <h2 class="text-lg font-bold">{gettext("Content Editor")}</h2>
             </div>
             <div class="relative w-full">
@@ -620,9 +620,9 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
         <div
           :if={@role in [:owner, :writer]}
-          class="w-full lg:w-100 shrink-0 bg-base-100 rounded-sm border border-base-300 sticky top-8 flex flex-col overflow-hidden"
+          class="w-full lg:w-80 xl:w-100 shrink-0 bg-base-100 rounded-sm border border-base-300 xl:sticky xl:top-8 flex flex-col overflow-hidden"
         >
-          <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-200 bg-base-200/30">
+          <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-300">
             <div>
               <div class="text-[10px] font-bold text-base-content/50 uppercase tracking-widest mb-0.5">
                 {gettext("Inspector")}
@@ -651,7 +651,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                   phx-debounce="500"
                 />
 
-                <div class="form-control">
+                <fieldset class="fieldset">
                   <label class="label">
                     <span class="label-text font-bold text-sm">
                       {gettext("Tags (comma separated)")}
@@ -661,10 +661,10 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                     type="text"
                     name="tags_string"
                     value={@tags_string}
-                    class="input input-bordered w-full"
+                    class="input w-full"
                     phx-debounce="500"
                   />
-                </div>
+                </fieldset>
               </div>
 
               <%= if @block.type in [:quiz_question, :quiz_exam, :code, :file_assignment, :image, :video] do %>
@@ -726,7 +726,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                             name="library_block[content][case_sensitive]"
                             value="true"
                             checked={@block.content["case_sensitive"]}
-                            class="checkbox checkbox-sm checkbox-primary rounded-sm mt-0.5"
+                            class="checkbox checkbox-sm checkbox-primary mt-0.5"
                           />
                           <span class="label-text font-bold">{gettext("Case Sensitive")}</span>
                         </label>
@@ -880,7 +880,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
             </.form>
           </div>
 
-          <div class="p-6 border-t border-base-200 bg-base-200/20 mt-auto">
+          <div class="p-6 border-t border-base-300 mt-auto">
             <.link
               navigate={@return_to}
               class="btn btn-primary rounded-sm w-full"
