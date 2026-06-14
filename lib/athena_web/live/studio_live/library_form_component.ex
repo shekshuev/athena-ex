@@ -21,7 +21,6 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
       {gettext("Image"), :image},
       {gettext("Video"), :video},
       {gettext("Files & Materials"), :attachment},
-      # <-- Добавили тип сюда
       {gettext("File Assignment"), :file_assignment}
     ]
 
