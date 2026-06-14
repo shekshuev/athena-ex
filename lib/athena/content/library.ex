@@ -11,9 +11,36 @@ defmodule Athena.Content.Library do
   @spec list_library_blocks(map(), map()) ::
           {:ok, {[LibraryBlock.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_library_blocks(user, params \\ %{}) do
-    from(lb in LibraryBlock)
-    |> scope_library_reads(user)
-    |> Flop.validate_and_run(params, for: LibraryBlock)
+    tag_search = Map.get(params, "tag_search")
+    flop_params = Map.delete(params, "tag_search")
+
+    query =
+      from(lb in LibraryBlock)
+      |> scope_library_reads(user)
+
+    # Кастомный ILIKE фильтр для массива тегов
+    query =
+      if is_binary(tag_search) and tag_search != "" do
+        tags =
+          tag_search
+          |> String.split(",")
+          |> Enum.map(&String.trim/1)
+          |> Enum.reject(&(&1 == ""))
+
+        Enum.reduce(tags, query, fn t, q ->
+          term = "%#{t}%"
+
+          where(
+            q,
+            [lb],
+            fragment("EXISTS (SELECT 1 FROM unnest(?) AS t WHERE t ILIKE ?)", lb.tags, ^term)
+          )
+        end)
+      else
+        query
+      end
+
+    Flop.validate_and_run(query, flop_params, for: LibraryBlock)
   end
 
   @doc "Retrieves a single library block without ACL (internal use)."
@@ -65,8 +92,6 @@ defmodule Athena.Content.Library do
   end
 
   @doc "Deletes a library block template. Checks own_only policies."
-  @spec delete_library_block(map(), LibraryBlock.t()) ::
-          {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
   @spec delete_library_block(map(), LibraryBlock.t()) ::
           {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
   def delete_library_block(user, %LibraryBlock{} = block) do
@@ -185,19 +210,6 @@ defmodule Athena.Content.Library do
   end
 
   @doc """
-  Toggles the public visibility of a library block.
-  """
-  def toggle_block_public(user, %LibraryBlock{} = block, is_public) when is_boolean(is_public) do
-    if can_edit_block?(user, block) do
-      block
-      |> Ecto.Changeset.change(%{is_public: is_public})
-      |> Repo.update()
-    else
-      {:error, :unauthorized}
-    end
-  end
-
-  @doc """
   Returns a list of maps %{account_id: id, role: role} that this block is shared with.
   """
   def list_block_shares(%LibraryBlock{} = block) do
@@ -222,7 +234,6 @@ defmodule Athena.Content.Library do
         from b in query,
           where:
             b.owner_id == ^user.id or
-              b.is_public == true or
               b.id in subquery(shared_block_ids)
       else
         query
