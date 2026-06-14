@@ -1,13 +1,10 @@
 defmodule Athena.Learning.Evaluator do
   @moduledoc """
   Synchronous evaluator for auto-graded submissions.
-
-  Handles grading for exact match (CTF flags), single choice,
-  and multiple choice questions. Updates the submission with
-  the calculated score and feedback.
+  Handles exact match, single, multiple choice, and orchestrates Exam rollups.
   """
 
-  alias Athena.Learning.Submission
+  alias Athena.Learning.{Submission, Submissions}
   alias Athena.Content.{Block, QuizQuestion}
   alias Athena.Repo
 
@@ -27,7 +24,7 @@ defmodule Athena.Learning.Evaluator do
         to_string(block.type)
 
     if to_string(content_type) == "quiz_exam" do
-      evaluate_exam(submission)
+      evaluate_exam(submission, block)
     else
       evaluate_single_question(block, submission)
     end
@@ -46,59 +43,95 @@ defmodule Athena.Learning.Evaluator do
     %{status: status, score: score}
   end
 
-  defp evaluate_exam(submission) do
-    questions = get_val(submission.content, "questions", :questions, [])
-    answers = get_val(submission.content, "answers", :answers, %{})
+  @doc false
+  defp evaluate_exam(parent_submission, _exam_block) do
+    child_subs = Submissions.get_child_submissions(parent_submission.id)
+    questions = parent_submission.content["questions"] || []
+    total_questions = length(questions)
 
-    results = Enum.map(questions, &evaluate_exam_question(&1, answers))
+    results = Enum.map(questions, &evaluate_exam_question(&1, parent_submission, child_subs))
 
-    calculate_exam_totals(results)
+    calculate_exam_totals(results, total_questions)
   end
 
-  defp evaluate_exam_question(q, answers) do
-    q_id = get_val(q, "id", :id)
-    q_type = get_val(q, "question_type", :question_type) || get_val(q, "type", :type)
+  @doc false
+  defp evaluate_exam_question(q, parent_sub, child_subs) do
+    child_sub = Map.get(child_subs, q["id"])
+    block_type = to_string(q["type"] || "quiz_question")
+    q_content = q["content"] || %{}
 
-    q_attrs = %{
-      "question_type" => q_type,
-      "correct_answer" => get_val(q, "correct_answer", :correct_answer),
-      "case_sensitive" => get_val(q, "case_sensitive", :case_sensitive, false),
-      "options" => get_val(q, "options", :options, [])
-    }
+    cond do
+      is_nil(child_sub) ->
+        handle_missing_child_submission(parent_sub, q, block_type, q_content)
 
-    q_struct =
-      %QuizQuestion{}
-      |> QuizQuestion.changeset(q_attrs)
-      |> Ecto.Changeset.apply_changes()
+      child_sub.status in [:needs_review, :graded, :rejected] ->
+        {child_sub.score || 0, child_sub.status}
 
-    ans_val = Map.get(answers, q_id, Map.get(answers, to_string(q_id)))
-    a_struct = build_answer_struct(to_string(q_type), ans_val)
+      block_type == "code" ->
+        {:ok, _} = Submissions.enqueue_code_execution(child_sub)
+        {nil, :processing}
 
-    calculate_score(q_struct, a_struct)
+      block_type == "file_assignment" ->
+        {:ok, _} =
+          Submissions.system_update_submission(child_sub, %{score: nil, status: :needs_review})
+
+        {nil, :needs_review}
+
+      true ->
+        question_data =
+          %QuizQuestion{}
+          |> QuizQuestion.changeset(q_content)
+          |> Ecto.Changeset.apply_changes()
+
+        {score, status} = calculate_score(question_data, child_sub.content)
+
+        {:ok, _} =
+          Submissions.system_update_submission(child_sub, %{score: score, status: status})
+
+        {score, status}
+    end
   end
 
-  defp get_val(map, string_key, atom_key, default \\ nil) do
-    Map.get(map, string_key, Map.get(map, atom_key, default))
+  @doc false
+  defp handle_missing_child_submission(parent_sub, q, block_type, q_content) do
+    is_manual = block_type in ["code", "file_assignment"] or q_content["question_type"] == "open"
+
+    blank_content =
+      case block_type do
+        "code" -> %{"type" => "code", "code" => ""}
+        "file_assignment" -> %{"type" => "file_assignment", "file_urls" => []}
+        _ -> %{"type" => "quiz_question", "text_answer" => ""}
+      end
+
+    {:ok, new_sub} =
+      Submissions.save_question_submission(
+        parent_sub,
+        parent_sub.account_id,
+        q["id"],
+        parent_sub.cohort_id,
+        blank_content
+      )
+
+    if is_manual do
+      {:ok, _} =
+        Submissions.system_update_submission(new_sub, %{score: nil, status: :needs_review})
+
+      {nil, :needs_review}
+    else
+      {:ok, _} = Submissions.system_update_submission(new_sub, %{score: 0, status: :graded})
+      {0, :graded}
+    end
   end
 
-  defp build_answer_struct("exact_match", val), do: %{type: :quiz_question, text_answer: val}
-  defp build_answer_struct("open", val), do: %{type: :quiz_question, text_answer: val}
+  defp calculate_exam_totals([], _), do: %{status: :graded, score: 0, feedback: nil}
 
-  defp build_answer_struct("single", val) when val in [nil, ""],
-    do: %{type: :quiz_question, selected_choices: []}
+  defp calculate_exam_totals(results, total_questions) do
+    total_earned =
+      results
+      |> Enum.map(fn {score, _status} -> score || 0 end)
+      |> Enum.sum()
 
-  defp build_answer_struct("single", val), do: %{type: :quiz_question, selected_choices: [val]}
-
-  defp build_answer_struct("multiple", val),
-    do: %{type: :quiz_question, selected_choices: List.wrap(val)}
-
-  defp build_answer_struct(_type, _val), do: %{type: :quiz_question}
-
-  defp calculate_exam_totals([]), do: %{status: :graded, score: 0, feedback: nil}
-
-  defp calculate_exam_totals(results) do
-    total_score = results |> Enum.map(&elem(&1, 0)) |> Enum.sum()
-    avg_score = round(total_score / length(results))
+    avg_score = if total_questions > 0, do: round(total_earned / total_questions), else: 0
 
     has_needs_review? = Enum.any?(results, fn {_, status} -> status == :needs_review end)
     final_status = if has_needs_review?, do: :needs_review, else: :graded
@@ -106,14 +139,9 @@ defmodule Athena.Learning.Evaluator do
     %{status: final_status, score: avg_score, feedback: nil}
   end
 
-  @doc false
-  @spec calculate_score(QuizQuestion.t(), map()) :: {integer(), atom()}
-  defp calculate_score(
-         %QuizQuestion{question_type: :exact_match} = q,
-         %{type: :quiz_question} = a
-       ) do
+  defp calculate_score(%QuizQuestion{question_type: :exact_match} = q, a) do
     correct = q.correct_answer || ""
-    student = a.text_answer || ""
+    student = Map.get(a, "text_answer") || Map.get(a, :text_answer) || ""
 
     match? =
       if q.case_sensitive do
@@ -122,35 +150,28 @@ defmodule Athena.Learning.Evaluator do
         String.downcase(String.trim(student)) == String.downcase(String.trim(correct))
       end
 
-    score = if match?, do: 100, else: 0
-
-    {score, :graded}
+    if match?, do: {100, :graded}, else: {0, :graded}
   end
 
-  defp calculate_score(%QuizQuestion{question_type: :single} = q, %{type: :quiz_question} = a) do
+  defp calculate_score(%QuizQuestion{question_type: :single} = q, a) do
     correct_option = Enum.find(q.options || [], & &1.is_correct)
-    student_choice = List.first(a.selected_choices || [])
 
-    score = if correct_option && student_choice == correct_option.id, do: 100, else: 0
+    student_choice =
+      List.first(Map.get(a, "selected_choices") || Map.get(a, :selected_choices) || [])
 
-    {score, :graded}
+    if correct_option && student_choice == correct_option.id,
+      do: {100, :graded},
+      else: {0, :graded}
   end
 
-  defp calculate_score(%QuizQuestion{question_type: :multiple} = q, %{type: :quiz_question} = a) do
-    correct_ids =
-      q.options
-      |> Enum.filter(& &1.is_correct)
-      |> Enum.map(& &1.id)
-      |> Enum.sort()
+  defp calculate_score(%QuizQuestion{question_type: :multiple} = q, a) do
+    correct_ids = q.options |> Enum.filter(& &1.is_correct) |> Enum.map(& &1.id) |> Enum.sort()
+    student_ids = Enum.sort(Map.get(a, "selected_choices") || Map.get(a, :selected_choices) || [])
 
-    student_ids = Enum.sort(a.selected_choices || [])
-
-    score = if correct_ids == student_ids and correct_ids != [], do: 100, else: 0
-
-    {score, :graded}
+    if correct_ids == student_ids and correct_ids != [], do: {100, :graded}, else: {0, :graded}
   end
 
-  defp calculate_score(%QuizQuestion{question_type: :open}, _a), do: {0, :needs_review}
+  defp calculate_score(%QuizQuestion{question_type: :open}, _), do: {nil, :needs_review}
 
   defp calculate_score(_q, _a), do: {0, :graded}
 end

@@ -20,7 +20,8 @@ defmodule Athena.Execution.Worker do
     max_attempts: 1
 
   alias Athena.Repo
-  alias Athena.Learning.{Submission, Submissions}
+  alias Athena.Learning
+  alias Athena.Learning.Submission
   alias Athena.Content.{Block, CodeChallenge}
   alias Athena.Execution.Verifier
 
@@ -29,68 +30,72 @@ defmodule Athena.Execution.Worker do
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"submission_id" => id}}) do
     submission = Repo.get!(Submission, id)
-    block = Repo.get!(Block, submission.block_id)
+    block = Repo.get(Block, submission.block_id)
 
-    {:ok, submission} = Submissions.system_update_submission(submission, %{status: :processing})
-    broadcast_update(submission)
-
-    challenge_attrs = block.content
-
-    challenge =
-      Ecto.Changeset.apply_changes(CodeChallenge.changeset(%CodeChallenge{}, challenge_attrs))
-
+    challenge = build_challenge(submission, block)
     code = submission.content["code"] || ""
     box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
 
-    result =
-      if :global.whereis_name(:code_runner) != :undefined do
-        task =
-          Task.Supervisor.async({:via, :global, :code_runner}, fn ->
-            Verifier.verify(code, challenge, box_id)
-          end)
+    result = execute_code(code, challenge, box_id)
+    update_submission_with_result(submission, result)
+  end
 
-        try do
-          Task.await(task, @timeout)
-        catch
-          :exit, reason ->
-            require Logger
-            Logger.error("Remote execution failed: #{inspect(reason)}")
-
-            %Verifier.Result{
-              status: :rejected,
-              score: 0,
-              test_results: [
-                %{
-                  status: :error,
-                  expected: "",
-                  stdout: "Runner node crashed or timed out.",
-                  input: "",
-                  time: 0.0,
-                  is_hidden: false
-                }
-              ]
-            }
-        end
+  defp build_challenge(submission, block) do
+    challenge_attrs =
+      if block do
+        block.content
       else
-        require Logger
-        Logger.error("Runner node is not connected during worker execution!")
+        parent = Repo.get!(Submission, submission.parent_submission_id)
 
-        %Verifier.Result{
-          status: :rejected,
-          score: 0,
-          test_results: [
-            %{
-              status: :error,
-              expected: "",
-              stdout: "Runner node is not connected!",
-              input: "",
-              time: 0.0,
-              is_hidden: false
-            }
-          ]
-        }
+        question =
+          Enum.find(parent.content["questions"] || [], &(&1["id"] == submission.block_id))
+
+        question["content"] || %{}
       end
 
+    Ecto.Changeset.apply_changes(CodeChallenge.changeset(%CodeChallenge{}, challenge_attrs))
+  end
+
+  defp execute_code(code, challenge, box_id) do
+    if :global.whereis_name(:code_runner) != :undefined do
+      task =
+        Task.Supervisor.async({:via, :global, :code_runner}, fn ->
+          Verifier.verify(code, challenge, box_id)
+        end)
+
+      try do
+        Task.await(task, @timeout)
+      catch
+        :exit, reason ->
+          require Logger
+          Logger.error("Remote execution failed: #{inspect(reason)}")
+          build_error_result("Runner node crashed or timed out.")
+      end
+    else
+      require Logger
+      Logger.error("Runner node is not connected during worker execution!")
+      build_error_result("Runner node is not connected!")
+    end
+  end
+
+  defp build_error_result(message) do
+    %Verifier.Result{
+      status: :rejected,
+      score: 0,
+      test_results: [
+        %{
+          status: :error,
+          expected: "",
+          stdout: message,
+          input: "",
+          time: 0.0,
+          is_hidden: false
+        }
+      ]
+    }
+  end
+
+  defp update_submission_with_result(submission, result) do
     clean_test_results =
       Enum.map(result.test_results, fn tr ->
         Map.new(tr, fn {k, v} ->
@@ -106,7 +111,7 @@ defmodule Athena.Execution.Worker do
       content: new_content
     }
 
-    case Submissions.system_update_submission(submission, attrs) do
+    case Learning.system_update_submission(submission, attrs) do
       {:ok, updated_sub} ->
         broadcast_update(updated_sub)
         :ok

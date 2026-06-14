@@ -37,10 +37,14 @@ defmodule Athena.Learning.Submission do
     field :score, :integer, default: 0
     field :feedback, :string
 
+    field :expires_at, :utc_datetime
+
     field :account_id, :binary_id
     field :block_id, :binary_id
     field :cohort_id, :binary_id
 
+    belongs_to :parent_submission, Athena.Learning.Submission
+    has_many :child_submissions, Athena.Learning.Submission, foreign_key: :parent_submission_id
     timestamps(type: :utc_datetime)
   end
 
@@ -65,9 +69,12 @@ defmodule Athena.Learning.Submission do
           status: status(),
           score: integer(),
           feedback: String.t() | nil,
+          expires_at: DateTime.t() | NaiveDateTime.t() | nil,
           account_id: binary() | nil,
           cohort_id: binary() | nil,
           block_id: binary() | nil,
+          parent_submission: t(),
+          child_submissions: [t()],
           inserted_at: DateTime.t() | NaiveDateTime.t() | nil,
           updated_at: DateTime.t() | NaiveDateTime.t() | nil
         }
@@ -75,9 +82,20 @@ defmodule Athena.Learning.Submission do
   @doc false
   def changeset(submission, attrs) do
     submission
-    |> cast(attrs, [:content, :status, :score, :feedback, :account_id, :block_id, :cohort_id])
+    |> cast(attrs, [
+      :content,
+      :status,
+      :score,
+      :feedback,
+      :account_id,
+      :block_id,
+      :cohort_id,
+      :parent_submission_id,
+      :expires_at
+    ])
     |> validate_required([:status, :account_id, :block_id])
     |> validate_number(:score, greater_than_or_equal_to: 0, less_than_or_equal_to: 100)
+    |> validate_expires_at()
   end
 
   @doc false
@@ -89,4 +107,22 @@ defmodule Athena.Learning.Submission do
       query
     end
   end
+
+  @doc false
+  defp validate_expires_at(changeset) do
+    parent_id = get_field(changeset, :parent_submission_id)
+    expires_at = get_field(changeset, :expires_at)
+
+    changeset =
+      if parent_id && expires_at do
+        add_error(changeset, :expires_at, "Child submissions cannot have their own expires_at")
+      else
+        changeset
+      end
+
+    validate_required_if_parent_missing(changeset)
+  end
+
+  @doc false
+  defp validate_required_if_parent_missing(changeset), do: changeset
 end

@@ -13,6 +13,16 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
     course = insert(:course)
     insert(:enrollment, account_id: user.id, course_id: course.id)
 
+    if :global.whereis_name(:code_runner) == :undefined do
+      :global.register_name(:code_runner, self())
+    end
+
+    on_exit(fn ->
+      if :global.whereis_name(:code_runner) == self() do
+        :global.unregister_name(:code_runner)
+      end
+    end)
+
     %{conn: conn, user: user, course: course}
   end
 
@@ -531,10 +541,10 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
-      assert html =~ "Final Exam"
+      assert html =~ "Assessment Session"
       assert html =~ "15 Questions"
       assert html =~ "45 Min"
-      assert html =~ "Start Exam"
+      assert html =~ "Start Assessment"
 
       lv |> element("button[phx-click='start_exam']") |> render_click()
       assert_redirect(lv, "/learn/courses/#{course.id}/exam/#{block.id}")
@@ -542,7 +552,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       sub = Athena.Repo.one(Athena.Learning.Submission)
       assert sub.status == :pending
       assert sub.block_id == block.id
-      assert sub.content["type"] == "quiz_exam"
+      assert sub.content["type"] == "quiz_exam" or sub.content["type"] == :quiz_exam
       assert sub.content["cheat_count"] == 0
     end
 
@@ -559,8 +569,8 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
-      assert html =~ "Continue Exam"
-      refute html =~ "Start Exam"
+      assert html =~ "Continue Assessment"
+      refute html =~ "Start Assessment"
 
       lv |> element("button[phx-click='continue_exam']") |> render_click()
       assert_redirect(lv, "/learn/courses/#{course.id}/exam/#{block.id}")
@@ -586,9 +596,9 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
-      assert html =~ "Exam Completed"
+      assert html =~ "Assessment Completed"
       assert html =~ "85 / 100"
-      refute html =~ "Start Exam"
+      refute html =~ "Start Assessment"
     end
 
     test "renders failed state if cheat limit exceeded", %{conn: conn, course: course, user: user} do
@@ -607,9 +617,9 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
-      assert html =~ "Exam Failed (Violations)"
-      refute html =~ "Exam Completed"
-      refute html =~ "Start Exam"
+      assert html =~ "Assessment Failed (Violations)"
+      refute html =~ "Assessment Completed"
+      refute html =~ "Start Assessment"
     end
   end
 
@@ -952,7 +962,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
       assert html =~ "Attempts: 0 / 1"
-      assert html =~ "Run &amp; Submit"
+      assert html =~ "Submit"
 
       lv
       |> form("#code-form-#{block.id}")
@@ -972,7 +982,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       assert html =~ "Attempts: 1 / 1"
       assert html =~ "Locked"
       assert html =~ "disabled"
-      refute html =~ "Run &amp; Submit"
+      refute html =~ "Submit"
     end
 
     test "code block remains active if student has attempts left", %{
@@ -1006,7 +1016,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       html = render(lv)
 
       assert html =~ "Attempts: 1 / 3"
-      assert html =~ "Run &amp; Submit"
+      assert html =~ "Resubmit"
       refute html =~ "Locked"
     end
 

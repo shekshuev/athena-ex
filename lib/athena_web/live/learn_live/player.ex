@@ -273,12 +273,44 @@ defmodule AthenaWeb.LearnLive.Player do
     end
   end
 
-  def handle_event("cancel_media_upload", _, socket) do
+  def handle_event(
+        "request_media_upload",
+        %{"block_id" => block_id, "media_type" => type},
+        socket
+      ) do
     {:noreply,
      socket
-     |> assign(:show_media_modal, false)
-     |> assign(:active_upload_block_id, nil)
-     |> assign(:upload_type, nil)}
+     |> assign(:show_media_modal, true)
+     |> assign(:active_upload_block_id, block_id)
+     |> assign(:upload_type, type)
+     |> assign(:max_files_for_upload, 1)
+     |> assign(:current_file_count_for_upload, 0)}
+  end
+
+  def handle_event("media_upload_clipboard_request", params, socket) do
+    %{"file_name" => file_name, "temp_id" => temp_id} = params
+
+    bucket = Application.get_env(:athena, Athena.Media)[:bucket] || "athena"
+    course_id = socket.assigns.course.id
+    unique_id = Ecto.UUID.generate()
+    clean_name = file_name |> String.replace(~r/[^a-zA-Z0-9_\-\.]/, "_")
+    key = "courses/#{course_id}/#{unique_id}-#{clean_name}"
+
+    case Athena.Media.generate_upload_url(bucket, key) do
+      {:ok, upload_url} ->
+        path_segments = String.split(key, "/")
+        final_url = ~p"/media/#{path_segments}"
+
+        {:noreply,
+         push_event(socket, "media_upload_presigned", %{
+           temp_id: temp_id,
+           upload_url: upload_url,
+           final_url: final_url
+         })}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, gettext("Could not generate upload URL"))}
+    end
   end
 
   def handle_event(
@@ -286,24 +318,36 @@ defmodule AthenaWeb.LearnLive.Player do
         %{"block_id" => block_id, "final_url" => url},
         socket
       ) do
-    pending = Map.get(socket.assigns, :pending_file_urls, %{})
-    current_urls = Map.get(pending, block_id, [])
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
 
-    max_files =
-      case Athena.Content.get_block(block_id) do
-        {:ok, %{content: %{"max_files" => n}}} when is_integer(n) -> n
-        _ -> 1
+    if block && to_string(block.type) == "file_assignment" do
+      pending = socket.assigns[:pending_file_urls] || %{}
+      current_urls = Map.get(pending, block_id, [])
+      max_files = block.content["max_files"] || 1
+
+      if length(current_urls) < max_files do
+        updated_pending = Map.put(pending, block_id, current_urls ++ [url])
+        save_file_assignment_draft(socket, block_id, updated_pending[block_id])
+        {:noreply, assign(socket, :pending_file_urls, updated_pending)}
+      else
+        {:noreply, put_flash(socket, :error, gettext("Maximum number of files reached."))}
       end
-
-    if length(current_urls) < max_files do
-      updated_pending = Map.put(pending, block_id, current_urls ++ [url])
-
-      save_file_assignment_draft(socket, block_id, updated_pending[block_id])
-
-      {:noreply, assign(socket, :pending_file_urls, updated_pending)}
     else
-      {:noreply, put_flash(socket, :error, gettext("Maximum number of files reached"))}
+      {:noreply,
+       push_event(socket, "insert_media", %{
+         block_id: block_id,
+         url: url,
+         type: "tiptap_image"
+       })}
     end
+  end
+
+  def handle_event("cancel_media_upload", _, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_media_modal, false)
+     |> assign(:active_upload_block_id, nil)
+     |> assign(:upload_type, nil)}
   end
 
   def handle_event("submit_file_assignment", %{"block_id" => block_id}, socket) do
@@ -326,7 +370,6 @@ defmodule AthenaWeb.LearnLive.Player do
     end
   end
 
-  @impl true
   def handle_event("submit_code", params, socket) do
     block_id = params["block_id"]
     code = get_in(params, ["answer", "code"]) || ""
@@ -340,6 +383,32 @@ defmodule AthenaWeb.LearnLive.Player do
 
       false ->
         {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
+    end
+  end
+
+  def handle_event("run_code", %{"block_id" => block_id}, socket) do
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+    draft = Map.get(socket.assigns.drafts || %{}, block_id, %{})
+    code = Map.get(draft, "code", "")
+
+    cond do
+      is_nil(block) or block.type != :code ->
+        {:noreply, socket}
+
+      not code_runner_available?() ->
+        {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
+
+      true ->
+        case Learning.test_code(socket.assigns.current_user, block, code) do
+          {:ok, _draft} ->
+            new_drafts =
+              Map.put(socket.assigns.drafts || %{}, block_id, Map.get(draft, "content", draft))
+
+            {:noreply, assign(socket, :drafts, new_drafts)}
+
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, gettext("Failed to enqueue code execution."))}
+        end
     end
   end
 
@@ -375,7 +444,11 @@ defmodule AthenaWeb.LearnLive.Player do
     end
   end
 
-  @impl true
+  def handle_event("update_content", %{"id" => block_id, "content" => content}, socket) do
+    params = %{"block_id" => block_id, "answer" => content}
+    handle_event("save_draft", params, socket)
+  end
+
   def handle_event("save_draft", _params, socket) do
     {:noreply, socket}
   end
@@ -447,23 +520,31 @@ defmodule AthenaWeb.LearnLive.Player do
   @doc false
   defp start_exam_for_block(socket, block) do
     user = socket.assigns.current_user
-    questions = Content.generate_exam_questions(block.content)
 
-    sub_attrs = %{
-      "account_id" => user.id,
-      "block_id" => block.id,
-      "status" => :pending,
-      "cohort_id" => socket.assigns.team_id,
-      "content" => %{
-        "type" => :quiz_exam,
-        "started_at" => DateTime.utc_now(),
-        "questions" => questions,
-        "answers" => %{},
-        "cheat_count" => 0
-      }
-    }
+    time_limit_minutes = Map.get(block.content || %{}, "time_limit")
 
-    case Learning.create_submission(user, sub_attrs) do
+    time_limit_sec =
+      case time_limit_minutes do
+        nil ->
+          3600
+
+        mins when is_integer(mins) ->
+          mins * 60
+
+        mins when is_binary(mins) ->
+          case Integer.parse(mins) do
+            {m, _} -> m * 60
+            :error -> 3600
+          end
+      end
+
+    case Learning.get_or_create_exam_attempt(
+           user.id,
+           block.id,
+           socket.assigns.team_id,
+           time_limit_sec,
+           block.content
+         ) do
       {:ok, _submission} ->
         broadcast_team_progress(socket.assigns.team_id, socket.assigns.course.id)
 
@@ -477,7 +558,7 @@ defmodule AthenaWeb.LearnLive.Player do
          put_flash(
            socket,
            :error,
-           gettext("Failed to start the exam. Not enough questions in library.")
+           gettext("Failed to start the assessment session.")
          )}
     end
   end
@@ -588,21 +669,21 @@ defmodule AthenaWeb.LearnLive.Player do
 
   @doc false
   defp build_submission_for_type("exact_match", _answer_type, answer),
-    do: %{type: :quiz_question, text_answer: answer || ""}
+    do: %{"type" => "quiz_question", "text_answer" => answer || ""}
 
   defp build_submission_for_type("open", "rich_text", answer),
-    do: %{type: :quiz_question, rich_answer: parse_rich_answer(answer)}
+    do: %{"type" => "quiz_question", "rich_answer" => parse_rich_answer(answer)}
 
   defp build_submission_for_type("open", _answer_type, answer),
-    do: %{type: :quiz_question, text_answer: answer || ""}
+    do: %{"type" => "quiz_question", "text_answer" => answer || ""}
 
   defp build_submission_for_type("single", _answer_type, answer),
-    do: %{type: :quiz_question, selected_choices: if(answer, do: [answer], else: [])}
+    do: %{"type" => "quiz_question", "selected_choices" => if(answer, do: [answer], else: [])}
 
   defp build_submission_for_type("multiple", _answer_type, answer),
-    do: %{type: :quiz_question, selected_choices: List.wrap(answer)}
+    do: %{"type" => "quiz_question", "selected_choices" => List.wrap(answer)}
 
-  defp build_submission_for_type(_q_type, _answer_type, _answer), do: %{type: :quiz_question}
+  defp build_submission_for_type(_q_type, _answer_type, _answer), do: %{"type" => "quiz_question"}
 
   @doc false
   defp parse_rich_answer(nil), do: ""
@@ -819,6 +900,33 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   def handle_info(
+        {AthenaWeb.StudioLive.MediaUploadComponent, {:saved, block_id, "tiptap_image", results}},
+        socket
+      ) do
+    {successes, _errors} = Enum.split_with(results, &match?({:ok, _}, &1))
+    file_urls = Enum.map(successes, fn {:ok, map} -> map["url"] end) |> Enum.reject(&is_nil/1)
+
+    socket =
+      socket
+      |> assign(:show_media_modal, false)
+      |> assign(:active_upload_block_id, nil)
+      |> assign(:upload_type, nil)
+
+    case List.first(file_urls) do
+      nil ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to upload image"))}
+
+      url ->
+        {:noreply,
+         push_event(socket, "insert_media", %{
+           block_id: block_id,
+           url: url,
+           type: "tiptap_image"
+         })}
+    end
+  end
+
+  def handle_info(
         {AthenaWeb.StudioLive.MediaUploadComponent, {:saved, _block_id, _type, _results}},
         socket
       ) do
@@ -1006,8 +1114,8 @@ defmodule AthenaWeb.LearnLive.Player do
           <% is_passed =
             sub_status_str == "accepted" or (sub_status_str == "graded" and sub_score == 100) %>
           <% is_pending = sub_status_str in ["pending", "processing"] %>
-          <% is_review_needed =
-            sub_status_str in ["rejected", "needs_review", "pending", "processing"] %>
+
+          <% is_review_needed = sub_status_str in ["rejected", "needs_review"] %>
 
           <% is_locked = is_passed or attempts_exhausted or is_review_needed %>
           <% mode = if is_locked, do: :review, else: :play %>
@@ -1032,6 +1140,7 @@ defmodule AthenaWeb.LearnLive.Player do
                     submission={submission}
                     answers={@submissions}
                     draft={Map.get(@drafts || %{}, block.id)}
+                    attempts_count={attempts}
                   />
 
                   <div
@@ -1082,35 +1191,6 @@ defmodule AthenaWeb.LearnLive.Player do
                     mode={exam_mode}
                     submission={submission}
                   />
-
-                  <%= if submission do %>
-                    <div class="mt-6 flex justify-center">
-                      <%= cond do %>
-                        <% submission.status == :graded && (submission.content["cheat_count"] || 0) >= (block.content["allowed_blur_attempts"] || 3) -> %>
-                          <div class="inline-flex items-center gap-2 text-xl font-black text-error bg-error/10 px-6 py-3 rounded-2xl">
-                            <.icon name="hero-x-circle-solid" class="size-6" />
-                            {gettext("Exam Failed (Violations)")}
-                          </div>
-                        <% submission.status in [:graded, :needs_review] -> %>
-                          <div class="inline-flex items-center gap-2 text-xl font-black text-success bg-success/10 px-6 py-3 rounded-2xl">
-                            <.icon name="hero-check-circle-solid" class="size-6" />
-                            {gettext("Exam Completed")}
-                            <span class="ml-2 text-success/50">|</span>
-                            <span class="ml-2">{submission.score} / 100</span>
-                          </div>
-                        <% submission.status == :pending -> %>
-                          <button
-                            phx-click="continue_exam"
-                            phx-value-block_id={block.id}
-                            class="btn btn-primary btn-lg px-12"
-                          >
-                            {gettext("Continue Exam")}
-                            <.icon name="hero-arrow-right" class="size-5 ml-2" />
-                          </button>
-                        <% true -> %>
-                      <% end %>
-                    </div>
-                  <% end %>
                 </div>
               <% :code -> %>
                 <div class="space-y-4">
@@ -1128,120 +1208,8 @@ defmodule AthenaWeb.LearnLive.Player do
                       submission={submission}
                       answers={@submissions}
                       draft={Map.get(@drafts || %{}, block.id)}
+                      attempts_count={attempts}
                     />
-
-                    <div class="mt-4 flex items-center justify-between">
-                      <div class="flex items-center gap-3">
-                        <button
-                          type="submit"
-                          class="btn btn-primary"
-                          disabled={is_locked or is_pending}
-                        >
-                          <%= cond do %>
-                            <% is_pending -> %>
-                              <span class="loading loading-spinner loading-xs"></span> {gettext(
-                                "Checking..."
-                              )}
-                            <% is_locked -> %>
-                              <.icon name="hero-lock-closed" class="size-4 mr-1" /> {gettext("Locked")}
-                            <% true -> %>
-                              {gettext("Run & Submit")}
-                          <% end %>
-                        </button>
-                      </div>
-
-                      <div :if={max_attempts} class="text-right">
-                        <span class={[
-                          "text-xs font-bold uppercase tracking-widest",
-                          if(attempts_exhausted, do: "text-error", else: "text-base-content/50")
-                        ]}>
-                          {gettext("Attempts:")} {attempts} / {max_attempts}
-                        </span>
-                      </div>
-                    </div>
-
-                    <% execution_results =
-                      if submission do
-                        content_map =
-                          if is_struct(submission.content),
-                            do: Map.from_struct(submission.content),
-                            else: submission.content || %{}
-
-                        Map.get(content_map, "execution_results") ||
-                          Map.get(content_map, :execution_results) || []
-                      else
-                        []
-                      end %>
-
-                    <%= if submission && execution_results != [] && not is_pending do %>
-                      <div class="mt-4 bg-base-300/20 rounded-sm border border-base-300 overflow-hidden">
-                        <table class="table table-xs w-full font-mono">
-                          <thead class="bg-base-300/50 uppercase tracking-widest text-[10px]">
-                            <tr>
-                              <th class="w-12">#</th>
-                              <th class="w-32">{gettext("Result")}</th>
-                              <th>{gettext("Details")}</th>
-                              <th class="text-right">{gettext("Time")}</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <%= for {res, idx} <- Enum.with_index(execution_results) do %>
-                              <tr class="border-base-300">
-                                <td class="opacity-40">{idx + 1}</td>
-                                <td class={
-                                  if res["status"] == "accepted",
-                                    do: "text-success font-bold",
-                                    else: "text-error font-bold"
-                                }>
-                                  {String.upcase(res["status"])}
-                                </td>
-                                <td>
-                                  <%= if res["is_hidden"] do %>
-                                    <span class="opacity-30 italic flex items-center gap-1 text-[10px]">
-                                      <.icon name="hero-eye-slash" class="size-3" />
-                                      {gettext("Hidden Test")}
-                                    </span>
-                                  <% else %>
-                                    <%= if res["status"] != "accepted" do %>
-                                      <div class="text-[10px] space-y-1">
-                                        <div class="flex gap-1">
-                                          <span class="font-bold opacity-40">IN:</span><span>{res["input"]}</span>
-                                        </div>
-                                        <div class="flex gap-1">
-                                          <span class="font-bold text-error/60">GOT:</span><span class="text-error">{res["stdout"]}</span>
-                                        </div>
-                                        <div class="flex gap-1 border-t border-base-300 pt-1">
-                                          <span class="font-bold text-success/60">EXP:</span><span class="text-success">{res["expected"]}</span>
-                                        </div>
-                                      </div>
-                                    <% else %>
-                                      <span class="opacity-20 text-[10px]">---</span>
-                                    <% end %>
-                                  <% end %>
-                                </td>
-                                <td class="text-right opacity-50 text-[10px]">{res["time"]}s</td>
-                              </tr>
-                            <% end %>
-                          </tbody>
-                        </table>
-                      </div>
-                    <% end %>
-
-                    <%= if submission && submission.feedback not in [nil, ""] && not is_pending do %>
-                      <div class={[
-                        "mt-4 mb-4 rounded-sm text-sm",
-                        submission.status == :rejected &&
-                          "text-error",
-                        submission.status != :rejected &&
-                          "text-info"
-                      ]}>
-                        <strong class="flex items-center gap-1 mb-2">
-                          <.icon name="hero-chat-bubble-bottom-center-text" class="size-4" />
-                          {gettext("Instructor Feedback")}
-                        </strong>
-                        <p class="whitespace-pre-wrap leading-relaxed">{submission.feedback}</p>
-                      </div>
-                    <% end %>
                   </form>
                 </div>
               <% :file_assignment -> %>

@@ -2,18 +2,23 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
   @moduledoc """
   Standalone editor for Library Blocks.
   Uses a strict two-column card UI, matching GradingDetail.
-  Implements strict RBAC and real-time collaboration updates.
+  Implements strict RBAC, real-time collaboration updates, and full block features.
   """
   use AthenaWeb, :live_view
 
   alias Athena.Content
   alias Athena.Content.LibraryBlock
+  alias Athena.Execution
+  alias Athena.Identity
   import AthenaWeb.BlockComponents
 
   on_mount {AthenaWeb.Hooks.Permission, "library.read"}
 
   @impl true
-  def mount(%{"id" => id}, _session, socket) do
+  def mount(%{"id" => id} = params, _session, socket) do
+    # Читаем return_to из параметров, по дефолту - корень библиотеки
+    return_to = Map.get(params, "return_to", ~p"/studio/library")
+
     with {:ok, block} <- Content.get_library_block(socket.assigns.current_user, id),
          role when role != :none <- determine_role(block, socket.assigns.current_user) do
       if connected?(socket) do
@@ -30,16 +35,19 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
          page_title: gettext("Edit Template"),
          block: block,
          form: form,
+         return_to: return_to,
          tags_string: Enum.join(block.tags || [], ", "),
          show_media_modal: false,
-         upload_type: nil
+         upload_type: nil,
+         pending_uploads: %{},
+         running_tests: %{}
        )}
     else
       _ ->
         {:ok,
          socket
          |> put_flash(:error, gettext("Template not found or access denied."))
-         |> push_navigate(to: ~p"/studio/library")}
+         |> push_navigate(to: return_to)}
     end
   end
 
@@ -61,13 +69,13 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
         {:noreply,
          socket
          |> put_flash(:error, gettext("Your access to this template was revoked."))
-         |> push_navigate(to: ~p"/studio/library")}
+         |> push_navigate(to: socket.assigns.return_to)}
 
       _ ->
         {:noreply,
          socket
          |> put_flash(:error, gettext("This template is no longer available."))
-         |> push_navigate(to: ~p"/studio/library")}
+         |> push_navigate(to: socket.assigns.return_to)}
     end
   end
 
@@ -81,27 +89,71 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
         block = socket.assigns.block
         content_map = normalize_content(block.content || %{})
 
-        new_content =
-          case media_type do
-            "attachment" ->
-              Map.put(content_map, "files", Map.get(content_map, "files", []) ++ results)
+        successful_results =
+          results
+          |> Enum.filter(&match?({:ok, _}, &1))
+          |> Enum.map(fn {:ok, map} -> map end)
 
-            _ ->
-              file_map = List.first(results)
-              Map.put(content_map, "url", file_map["url"])
-          end
+        case media_type do
+          "tiptap_image" ->
+            {:noreply, handle_tiptap_image_upload(socket, block.id, successful_results)}
 
-        socket =
-          socket
-          |> assign(show_media_modal: false, upload_type: nil)
-          |> put_flash(:info, gettext("Media uploaded successfully!"))
-
-        update_and_assign(socket, block, %{"content" => new_content})
+          _ ->
+            {:noreply,
+             handle_standard_media_upload(
+               socket,
+               block,
+               content_map,
+               results,
+               successful_results,
+               media_type
+             )}
+        end
 
       _ ->
         {:noreply, socket}
     end
   end
+
+  @impl true
+  def handle_info({ref, result}, socket) when is_map_key(socket.assigns.running_tests, ref) do
+    {_block_id, updated_tests} = Map.pop(socket.assigns.running_tests, ref)
+    Process.demonitor(ref, [:flush])
+
+    socket =
+      if result.status == :accepted do
+        put_flash(
+          socket,
+          :info,
+          gettext("Success! Block tests passed (Score: %{score})", score: result.score)
+        )
+      else
+        put_flash(
+          socket,
+          :error,
+          gettext("Test Failed! Status: %{status}.", status: result.status)
+        )
+      end
+
+    {:noreply, assign(socket, :running_tests, updated_tests)}
+  end
+
+  @impl true
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, socket)
+      when is_map_key(socket.assigns.running_tests, ref) do
+    {_block_id, updated_tests} = Map.pop(socket.assigns.running_tests, ref)
+
+    {:noreply,
+     socket
+     |> put_flash(:error, gettext("Test execution failed or runner disconnected."))
+     |> assign(:running_tests, updated_tests)}
+  end
+
+  @impl true
+  def handle_info({ref, _result}, socket) when is_reference(ref), do: {:noreply, socket}
+
+  @impl true
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event("update_content", %{"content" => parsed}, socket) do
@@ -114,6 +166,8 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
           case block.type do
             :attachment -> Map.put(content_map, "description", parsed)
             :quiz_question -> Map.put(content_map, "body", parsed)
+            :code -> Map.put(content_map, "body", parsed)
+            :file_assignment -> Map.put(content_map, "body", parsed)
             _ -> parsed
           end
 
@@ -133,7 +187,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
         new_option = %{
           "id" => Ecto.UUID.generate(),
-          "text" => "New Option",
+          "text" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
           "is_correct" => false,
           "explanation" => ""
         }
@@ -216,6 +270,143 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     end
   end
 
+  def handle_event("media_upload_clipboard_request", params, socket) do
+    if can_edit?(socket) do
+      %{
+        "file_name" => file_name,
+        "file_type" => mime_type,
+        "temp_id" => temp_id,
+        "file_size" => file_size
+      } = params
+
+      bucket = Application.get_env(:athena, Athena.Media)[:bucket] || "athena"
+      unique_id = Ecto.UUID.generate()
+      clean_name = file_name |> String.replace(~r/[^a-zA-Z0-9_\-\.]/, "_")
+      key = "library/#{socket.assigns.current_user.id}/#{unique_id}-#{clean_name}"
+
+      case Athena.Media.generate_upload_url(bucket, key) do
+        {:ok, upload_url} ->
+          path_segments = String.split(key, "/")
+          final_url = ~p"/media/#{path_segments}"
+
+          pending = socket.assigns[:pending_uploads] || %{}
+
+          updated_pending =
+            Map.put(pending, temp_id, %{
+              bucket: bucket,
+              key: key,
+              original_name: file_name,
+              size: file_size,
+              mime_type: mime_type,
+              final_url: final_url
+            })
+
+          {:noreply,
+           socket
+           |> assign(:pending_uploads, updated_pending)
+           |> push_event("media_upload_presigned", %{
+             temp_id: temp_id,
+             upload_url: upload_url,
+             final_url: final_url
+           })}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, gettext("Could not generate upload URL"))}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("media_upload_clipboard_success", params, socket) do
+    %{
+      "temp_id" => temp_id,
+      "final_url" => final_url
+    } = params
+
+    pending = socket.assigns[:pending_uploads] || %{}
+
+    with true <- can_edit?(socket),
+         {upload_data, updated_pending} when not is_nil(upload_data) <- Map.pop(pending, temp_id),
+         file_attrs = %{
+           "bucket" => upload_data.bucket,
+           "key" => upload_data.key,
+           "original_name" => upload_data.original_name,
+           "mime_type" => upload_data.mime_type,
+           "size" => upload_data.size,
+           "context" => "course_material",
+           "owner_id" => socket.assigns.current_user.id
+         },
+         {:ok, _file} <- Athena.Media.create_file(file_attrs) do
+      {:noreply,
+       socket
+       |> assign(:pending_uploads, updated_pending)
+       |> push_event("insert_media", %{
+         block_id: socket.assigns.block.id,
+         type: "tiptap_image",
+         url: final_url
+       })}
+    else
+      false ->
+        {:noreply, socket}
+
+      {nil, _} ->
+        {:noreply, socket}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to save media record"))}
+    end
+  end
+
+  def handle_event("add_test_case", _, socket) do
+    if can_edit?(socket) do
+      block = socket.assigns.block
+      content_map = normalize_content(block.content || %{})
+      test_cases = Map.get(content_map, "test_cases", [])
+
+      new_tc = %{
+        "id" => Ecto.UUID.generate(),
+        "input" => "",
+        "expected_output" => "",
+        "weight" => if(test_cases == [], do: 100, else: 0),
+        "is_hidden" => false
+      }
+
+      new_content = Map.put(content_map, "test_cases", test_cases ++ [new_tc])
+      update_and_assign(socket, block, %{"content" => new_content})
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("remove_test_case", %{"tc_id" => tc_id}, socket) do
+    if can_edit?(socket) do
+      block = socket.assigns.block
+      content_map = normalize_content(block.content || %{})
+      test_cases = Map.get(content_map, "test_cases", [])
+
+      new_tc_list = Enum.reject(test_cases, fn tc -> Map.get(tc, "id") == tc_id end)
+      new_content = Map.put(content_map, "test_cases", new_tc_list)
+
+      update_and_assign(socket, block, %{"content" => new_content})
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("run_instructor_test", _, socket) do
+    if can_edit?(socket) do
+      block = socket.assigns.block
+      content_map = normalize_content(block.content || %{})
+      code = content_map["solution_code"] || ""
+      test_cases = content_map["test_cases"] || []
+
+      dispatch_test_run(socket, block, code, test_cases)
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_event("update_meta", %{"library_block" => params} = form_data, socket) do
     case can_edit?(socket) do
       true ->
@@ -264,6 +455,65 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     end
   end
 
+  def handle_event("update_block_meta", %{"block" => block_params} = params, socket) do
+    id = block_params["id"]
+
+    if can_edit?(socket) and socket.assigns.block.id == id do
+      block = socket.assigns.block
+      content_map = normalize_content(block.content || %{})
+      content_overrides = Map.get(block_params, "content", %{})
+
+      content_overrides =
+        content_map
+        |> apply_quiz_meta_overrides(content_overrides)
+        |> apply_exam_meta_overrides(block.type, params)
+
+      new_content = Map.merge(content_map, content_overrides)
+      final_params = Map.put(block_params, "content", new_content)
+
+      update_and_assign(socket, block, final_params)
+    else
+      {:noreply, socket}
+    end
+  end
+
+  defp dispatch_test_run(socket, _block, "", _test_cases) do
+    {:noreply, put_flash(socket, :error, gettext("Please write a Reference Solution first!"))}
+  end
+
+  defp dispatch_test_run(socket, _block, _code, []) do
+    {:noreply, put_flash(socket, :warning, gettext("Add at least one Test Case before testing."))}
+  end
+
+  defp dispatch_test_run(socket, block, code, _test_cases) do
+    challenge =
+      Ecto.Changeset.apply_changes(
+        Athena.Content.CodeChallenge.changeset(
+          %Athena.Content.CodeChallenge{},
+          block.content
+        )
+      )
+
+    runner = {:via, :global, :code_runner}
+
+    if :global.whereis_name(:code_runner) != :undefined do
+      task =
+        Task.Supervisor.async(runner, fn ->
+          box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
+          Execution.verify(code, challenge, box_id)
+        end)
+
+      updated_tests = Map.put(socket.assigns.running_tests, task.ref, block.id)
+
+      {:noreply,
+       socket
+       |> assign(:running_tests, updated_tests)
+       |> put_flash(:info, gettext("Testing reference solution... Please wait."))}
+    else
+      {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
+    end
+  end
+
   defp update_and_assign(socket, block, params) do
     case Content.update_library_block(socket.assigns.current_user, block, params) do
       {:ok, updated} ->
@@ -275,6 +525,60 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     end
   end
 
+  defp handle_tiptap_image_upload(socket, block_id, successful_results) do
+    socket = assign(socket, show_media_modal: false, upload_type: nil)
+
+    case List.first(successful_results) do
+      nil ->
+        put_flash(socket, :error, gettext("Failed to upload image"))
+
+      file_map ->
+        socket
+        |> push_event("insert_media", %{
+          block_id: block_id,
+          url: file_map["url"],
+          type: "tiptap_image"
+        })
+        |> put_flash(:info, gettext("Image inserted into text!"))
+    end
+  end
+
+  defp handle_standard_media_upload(
+         socket,
+         block,
+         content_map,
+         results,
+         successful_results,
+         media_type
+       ) do
+    new_content =
+      case media_type do
+        "attachment" ->
+          Map.put(content_map, "files", Map.get(content_map, "files", []) ++ successful_results)
+
+        _ ->
+          case List.first(successful_results) do
+            nil -> content_map
+            file_map -> Map.put(content_map, "url", file_map["url"])
+          end
+      end
+
+    error_count = length(results) - length(successful_results)
+
+    socket =
+      socket
+      |> assign(show_media_modal: false, upload_type: nil)
+
+    socket =
+      if error_count > 0 do
+        put_flash(socket, :error, gettext("Failed to save %{count} file(s)", count: error_count))
+      else
+        socket
+      end
+
+    update_and_assign(socket, block, %{"content" => new_content})
+  end
+
   @impl true
   def render(assigns) do
     assigns =
@@ -284,10 +588,10 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
     ~H"""
     <div class="max-w-7xl mx-auto pb-20 pt-4">
-      <div class="flex items-center gap-4 mb-8 border-b border-base-200 pb-6">
+      <div class="flex items-center gap-4 mb-8 border-b border-base-300 pb-6">
         <.link
-          navigate={~p"/studio/library"}
-          class="btn btn-ghost btn-sm btn-square rounded-md hover:bg-base-200"
+          navigate={@return_to}
+          class="btn btn-ghost btn-sm btn-square rounded-sm hover:bg-base-200"
         >
           <.icon name="hero-arrow-left" class="size-5" />
         </.link>
@@ -302,9 +606,9 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
       </div>
 
       <div class="flex flex-col lg:flex-row items-start gap-8">
-        <div class="flex-1 w-full min-w-0 space-y-6">
-          <div class="p-6 bg-base-100 border border-base-200 rounded-sm">
-            <div class="flex items-center justify-between mb-6 pb-4 border-b border-base-100">
+        <div class="flex-1 w-full min-w-0 lg:min-w-125 space-y-6">
+          <div class="p-6 bg-base-100 border border-base-300 rounded-sm">
+            <div class="flex items-center justify-between mb-6 pb-4 border-b border-base-300">
               <h2 class="text-lg font-bold">{gettext("Content Editor")}</h2>
             </div>
             <div class="relative w-full">
@@ -316,15 +620,19 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
         <div
           :if={@role in [:owner, :writer]}
-          class="w-full lg:w-[400px] shrink-0 bg-base-100 rounded-sm border border-base-300 sticky top-8 flex flex-col overflow-hidden"
+          class="w-full lg:w-80 xl:w-100 shrink-0 bg-base-100 rounded-sm border border-base-300 xl:sticky xl:top-8 flex flex-col overflow-hidden"
         >
-          <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-200 bg-base-200/30">
+          <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-300">
             <div>
               <div class="text-[10px] font-bold text-base-content/50 uppercase tracking-widest mb-0.5">
                 {gettext("Inspector")}
               </div>
-              <div class="text-sm font-bold">
-                {gettext("Template Settings")}
+              <div class="text-sm font-bold capitalize">
+                <%= if @block.type == :quiz_exam do %>
+                  {gettext("Assessment Session")}
+                <% else %>
+                  {Atom.to_string(@block.type) |> String.replace("_", " ")} {gettext("Template")}
+                <% end %>
               </div>
             </div>
           </div>
@@ -343,7 +651,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                   phx-debounce="500"
                 />
 
-                <div class="form-control">
+                <fieldset class="fieldset">
                   <label class="label">
                     <span class="label-text font-bold text-sm">
                       {gettext("Tags (comma separated)")}
@@ -353,13 +661,13 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                     type="text"
                     name="tags_string"
                     value={@tags_string}
-                    class="input input-bordered w-full"
+                    class="input w-full"
                     phx-debounce="500"
                   />
-                </div>
+                </fieldset>
               </div>
 
-              <%= if @block.type in [:quiz_question, :quiz_exam, :code] do %>
+              <%= if @block.type in [:quiz_question, :quiz_exam, :code, :file_assignment, :image, :video] do %>
                 <div class="divider my-4"></div>
 
                 <div class="space-y-4 mb-6">
@@ -368,17 +676,41 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                   </div>
 
                   <%= if @block.type == :quiz_question do %>
+                    <div class="mt-4">
+                      <.input
+                        type="number"
+                        name="library_block[content][max_attempts]"
+                        value={@block.content["max_attempts"]}
+                        label={gettext("Max Attempts")}
+                        placeholder={gettext("Leave empty for unlimited")}
+                        min="1"
+                        phx-debounce="500"
+                      />
+                    </div>
+
                     <.input
                       type="select"
                       name="library_block[content][question_type]"
                       value={@block.content["question_type"] || "open"}
                       label={gettext("Question Type")}
                       options={[
-                        {"Exact Match", "exact_match"},
-                        {"Single Choice", "single"},
-                        {"Multiple Choice", "multiple"},
-                        {"Open Question", "open"}
+                        {gettext("Exact Match (CTF / Text)"), "exact_match"},
+                        {gettext("Single Choice (Radio)"), "single"},
+                        {gettext("Multiple Choice (Checkbox)"), "multiple"},
+                        {gettext("Open Question (Essay)"), "open"}
                       ]}
+                    />
+
+                    <.input
+                      type="select"
+                      name="library_block[content][answer_type]"
+                      value={@block.content["answer_type"] || "plain_text"}
+                      label={gettext("Answer Input Type")}
+                      options={[
+                        {gettext("Plain Text"), "plain_text"},
+                        {gettext("Rich Text"), "rich_text"}
+                      ]}
+                      phx-debounce="300"
                     />
 
                     <%= if @block.content["question_type"] == "exact_match" do %>
@@ -394,21 +726,23 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                             name="library_block[content][case_sensitive]"
                             value="true"
                             checked={@block.content["case_sensitive"]}
-                            class="checkbox checkbox-sm checkbox-primary rounded-sm"
+                            class="checkbox checkbox-sm checkbox-primary mt-0.5"
                           />
                           <span class="label-text font-bold">{gettext("Case Sensitive")}</span>
                         </label>
                       </div>
                     <% end %>
 
-                    <.input
-                      type="textarea"
-                      name="library_block[content][general_explanation]"
-                      value={@block.content["general_explanation"]}
-                      label={gettext("General Explanation")}
-                      phx-debounce="500"
-                      rows="3"
-                    />
+                    <div class="mt-4">
+                      <.input
+                        type="textarea"
+                        name="library_block[content][general_explanation]"
+                        value={@block.content["general_explanation"]}
+                        label={gettext("General Explanation (shown after submission)")}
+                        phx-debounce="500"
+                        rows="3"
+                      />
+                    </div>
                   <% end %>
 
                   <%= if @block.type == :quiz_exam do %>
@@ -429,13 +763,6 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                         min="1"
                       />
                     </div>
-                    <.input
-                      type="number"
-                      name="library_block[content][allowed_blur_attempts]"
-                      value={@block.content["allowed_blur_attempts"] || 3}
-                      label={gettext("Max Cheats")}
-                      min="0"
-                    />
                     <.input
                       type="text"
                       name="tags_mandatory"
@@ -467,15 +794,95 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                       label={gettext("Language")}
                       options={[{"Python", "python"}, {"SQL", "sql"}, {"Elixir", "elixir"}]}
                     />
+                    <div class="grid grid-cols-2 gap-3">
+                      <.input
+                        type="number"
+                        name="library_block[content][time_limit]"
+                        value={@block.content["time_limit"] || 1.0}
+                        label={gettext("Time Limit (s)")}
+                        step="0.1"
+                        min="0.1"
+                        max="15.0"
+                        phx-debounce="500"
+                      />
+                      <.input
+                        type="number"
+                        name="library_block[content][memory_limit]"
+                        value={@block.content["memory_limit"] || 65_536}
+                        label={gettext("Memory (KB)")}
+                        step="1024"
+                        min="16384"
+                        max="524288"
+                        phx-debounce="500"
+                      />
+                    </div>
+                    <div class="mt-2">
+                      <.input
+                        type="number"
+                        name="library_block[content][max_attempts]"
+                        value={@block.content["max_attempts"]}
+                        label={gettext("Max Attempts")}
+                        placeholder={gettext("Leave empty for unlimited")}
+                        min="1"
+                        phx-debounce="500"
+                      />
+                    </div>
+                  <% end %>
+
+                  <%= if @block.type == :file_assignment do %>
+                    <.input
+                      type="number"
+                      name="library_block[content][max_files]"
+                      value={@block.content["max_files"] || 1}
+                      label={gettext("Max Files Allowed")}
+                      min="1"
+                      max="20"
+                      step="1"
+                      phx-debounce="500"
+                    />
+                    <div class="text-xs text-base-content/50 leading-relaxed -mt-2">
+                      {gettext("Students upload files for manual review. Allowed range: 1–20 files.")}
+                    </div>
+                  <% end %>
+
+                  <%= if @block.type in [:image, :video] do %>
+                    <.button
+                      type="button"
+                      phx-click="request_media_upload"
+                      phx-value-media_type={@block.type}
+                      class="btn btn-outline w-full mb-2"
+                    >
+                      <.icon name="hero-cloud-arrow-up" class="size-4" /> {if @block.content["url"],
+                        do: gettext("Replace File"),
+                        else: gettext("Upload File")}
+                    </.button>
+                    <%= if @block.type == :image do %>
+                      <.input
+                        type="text"
+                        name="library_block[content][alt]"
+                        value={@block.content["alt"]}
+                        label={gettext("Alt Text")}
+                        phx-debounce="500"
+                      />
+                    <% end %>
+                    <%= if @block.type == :video do %>
+                      <.input
+                        type="text"
+                        name="library_block[content][poster_url]"
+                        value={@block.content["poster_url"]}
+                        label={gettext("Poster URL")}
+                        phx-debounce="500"
+                      />
+                    <% end %>
                   <% end %>
                 </div>
               <% end %>
             </.form>
           </div>
 
-          <div class="p-6 border-t border-base-200 bg-base-200/20 mt-auto">
+          <div class="p-6 border-t border-base-300 mt-auto">
             <.link
-              navigate={~p"/studio/library"}
+              navigate={@return_to}
               class="btn btn-primary rounded-sm w-full"
             >
               <.icon name="hero-check-circle" class="size-5 mr-2" />
@@ -505,6 +912,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     cond do
       block.owner_id == user.id -> :owner
       share = Enum.find(shares, &(&1.account_id == user.id)) -> share.role
+      Identity.can?(user, "library.update", block) -> :writer
       block.is_public -> :reader
       true -> :none
     end
@@ -526,14 +934,43 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     |> Enum.sort_by(fn {k, _} -> String.to_integer(k) end)
     |> Enum.map(fn {_, v} ->
       is_correct =
-        if correct_id, do: v["id"] == correct_id, else: v["is_correct"] in ["true", true]
+        if correct_id do
+          v["id"] == correct_id
+        else
+          v["is_correct"] in ["true", true]
+        end
 
-      %{v | "is_correct" => is_correct}
+      text_map =
+        case Jason.decode(v["text"]) do
+          {:ok, decoded} ->
+            decoded
+
+          _ ->
+            %{
+              "type" => "doc",
+              "content" => [
+                %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => v["text"]}]}
+              ]
+            }
+        end
+
+      %{v | "is_correct" => is_correct, "text" => text_map}
     end)
   end
 
-  defp apply_quiz_meta_overrides(original, overrides) do
-    overrides |> apply_exact_match_default(original) |> apply_single_choice_fix(original)
+  defp apply_quiz_meta_overrides(original_content, overrides) do
+    overrides
+    |> apply_exact_match_default(original_content)
+    |> apply_single_choice_fix(original_content)
+    |> apply_case_sensitive_fix()
+  end
+
+  defp apply_case_sensitive_fix(overrides) do
+    if Map.has_key?(overrides, "case_sensitive") do
+      Map.put(overrides, "case_sensitive", overrides["case_sensitive"] in ["true", true])
+    else
+      overrides
+    end
   end
 
   defp apply_exact_match_default(overrides, original) do

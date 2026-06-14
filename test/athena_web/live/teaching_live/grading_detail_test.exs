@@ -71,12 +71,29 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
       assert html =~ "War and Peace. Volume 1."
       assert html =~ "<textarea"
       assert html =~ ~r/ disabled(?!:)/
+      assert html =~ "Manual Review"
     end
   end
 
   describe "Grading Detail (Exam & Cheating)" do
     test "renders exam with questions, open review badges, and cheat violations", %{conn: conn} do
       student = insert(:account, login: "sneaky_student")
+
+      q1 =
+        insert(:block,
+          type: :quiz_question,
+          content: %{"question_type" => "open", "body" => %{"text" => "Question 1"}}
+        )
+
+      q2 =
+        insert(:block,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "single",
+            "options" => [%{"id" => "o1", "text" => "Opt 1"}]
+          }
+        )
+
       block = insert(:block, type: :quiz_exam)
 
       sub =
@@ -86,29 +103,37 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
           content: %{
             "cheat_count" => 2,
             "questions" => [
-              %{"id" => "q1", "question_type" => "open", "body" => %{"text" => "Question 1"}},
-              %{
-                "id" => "q2",
-                "question_type" => "single",
-                "options" => [%{"id" => "o1", "text" => "Opt 1"}]
-              }
-            ],
-            "answers" => %{"q1" => "I don't know", "q2" => "o1"}
+              %{"id" => q1.id, "type" => "quiz_question", "content" => q1.content},
+              %{"id" => q2.id, "type" => "quiz_question", "content" => q2.content}
+            ]
           },
           status: :needs_review
         )
 
+      insert(:submission,
+        account_id: student.id,
+        block_id: q1.id,
+        parent_submission_id: sub.id,
+        content: %{"text_answer" => "I don't know"},
+        status: :needs_review
+      )
+
+      insert(:submission,
+        account_id: student.id,
+        block_id: q2.id,
+        parent_submission_id: sub.id,
+        content: %{"selected_choices" => ["o1"]},
+        status: :graded
+      )
+
       {:ok, _lv, html} = live(conn, ~p"/teaching/grading/#{sub.id}")
 
       assert html =~ "sneaky_student"
-
       assert html =~ "quiz exam"
-
-      assert html =~ "Manual Review"
       assert html =~ "I don&#39;t know"
-
       assert html =~ "Cheating Detected"
-      assert html =~ "triggered 2 window blur violations"
+      assert html =~ "triggered 2 violations"
+      assert html =~ "Manual Review"
     end
 
     test "does not render cheat violations if count is 0", %{conn: conn} do
@@ -126,6 +151,61 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
       {:ok, _lv, html} = live(conn, ~p"/teaching/grading/#{sub.id}")
 
       refute html =~ "Cheating Detected"
+    end
+
+    test "recalculates overall score when a child question score is changed", %{
+      conn: conn
+    } do
+      course = insert(:course)
+      student = insert(:account, login: "student_math")
+      s1 = insert(:section, course: course)
+
+      q1 =
+        insert(:block, section: s1, type: :quiz_question, content: %{"question_type" => "open"})
+
+      q2 =
+        insert(:block, section: s1, type: :quiz_question, content: %{"question_type" => "open"})
+
+      questions = [
+        %{"id" => q1.id, "type" => "quiz_question", "content" => q1.content},
+        %{"id" => q2.id, "type" => "quiz_question", "content" => q2.content}
+      ]
+
+      parent_block = insert(:block, section: s1, type: :quiz_exam)
+
+      parent_sub =
+        insert(:submission,
+          account_id: student.id,
+          block_id: parent_block.id,
+          status: :needs_review,
+          score: 0,
+          content: %{"questions" => questions}
+        )
+
+      insert(:submission,
+        account_id: student.id,
+        block_id: q1.id,
+        parent_submission_id: parent_sub.id,
+        status: :needs_review,
+        score: 0
+      )
+
+      insert(:submission,
+        account_id: student.id,
+        block_id: q2.id,
+        parent_submission_id: parent_sub.id,
+        status: :needs_review,
+        score: 0
+      )
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{parent_sub.id}")
+
+      html =
+        lv
+        |> form("#grading-form")
+        |> render_change(%{"child_grades" => %{q1.id => %{"score" => "100", "feedback" => ""}}})
+
+      assert html =~ "value=\"50\""
     end
   end
 
@@ -213,7 +293,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
 
       {:ok, lv, html} = live(conn, ~p"/teaching/grading/#{sub.id}")
 
-      assert html =~ "Delete &amp; Rollback Submission"
+      assert html =~ "Delete Submission"
       assert html =~ "open_delete_modal"
 
       html =

@@ -35,6 +35,8 @@ defmodule Athena.Content.Block do
     }
   }
 
+  @derive {Jason.Encoder, only: [:id, :type, :content]}
+
   schema "blocks" do
     field :type, Ecto.Enum,
       values: ~w(text code quiz_question quiz_exam video image attachment file_assignment)a

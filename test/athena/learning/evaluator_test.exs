@@ -172,32 +172,52 @@ defmodule Athena.Learning.EvaluatorTest do
       q2_id = Ecto.UUID.generate()
 
       questions = [
-        %{"id" => q1_id, "question_type" => "exact_match", "correct_answer" => "flag"},
+        %{
+          "id" => q1_id,
+          "type" => "quiz_question",
+          "content" => %{"question_type" => "exact_match", "correct_answer" => "flag"}
+        },
         %{
           "id" => q2_id,
-          "question_type" => "single",
-          "options" => [
-            %{"id" => "o1", "is_correct" => true},
-            %{"id" => "o2", "is_correct" => false}
-          ]
+          "type" => "quiz_question",
+          "content" => %{
+            "question_type" => "single",
+            "options" => [
+              %{"id" => "o1", "is_correct" => true},
+              %{"id" => "o2", "is_correct" => false}
+            ]
+          }
         }
       ]
 
-      answers = %{q1_id => "flag", q2_id => "o1"}
-
-      sub =
+      parent_sub =
         insert(:submission,
           account_id: account.id,
           block_id: block.id,
           status: :pending,
           content: %{
             "type" => "quiz_exam",
-            "questions" => questions,
-            "answers" => answers
+            "questions" => questions
           }
         )
 
-      res = Evaluator.evaluate_sync(sub)
+      insert(:submission,
+        account_id: account.id,
+        block_id: q1_id,
+        parent_submission_id: parent_sub.id,
+        status: :pending,
+        content: %{"text_answer" => "flag"}
+      )
+
+      insert(:submission,
+        account_id: account.id,
+        block_id: q2_id,
+        parent_submission_id: parent_sub.id,
+        status: :pending,
+        content: %{"selected_choices" => ["o1"]}
+      )
+
+      res = Evaluator.evaluate_sync(parent_sub)
       assert res.score == 100
       assert res.status == :graded
     end
@@ -207,32 +227,52 @@ defmodule Athena.Learning.EvaluatorTest do
       q2_id = Ecto.UUID.generate()
 
       questions = [
-        %{"id" => q1_id, "question_type" => "exact_match", "correct_answer" => "flag"},
+        %{
+          "id" => q1_id,
+          "type" => "quiz_question",
+          "content" => %{"question_type" => "exact_match", "correct_answer" => "flag"}
+        },
         %{
           "id" => q2_id,
-          "question_type" => "single",
-          "options" => [
-            %{"id" => "o1", "is_correct" => true},
-            %{"id" => "o2", "is_correct" => false}
-          ]
+          "type" => "quiz_question",
+          "content" => %{
+            "question_type" => "single",
+            "options" => [
+              %{"id" => "o1", "is_correct" => true},
+              %{"id" => "o2", "is_correct" => false}
+            ]
+          }
         }
       ]
 
-      answers = %{q1_id => "flag", q2_id => "o2"}
-
-      sub =
+      parent_sub =
         insert(:submission,
           account_id: account.id,
           block_id: block.id,
           status: :pending,
           content: %{
             "type" => "quiz_exam",
-            "questions" => questions,
-            "answers" => answers
+            "questions" => questions
           }
         )
 
-      res = Evaluator.evaluate_sync(sub)
+      insert(:submission,
+        account_id: account.id,
+        block_id: q1_id,
+        parent_submission_id: parent_sub.id,
+        status: :pending,
+        content: %{"text_answer" => "flag"}
+      )
+
+      insert(:submission,
+        account_id: account.id,
+        block_id: q2_id,
+        parent_submission_id: parent_sub.id,
+        status: :pending,
+        content: %{"selected_choices" => ["o2"]}
+      )
+
+      res = Evaluator.evaluate_sync(parent_sub)
       assert res.score == 50
       assert res.status == :graded
     end
@@ -245,27 +285,48 @@ defmodule Athena.Learning.EvaluatorTest do
       q2_id = Ecto.UUID.generate()
 
       questions = [
-        %{"id" => q1_id, "question_type" => "exact_match", "correct_answer" => "flag"},
-        %{"id" => q2_id, "question_type" => "open"}
+        %{
+          "id" => q1_id,
+          "type" => "quiz_question",
+          "content" => %{"question_type" => "exact_match", "correct_answer" => "flag"}
+        },
+        %{
+          "id" => q2_id,
+          "type" => "quiz_question",
+          "content" => %{"question_type" => "open"}
+        }
       ]
 
-      answers = %{q1_id => "flag", q2_id => "My beautiful essay"}
-
-      sub =
+      parent_sub =
         insert(:submission,
           account_id: account.id,
           block_id: block.id,
           status: :pending,
           content: %{
             "type" => "quiz_exam",
-            "questions" => questions,
-            "answers" => answers
+            "questions" => questions
           }
         )
 
-      res = Evaluator.evaluate_sync(sub)
-      assert res.score == 50
+      insert(:submission,
+        account_id: account.id,
+        block_id: q1_id,
+        parent_submission_id: parent_sub.id,
+        status: :pending,
+        content: %{"text_answer" => "flag"}
+      )
 
+      insert(:submission,
+        account_id: account.id,
+        block_id: q2_id,
+        parent_submission_id: parent_sub.id,
+        status: :pending,
+        content: %{"text_answer" => "My beautiful essay"}
+      )
+
+      res = Evaluator.evaluate_sync(parent_sub)
+
+      assert res.score == 50
       assert res.status == :needs_review
     end
   end

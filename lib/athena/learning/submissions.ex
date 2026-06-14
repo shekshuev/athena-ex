@@ -48,7 +48,10 @@ defmodule Athena.Learning.Submissions do
 
   @doc false
   defp scope_submissions(query, user, permission) do
-    query = where(query, [s], s.status != :draft)
+    query =
+      query
+      |> where([s], s.status != :draft)
+      |> where([s], is_nil(s.parent_submission_id))
 
     cond do
       "admin" in user.role.permissions ->
@@ -154,6 +157,58 @@ defmodule Athena.Learning.Submissions do
   end
 
   @doc """
+  Enqueues the code execution worker for a specific submission.
+  Updates the status to :processing immediately.
+  Works for both regular blocks and generated exam questions.
+  """
+  def enqueue_code_execution(%Submission{} = submission) do
+    is_code_content = submission.content["type"] in [:code, "code"]
+
+    if is_code_content do
+      do_enqueue(submission)
+    else
+      block = Repo.get(Block, submission.block_id)
+
+      if block && block.type == :code do
+        do_enqueue(submission)
+      else
+        {:error, :not_a_code_block}
+      end
+    end
+  end
+
+  @doc false
+  defp do_enqueue(submission) do
+    {:ok, processing_sub} = system_update_submission(submission, %{status: :processing})
+
+    %{submission_id: processing_sub.id}
+    |> Athena.Execution.Worker.new()
+    |> Oban.insert()
+
+    {:ok, processing_sub}
+  end
+
+  @doc """
+  Initiates a test run for code by updating the draft and enqueuing an Oban worker.
+  Does NOT count as a formal submission attempt.
+  """
+  def test_code(user, block, code) do
+    content = %{"type" => :code, "code" => code, "is_test_run" => true}
+
+    case save_draft(user, block.id, content, nil) do
+      {:ok, draft} ->
+        %{submission_id: draft.id}
+        |> Athena.Execution.TestWorker.new()
+        |> Oban.insert()
+
+        {:ok, draft}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  @doc """
   Updates a submission manually (e.g. manual grading by an instructor).
   Enforces ACL: only users with grading.update can do this.
   """
@@ -195,12 +250,15 @@ defmodule Athena.Learning.Submissions do
     query =
       if cohort_id do
         from s in Submission,
-          where: s.cohort_id == ^cohort_id and s.block_id in ^block_ids and s.status != :draft
+          where:
+            s.cohort_id == ^cohort_id and s.block_id in ^block_ids and s.status != :draft and
+              fragment("?->>'is_test_run' IS NULL", s.content)
       else
         from s in Submission,
           where:
             s.account_id == ^account_id and is_nil(s.cohort_id) and
-              s.block_id in ^block_ids and s.status != :draft
+              s.block_id in ^block_ids and s.status != :draft and
+              fragment("?->>'is_test_run' IS NULL", s.content)
       end
 
     query
@@ -434,17 +492,177 @@ defmodule Athena.Learning.Submissions do
     query =
       if cohort_id do
         from s in Submission,
-          where: s.cohort_id == ^cohort_id and s.block_id == ^block_id and s.status == :draft
+          where:
+            s.cohort_id == ^cohort_id and s.block_id == ^block_id and
+              (s.status == :draft or fragment("?->>'is_test_run' = 'true'", s.content))
       else
         from s in Submission,
           where:
             s.account_id == ^user_id and s.block_id == ^block_id and
-              s.status == :draft and is_nil(s.cohort_id)
+              (s.status == :draft or fragment("?->>'is_test_run' = 'true'", s.content)) and
+              is_nil(s.cohort_id)
       end
 
     query
     |> order_by([s], desc: s.updated_at)
     |> limit(1)
     |> Repo.one()
+  end
+
+  @doc """
+  Starts a new exam submission attempt for a student.
+  Creates a parent submission with an expiration time.
+  """
+  def start_exam_submission(account_id, exam_block_id, cohort_id, time_limit_seconds) do
+    expires_at = DateTime.add(DateTime.utc_now(), time_limit_seconds, :second)
+
+    %Submission{}
+    |> Submission.changeset(%{
+      account_id: account_id,
+      block_id: exam_block_id,
+      cohort_id: cohort_id,
+      status: :pending,
+      expires_at: expires_at,
+      content: %{"started_at" => DateTime.utc_now() |> DateTime.to_iso8601()}
+    })
+    |> Repo.insert()
+  end
+
+  @doc """
+  Saves or updates a submission for a specific question/block within an exam.
+  Links it to the parent exam submission.
+  """
+  def save_question_submission(
+        parent_submission,
+        account_id,
+        question_block_id,
+        cohort_id,
+        answer_content
+      ) do
+    limit_check =
+      if parent_submission.expires_at do
+        DateTime.compare(DateTime.utc_now(), parent_submission.expires_at)
+      else
+        :lt
+      end
+
+    do_save_question_submission(
+      limit_check,
+      parent_submission,
+      account_id,
+      question_block_id,
+      cohort_id,
+      answer_content
+    )
+  end
+
+  @doc false
+  defp do_save_question_submission(:gt, _, _, _, _, _), do: {:error, :time_limit_exceeded}
+
+  defp do_save_question_submission(
+         _,
+         parent_submission,
+         account_id,
+         question_block_id,
+         cohort_id,
+         answer_content
+       ) do
+    query =
+      from s in Submission,
+        where: s.parent_submission_id == ^parent_submission.id,
+        where: s.block_id == ^question_block_id,
+        where: s.account_id == ^account_id
+
+    case Repo.one(query) do
+      nil ->
+        %Submission{}
+        |> Submission.changeset(%{
+          parent_submission_id: parent_submission.id,
+          account_id: account_id,
+          block_id: question_block_id,
+          cohort_id: cohort_id,
+          status: :draft,
+          content: answer_content
+        })
+        |> Repo.insert()
+
+      existing_submission ->
+        existing_submission
+        |> Submission.changeset(%{
+          content: Map.merge(existing_submission.content || %{}, answer_content),
+          status: :draft
+        })
+        |> Repo.update()
+    end
+  end
+
+  @doc """
+  Gets the active (pending/draft) exam submission for a student, if it hasn't expired.
+  """
+  def get_active_exam_submission(account_id, exam_block_id) do
+    now = DateTime.utc_now()
+
+    query =
+      from s in Submission,
+        where: s.account_id == ^account_id,
+        where: s.block_id == ^exam_block_id,
+        where: s.status in [:pending, :draft],
+        where: is_nil(s.parent_submission_id),
+        where: s.expires_at > ^now,
+        order_by: [desc: s.inserted_at],
+        limit: 1
+
+    Repo.one(query)
+  end
+
+  @doc """
+  Gets all child submissions for a given parent exam submission.
+  Returns a map of %{block_id => %Submission{}} for efficient lookup in templates.
+  """
+  def get_child_submissions(parent_submission_id) do
+    from(s in Submission,
+      where: s.parent_submission_id == ^parent_submission_id
+    )
+    |> Repo.all()
+    |> Map.new(&{&1.block_id, &1})
+  end
+
+  @doc """
+  Gets an active exam attempt, or creates a new one with a fixed set of questions.
+  """
+  def get_or_create_exam_attempt(
+        account_id,
+        exam_block_id,
+        cohort_id,
+        time_limit_sec,
+        exam_config
+      ) do
+    case get_active_exam_submission(account_id, exam_block_id) do
+      nil ->
+        questions = Athena.Content.generate_exam_questions(exam_config)
+
+        expires_at = DateTime.add(DateTime.utc_now(), time_limit_sec, :second)
+
+        content = %{
+          "started_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
+          "questions" => questions,
+          "type" => "quiz_exam",
+          "cheat_count" => 0
+        }
+
+        %Submission{}
+        |> Submission.changeset(%{
+          account_id: account_id,
+          block_id: exam_block_id,
+          cohort_id: cohort_id,
+          status: :pending,
+          expires_at: expires_at,
+          content: content
+        })
+        |> Repo.insert()
+
+      submission ->
+        {:ok, submission}
+    end
   end
 end

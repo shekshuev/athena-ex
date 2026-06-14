@@ -26,7 +26,6 @@ defmodule AthenaWeb.StudioLive.Builder do
     with {:ok, course} <- Content.get_course(socket.assigns.current_user, course_id),
          role when role != :none <- determine_role(course, socket.assigns.current_user) do
       if connected?(socket) do
-        :timer.send_interval(1000, self(), :tick)
         Phoenix.PubSub.subscribe(Athena.PubSub, "builder:#{course.id}")
         Phoenix.PubSub.subscribe(Athena.PubSub, "user_courses:#{socket.assigns.current_user.id}")
         Phoenix.PubSub.subscribe(Athena.PubSub, "public_courses")
@@ -54,7 +53,6 @@ defmodule AthenaWeb.StudioLive.Builder do
          quick_nav_open: false,
          section_to_delete: nil,
          block_to_delete: nil,
-         server_now: DateTime.utc_now() |> DateTime.truncate(:second),
          saving_block_to_library: nil,
          library_picker_open: false,
          library_blocks: [],
@@ -74,11 +72,6 @@ defmodule AthenaWeb.StudioLive.Builder do
          |> put_flash(:error, gettext("You don't have access to this course."))
          |> push_navigate(to: ~p"/studio/courses")}
     end
-  end
-
-  @impl true
-  def handle_info(:tick, socket) do
-    {:noreply, assign(socket, server_now: DateTime.utc_now() |> DateTime.truncate(:second))}
   end
 
   def handle_info(:refresh_tree, socket) do
@@ -585,7 +578,7 @@ defmodule AthenaWeb.StudioLive.Builder do
         }
       }
 
-      create_and_assign_block(socket, attrs, gettext("Failed to create quiz exam block"))
+      create_and_assign_block(socket, attrs, gettext("Failed to create assessment session block"))
     else
       {:noreply, socket}
     end
@@ -1409,16 +1402,20 @@ defmodule AthenaWeb.StudioLive.Builder do
       </div>
 
       <div class="flex-1 flex flex-col relative overflow-hidden bg-base-200">
-        <.live_component
-          module={AthenaWeb.StudioLive.Builder.CanvasComponent}
-          id="canvas-component"
-          blocks={@blocks}
-          active_section_id={@active_section_id}
-          active_block_id={@active_block_id}
-          mode={@block_mode}
-          viewing_parent_id={@viewing_parent_id}
-          breadcrumbs={@breadcrumbs}
-        />
+        <div class="flex-1 overflow-y-auto p-8 relative">
+          <div class="max-w-3xl mx-auto min-h-full flex flex-col gap-4">
+            <.live_component
+              module={AthenaWeb.StudioLive.Builder.CanvasComponent}
+              id="canvas-component"
+              blocks={@blocks}
+              active_section_id={@active_section_id}
+              active_block_id={@active_block_id}
+              mode={@block_mode}
+              viewing_parent_id={@viewing_parent_id}
+              breadcrumbs={@breadcrumbs}
+            />
+          </div>
+        </div>
       </div>
 
       <div
@@ -1431,7 +1428,6 @@ defmodule AthenaWeb.StudioLive.Builder do
             id="inspector-component"
             active_section={@active_section}
             active_block={@active_block}
-            server_now={@server_now}
           />
         </div>
       </div>

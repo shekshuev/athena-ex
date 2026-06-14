@@ -532,7 +532,7 @@ defmodule AthenaWeb.BlockComponentsTest do
         """)
 
       refute html =~ "<textarea"
-      assert html =~ ~s(id="tiptap-open-answer-play-#{block.id}")
+      assert html =~ ~s(id="tiptap-open-answer-play-#{block.id}-static")
       assert html =~ ~s(phx-hook="TiptapEditor")
       assert html =~ ~s(data-readonly="false")
       assert html =~ ~s(data-input-id="open-answer-#{block.id}")
@@ -764,8 +764,8 @@ defmodule AthenaWeb.BlockComponentsTest do
         Jason.encode!(sub_tip) |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
 
       assert html =~ "data-content=\"#{escaped}\""
-      assert html =~ "Submission"
-      refute html =~ "Draft"
+      assert html =~ "&quot;Submission&quot;"
+      refute html =~ "&quot;Draft&quot;"
     end
 
     test "answers map takes priority over submission and draft for rich_text", %{
@@ -788,7 +788,7 @@ defmodule AthenaWeb.BlockComponentsTest do
       answer_tip = %{
         "type" => "doc",
         "content" => [
-          %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => "Live Answer"}]}
+          %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => "Live answer"}]}
         ]
       }
 
@@ -812,9 +812,9 @@ defmodule AthenaWeb.BlockComponentsTest do
         Jason.encode!(answer_tip) |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
 
       assert html =~ "data-content=\"#{escaped}\""
-      assert html =~ "Live Answer"
-      refute html =~ "Draft"
-      refute html =~ "Submission"
+      assert html =~ "&quot;Live answer&quot;"
+      refute html =~ "&quot;Draft&quot;"
+      refute html =~ "&quot;Submission&quot;"
     end
 
     test "malformed JSON string in answer_content falls back to plain text paragraph for rich_text",
@@ -977,11 +977,11 @@ defmodule AthenaWeb.BlockComponentsTest do
         <.content_block block={@block} mode={:edit} active={true} />
         """)
 
-      assert html =~ "Final Exam"
+      assert html =~ "Assessment Session"
       assert html =~ "15 Questions"
       assert html =~ "60 Min"
       assert html =~ "border-primary"
-      refute html =~ "Start Exam"
+      refute html =~ "Start Assessment"
     end
 
     test "renders start button in :play mode", %{block: block} do
@@ -992,8 +992,8 @@ defmodule AthenaWeb.BlockComponentsTest do
         <.content_block block={@block} mode={:play} />
         """)
 
-      assert html =~ "Final Exam"
-      assert html =~ "Start Exam"
+      assert html =~ "Assessment Session"
+      assert html =~ "Start Assessment"
       assert html =~ "hero-play-solid"
       refute html =~ "ring-primary"
     end
@@ -1006,9 +1006,9 @@ defmodule AthenaWeb.BlockComponentsTest do
         <.content_block block={@block} mode={:review} />
         """)
 
-      assert html =~ "Final Exam"
+      assert html =~ "Assessment Session"
       assert html =~ "15 Questions"
-      refute html =~ "Start Exam"
+      refute html =~ "Start Assessment"
       refute html =~ "hero-play-solid"
       refute html =~ "ring-primary"
     end
@@ -1021,9 +1021,9 @@ defmodule AthenaWeb.BlockComponentsTest do
         <.content_block block={@block} mode={:preview} />
         """)
 
-      assert html =~ "Final Exam"
+      assert html =~ "Assessment Session"
       assert html =~ "15 Questions"
-      refute html =~ "Start Exam"
+      refute html =~ "Start Assessment"
       assert html =~ "cursor-default"
     end
   end

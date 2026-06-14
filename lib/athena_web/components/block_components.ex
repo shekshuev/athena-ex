@@ -21,6 +21,7 @@ defmodule AthenaWeb.BlockComponents do
   attr :attempts_count, :integer, default: 0
   attr :pending_file_urls, :map, default: %{}
   attr :draft, :map, default: nil
+  attr :hide_submit, :boolean, default: false
 
   def content_block(assigns) do
     ~H"""
@@ -42,6 +43,7 @@ defmodule AthenaWeb.BlockComponents do
             submission={@submission}
             attempts_count={@attempts_count}
             draft={@draft}
+            hide_submit={@hide_submit}
           />
         <% :quiz_question -> %>
           <.render_quiz_question
@@ -195,13 +197,17 @@ defmodule AthenaWeb.BlockComponents do
       )
 
     lang = assigns.block.content["language"] || "python3"
-    readonly = assigns.mode not in [:edit, :play]
+    is_processing = !!(assigns.submission && assigns.submission.status in [:pending, :processing])
+    readonly = !!(assigns.mode not in [:edit, :play] or is_processing)
+    execution_results = resolve_execution_results(assigns.draft, assigns.submission)
 
     assigns =
       assigns
       |> assign(:code, code)
       |> assign(:cm_lang, map_cm_lang(lang))
       |> assign(:readonly, readonly)
+      |> assign(:execution_results, execution_results)
+      |> assign(:is_processing, is_processing)
 
     ~H"""
     <div class="relative w-full">
@@ -259,7 +265,7 @@ defmodule AthenaWeb.BlockComponents do
           <% end %>
 
           <div
-            id={"code-editor-#{@mode}-#{@block.id}"}
+            id={"code-editor-#{@mode}-#{@block.id}-#{if @mode == :review, do: :erlang.phash2(@code), else: "static"}"}
             phx-hook="CodeEditor"
             data-language={@cm_lang}
             data-readonly={to_string(@readonly)}
@@ -271,42 +277,154 @@ defmodule AthenaWeb.BlockComponents do
           </div>
         </div>
       </div>
+
+      <%= if @execution_results != [] do %>
+        <div class="mt-2 bg-base-300/20 rounded-sm border border-base-300 overflow-hidden">
+          <table class="table table-xs w-full font-mono">
+            <thead class="bg-base-300/50 uppercase tracking-widest text-[10px]">
+              <tr>
+                <th class="w-12">#</th>
+                <th class="w-32">{gettext("Result")}</th>
+                <th>{gettext("Details")}</th>
+                <th class="text-right">{gettext("Time")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for {res, idx} <- Enum.with_index(@execution_results) do %>
+                <tr class="border-base-300">
+                  <td class="opacity-40">{idx + 1}</td>
+                  <td class={
+                    if res["status"] == "accepted",
+                      do: "text-success font-bold",
+                      else: "text-error font-bold"
+                  }>
+                    {String.upcase(res["status"])}
+                  </td>
+                  <td>
+                    <%= if res["is_hidden"] do %>
+                      <span class="opacity-30 italic flex items-center gap-1 text-[10px]">
+                        <.icon name="hero-eye-slash" class="size-3" />
+                        {gettext("Hidden Test")}
+                      </span>
+                    <% else %>
+                      <%= if res["status"] != "accepted" do %>
+                        <div class="text-[10px] space-y-1">
+                          <div class="flex gap-1">
+                            <span class="font-bold opacity-40">IN:</span><span>{res["input"]}</span>
+                          </div>
+                          <div class="flex gap-1">
+                            <span class="font-bold text-error/60">GOT:</span><span class="text-error">{res["stdout"]}</span>
+                          </div>
+                          <div class="flex gap-1 border-t border-base-300 pt-1">
+                            <span class="font-bold text-success/60">EXP:</span><span class="text-success">{res["expected"]}</span>
+                          </div>
+                        </div>
+                      <% else %>
+                        <span class="opacity-20 text-[10px]">---</span>
+                      <% end %>
+                    <% end %>
+                  </td>
+                  <td class="text-right opacity-50 text-[10px]">{res["time"]}s</td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% end %>
+
+      <%= if @mode in [:play, :review] do %>
+        <div class="mt-6 space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <button
+                type="button"
+                phx-click="run_code"
+                phx-value-block_id={@block.id}
+                class="btn btn-outline btn-sm"
+                disabled={@readonly}
+              >
+                <.icon name="hero-play" class="size-4 mr-1" /> {gettext("Run")}
+              </button>
+
+              <button
+                :if={not @hide_submit}
+                type="submit"
+                class="btn btn-primary btn-sm"
+                disabled={@readonly || @is_processing}
+              >
+                <%= cond do %>
+                  <% @is_processing -> %>
+                    <span class="loading loading-spinner loading-xs"></span> {gettext("Checking...")}
+                  <% @readonly -> %>
+                    {gettext("Locked")}
+                  <% @submission != nil -> %>
+                    {gettext("Resubmit")}
+                  <% true -> %>
+                    {gettext("Submit")}
+                <% end %>
+              </button>
+            </div>
+
+            <span :if={@block.content["max_attempts"]} class="text-xs text-base-content/50">
+              {gettext("Attempts:")} {@attempts_count} / {@block.content["max_attempts"]}
+            </span>
+          </div>
+        </div>
+      <% end %>
     </div>
     """
   end
 
-  @doc false
+  defp resolve_execution_results(draft, submission) do
+    draft_results = if draft, do: Map.get(draft, "execution_results") || [], else: []
+
+    if draft_results != [] do
+      draft_results
+    else
+      extract_execution_results(submission)
+    end
+  end
+
+  defp extract_execution_results(nil), do: []
+
+  defp extract_execution_results(submission) do
+    content_map =
+      if is_struct(submission.content),
+        do: Map.from_struct(submission.content),
+        else: submission.content || %{}
+
+    Map.get(content_map, "execution_results") || Map.get(content_map, :execution_results) || []
+  end
+
   defp compute_code_for_mode(:edit, block, _draft, _answers, _submission),
     do: block.content["initial_code"] || ""
 
   defp compute_code_for_mode(:play, block, draft, answers, submission) do
-    extract_code_answer(%{block: block, answers: answers, submission: submission}) ||
-      extract_draft_code(draft) ||
-      block.content["initial_code"] ||
-      ""
+    extract_code_answer(block.id, answers, submission, draft) ||
+      block.content["initial_code"] || ""
   end
 
   defp compute_code_for_mode(_other_mode, block, _draft, answers, submission) do
-    extract_code_answer(%{block: block, answers: answers, submission: submission}) ||
-      block.content["initial_code"] ||
-      ""
+    extract_code_answer(block.id, answers, submission, nil) ||
+      block.content["initial_code"] || ""
   end
 
-  @doc false
-  defp extract_draft_code(nil), do: nil
+  defp extract_code_answer(block_id, answers, submission, draft) do
+    live_answer = Map.get(answers || %{}, block_id)
 
-  defp extract_draft_code(draft) when is_map(draft) do
-    draft["code"] || draft[:code]
-  end
+    cond do
+      present?(live_answer) ->
+        do_extract_code(live_answer)
 
-  defp map_cm_lang("cpp"), do: "cpp"
-  defp map_cm_lang("sql"), do: "sql"
-  defp map_cm_lang(_), do: "python"
+      present?(submission) and present?(do_extract_code(submission)) ->
+        do_extract_code(submission)
 
-  defp extract_code_answer(assigns) do
-    answer = Map.get(assigns[:answers] || %{}, assigns.block.id)
+      present?(draft) ->
+        do_extract_code(draft)
 
-    do_extract_code(answer) || do_extract_code(assigns[:submission])
+      true ->
+        nil
+    end
   end
 
   defp do_extract_code(%Athena.Learning.Submission{content: content}),
@@ -316,12 +434,19 @@ defmodule AthenaWeb.BlockComponents do
     Map.get(content, :code) || Map.get(content, :text_answer)
   end
 
+  defp do_extract_code(%{content: content}) when is_map(content), do: do_extract_code(content)
+  defp do_extract_code(%{"content" => content}) when is_map(content), do: do_extract_code(content)
+
   defp do_extract_code(%{} = map) when not is_struct(map) do
     map["code"] || map[:code] || map["text_answer"] || map[:text_answer]
   end
 
-  defp do_extract_code(val) when is_binary(val), do: val
+  defp do_extract_code(val) when is_binary(val) and val != "", do: val
   defp do_extract_code(_), do: nil
+
+  defp map_cm_lang("cpp"), do: "cpp"
+  defp map_cm_lang("sql"), do: "sql"
+  defp map_cm_lang(_), do: "python"
 
   defp render_quiz_question(assigns) do
     q_type = assigns.block.content["question_type"] || "open"
@@ -372,20 +497,61 @@ defmodule AthenaWeb.BlockComponents do
   end
 
   defp extract_quiz_answer(assigns, q_type) do
-    live_answer = Map.get(assigns.answers || %{}, assigns.block.id)
     answer_type = assigns.block.content["answer_type"] || "plain_text"
 
-    if live_answer do
+    live_answer = Map.get(assigns.answers || %{}, assigns.block.id)
+
+    if present?(live_answer) do
       if is_struct(live_answer, Athena.Learning.Submission) do
         extract_from_submission(live_answer, q_type, answer_type)
       else
         live_answer
       end
     else
-      extract_from_submission(assigns[:submission], q_type, answer_type) ||
+      sub_answer = extract_from_submission(assigns[:submission], q_type, answer_type)
+
+      if present?(sub_answer) do
+        sub_answer
+      else
         extract_from_draft(assigns[:draft], q_type, answer_type)
+      end
     end
   end
+
+  defp extract_from_submission(nil, _q_type, _answer_type), do: nil
+
+  defp extract_from_submission(submission, q_type, answer_type)
+       when q_type in ["exact_match", "open"] do
+    content =
+      if is_struct(submission) do
+        if is_struct(submission.content),
+          do: Map.from_struct(submission.content),
+          else: submission.content || %{}
+      else
+        Map.get(submission, :content) || Map.get(submission, "content") || %{}
+      end
+
+    if answer_type == "rich_text" do
+      Map.get(content, "rich_answer") || Map.get(content, :rich_answer)
+    else
+      Map.get(content, "text_answer") || Map.get(content, :text_answer)
+    end
+  end
+
+  defp extract_from_submission(submission, _q_type, _answer_type) do
+    content =
+      if is_struct(submission) do
+        if is_struct(submission.content),
+          do: Map.from_struct(submission.content),
+          else: submission.content || %{}
+      else
+        Map.get(submission, :content) || Map.get(submission, "content") || %{}
+      end
+
+    Map.get(content, "selected_choices") || Map.get(content, :selected_choices)
+  end
+
+  defp present?(val), do: not is_nil(val) and val != "" and val != []
 
   defp extract_from_draft(nil, _q_type, _answer_type), do: nil
 
@@ -399,21 +565,6 @@ defmodule AthenaWeb.BlockComponents do
 
   defp extract_from_draft(draft, _q_type, _answer_type) do
     draft["selected_choices"] || draft[:selected_choices]
-  end
-
-  defp extract_from_submission(nil, _q_type, _answer_type), do: nil
-
-  defp extract_from_submission(%{content: content}, q_type, answer_type)
-       when q_type in ["exact_match", "open"] do
-    if answer_type == "rich_text" do
-      Map.get(content, "rich_answer") || Map.get(content, :rich_answer)
-    else
-      Map.get(content, "text_answer") || Map.get(content, :text_answer)
-    end
-  end
-
-  defp extract_from_submission(%{content: content}, _q_type, _answer_type) do
-    Map.get(content, "selected_choices") || Map.get(content, :selected_choices)
   end
 
   defp render_quiz_inputs(%{q_type: "exact_match"} = assigns) do
@@ -551,7 +702,7 @@ defmodule AthenaWeb.BlockComponents do
       <div class="editor-wrapper group/tiptap relative outline-none" tabindex="-1">
         <.tiptap_toolbar mode={:edit} />
         <div
-          id={"tiptap-open-answer-#{@mode}-#{@block.id}"}
+          id={"tiptap-open-answer-#{@mode}-#{@block.id}-#{if @mode == :review, do: :erlang.phash2(@initial_content), else: "static"}"}
           phx-hook="TiptapEditor"
           data-id={@block.id}
           data-input-id={"open-answer-#{@block.id}"}
@@ -631,12 +782,11 @@ defmodule AthenaWeb.BlockComponents do
 
   defp render_quiz_exam(assigns) do
     ~H"""
-    <div class="p-8 bg-base-100 rounded-sm border border-base-200 text-center relative overflow-hidden">
-      <div class="absolute top-0 left-0 w-full h-1 bg-primary"></div>
+    <div class="p-8 bg-base-100 rounded-sm border border-base-300 text-center">
       <div class="size-16 bg-primary/10 text-primary rounded-sm flex items-center justify-center mx-auto mb-4">
         <.icon name="hero-academic-cap-solid" class="size-8" />
       </div>
-      <h3 class="text-2xl font-black mb-2">{gettext("Final Exam")}</h3>
+      <h3 class="text-2xl font-black mb-2">{gettext("Assessment Session")}</h3>
       <div class="flex items-center justify-center gap-4 text-sm font-bold text-base-content/60 uppercase tracking-widest">
         <span>{@block.content["count"] || 10} {gettext("Questions")}</span>
         <span :if={@block.content["time_limit"]}>
@@ -644,17 +794,67 @@ defmodule AthenaWeb.BlockComponents do
         </span>
       </div>
 
-      <%= if @mode == :play do %>
-        <div class="mt-8">
-          <button
-            phx-click="start_exam"
-            phx-value-block_id={@block.id}
-            class="btn btn-primary px-10"
-          >
-            {gettext("Start Exam")} <.icon name="hero-play-solid" class="size-4 ml-2" />
-          </button>
-        </div>
-      <% end %>
+      <div class="mt-8">
+        <%= if @submission do %>
+          <%= cond do %>
+            <% @submission.status == :graded && (@submission.content["cheat_count"] || 0) >= (@block.content["allowed_blur_attempts"] || 3) -> %>
+              <div class="inline-flex items-center gap-2 text-xl font-black text-error bg-error/10 border border-error/30 px-6 py-3 rounded-sm">
+                <.icon name="hero-x-circle-solid" class="size-6" />
+                {gettext("Assessment Failed (Violations)")}
+              </div>
+            <% @submission.status in [:graded, :needs_review, :rejected] -> %>
+              <div class="inline-flex flex-col items-center gap-2">
+                <div class={[
+                  "inline-flex items-center gap-3 text-lg font-black px-4 py-2 rounded-sm border",
+                  @submission.status == :graded && "text-success bg-success/10 border-success/30",
+                  @submission.status == :needs_review &&
+                    "text-warning bg-warning/10 border-warning/30",
+                  @submission.status == :rejected && "text-error bg-error/10 border-error/30"
+                ]}>
+                  <.icon
+                    name={
+                      case @submission.status do
+                        :graded -> "hero-check-circle-solid"
+                        :needs_review -> "hero-clock-solid"
+                        :rejected -> "hero-x-circle-solid"
+                        _ -> "hero-information-circle-solid"
+                      end
+                    }
+                    class="size-5"
+                  />
+                  {gettext("Assessment Completed")}
+                  <span class="opacity-30">|</span>
+                  <span>{@submission.score || 0} / 100</span>
+                </div>
+                <%= if @submission.status == :needs_review do %>
+                  <span class="text-xs font-bold uppercase tracking-widest mt-2">
+                    {gettext("Pending Instructor Review")}
+                  </span>
+                <% end %>
+              </div>
+            <% @submission.status in [:pending, :draft, :processing] -> %>
+              <button
+                phx-click="continue_exam"
+                phx-value-block_id={@block.id}
+                class="btn btn-primary px-12"
+              >
+                {gettext("Continue Assessment")}
+                <.icon name="hero-arrow-right" class="size-5 ml-2" />
+              </button>
+            <% true -> %>
+          <% end %>
+        <% else %>
+          <%= if @mode == :play do %>
+            <button
+              phx-click="start_exam"
+              phx-value-block_id={@block.id}
+              class="btn btn-primary px-10"
+            >
+              {gettext("Start Assessment")} <.icon name="hero-play-solid" class="size-4 ml-2" />
+            </button>
+          <% end %>
+        <% end %>
+      </div>
     </div>
     """
   end

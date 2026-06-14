@@ -23,34 +23,43 @@ defmodule AthenaWeb.StudioLive.Library do
      socket
      |> assign(block_to_delete: nil)
      |> assign(block_to_share: nil)
+     |> assign(has_blocks: false)
      |> stream(:library_blocks, [])}
   end
 
   @impl true
-  def handle_params(params, _url, socket) do
-    search = Map.get(params, "search", "")
+  def handle_params(params, url, socket) do
+    uri = URI.parse(url)
+    current_path = if uri.query, do: "#{uri.path}?#{uri.query}", else: uri.path
 
-    flop_params =
-      if search != "" do
-        Map.put(params, "filters", %{
-          "0" => %{"field" => "title", "op" => "ilike_and", "value" => search}
-        })
-      else
-        params
-      end
+    socket = assign(socket, :current_path, current_path)
+
+    {:noreply, load_blocks(socket, params)}
+  end
+
+  defp load_blocks(socket, params) do
+    search = Map.get(params, "search", "")
+    type = Map.get(params, "type", "all")
+    tag = Map.get(params, "tag", "")
+
+    flop_filters = build_flop_filters(search, type, tag)
+    flop_params = Map.merge(params, %{"filters" => flop_filters})
 
     case Content.list_library_blocks(socket.assigns.current_user, flop_params) do
       {:ok, {blocks, meta}} ->
-        socket =
-          socket
-          |> assign(meta: meta, search: search)
-          |> stream(:library_blocks, blocks, reset: true)
-          |> apply_action(socket.assigns.live_action, params)
-
-        {:noreply, socket}
+        socket
+        |> assign(meta: meta)
+        |> assign(search: search)
+        |> assign(type_filter: type)
+        |> assign(tag_filter: tag)
+        |> assign(has_blocks: blocks != [])
+        |> stream(:library_blocks, blocks, reset: true)
+        |> apply_action(socket.assigns.live_action, params)
 
       {:error, _meta} ->
-        {:noreply, push_patch(socket, to: ~p"/studio/library")}
+        socket
+        |> assign(search: search, type_filter: type, tag_filter: tag, has_blocks: false)
+        |> stream(:library_blocks, [], reset: true)
     end
   end
 
@@ -88,9 +97,20 @@ defmodule AthenaWeb.StudioLive.Library do
   end
 
   @impl true
-  def handle_event("search", %{"search" => search}, socket) do
-    params = build_query_params(socket.assigns, %{"search" => search, "page" => 1})
-    {:noreply, push_patch(socket, to: ~p"/studio/library?#{params}")}
+  def handle_event("update_filters", params, socket) do
+    overrides = %{
+      "search" => params["search"] || "",
+      "type" => params["type"] || "all",
+      "tag" => params["tag"] || "",
+      "page" => 1
+    }
+
+    query_params = build_query_params(socket.assigns, overrides)
+    {:noreply, push_patch(socket, to: ~p"/studio/library?#{query_params}")}
+  end
+
+  def handle_event("reset_filters", _params, socket) do
+    {:noreply, push_patch(socket, to: ~p"/studio/library")}
   end
 
   def handle_event("update_page_size", %{"page_size" => size}, socket) do
@@ -168,31 +188,8 @@ defmodule AthenaWeb.StudioLive.Library do
 
   @impl true
   def handle_info(:refresh_library, socket) do
-    params = %{
-      "search" => socket.assigns.search,
-      "page" => socket.assigns.meta.current_page,
-      "page_size" => socket.assigns.meta.page_size
-    }
-
-    flop_params =
-      if params["search"] != "" do
-        Map.put(params, "filters", %{
-          "0" => %{"field" => "title", "op" => "ilike_and", "value" => params["search"]}
-        })
-      else
-        params
-      end
-
-    case Content.list_library_blocks(socket.assigns.current_user, flop_params) do
-      {:ok, {blocks, meta}} ->
-        {:noreply,
-         socket
-         |> assign(meta: meta)
-         |> stream(:library_blocks, blocks, reset: true)}
-
-      {:error, _meta} ->
-        {:noreply, socket}
-    end
+    params = build_query_params(socket.assigns, %{})
+    {:noreply, load_blocks(socket, params)}
   end
 
   defp block_badges(block, user) do
@@ -254,6 +251,35 @@ defmodule AthenaWeb.StudioLive.Library do
     """
   end
 
+  defp build_flop_filters(search, type, tag) do
+    filters = []
+
+    filters =
+      if search != "",
+        do: [%{"field" => "title", "op" => "ilike_and", "value" => search} | filters],
+        else: filters
+
+    filters =
+      if type in ["", "all"],
+        do: filters,
+        else: [%{"field" => "type", "op" => "==", "value" => type} | filters]
+
+    tags_list =
+      (tag || "")
+      |> String.split(",")
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+
+    filters =
+      Enum.reduce(tags_list, filters, fn t, acc ->
+        [%{"field" => "tags", "op" => "contains", "value" => t} | acc]
+      end)
+
+    filters
+    |> Enum.with_index(fn filter, index -> {Integer.to_string(index), filter} end)
+    |> Map.new()
+  end
+
   @doc false
   defp build_query_params(assigns, overrides) do
     meta = assigns.meta
@@ -268,15 +294,22 @@ defmodule AthenaWeb.StudioLive.Library do
       |> List.wrap()
       |> Enum.map(&to_string/1)
 
+    stringified_overrides = Map.new(overrides, fn {k, v} -> {to_string(k), v} end)
+
     %{
       "search" => assigns.search,
+      "type" => assigns.type_filter,
+      "tag" => assigns.tag_filter,
       "page" => meta.current_page,
       "page_size" => meta.page_size,
       "order_by" => order_by,
       "order_directions" => order_directions
     }
-    |> Map.merge(overrides)
-    |> Enum.reject(fn {_, v} -> is_nil(v) or v == "" or v == [] end)
+    |> Map.merge(stringified_overrides)
+    |> Enum.reject(fn
+      {_, v} when is_list(v) -> v == []
+      {_, v} -> v in [nil, "", "all"]
+    end)
     |> Map.new()
   end
 
@@ -301,95 +334,157 @@ defmodule AthenaWeb.StudioLive.Library do
         </.button>
       </div>
 
-      <div class="flex gap-4">
-        <.form for={nil} phx-change="search" phx-submit="search" class="w-full max-w-sm">
-          <div class="relative">
-            <.icon
-              name="hero-magnifying-glass"
-              class="absolute left-3 top-3.5 size-5 text-base-content/50 z-10"
-            />
+      <div class="bg-base-100 border border-base-200 rounded-box p-4 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-bold text-sm uppercase tracking-wider opacity-70">{gettext("Filters")}</h2>
+          <button
+            phx-click="reset_filters"
+            type="button"
+            class="btn btn-ghost btn-xs text-base-content/60 hover:text-error transition-colors"
+          >
+            <.icon name="hero-arrow-path" class="size-3 mr-1" />
+            {gettext("Reset All")}
+          </button>
+        </div>
+
+        <form phx-change="update_filters" phx-submit="update_filters" class="space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <.input
               type="text"
               name="search"
               value={@search}
+              label={gettext("Template Title")}
               placeholder={gettext("Search templates...")}
-              class="input input-bordered w-full pl-10"
+              phx-debounce="500"
+            />
+            <.input
+              type="select"
+              name="type"
+              value={@type_filter}
+              options={[
+                {gettext("All Types"), "all"},
+                {gettext("Text Block"), "text"},
+                {gettext("Code Sandbox"), "code"},
+                {gettext("Quiz Question"), "quiz_question"},
+                {gettext("Assessment Session"), "quiz_exam"},
+                {gettext("Image"), "image"},
+                {gettext("Video"), "video"},
+                {gettext("Files & Materials"), "attachment"},
+                {gettext("File Assignment"), "file_assignment"}
+              ]}
+              label={gettext("Block Type")}
+            />
+            <.input
+              type="text"
+              name="tag"
+              value={@tag_filter}
+              label={gettext("Tags (comma separated)")}
+              placeholder={gettext("e.g. math, exam")}
               phx-debounce="500"
             />
           </div>
-        </.form>
+        </form>
+      </div>
+
+      <div
+        :if={not @has_blocks}
+        class="text-center py-24 px-6 border border-dashed border-base-300 rounded-box mt-4"
+      >
+        <.icon name="hero-archive-box" class="size-16 text-base-content/20 mb-4 mx-auto" />
+        <h3 class="text-xl font-bold text-base-content">
+          {gettext("No templates found")}
+        </h3>
+        <p class="text-base-content/60 mt-2 max-w-sm mx-auto text-sm">
+          {gettext("No library blocks match your search or filter criteria.")}
+        </p>
       </div>
 
       <% path_fn = fn overrides -> ~p"/studio/library?#{build_query_params(assigns, overrides)}" end %>
 
-      <.table id="library-blocks" rows={@streams.library_blocks} meta={@meta} path_fn={path_fn}>
-        <:col :let={{_id, block}} label={gettext("Title")} sort="title">
-          <div class="flex flex-col gap-1 items-start">
-            <span class="font-bold">{block.title}</span>
-            <.access_badges info={block_badges(block, @current_user)} />
-          </div>
-        </:col>
-        <:col :let={{_id, block}} label={gettext("Type")} sort="type">
-          <.type_badge type={block.type} />
-        </:col>
-        <:col :let={{_id, block}} label={gettext("Created At")} sort="inserted_at">
-          <span class="text-sm opacity-60">{Calendar.strftime(block.inserted_at, "%d.%m.%Y")}</span>
-        </:col>
-        <:action :let={{_id, block}}>
-          <% info = block_badges(block, @current_user) %>
-          <% can_edit =
-            info.role in [:owner, :writer] or Identity.can?(@current_user, "library.update", block) %>
-          <% can_view = can_edit or info.role == :reader or info.is_public %>
+      <div :if={@has_blocks}>
+        <.table id="library-blocks" rows={@streams.library_blocks} meta={@meta} path_fn={path_fn}>
+          <:col :let={{_id, block}} label={gettext("Title")} sort="title">
+            <div class="flex flex-col gap-1 items-start">
+              <span class="font-bold">{block.title}</span>
+              <.access_badges info={block_badges(block, @current_user)} />
+            </div>
+          </:col>
 
-          <div class="flex justify-end gap-2">
-            <.button
-              :if={can_view}
-              navigate={~p"/studio/library/#{block.id}/editor"}
-              class="btn btn-primary btn-xs btn-square btn-soft"
-              title={if can_edit, do: gettext("Open Editor"), else: gettext("View Template")}
-            >
-              <.icon
-                name={if can_edit, do: "hero-wrench-screwdriver", else: "hero-eye"}
-                class="size-4"
-              />
-            </.button>
+          <:col :let={{_id, block}} label={gettext("Type")} sort="type">
+            <.type_badge type={block.type} />
+          </:col>
 
-            <.button
-              :if={can_edit}
-              patch={~p"/studio/library/#{block.id}/edit?#{build_query_params(assigns, %{})}"}
-              class="btn btn-ghost btn-xs btn-square"
-              title={gettext("Edit Metadata")}
-            >
-              <.icon name="hero-pencil-square" class="size-4" />
-            </.button>
+          <:col :let={{_id, block}} label={gettext("Tags")}>
+            <div class="flex flex-wrap gap-1">
+              <span :for={tag <- block.tags || []} class="badge badge-xs badge-neutral">
+                {tag}
+              </span>
+              <span :if={(block.tags || []) == []} class="text-xs opacity-40 italic">
+                {gettext("No tags")}
+              </span>
+            </div>
+          </:col>
 
-            <.button
-              :if={info.role == :owner or Identity.can?(@current_user, "library.update", block)}
-              type="button"
-              phx-click="share_click"
-              phx-value-id={block.id}
-              class="btn btn-ghost btn-xs btn-square"
-              title={gettext("Share Access")}
-            >
-              <.icon name="hero-share" class="size-4" />
-            </.button>
+          <:col :let={{_id, block}} label={gettext("Created At")} sort="inserted_at">
+            <span class="text-sm opacity-60">{Calendar.strftime(block.inserted_at, "%d.%m.%Y")}</span>
+          </:col>
 
-            <.button
-              :if={info.role == :owner or Identity.can?(@current_user, "library.delete", block)}
-              type="button"
-              phx-click="delete_click"
-              phx-value-id={block.id}
-              class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
-              title={gettext("Delete")}
-            >
-              <.icon name="hero-trash" class="size-4" />
-            </.button>
-          </div>
-        </:action>
-      </.table>
+          <:action :let={{_id, block}}>
+            <% info = block_badges(block, @current_user) %>
+            <% can_edit =
+              info.role in [:owner, :writer] or Identity.can?(@current_user, "library.update", block) %>
+            <% can_view = can_edit or info.role == :reader or info.is_public %>
 
-      <div class="flex justify-end mt-8">
-        <.pagination meta={@meta} path_fn={path_fn} />
+            <div class="flex justify-end gap-2">
+              <.button
+                :if={can_view}
+                navigate={~p"/studio/library/#{block.id}/editor?#{[return_to: @current_path]}"}
+                class="btn btn-primary btn-xs btn-square btn-soft"
+                title={if can_edit, do: gettext("Open Editor"), else: gettext("View Template")}
+              >
+                <.icon
+                  name={if can_edit, do: "hero-wrench-screwdriver", else: "hero-eye"}
+                  class="size-4"
+                />
+              </.button>
+
+              <.button
+                :if={can_edit}
+                patch={~p"/studio/library/#{block.id}/edit?#{build_query_params(assigns, %{})}"}
+                class="btn btn-ghost btn-xs btn-square"
+                title={gettext("Edit Metadata")}
+              >
+                <.icon name="hero-pencil-square" class="size-4" />
+              </.button>
+
+              <.button
+                :if={info.role == :owner or Identity.can?(@current_user, "library.update", block)}
+                type="button"
+                phx-click="share_click"
+                phx-value-id={block.id}
+                class="btn btn-ghost btn-xs btn-square"
+                title={gettext("Share Access")}
+              >
+                <.icon name="hero-share" class="size-4" />
+              </.button>
+
+              <.button
+                :if={info.role == :owner or Identity.can?(@current_user, "library.delete", block)}
+                type="button"
+                phx-click="delete_click"
+                phx-value-id={block.id}
+                class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
+                title={gettext("Delete")}
+              >
+                <.icon name="hero-trash" class="size-4" />
+              </.button>
+            </div>
+          </:action>
+        </.table>
+
+        <div class="flex justify-end mt-8">
+          <.pagination meta={@meta} path_fn={path_fn} />
+        </div>
       </div>
 
       <.slide_over

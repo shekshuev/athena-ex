@@ -162,6 +162,133 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       assert length(final_block.content["options"]) == 2
       assert hd(final_block.content["options"])["id"] == "opt1"
     end
+
+    test "updates text block body via update_content event", %{conn: conn, admin: admin} do
+      block =
+        insert(:library_block,
+          type: :text,
+          content: %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+          owner_id: admin.id
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      new_content = %{
+        "type" => "doc",
+        "content" => [
+          %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => "Hello"}]}
+        ]
+      }
+
+      render_hook(lv, "update_content", %{"content" => new_content})
+
+      {:ok, updated_block} = Content.get_library_block(block.id)
+      assert updated_block.content == new_content
+    end
+
+    test "updates quiz_question body via update_content event", %{conn: conn, admin: admin} do
+      block =
+        insert(:library_block,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "open",
+            "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+            "options" => []
+          },
+          owner_id: admin.id
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      new_body = %{
+        "type" => "doc",
+        "content" => [
+          %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => "New question?"}]}
+        ]
+      }
+
+      render_hook(lv, "update_content", %{"content" => new_body})
+
+      {:ok, updated_block} = Content.get_library_block(block.id)
+      assert updated_block.content["body"] == new_body
+      assert updated_block.content["question_type"] == "open"
+    end
+
+    test "updates quiz correct_answer via update_quiz_content", %{conn: conn, admin: admin} do
+      block =
+        insert(:library_block,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "exact_match",
+            "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+            "options" => [],
+            "correct_answer" => ""
+          },
+          owner_id: admin.id
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      render_hook(lv, "update_quiz_content", %{"correct_answer" => "flag{test123}"})
+
+      {:ok, updated_block} = Content.get_library_block(block.id)
+      assert updated_block.content["correct_answer"] == "flag{test123}"
+    end
+  end
+
+  describe "Code Block Test Cases" do
+    test "adds and removes test cases for code block", %{conn: conn, admin: admin} do
+      block =
+        insert(:library_block,
+          type: :code,
+          content: %{
+            "language" => "python",
+            "code" => "print('hello')",
+            "test_cases" => []
+          },
+          owner_id: admin.id
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      render_hook(lv, "add_test_case", %{})
+
+      {:ok, updated_block} = Content.get_library_block(block.id)
+      assert length(updated_block.content["test_cases"]) == 1
+      assert hd(updated_block.content["test_cases"])["weight"] == 100
+
+      render_hook(lv, "add_test_case", %{})
+
+      {:ok, updated_block2} = Content.get_library_block(block.id)
+      assert length(updated_block2.content["test_cases"]) == 2
+      [tc1, tc2] = updated_block2.content["test_cases"]
+      assert tc1["weight"] == 100
+      assert tc2["weight"] == 0
+
+      render_hook(lv, "remove_test_case", %{"tc_id" => tc1["id"]})
+
+      {:ok, final_block} = Content.get_library_block(block.id)
+      assert length(final_block.content["test_cases"]) == 1
+      assert hd(final_block.content["test_cases"])["id"] == tc2["id"]
+    end
+
+    test "run_instructor_test shows error when no solution code", %{conn: conn, admin: admin} do
+      block =
+        insert(:library_block,
+          type: :code,
+          content: %{
+            "language" => "python",
+            "code" => "",
+            "test_cases" => [%{"id" => "tc1", "input" => "", "expected_output" => "hello"}]
+          },
+          owner_id: admin.id
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      html = render_hook(lv, "run_instructor_test", %{})
+      assert html =~ "Please write a Reference Solution first!"
+    end
   end
 
   describe "Media Upload Modal" do
@@ -171,7 +298,10 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
 
       lv
-      |> element("button[phx-click='request_media_upload'][phx-value-media_type='image']")
+      |> element(
+        "button[phx-click='request_media_upload'][phx-value-media_type='image']",
+        "Upload File"
+      )
       |> render_click()
 
       assert render(lv) =~ "Upload Media"
@@ -208,6 +338,50 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
     end
   end
 
+  describe "Real-time Collaboration (PubSub)" do
+    test "redirects when access is revoked via refresh_library message", %{
+      conn: conn,
+      admin: owner
+    } do
+      role_reader = insert(:role, permissions: ["library.read"])
+      reader = insert(:account, role: role_reader)
+
+      block = insert(:library_block, title: "Revoked Template", owner_id: owner.id)
+      insert(:library_block_share, library_block: block, account_id: reader.id, role: :reader)
+
+      reader_conn = init_test_session(conn, %{"account_id" => reader.id})
+      {:ok, lv, _html} = live(reader_conn, ~p"/studio/library/#{block.id}/editor")
+
+      Content.revoke_block_share(owner, block, reader.id)
+
+      send(lv.pid, :refresh_library)
+
+      assert_redirect(lv, "/studio/library")
+    end
+
+    test "shows flash when role changes via refresh_library message", %{
+      conn: conn,
+      admin: owner
+    } do
+      role_writer = insert(:role, permissions: ["library.read", "library.update"])
+      writer = insert(:account, role: role_writer)
+
+      block = insert(:library_block, title: "Upgraded Template", owner_id: owner.id)
+      insert(:library_block_share, library_block: block, account_id: writer.id, role: :reader)
+
+      writer_conn = init_test_session(conn, %{"account_id" => writer.id})
+      {:ok, lv, _html} = live(writer_conn, ~p"/studio/library/#{block.id}/editor")
+
+      Content.share_block(owner, block, writer.id, :writer)
+      send(lv.pid, :refresh_library)
+
+      Process.sleep(50)
+
+      html = render(lv)
+      assert html =~ "Your access level has been updated."
+    end
+  end
+
   describe "Collaborator Roles (Reader vs Writer)" do
     setup %{admin: owner} do
       role_reader = insert(:role, permissions: ["library.read"])
@@ -221,7 +395,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       insert(:library_block_share, library_block: block, account_id: reader.id, role: :reader)
       insert(:library_block_share, library_block: block, account_id: writer.id, role: :writer)
 
-      %{block: block, reader: reader, writer: writer}
+      %{block: block, reader: reader, writer: writer, owner: owner}
     end
 
     test "reader sees preview mode and no inspector", %{conn: conn, block: block, reader: reader} do
@@ -230,7 +404,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
 
       assert html =~ block.title
       refute html =~ "Inspector"
-      refute html =~ "Template Settings"
+      refute html =~ "General Settings"
       assert html =~ ~s(data-readonly="true")
     end
 
@@ -251,14 +425,54 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       assert unchanged_block.title == "Shared Template"
     end
 
+    test "reader is blocked from adding quiz options", %{conn: conn, owner: owner} do
+      role_reader = insert(:role, permissions: ["library.read"])
+      reader = insert(:account, role: role_reader)
+
+      block =
+        insert(:library_block,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "multiple",
+            "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+            "options" => []
+          },
+          owner_id: owner.id
+        )
+
+      insert(:library_block_share, library_block: block, account_id: reader.id, role: :reader)
+
+      reader_conn = init_test_session(conn, %{"account_id" => reader.id})
+      {:ok, lv, _html} = live(reader_conn, ~p"/studio/library/#{block.id}/editor")
+
+      render_hook(lv, "add_quiz_option", %{})
+
+      {:ok, unchanged_block} = Content.get_library_block(block.id)
+      assert unchanged_block.content["options"] == []
+    end
+
     test "writer sees edit mode and inspector", %{conn: conn, block: block, writer: writer} do
       writer_conn = init_test_session(conn, %{"account_id" => writer.id})
       {:ok, _lv, html} = live(writer_conn, ~p"/studio/library/#{block.id}/editor")
 
       assert html =~ block.title
       assert html =~ "Inspector"
-      assert html =~ "Template Settings"
+      assert html =~ "General Settings"
       assert html =~ ~s(name="library_block[title]")
+    end
+
+    test "writer can update template metadata", %{conn: conn, block: block, writer: writer} do
+      writer_conn = init_test_session(conn, %{"account_id" => writer.id})
+      {:ok, lv, _html} = live(writer_conn, ~p"/studio/library/#{block.id}/editor")
+
+      render_hook(lv, "update_meta", %{
+        "library_block" => %{"title" => "Updated by Writer"},
+        "tags_string" => "new, tags"
+      })
+
+      {:ok, updated_block} = Content.get_library_block(block.id)
+      assert updated_block.title == "Updated by Writer"
+      assert updated_block.tags == ["new", "tags"]
     end
   end
 end

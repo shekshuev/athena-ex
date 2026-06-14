@@ -3,6 +3,7 @@ defmodule Athena.Content.LibraryTest do
 
   alias Athena.Content.Library
   alias Athena.Content.LibraryBlock
+  alias Athena.Content.Block
   import Athena.Factory
 
   setup do
@@ -231,6 +232,9 @@ defmodule Athena.Content.LibraryTest do
 
       results = Library.generate_exam_questions(params)
       assert length(results) == 2
+
+      assert Enum.all?(results, fn b -> %Block{} = b end)
+      assert Enum.all?(results, fn b -> b.type == :quiz_question end)
     end
 
     test "should fill remaining quota using include_tags if mandatory tags are insufficient" do
@@ -256,10 +260,14 @@ defmodule Athena.Content.LibraryTest do
       results = Library.generate_exam_questions(params)
 
       assert length(results) == 1
-      assert hd(results).question == %{"text" => "Q2"}
+      block = hd(results)
+      assert block.type == :quiz_question
+
+      assert block.content["body"] == %{"text" => "Q2"}
+      assert block.content["question_type"] == "single"
     end
 
-    test "should correctly map original block content to the required snapshot format" do
+    test "should correctly map original block content to Block snapshot format" do
       params = %{
         "count" => 1,
         "mandatory_tags" => ["python"],
@@ -272,14 +280,14 @@ defmodule Athena.Content.LibraryTest do
 
       snapshot = hd(results)
 
+      assert %Block{} = snapshot
       assert snapshot.id != nil
-      assert snapshot.original_block_id != nil
-      assert snapshot.type == "single"
-      assert snapshot.question == %{"text" => "Q5"}
+      assert snapshot.type == :quiz_question
+      assert snapshot.content["body"] == %{"text" => "Q5"}
+      assert snapshot.content["question_type"] == "single"
 
-      assert Map.has_key?(snapshot, :options)
-      assert Map.has_key?(snapshot, :correct_answer_text)
-      assert Map.has_key?(snapshot, :explanation)
+      assert snapshot.inserted_at != nil
+      assert snapshot.updated_at != nil
     end
 
     test "should handle gracefully when no blocks match the criteria" do
@@ -292,6 +300,99 @@ defmodule Athena.Content.LibraryTest do
 
       results = Library.generate_exam_questions(params)
       assert results == []
+    end
+
+    test "should return empty list when passed non-map argument" do
+      assert Library.generate_exam_questions(nil) == []
+      assert Library.generate_exam_questions("invalid") == []
+      assert Library.generate_exam_questions(42) == []
+    end
+
+    test "should use default count of 10 if not specified" do
+      owner = Ecto.UUID.generate()
+
+      insert_list(12, :library_block,
+        type: :quiz_question,
+        tags: ["bulk"],
+        owner_id: owner,
+        content: %{"body" => %{"text" => "bulk"}, "question_type" => "single"}
+      )
+
+      params = %{
+        "mandatory_tags" => ["bulk"],
+        "include_tags" => [],
+        "exclude_tags" => []
+      }
+
+      results = Library.generate_exam_questions(params)
+      assert length(results) == 10
+    end
+
+    test "should not duplicate mandatory blocks in random selection" do
+      owner = Ecto.UUID.generate()
+
+      insert(:library_block,
+        type: :quiz_question,
+        tags: ["unique_mandatory"],
+        owner_id: owner,
+        content: %{"body" => %{"text" => "mandatory"}, "question_type" => "single"}
+      )
+
+      params = %{
+        "count" => 5,
+        "mandatory_tags" => ["unique_mandatory"],
+        "include_tags" => ["unique_mandatory"],
+        "exclude_tags" => []
+      }
+
+      results = Library.generate_exam_questions(params)
+
+      assert length(results) == 1
+    end
+
+    test "should include code blocks in exam generation" do
+      owner = Ecto.UUID.generate()
+
+      insert(:library_block,
+        type: :code,
+        tags: ["python_code"],
+        owner_id: owner,
+        content: %{"language" => "python", "code" => "print('hello')"}
+      )
+
+      params = %{
+        "count" => 1,
+        "mandatory_tags" => ["python_code"],
+        "include_tags" => [],
+        "exclude_tags" => []
+      }
+
+      results = Library.generate_exam_questions(params)
+      assert length(results) == 1
+      assert hd(results).type == :code
+      assert hd(results).content["language"] == "python"
+    end
+
+    test "should include file_assignment blocks in exam generation" do
+      owner = Ecto.UUID.generate()
+
+      insert(:library_block,
+        type: :file_assignment,
+        tags: ["assignment"],
+        owner_id: owner,
+        content: %{"max_files" => 3}
+      )
+
+      params = %{
+        "count" => 1,
+        "mandatory_tags" => ["assignment"],
+        "include_tags" => [],
+        "exclude_tags" => []
+      }
+
+      results = Library.generate_exam_questions(params)
+      assert length(results) == 1
+      assert hd(results).type == :file_assignment
     end
   end
 
@@ -349,6 +450,26 @@ defmodule Athena.Content.LibraryTest do
     test "toggle_block_public changes visibility", %{owner: owner, block: block} do
       assert {:ok, updated} = Library.toggle_block_public(owner, block, true)
       assert updated.is_public == true
+
+      assert {:ok, updated2} = Library.toggle_block_public(owner, block, false)
+      assert updated2.is_public == false
+    end
+
+    test "toggle_block_public returns unauthorized for non-owner", %{
+      block: block,
+      collaborator: collaborator
+    } do
+      assert {:error, :unauthorized} = Library.toggle_block_public(collaborator, block, true)
+    end
+
+    test "toggle_block_public works for writer role", %{
+      owner: owner,
+      block: block,
+      collaborator: collaborator
+    } do
+      Library.share_block(owner, block, collaborator.id, :writer)
+      assert {:ok, updated} = Library.toggle_block_public(collaborator, block, true)
+      assert updated.is_public == true
     end
 
     test "list_library_blocks scope includes shared and public blocks for non-owners", %{
@@ -365,6 +486,53 @@ defmodule Athena.Content.LibraryTest do
 
       assert block.id in ids
       assert public_block.id in ids
+    end
+
+    test "can_edit_block? returns true for owner", %{owner: owner, block: block} do
+      assert Library.can_edit_block?(owner, block) == true
+    end
+
+    test "can_edit_block? returns true for writer", %{
+      owner: owner,
+      block: block,
+      collaborator: collaborator
+    } do
+      Library.share_block(owner, block, collaborator.id, :writer)
+      assert Library.can_edit_block?(collaborator, block) == true
+    end
+
+    test "can_edit_block? returns false for reader", %{
+      owner: owner,
+      block: block,
+      collaborator: collaborator
+    } do
+      Library.share_block(owner, block, collaborator.id, :reader)
+      assert Library.can_edit_block?(collaborator, block) == false
+    end
+
+    test "can_edit_block? returns false for unrelated user", %{
+      block: block,
+      collaborator: collaborator
+    } do
+      assert Library.can_edit_block?(collaborator, block) == false
+    end
+
+    test "revoke_block_share returns unauthorized for non-owner non-writer", %{
+      block: block,
+      collaborator: collaborator
+    } do
+      assert {:error, :unauthorized} =
+               Library.revoke_block_share(collaborator, block, collaborator.id)
+    end
+
+    test "share_block returns unauthorized for non-owner non-writer", %{
+      block: block,
+      collaborator: collaborator
+    } do
+      third_party = insert(:account)
+
+      assert {:error, :unauthorized} =
+               Library.share_block(collaborator, block, third_party.id, :reader)
     end
   end
 end

@@ -8,15 +8,19 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="flex-1 flex flex-col h-full relative bg-base-200">
-      <div class="h-14 shrink-0 border-b border-base-300 bg-base-100 flex items-center px-4 gap-2 z-10 overflow-x-auto">
-        <span :for={crumb <- @breadcrumbs} class="flex items-center gap-1">
-          <.icon name="hero-chevron-right" class="size-3 text-base-content/30" />
+    <div class="flex-1 flex flex-col relative h-full">
+      <div class="flex items-center gap-2 mb-8 border-b border-base-300 pb-6">
+        <span class="text-sm font-bold text-base-content/50 uppercase tracking-widest flex items-center gap-2">
+          <.icon name="hero-map" class="size-4" />
+          {gettext("Builder")}
+        </span>
+        <span :for={crumb <- @breadcrumbs} class="flex items-center gap-2">
+          <.icon name="hero-chevron-right" class="size-4 text-base-content/30" />
           <button
             type="button"
             phx-click="select_section"
             phx-value-id={crumb.id}
-            class="text-xs hover:text-primary transition-colors truncate max-w-40 px-1.5 py-0.5 rounded-sm hover:bg-base-200"
+            class="text-sm font-medium hover:text-primary transition-colors truncate max-w-40"
             title={crumb.title}
           >
             {crumb.title}
@@ -26,85 +30,87 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
 
       <div
         :if={@active_section_id == nil}
-        class="flex-1 flex items-center justify-center overflow-y-auto"
+        class="flex-1 flex items-center justify-center"
       >
-        <p class="text-base-content/50 font-medium text-lg">
-          {gettext("Select a section from the sidebar to view its blocks.")}
-        </p>
+        <div class="text-center">
+          <.icon
+            name="hero-document-magnifying-glass"
+            class="size-16 text-base-content/20 mx-auto mb-4"
+          />
+          <p class="text-base-content/50 font-medium text-lg">
+            {gettext("Select a section from the sidebar to view its blocks.")}
+          </p>
+        </div>
       </div>
 
-      <div :if={@active_section_id != nil} class="flex-1 flex flex-col min-h-0">
-        <div class="flex-1 overflow-y-auto p-2 min-h-0">
-          <div class="flex flex-col min-h-full">
+      <div :if={@active_section_id != nil} class="flex-1 flex flex-col">
+        <div
+          id="canvas-blocks-list"
+          phx-hook={if @mode == :edit, do: "Sortable"}
+          data-event-name="reorder_block"
+          class="flex flex-col gap-6 flex-1 pb-20"
+        >
+          <div
+            :for={block <- @blocks}
+            id={"block-wrapper-#{block.id}"}
+            data-block-id={block.id}
+            data-id={block.id}
+            class="relative group flex flex-col scroll-mt-20"
+          >
             <div
-              id="canvas-blocks-list"
-              phx-hook={if @mode == :edit, do: "Sortable"}
-              data-event-name="reorder_block"
-              class="flex flex-col gap-2 flex-1"
+              :if={@mode == :edit}
+              class="absolute -left-8 top-2 flex flex-col items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity sm:flex z-20"
             >
-              <div
-                :for={block <- @blocks}
-                id={"block-wrapper-#{block.id}"}
-                data-block-id={block.id}
-                data-id={block.id}
-                class="relative group flex flex-col scroll-mt-20"
+              <.button
+                phx-click="move_block_up"
+                phx-value-id={block.id}
+                class="min-h-7 h-7 w-7 flex items-center justify-center bg-base-100 border border-base-300 shadow-xs hover:text-primary hover:border-primary transition-colors cursor-pointer rounded-sm text-base-content/50"
+                title={gettext("Move Up")}
               >
-                <div
-                  :if={@mode == :edit}
-                  class="absolute -left-8 top-0 flex flex-col items-center gap-1 opacity-0 group-hover:opacity-50 hover:opacity-100! transition-opacity sm:flex z-10"
-                >
-                  <.button
-                    phx-click="move_block_up"
-                    phx-value-id={block.id}
-                    class="min-h-6 h-6 w-6 flex items-center justify-center hover:text-primary transition-colors cursor-pointer rounded-sm"
-                    title={gettext("Move Up")}
-                  >
-                    <.icon name="hero-chevron-up" class="size-4" />
-                  </.button>
-                  <div
-                    class="cursor-grab drag-handle min-h-6 h-6 w-6 flex items-center justify-center hover:text-primary transition-colors rounded-sm"
-                    title={gettext("Drag to Reorder")}
-                  >
-                    <.icon name="hero-bars-3" class="size-4" />
-                  </div>
-                  <.button
-                    phx-click="move_block_down"
-                    phx-value-id={block.id}
-                    class="min-h-6 h-6 w-6 flex items-center justify-center hover:text-primary transition-colors cursor-pointer rounded-sm"
-                    title={gettext("Move Down")}
-                  >
-                    <.icon name="hero-chevron-down" class="size-4" />
-                  </.button>
-                </div>
+                <.icon name="hero-chevron-up" class="size-4" />
+              </.button>
+              <div
+                class="cursor-grab drag-handle min-h-7 h-7 w-7 flex items-center justify-center bg-base-100 border border-base-300 shadow-xs hover:text-primary hover:border-primary transition-colors rounded-sm text-base-content/50"
+                title={gettext("Drag to Reorder")}
+              >
+                <.icon name="hero-bars-3" class="size-4" />
+              </div>
+              <.button
+                phx-click="move_block_down"
+                phx-value-id={block.id}
+                class="min-h-7 h-7 w-7 flex items-center justify-center bg-base-100 border border-base-300 shadow-xs hover:text-primary hover:border-primary transition-colors cursor-pointer rounded-sm text-base-content/50"
+                title={gettext("Move Down")}
+              >
+                <.icon name="hero-chevron-down" class="size-4" />
+              </.button>
+            </div>
 
-                <div
-                  phx-click="select_block"
-                  phx-value-id={block.id}
-                  class={[
-                    "relative transition-all duration-300 rounded-sm",
-                    @active_block_id != block.id && block.type == :text && "max-h-48 overflow-hidden"
-                  ]}
-                >
-                  <.content_block block={block} mode={@mode} active={@active_block_id == block.id} />
-                  <div
-                    :if={@active_block_id != block.id && block.type == :text}
-                    class="absolute bottom-0 left-0 right-0 h-16 bg-linear-to-t from-base-100 to-transparent pointer-events-none rounded-b-sm"
-                  >
-                  </div>
-                </div>
-
-                <%= if @mode == :edit and @active_block_id == block.id do %>
-                  <div class="mt-2 rounded-sm"><.block_editor block={block} /></div>
-                  <div class="relative z-40 mt-4 mb-8 flex justify-center animate-in fade-in zoom-in duration-200">
-                    <.add_content_panel variant="inline" after_id={block.id} />
-                  </div>
-                <% end %>
+            <div
+              phx-click="select_block"
+              phx-value-id={block.id}
+              class={[
+                "relative transition-all duration-300 rounded-sm w-full",
+                @active_block_id != block.id && block.type == :text && "max-h-48 overflow-hidden"
+              ]}
+            >
+              <.content_block block={block} mode={@mode} active={@active_block_id == block.id} />
+              <div
+                :if={@active_block_id != block.id && block.type == :text}
+                class="absolute bottom-0 left-0 right-0 h-16 bg-linear-to-t from-base-100 to-transparent pointer-events-none rounded-b-sm"
+              >
               </div>
             </div>
 
-            <div :if={@mode == :edit} class="mt-auto pt-8 pb-4 z-30">
-              <.add_content_panel variant="bottom" />
-            </div>
+            <%= if @mode == :edit and @active_block_id == block.id do %>
+              <div class="mt-2 rounded-sm"><.block_editor block={block} /></div>
+              <div class="relative z-40 mt-6 mb-10 flex justify-center animate-in fade-in zoom-in duration-200">
+                <.add_content_panel variant="inline" after_id={block.id} />
+              </div>
+            <% end %>
+          </div>
+
+          <div :if={@mode == :edit} class="mt-auto pt-8 z-30">
+            <.add_content_panel variant="bottom" />
           </div>
         </div>
       </div>
@@ -170,7 +176,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         class="btn btn-outline rounded-sm bg-base-100 border-base-200 hover:border-primary hover:text-primary hover:bg-base-100 flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-academic-cap" class="size-6 opacity-70" />
-        <span>{gettext("Exam")}</span>
+        <span>{gettext("Assessment Session")}</span>
       </.button>
 
       <.button
@@ -264,7 +270,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       <.button
         id={"inline-add-exam-#{@after_id}"}
         phx-hook="TippyTooltip"
-        data-tippy-content={gettext("Quiz Exam")}
+        data-tippy-content={gettext("Assessment Session")}
         phx-click="add_quiz_exam_block"
         phx-value-after_id={@after_id}
         class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary"

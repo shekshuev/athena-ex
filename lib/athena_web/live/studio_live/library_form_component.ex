@@ -17,10 +17,11 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
       {gettext("Text Block"), :text},
       {gettext("Code Sandbox"), :code},
       {gettext("Quiz Question"), :quiz_question},
-      {gettext("Quiz Exam"), :quiz_exam},
+      {gettext("Assessment Session"), :quiz_exam},
       {gettext("Image"), :image},
       {gettext("Video"), :video},
-      {gettext("Files & Materials"), :attachment}
+      {gettext("Files & Materials"), :attachment},
+      {gettext("File Assignment"), :file_assignment}
     ]
 
     {:ok,
@@ -147,6 +148,13 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
     Map.put_new(params, "content", %{
       "description" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
       "files" => []
+    })
+  end
+
+  defp put_default_content(%{"type" => "file_assignment"} = params) do
+    Map.put_new(params, "content", %{
+      "max_files" => 1,
+      "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]}
     })
   end
 
