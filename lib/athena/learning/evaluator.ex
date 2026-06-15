@@ -1,7 +1,7 @@
 defmodule Athena.Learning.Evaluator do
   @moduledoc """
   Synchronous evaluator for auto-graded submissions.
-  Handles exact match, single, multiple choice, and orchestrates Exam rollups.
+  Handles exact match, single, multiple choice, and orchestrates Exam/Ticket rollups.
   """
 
   alias Athena.Learning.{Submission, Submissions}
@@ -23,7 +23,7 @@ defmodule Athena.Learning.Evaluator do
         Map.get(submission.content, :type) ||
         to_string(block.type)
 
-    if to_string(content_type) == "quiz_exam" do
+    if to_string(content_type) in ["quiz_exam", "ticket_exam"] do
       evaluate_exam(submission, block)
     else
       evaluate_single_question(block, submission)

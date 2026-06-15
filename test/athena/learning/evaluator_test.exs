@@ -159,7 +159,7 @@ defmodule Athena.Learning.EvaluatorTest do
     end
   end
 
-  describe "evaluate_sync/1 for quiz_exam" do
+  describe "evaluate_sync/1 for quiz_exam and ticket_exam" do
     setup do
       section = insert(:section)
       account = insert(:account)
@@ -328,6 +328,61 @@ defmodule Athena.Learning.EvaluatorTest do
 
       assert res.score == 50
       assert res.status == :needs_review
+    end
+
+    test "grades ticket_exam with same rules as quiz_exam", %{account: account, block: block} do
+      q1_id = Ecto.UUID.generate()
+      q2_id = Ecto.UUID.generate()
+
+      questions = [
+        %{
+          "id" => q1_id,
+          "type" => "quiz_question",
+          "content" => %{"question_type" => "exact_match", "correct_answer" => "flag"}
+        },
+        %{
+          "id" => q2_id,
+          "type" => "quiz_question",
+          "content" => %{
+            "question_type" => "single",
+            "options" => [
+              %{"id" => "o1", "is_correct" => true},
+              %{"id" => "o2", "is_correct" => false}
+            ]
+          }
+        }
+      ]
+
+      parent_sub =
+        insert(:submission,
+          account_id: account.id,
+          block_id: block.id,
+          status: :pending,
+          content: %{
+            "type" => "ticket_exam",
+            "questions" => questions
+          }
+        )
+
+      insert(:submission,
+        account_id: account.id,
+        block_id: q1_id,
+        parent_submission_id: parent_sub.id,
+        status: :pending,
+        content: %{"text_answer" => "flag"}
+      )
+
+      insert(:submission,
+        account_id: account.id,
+        block_id: q2_id,
+        parent_submission_id: parent_sub.id,
+        status: :pending,
+        content: %{"selected_choices" => ["o2"]}
+      )
+
+      res = Evaluator.evaluate_sync(parent_sub)
+      assert res.score == 50
+      assert res.status == :graded
     end
   end
 end

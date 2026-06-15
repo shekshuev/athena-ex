@@ -19,7 +19,7 @@ defmodule Athena.Learning.Submissions do
     DraftCache
   }
 
-  alias Athena.Content.{Block, Section}
+  alias Athena.Content.{Block, Section, TicketUsage}
 
   @doc """
   Lists submissions with pagination, filtering, and sorting using Flop.
@@ -629,6 +629,7 @@ defmodule Athena.Learning.Submissions do
 
   @doc """
   Gets an active exam attempt, or creates a new one with a fixed set of questions.
+  Intelligently routes to either `quiz_exam` or `ticket_exam` generator logic.
   """
   def get_or_create_exam_attempt(
         account_id,
@@ -639,14 +640,24 @@ defmodule Athena.Learning.Submissions do
       ) do
     case get_active_exam_submission(account_id, exam_block_id) do
       nil ->
-        questions = Athena.Content.generate_exam_questions(exam_config)
+        is_ticket = Map.has_key?(exam_config, "slots")
+
+        questions =
+          if is_ticket do
+            usage = get_ticket_usage(exam_block_id, cohort_id)
+            Athena.Content.Library.generate_ticket_questions(exam_config["slots"], usage)
+          else
+            Athena.Content.generate_exam_questions(exam_config)
+          end
 
         expires_at = DateTime.add(DateTime.utc_now(), time_limit_sec, :second)
+
+        type = if is_ticket, do: "ticket_exam", else: "quiz_exam"
 
         content = %{
           "started_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
           "questions" => questions,
-          "type" => "quiz_exam",
+          "type" => type,
           "cheat_count" => 0
         }
 
@@ -664,5 +675,32 @@ defmodule Athena.Learning.Submissions do
       submission ->
         {:ok, submission}
     end
+  end
+
+  @doc false
+  defp get_ticket_usage(exam_block_id, cohort_id) do
+    query =
+      from s in Submission,
+        where: s.block_id == ^exam_block_id and is_nil(s.parent_submission_id)
+
+    query =
+      if cohort_id do
+        where(query, [s], s.cohort_id == ^cohort_id)
+      else
+        query
+      end
+
+    counts =
+      query
+      |> select([s], s.content)
+      |> Repo.all()
+      |> Enum.flat_map(&Map.get(&1 || %{}, "questions", []))
+      |> Enum.map(fn q ->
+        get_in(q, ["content", "original_block_id"]) || Map.get(q, "original_block_id")
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.frequencies()
+
+    TicketUsage.new(counts)
   end
 end
