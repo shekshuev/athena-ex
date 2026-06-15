@@ -181,6 +181,8 @@ defmodule AthenaWeb.StudioLive.Builder do
     section_id = params["section_id"]
     block_id = params["block_id"]
 
+    current_block_id = socket.assigns.active_block_id
+
     socket =
       if section_id do
         section = find_section_in_tree(socket.assigns.sections, section_id)
@@ -193,7 +195,7 @@ defmodule AthenaWeb.StudioLive.Builder do
           |> assign(:active_block_id, block_id)
           |> assign(:blocks, blocks)
           |> assign(:viewing_parent_id, section.parent_id)
-          |> maybe_push_scroll(block_id)
+          |> maybe_push_scroll(block_id, current_block_id)
         else
           fallback_to_root(socket)
         end
@@ -205,10 +207,14 @@ defmodule AthenaWeb.StudioLive.Builder do
   end
 
   @doc false
-  defp maybe_push_scroll(socket, nil), do: socket
+  defp maybe_push_scroll(socket, nil, _current_block_id), do: socket
 
-  defp maybe_push_scroll(socket, block_id) do
-    push_event(socket, "scroll_to_block", %{id: block_id})
+  defp maybe_push_scroll(socket, new_block_id, current_block_id) do
+    if new_block_id != current_block_id do
+      push_event(socket, "scroll_to_block", %{id: new_block_id})
+    else
+      socket
+    end
   end
 
   @doc false
@@ -441,11 +447,15 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   @impl true
   def handle_event("select_block", %{"id" => id}, socket) do
-    {:noreply,
-     push_patch(socket,
-       to:
-         ~p"/studio/courses/#{socket.assigns.course.id}/builder/sections/#{socket.assigns.active_section_id}/blocks/#{id}"
-     )}
+    if socket.assigns.active_block_id == id do
+      {:noreply, socket}
+    else
+      {:noreply,
+       push_patch(socket,
+         to:
+           ~p"/studio/courses/#{socket.assigns.course.id}/builder/sections/#{socket.assigns.active_section_id}/blocks/#{id}"
+       )}
+    end
   end
 
   @impl true
