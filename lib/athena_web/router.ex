@@ -77,6 +77,7 @@ defmodule AthenaWeb.Router do
         live "/courses/:id/play", Player, :play
         live "/courses/:id/play/:section_id", Player, :play
         live "/courses/:id/exam/:block_id", Exam
+        live "/courses/:id/ticket/:block_id", TicketExam
         live "/courses/:id/leaderboard", Leaderboard, :index
       end
 

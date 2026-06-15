@@ -297,7 +297,16 @@ defmodule AthenaWeb.TeachingLive.Grading do
           {gettext("Showing submissions filtered by a specific assignment.")}
           <%= if @blocks[@block_id] do %>
             <strong class="ml-1 uppercase tracking-wider text-xs">
-              [{Atom.to_string(@blocks[@block_id].type) |> String.replace("_", " ")}]
+              <%= cond do %>
+                <% @blocks[@block_id].type == :quiz_exam -> %>
+                  {gettext("Assessment Session")} {gettext("Block")}
+                <% @blocks[@block_id].type == :ticket_exam -> %>
+                  {gettext("Ticket Assessment")} {gettext("Block")}
+                <% true -> %>
+                  {Atom.to_string(@blocks[@block_id].type) |> String.replace("_", " ")} {gettext(
+                    "Block"
+                  )}
+              <% end %>
             </strong>
           <% end %>
         </span>
@@ -333,7 +342,16 @@ defmodule AthenaWeb.TeachingLive.Grading do
           <:col :let={{_id, sub}} label={gettext("Assignment")}>
             <span class="badge badge-neutral badge-sm font-medium tracking-wide">
               <%= if @blocks[sub.block_id] do %>
-                {Atom.to_string(@blocks[sub.block_id].type) |> String.replace("_", " ")}
+                <%= cond do %>
+                  <% @blocks[sub.block_id].type == :quiz_exam -> %>
+                    {gettext("Assessment Session")} {gettext("Block")}
+                  <% @blocks[sub.block_id].type == :ticket_exam -> %>
+                    {gettext("Ticket Assessment")} {gettext("Block")}
+                  <% true -> %>
+                    {Atom.to_string(@blocks[sub.block_id].type) |> String.replace("_", " ")} {gettext(
+                      "Block"
+                    )}
+                <% end %>
               <% else %>
                 {gettext("Deleted")}
               <% end %>

@@ -623,6 +623,73 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
     end
   end
 
+  describe "Ticket Exam Block" do
+    test "renders initial ticket card and starts exam, redirecting to ticket route", %{
+      conn: conn,
+      course: course
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :ticket_exam,
+          content: %{
+            "slots" => [%{"id" => "1", "tags" => []}, %{"id" => "2", "tags" => []}],
+            "time_limit" => 45
+          }
+        )
+
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ "Ticket Assessment"
+
+      assert html =~ "2 Questions"
+      assert html =~ "45 Min"
+      assert html =~ "Start Assessment"
+
+      lv |> element("button[phx-click='start_exam']") |> render_click()
+
+      assert_redirect(lv, "/learn/courses/#{course.id}/ticket/#{block.id}")
+
+      sub = Athena.Repo.one(Athena.Learning.Submission)
+      assert sub.status == :pending
+      assert sub.block_id == block.id
+      assert sub.content["type"] == "ticket_exam"
+    end
+
+    test "renders continue button if ticket is pending and redirects to ticket route", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block, section: s1, type: :ticket_exam, content: %{"slots" => [%{"id" => "1"}]})
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :pending,
+        content: %{
+          "type" => "ticket_exam",
+          "cheat_count" => 0,
+          "started_at" => DateTime.utc_now()
+        }
+      )
+
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ "Continue Assessment"
+      refute html =~ "Start Assessment"
+
+      lv |> element("button[phx-click='continue_exam']") |> render_click()
+
+      assert_redirect(lv, "/learn/courses/#{course.id}/ticket/#{block.id}")
+    end
+  end
+
   describe "Cohort Schedule Overrides" do
     test "cohort override unlocks a globally locked block", %{
       conn: conn,

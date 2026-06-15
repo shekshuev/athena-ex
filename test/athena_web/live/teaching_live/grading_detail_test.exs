@@ -129,7 +129,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
       {:ok, _lv, html} = live(conn, ~p"/teaching/grading/#{sub.id}")
 
       assert html =~ "sneaky_student"
-      assert html =~ "quiz exam"
+      assert html =~ "Assessment Session"
       assert html =~ "I don&#39;t know"
       assert html =~ "Cheating Detected"
       assert html =~ "triggered 2 violations"
@@ -206,6 +206,90 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
         |> render_change(%{"child_grades" => %{q1.id => %{"score" => "100", "feedback" => ""}}})
 
       assert html =~ "value=\"50\""
+    end
+
+    test "renders ticket_exam with questions and open review badges", %{conn: conn} do
+      student = insert(:account, login: "ticket_student")
+
+      q1 =
+        insert(:block,
+          type: :quiz_question,
+          content: %{"question_type" => "open", "body" => %{"text" => "Ticket Q1"}}
+        )
+
+      block = insert(:block, type: :ticket_exam)
+
+      sub =
+        insert(:submission,
+          account_id: student.id,
+          block_id: block.id,
+          content: %{
+            "cheat_count" => 0,
+            "questions" => [
+              %{"id" => q1.id, "type" => "quiz_question", "content" => q1.content}
+            ]
+          },
+          status: :needs_review
+        )
+
+      insert(:submission,
+        account_id: student.id,
+        block_id: q1.id,
+        parent_submission_id: sub.id,
+        content: %{"text_answer" => "Ticket answer"},
+        status: :needs_review
+      )
+
+      {:ok, _lv, html} = live(conn, ~p"/teaching/grading/#{sub.id}")
+
+      assert html =~ "Ticket Assessment"
+      assert html =~ "ticket_student"
+      assert html =~ "Ticket Q1"
+      assert html =~ "Ticket answer"
+      assert html =~ "Manual Review"
+    end
+
+    test "recalculates overall score for ticket_exam when a child question score is changed", %{
+      conn: conn
+    } do
+      course = insert(:course)
+      student = insert(:account, login: "student_ticket_math")
+      s1 = insert(:section, course: course)
+
+      q1 =
+        insert(:block, section: s1, type: :quiz_question, content: %{"question_type" => "open"})
+
+      questions = [
+        %{"id" => q1.id, "type" => "quiz_question", "content" => q1.content}
+      ]
+
+      parent_block = insert(:block, section: s1, type: :ticket_exam)
+
+      parent_sub =
+        insert(:submission,
+          account_id: student.id,
+          block_id: parent_block.id,
+          status: :needs_review,
+          score: 0,
+          content: %{"questions" => questions}
+        )
+
+      insert(:submission,
+        account_id: student.id,
+        block_id: q1.id,
+        parent_submission_id: parent_sub.id,
+        status: :needs_review,
+        score: 0
+      )
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{parent_sub.id}")
+
+      html =
+        lv
+        |> form("#grading-form")
+        |> render_change(%{"child_grades" => %{q1.id => %{"score" => "100", "feedback" => ""}}})
+
+      assert html =~ "value=\"100\""
     end
   end
 
