@@ -12,6 +12,7 @@ defmodule Athena.Content.Block do
   alias Athena.Content.{
     QuizQuestion,
     QuizExam,
+    TicketExam,
     Section,
     AccessRules,
     CompletionRule,
@@ -39,7 +40,8 @@ defmodule Athena.Content.Block do
 
   schema "blocks" do
     field :type, Ecto.Enum,
-      values: ~w(text code quiz_question quiz_exam video image attachment file_assignment)a
+      values:
+        ~w(text code quiz_question quiz_exam ticket_exam video image attachment file_assignment)a
 
     field :content, :map, default: %{}
     field :order, :integer, default: 0
@@ -87,6 +89,9 @@ defmodule Athena.Content.Block do
 
   defp build_embed_changeset(:quiz_exam, content_map),
     do: QuizExam.changeset(%QuizExam{}, content_map)
+
+  defp build_embed_changeset(:ticket_exam, content_map),
+    do: TicketExam.changeset(%TicketExam{}, content_map)
 
   defp build_embed_changeset(:code, content_map),
     do: CodeChallenge.changeset(struct(CodeChallenge), content_map)
