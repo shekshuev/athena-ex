@@ -185,7 +185,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         class="btn btn-outline rounded-sm bg-base-100 border-base-200 hover:border-primary hover:text-primary hover:bg-base-100 flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-document-duplicate" class="size-6 opacity-70" />
-        <span>{gettext("Ticket Exam")}</span>
+        <span>{gettext("Ticket Assessment")}</span>
       </.button>
 
       <.button

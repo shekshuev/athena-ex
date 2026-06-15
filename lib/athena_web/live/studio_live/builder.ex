@@ -779,7 +779,7 @@ defmodule AthenaWeb.StudioLive.Builder do
         }
       }
 
-      create_and_assign_block(socket, attrs, gettext("Failed to create ticket exam block"))
+      create_and_assign_block(socket, attrs, gettext("Failed to create ticket assessment block"))
     else
       {:noreply, socket}
     end

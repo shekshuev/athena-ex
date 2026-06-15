@@ -33,7 +33,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       assert html =~ "Text"
       assert html =~ "Code"
       assert html =~ "Assessment"
-      assert html =~ "Ticket Exam"
+      assert html =~ "Ticket Assessment"
       assert html =~ "Question"
       assert html =~ "Image"
       assert html =~ "Video"
