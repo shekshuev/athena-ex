@@ -16,7 +16,6 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
   @impl true
   def mount(%{"id" => id} = params, _session, socket) do
-    # Читаем return_to из параметров, по дефолту - корень библиотеки
     return_to = Map.get(params, "return_to", ~p"/studio/library")
 
     with {:ok, block} <- Content.get_library_block(socket.assigns.current_user, id),
@@ -701,7 +700,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                 </fieldset>
               </div>
 
-              <%= if @block.type in [:quiz_question, :quiz_exam, :code, :file_assignment, :image, :video] do %>
+              <%= if @block.type in [:quiz_question, :quiz_exam, :ticket_exam, :code, :file_assignment, :image, :video] do %>
                 <div class="divider my-4"></div>
 
                 <div class="space-y-4 mb-6">
@@ -818,6 +817,69 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                       label={gettext("Exclude Pool")}
                       phx-debounce="500"
                     />
+                  <% end %>
+
+                  <%= if @block.type == :ticket_exam do %>
+                    <div class="flex flex-col gap-3">
+                      <.input
+                        type="number"
+                        name="library_block[content][time_limit]"
+                        value={@block.content["time_limit"]}
+                        label={gettext("Time Limit (Minutes)")}
+                        placeholder={gettext("Optional")}
+                        min="1"
+                        phx-debounce="500"
+                      />
+                    </div>
+
+                    <div class="flex items-center justify-between mb-2 mt-6">
+                      <label class="label p-0">
+                        <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                          {gettext("Ticket Slots")}
+                        </span>
+                      </label>
+                      <button
+                        type="button"
+                        phx-click="add_ticket_slot"
+                        class="btn btn-xs btn-ghost text-primary"
+                      >
+                        <.icon name="hero-plus" class="size-3 mr-1" /> {gettext("Add Slot")}
+                      </button>
+                    </div>
+
+                    <div class="space-y-3">
+                      <% slots = @block.content["slots"] || [] %>
+                      <%= for {slot, index} <- Enum.with_index(slots) do %>
+                        <div class="flex items-center gap-2">
+                          <input
+                            type="hidden"
+                            name={"library_block[content][slots][#{index}][id]"}
+                            value={slot["id"]}
+                          />
+                          <div class="flex-1">
+                            <.input
+                              type="text"
+                              name={"library_block[content][slots][#{index}][tags_string]"}
+                              value={Enum.join(slot["tags"] || [], ", ")}
+                              placeholder={gettext("e.g. db, theory")}
+                              phx-debounce="500"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            phx-click="remove_ticket_slot"
+                            phx-value-slot_id={slot["id"]}
+                            class="btn btn-ghost btn-sm btn-square text-error"
+                            title={gettext("Remove Slot")}
+                          >
+                            <.icon name="hero-x-mark" class="size-4" />
+                          </button>
+                        </div>
+                      <% end %>
+                      <div :if={slots == []} class="text-sm italic opacity-50 pb-2">
+                        {gettext("No slots added. Add slots to specify question tags.")}
+                      </div>
+                    </div>
                   <% end %>
 
                   <%= if @block.type == :code do %>

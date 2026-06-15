@@ -338,14 +338,6 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                   min="1"
                   phx-debounce="500"
                 />
-                <.input
-                  type="number"
-                  name="block[content][allowed_blur_attempts]"
-                  value={@block.content["allowed_blur_attempts"] || 3}
-                  label={gettext("Allowed Blur Attempts")}
-                  min="0"
-                  phx-debounce="500"
-                />
               </div>
 
               <div class="flex items-center justify-between mb-2 mt-6">
@@ -367,7 +359,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
               <div class="space-y-3">
                 <% slots = @block.content["slots"] || [] %>
                 <%= for {slot, index} <- Enum.with_index(slots) do %>
-                  <div class="flex items-start gap-2 relative group bg-base-200/50 p-2 rounded-sm border border-base-300">
+                  <div class="flex items-center gap-2">
                     <input
                       type="hidden"
                       name={"block[content][slots][#{index}][id]"}
@@ -387,7 +379,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                       phx-click="remove_ticket_slot"
                       phx-value-block_id={@block.id}
                       phx-value-slot_id={slot["id"]}
-                      class="btn btn-ghost btn-sm btn-square text-error mt-7.5"
+                      class="btn btn-ghost btn-sm btn-square text-error"
                       title={gettext("Remove Slot")}
                     >
                       <.icon name="hero-x-mark" class="size-4" />
