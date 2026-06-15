@@ -6,7 +6,7 @@ defmodule Athena.Content.LibraryBlock do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Athena.Content.{QuizQuestion, QuizExam, CodeChallenge, FileAssignment}
+  alias Athena.Content.{QuizQuestion, QuizExam, TicketExam, CodeChallenge, FileAssignment}
 
   @type t :: %__MODULE__{}
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -26,7 +26,8 @@ defmodule Athena.Content.LibraryBlock do
     field :title, :string
 
     field :type, Ecto.Enum,
-      values: ~w(text code quiz_question quiz_exam video image attachment file_assignment)a
+      values:
+        ~w(text code quiz_question quiz_exam ticket_exam video image attachment file_assignment)a
 
     field :content, :map, default: %{}
     field :tags, {:array, :string}, default: []
@@ -65,6 +66,9 @@ defmodule Athena.Content.LibraryBlock do
   defp build_embed_changeset(:quiz_exam, content_map),
     do: QuizExam.changeset(struct(QuizExam), content_map)
 
+  defp build_embed_changeset(:ticket_exam, content_map),
+    do: TicketExam.changeset(struct(TicketExam), content_map)
+
   defp build_embed_changeset(:code, content_map),
     do: CodeChallenge.changeset(struct(CodeChallenge), content_map)
 
@@ -77,11 +81,13 @@ defmodule Athena.Content.LibraryBlock do
   defp apply_embed_changes(nil, changeset), do: changeset
 
   defp apply_embed_changes(%Ecto.Changeset{valid?: true} = embed_cs, changeset) do
-    put_change(
-      changeset,
-      :content,
-      Ecto.Changeset.apply_changes(embed_cs) |> Map.from_struct()
-    )
+    pure_string_map =
+      embed_cs
+      |> Ecto.Changeset.apply_changes()
+      |> Jason.encode!()
+      |> Jason.decode!()
+
+    put_change(changeset, :content, pure_string_map)
   end
 
   defp apply_embed_changes(%Ecto.Changeset{valid?: false} = embed_cs, changeset) do

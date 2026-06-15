@@ -225,7 +225,7 @@ defmodule AthenaWeb.LearnLive.Player do
   @impl true
   def handle_event("start_exam", %{"block_id" => block_id}, socket) do
     case Enum.find(socket.assigns.blocks, &(&1.id == block_id)) do
-      %{type: :quiz_exam} = block ->
+      %{type: type} = block when type in [:quiz_exam, :ticket_exam] ->
         start_exam_for_block(socket, block)
 
       _ ->
@@ -235,8 +235,16 @@ defmodule AthenaWeb.LearnLive.Player do
 
   @impl true
   def handle_event("continue_exam", %{"block_id" => block_id}, socket) do
-    {:noreply,
-     push_navigate(socket, to: ~p"/learn/courses/#{socket.assigns.course.id}/exam/#{block_id}")}
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
+    route =
+      if block && block.type == :ticket_exam do
+        ~p"/learn/courses/#{socket.assigns.course.id}/ticket/#{block_id}"
+      else
+        ~p"/learn/courses/#{socket.assigns.course.id}/exam/#{block_id}"
+      end
+
+    {:noreply, push_navigate(socket, to: route)}
   end
 
   @impl true
@@ -520,23 +528,7 @@ defmodule AthenaWeb.LearnLive.Player do
   @doc false
   defp start_exam_for_block(socket, block) do
     user = socket.assigns.current_user
-
-    time_limit_minutes = Map.get(block.content || %{}, "time_limit")
-
-    time_limit_sec =
-      case time_limit_minutes do
-        nil ->
-          3600
-
-        mins when is_integer(mins) ->
-          mins * 60
-
-        mins when is_binary(mins) ->
-          case Integer.parse(mins) do
-            {m, _} -> m * 60
-            :error -> 3600
-          end
-      end
+    time_limit_sec = get_time_limit_sec(block)
 
     case Learning.get_or_create_exam_attempt(
            user.id,
@@ -548,10 +540,14 @@ defmodule AthenaWeb.LearnLive.Player do
       {:ok, _submission} ->
         broadcast_team_progress(socket.assigns.team_id, socket.assigns.course.id)
 
-        {:noreply,
-         push_navigate(socket,
-           to: ~p"/learn/courses/#{socket.assigns.course.id}/exam/#{block.id}"
-         )}
+        route =
+          if block.type == :ticket_exam do
+            ~p"/learn/courses/#{socket.assigns.course.id}/ticket/#{block.id}"
+          else
+            ~p"/learn/courses/#{socket.assigns.course.id}/exam/#{block.id}"
+          end
+
+        {:noreply, push_navigate(socket, to: route)}
 
       {:error, _} ->
         {:noreply,
@@ -560,6 +556,25 @@ defmodule AthenaWeb.LearnLive.Player do
            :error,
            gettext("Failed to start the assessment session.")
          )}
+    end
+  end
+
+  @doc false
+  defp get_time_limit_sec(block) do
+    content = block.content || %{}
+
+    case Map.get(content, "time_limit") do
+      nil ->
+        3600
+
+      minutes when is_integer(minutes) ->
+        minutes * 60
+
+      minutes when is_binary(minutes) ->
+        case Integer.parse(minutes) do
+          {mins, _} -> mins * 60
+          :error -> 3600
+        end
     end
   end
 
@@ -1183,7 +1198,7 @@ defmodule AthenaWeb.LearnLive.Player do
                     </div>
                   </div>
                 </form>
-              <% :quiz_exam -> %>
+              <% type when type in [:quiz_exam, :ticket_exam] -> %>
                 <% exam_mode = if submission, do: :review, else: :play %>
                 <div class="relative">
                   <.content_block

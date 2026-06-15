@@ -54,8 +54,8 @@ defmodule AthenaWeb.BlockComponents do
             attempts_count={@attempts_count}
             draft={@draft}
           />
-        <% :quiz_exam -> %>
-          <.render_quiz_exam block={@block} mode={@mode} submission={@submission} />
+        <% type when type in [:quiz_exam, :ticket_exam] -> %>
+          <.render_any_exam block={@block} mode={@mode} submission={@submission} />
         <% :file_assignment -> %>
           <.render_file_assignment
             block={@block}
@@ -780,15 +780,33 @@ defmodule AthenaWeb.BlockComponents do
       draft[:selected_choices]
   end
 
-  defp render_quiz_exam(assigns) do
+  defp render_any_exam(assigns) do
+    is_ticket = assigns.block.type == :ticket_exam
+
+    q_count =
+      if is_ticket do
+        length(assigns.block.content["slots"] || [])
+      else
+        assigns.block.content["count"] || 10
+      end
+
+    title = if is_ticket, do: gettext("Ticket Assessment"), else: gettext("Assessment Session")
+    icon = if is_ticket, do: "hero-document-duplicate-solid", else: "hero-academic-cap-solid"
+
+    assigns =
+      assigns
+      |> assign(:q_count, q_count)
+      |> assign(:exam_title, title)
+      |> assign(:exam_icon, icon)
+
     ~H"""
     <div class="p-8 bg-base-100 rounded-sm border border-base-300 text-center">
       <div class="size-16 bg-primary/10 text-primary rounded-sm flex items-center justify-center mx-auto mb-4">
-        <.icon name="hero-academic-cap-solid" class="size-8" />
+        <.icon name={@exam_icon} class="size-8" />
       </div>
-      <h3 class="text-2xl font-black mb-2">{gettext("Assessment Session")}</h3>
+      <h3 class="text-2xl font-black mb-2">{@exam_title}</h3>
       <div class="flex items-center justify-center gap-4 text-sm font-bold text-base-content/60 uppercase tracking-widest">
-        <span>{@block.content["count"] || 10} {gettext("Questions")}</span>
+        <span>{@q_count} {gettext("Questions")}</span>
         <span :if={@block.content["time_limit"]}>
           • {@block.content["time_limit"]} {gettext("Min")}
         </span>

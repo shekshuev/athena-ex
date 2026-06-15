@@ -262,6 +262,27 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert block.content["question_type"] == "open"
     end
 
+    test "adds a ticket exam block to active section", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("button[phx-click='add_ticket_exam_block']") |> render_click()
+
+      blocks = Content.list_blocks_by_section(section.id)
+      assert length(blocks) == 1
+
+      block = hd(blocks)
+      assert block.type == :ticket_exam
+      assert block.content["slots"] == []
+    end
+
     test "can reorder blocks via move_block_up and move_block_down", %{
       conn: conn,
       course: course,

@@ -1,9 +1,7 @@
 defmodule Athena.Content.LibraryTest do
   use Athena.DataCase, async: true
 
-  alias Athena.Content.Library
-  alias Athena.Content.LibraryBlock
-  alias Athena.Content.Block
+  alias Athena.Content.{Library, LibraryBlock, Block, TicketUsage}
   import Athena.Factory
 
   setup do
@@ -533,6 +531,69 @@ defmodule Athena.Content.LibraryTest do
 
       assert {:error, :unauthorized} =
                Library.share_block(collaborator, block, third_party.id, :reader)
+    end
+  end
+
+  describe "generate_ticket_questions/2" do
+    setup do
+      owner = Ecto.UUID.generate()
+
+      q1 = insert(:library_block, type: :quiz_question, tags: ["db", "theory"], owner_id: owner)
+      q2 = insert(:library_block, type: :quiz_question, tags: ["db", "theory"], owner_id: owner)
+      q3 = insert(:library_block, type: :quiz_question, tags: ["db", "practice"], owner_id: owner)
+
+      %{q1: q1, q2: q2, q3: q3}
+    end
+
+    test "fetches blocks matching slot tags and maps to Block structs", %{q1: q1, q2: q2, q3: q3} do
+      slots = [
+        %{"id" => "s1", "tags" => ["db", "theory"]},
+        %{"id" => "s2", "tags" => ["db", "practice"]}
+      ]
+
+      usage = TicketUsage.new()
+      results = Library.generate_ticket_questions(slots, usage)
+
+      assert length(results) == 2
+      assert Enum.all?(results, fn b -> %Block{} = b end)
+
+      original_ids = Enum.map(results, & &1.content["original_block_id"])
+      assert q3.id in original_ids
+      assert q1.id in original_ids or q2.id in original_ids
+    end
+
+    test "prioritizes blocks with the lowest usage count", %{q1: q1, q2: q2} do
+      slots = [%{"id" => "s1", "tags" => ["db", "theory"]}]
+
+      usage = TicketUsage.new(%{q1.id => 10, q2.id => 0})
+      results = Library.generate_ticket_questions(slots, usage)
+
+      assert length(results) == 1
+      assert hd(results).content["original_block_id"] == q2.id
+    end
+
+    test "does not pick the same block twice in one ticket (prevents dupes)", %{q1: q1, q2: q2} do
+      slots = [
+        %{"id" => "s1", "tags" => ["db", "theory"]},
+        %{"id" => "s2", "tags" => ["db", "theory"]},
+        %{"id" => "s3", "tags" => ["db", "theory"]}
+      ]
+
+      usage = TicketUsage.new()
+      results = Library.generate_ticket_questions(slots, usage)
+
+      assert length(results) == 2
+      original_ids = Enum.map(results, & &1.content["original_block_id"])
+      assert q1.id in original_ids
+      assert q2.id in original_ids
+    end
+
+    test "skips slot gracefully if no candidates match" do
+      slots = [%{"id" => "s1", "tags" => ["impossible", "tags"]}]
+      usage = TicketUsage.new()
+
+      results = Library.generate_ticket_questions(slots, usage)
+      assert results == []
     end
   end
 end

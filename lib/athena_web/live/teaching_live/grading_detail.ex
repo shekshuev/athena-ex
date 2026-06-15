@@ -30,7 +30,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
 
   defp setup_grading_state(socket, submission, account, block, return_to) do
     form = to_form(%{"score" => submission.score, "feedback" => submission.feedback || ""})
-    is_exam = block.type == :quiz_exam
+    is_exam = block.type in [:quiz_exam, :ticket_exam]
 
     child_subs = if is_exam, do: Learning.get_child_submissions(submission.id), else: %{}
     questions = if is_exam, do: hydrate_questions(submission.content["questions"] || []), else: []
@@ -105,7 +105,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
     child_grades = params["child_grades"] || %{}
 
     new_score =
-      if not manual_override and socket.assigns.block.type == :quiz_exam do
+      if not manual_override and socket.assigns.block.type in [:quiz_exam, :ticket_exam] do
         recalculate_overall_score(
           socket.assigns.questions,
           socket.assigns.child_submissions,
@@ -249,7 +249,15 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
           </h1>
           <div class="text-xs font-bold text-base-content/50 uppercase tracking-widest mt-1 flex items-center gap-2">
             <span>
-              {gettext("Block Type:")} {Atom.to_string(@block.type) |> String.replace("_", " ")}
+              {gettext("Block Type:")}
+              <%= cond do %>
+                <% @block.type == :quiz_exam -> %>
+                  {gettext("Assessment Session")} {gettext("Block")}
+                <% @block.type == :ticket_exam -> %>
+                  {gettext("Ticket Assessment")} {gettext("Block")}
+                <% true -> %>
+                  {Atom.to_string(@block.type) |> String.replace("_", " ")} {gettext("Block")}
+              <% end %>
             </span>
             <span
               :if={manual_review_required?(@block)}
@@ -263,7 +271,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
 
       <div class="flex flex-col lg:flex-row items-start gap-8">
         <div class="flex-1 w-full min-w-0 space-y-6 ">
-          <%= if @block.type == :quiz_exam do %>
+          <%= if @block.type in [:quiz_exam, :ticket_exam] do %>
             <div class="space-y-6">
               <.content_block block={@block} mode={:review} submission={@submission} />
 

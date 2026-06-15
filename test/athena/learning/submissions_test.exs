@@ -1232,5 +1232,34 @@ defmodule Athena.Learning.SubmissionsTest do
     } do
       assert Submissions.get_active_exam_submission(account.id, exam_block.id) == nil
     end
+
+    test "get_or_create_exam_attempt uses ticket logic when exam config has slots", %{
+      account: account,
+      exam_block: exam_block
+    } do
+      lb1 = insert(:library_block, type: :quiz_question, tags: ["tag1"])
+      lb2 = insert(:library_block, type: :quiz_question, tags: ["tag2"])
+
+      exam_config = %{
+        "time_limit" => 60,
+        "slots" => [
+          %{"id" => "slot1", "tags" => ["tag1"]},
+          %{"id" => "slot2", "tags" => ["tag2"]}
+        ]
+      }
+
+      {:ok, submission} =
+        Submissions.get_or_create_exam_attempt(account.id, exam_block.id, nil, 3600, exam_config)
+
+      assert submission.content["type"] == "ticket_exam"
+      assert length(submission.content["questions"]) == 2
+
+      original_ids_in_questions =
+        submission.content["questions"]
+        |> Enum.map(fn q -> q.content["original_block_id"] end)
+
+      assert lb1.id in original_ids_in_questions
+      assert lb2.id in original_ids_in_questions
+    end
   end
 end

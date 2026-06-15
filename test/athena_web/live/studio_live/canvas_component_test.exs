@@ -32,7 +32,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
 
       assert html =~ "Text"
       assert html =~ "Code"
-      assert html =~ "Assessment Session"
+      assert html =~ "Assessment"
+      assert html =~ "Ticket Assessment"
       assert html =~ "Question"
       assert html =~ "Image"
       assert html =~ "Video"
@@ -134,6 +135,30 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       assert html =~ "Assessment Session"
       assert html =~ "25 Questions"
       assert html =~ "60 Min"
+    end
+
+    test "renders ticket_exam block preview card" do
+      ticket_exam_block = %Block{
+        id: "block-ticket-1",
+        type: :ticket_exam,
+        content: %{
+          "slots" => [%{"id" => "1"}, %{"id" => "2"}, %{"id" => "3"}],
+          "time_limit" => 45
+        }
+      }
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [ticket_exam_block],
+          active_block_id: nil,
+          breadcrumbs: [],
+          mode: :edit
+        )
+
+      assert html =~ "Ticket Assessment"
+      assert html =~ "3 Questions"
+      assert html =~ "45 Min"
     end
   end
 
@@ -378,6 +403,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       assert html =~ ~s(id="inline-add-text-block-1")
       assert html =~ ~s(phx-hook="TippyTooltip")
       assert html =~ ~s(data-tippy-content="Code Sandbox")
+      assert html =~ ~s(data-tippy-content="Ticket Assessment")
       assert html =~ ~s(phx-value-after_id="block-1")
     end
   end

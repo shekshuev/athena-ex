@@ -16,7 +16,6 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
   @impl true
   def mount(%{"id" => id} = params, _session, socket) do
-    # Читаем return_to из параметров, по дефолту - корень библиотеки
     return_to = Map.get(params, "return_to", ~p"/studio/library")
 
     with {:ok, block} <- Content.get_library_block(socket.assigns.current_user, id),
@@ -208,6 +207,40 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
         options = Map.get(content_map, "options", []) |> Enum.reject(&(&1["id"] == option_id))
 
         update_and_assign(socket, block, %{"content" => Map.put(content_map, "options", options)})
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("add_ticket_slot", _, socket) do
+    case can_edit?(socket) do
+      true ->
+        block = socket.assigns.block
+        content_map = normalize_content(block.content || %{})
+        slots = Map.get(content_map, "slots", [])
+
+        new_slot = %{
+          "id" => Ecto.UUID.generate(),
+          "tags" => []
+        }
+
+        new_content = Map.put(content_map, "slots", slots ++ [new_slot])
+        update_and_assign(socket, block, %{"content" => new_content})
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("remove_ticket_slot", %{"slot_id" => slot_id}, socket) do
+    case can_edit?(socket) do
+      true ->
+        block = socket.assigns.block
+        content_map = normalize_content(block.content || %{})
+        slots = Map.get(content_map, "slots", []) |> Enum.reject(&(&1["id"] == slot_id))
+
+        update_and_assign(socket, block, %{"content" => Map.put(content_map, "slots", slots)})
 
       _ ->
         {:noreply, socket}
@@ -667,7 +700,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                 </fieldset>
               </div>
 
-              <%= if @block.type in [:quiz_question, :quiz_exam, :code, :file_assignment, :image, :video] do %>
+              <%= if @block.type in [:quiz_question, :quiz_exam, :ticket_exam, :code, :file_assignment, :image, :video] do %>
                 <div class="divider my-4"></div>
 
                 <div class="space-y-4 mb-6">
@@ -784,6 +817,69 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                       label={gettext("Exclude Pool")}
                       phx-debounce="500"
                     />
+                  <% end %>
+
+                  <%= if @block.type == :ticket_exam do %>
+                    <div class="flex flex-col gap-3">
+                      <.input
+                        type="number"
+                        name="library_block[content][time_limit]"
+                        value={@block.content["time_limit"]}
+                        label={gettext("Time Limit (Minutes)")}
+                        placeholder={gettext("Optional")}
+                        min="1"
+                        phx-debounce="500"
+                      />
+                    </div>
+
+                    <div class="flex items-center justify-between mb-2 mt-6">
+                      <label class="label p-0">
+                        <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                          {gettext("Ticket Slots")}
+                        </span>
+                      </label>
+                      <button
+                        type="button"
+                        phx-click="add_ticket_slot"
+                        class="btn btn-xs btn-ghost text-primary"
+                      >
+                        <.icon name="hero-plus" class="size-3 mr-1" /> {gettext("Add Slot")}
+                      </button>
+                    </div>
+
+                    <div class="space-y-3">
+                      <% slots = @block.content["slots"] || [] %>
+                      <%= for {slot, index} <- Enum.with_index(slots) do %>
+                        <div class="flex items-center gap-2">
+                          <input
+                            type="hidden"
+                            name={"library_block[content][slots][#{index}][id]"}
+                            value={slot["id"]}
+                          />
+                          <div class="flex-1">
+                            <.input
+                              type="text"
+                              name={"library_block[content][slots][#{index}][tags_string]"}
+                              value={Enum.join(slot["tags"] || [], ", ")}
+                              placeholder={gettext("e.g. db, theory")}
+                              phx-debounce="500"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            phx-click="remove_ticket_slot"
+                            phx-value-slot_id={slot["id"]}
+                            class="btn btn-ghost btn-sm btn-square text-error"
+                            title={gettext("Remove Slot")}
+                          >
+                            <.icon name="hero-x-mark" class="size-4" />
+                          </button>
+                        </div>
+                      <% end %>
+                      <div :if={slots == []} class="text-sm italic opacity-50 pb-2">
+                        {gettext("No slots added. Add slots to specify question tags.")}
+                      </div>
+                    </div>
                   <% end %>
 
                   <%= if @block.type == :code do %>
@@ -1002,7 +1098,33 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     |> parse_and_put_tags(params, "tags_exclude", "exclude_tags")
   end
 
+  defp apply_exam_meta_overrides(overrides, :ticket_exam, block_params) do
+    content_params =
+      get_in(block_params, ["library_block", "content"]) ||
+        get_in(block_params, ["block", "content"]) ||
+        %{}
+
+    case Map.fetch(content_params, "slots") do
+      {:ok, raw_slots} -> Map.put(overrides, "slots", parse_raw_slots(raw_slots))
+      :error -> overrides
+    end
+  end
+
   defp apply_exam_meta_overrides(overrides, _, _), do: overrides
+
+  defp parse_raw_slots(raw_slots) when is_map(raw_slots) and not is_struct(raw_slots) do
+    raw_slots
+    |> Enum.sort_by(fn {k, _} -> String.to_integer(k) end)
+    |> Enum.map(fn {_, v} ->
+      %{
+        "id" => v["id"],
+        "tags" => parse_tags(v["tags_string"])
+      }
+    end)
+  end
+
+  defp parse_raw_slots(raw_slots) when is_list(raw_slots), do: raw_slots
+  defp parse_raw_slots(_), do: []
 
   defp parse_and_put_tags(overrides, params, param_key, content_key) do
     if Map.has_key?(params, param_key),

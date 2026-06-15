@@ -5,7 +5,7 @@ defmodule Athena.Content.Library do
 
   import Ecto.Query
   alias Athena.{Repo, Identity}
-  alias Athena.Content.{LibraryBlock, LibraryBlockShare, Block}
+  alias Athena.Content.{LibraryBlock, LibraryBlockShare, Block, TicketUsage}
 
   @doc "Lists library blocks with Flop pagination and filtering, scoped by ACL."
   @spec list_library_blocks(map(), map()) ::
@@ -273,5 +273,95 @@ defmodule Athena.Content.Library do
         false
       end
     end
+  end
+
+  @doc """
+  Generates a list of questions for a ticket (:ticket_exam) based on slots and a counter map.
+  The counter map is derived from the Learning context and looks like this: %{"question_uuid" => count}
+
+  The selection is based on the principle of a deck of cards: questions with the fewest number of occurrences are selected.
+  If the counters are equal, the selection is purely random.
+  """
+  @spec generate_ticket_questions([map()], TicketUsage.t()) :: [Block.t()]
+  def generate_ticket_questions(slots, %TicketUsage{} = usage) when is_list(slots) do
+    candidate_blocks = fetch_candidates_for_slots(slots)
+
+    {selected_blocks, _final_counts} =
+      Enum.reduce(slots, {[], usage.counts}, fn slot, {acc_blocks, acc_counts} ->
+        pick_block_for_slot(slot, candidate_blocks, acc_blocks, acc_counts)
+      end)
+
+    build_ticket_blocks(selected_blocks)
+  end
+
+  def generate_ticket_questions(_slots, _usage), do: []
+
+  @doc false
+  defp fetch_candidates_for_slots(slots) do
+    all_tags =
+      slots
+      |> Enum.flat_map(&Map.get(&1, "tags", []))
+      |> Enum.uniq()
+
+    fetch_candidates_by_tags(all_tags)
+  end
+
+  @doc false
+  defp pick_block_for_slot(slot, candidates, acc_blocks, acc_counts) do
+    slot_tags = Map.get(slot, "tags", [])
+    selected_ids = Enum.map(acc_blocks, & &1.id)
+
+    suitable_candidates = filter_candidates(candidates, slot_tags, selected_ids)
+
+    case suitable_candidates do
+      [] ->
+        {acc_blocks, acc_counts}
+
+      available ->
+        chosen_block =
+          available
+          |> Enum.shuffle()
+          |> Enum.min_by(&Map.get(acc_counts, &1.id, 0))
+
+        new_counts = Map.update(acc_counts, chosen_block.id, 1, &(&1 + 1))
+        {acc_blocks ++ [chosen_block], new_counts}
+    end
+  end
+
+  @doc false
+  defp filter_candidates(candidates, slot_tags, selected_ids) do
+    Enum.filter(candidates, fn cb ->
+      cb.id not in selected_ids and tags_match?(cb.tags, slot_tags)
+    end)
+  end
+
+  @doc false
+  defp tags_match?(block_tags, slot_tags) do
+    Enum.all?(slot_tags, &(&1 in block_tags))
+  end
+
+  @doc false
+  defp build_ticket_blocks(blocks) do
+    Enum.map(blocks, fn lib_block ->
+      %Block{
+        id: Ecto.UUID.generate(),
+        type: lib_block.type,
+        content: Map.put(lib_block.content, "original_block_id", lib_block.id),
+        inserted_at: DateTime.utc_now(),
+        updated_at: DateTime.utc_now()
+      }
+    end)
+  end
+
+  @doc false
+  defp fetch_candidates_by_tags([]) do
+    []
+  end
+
+  defp fetch_candidates_by_tags(tags) do
+    LibraryBlock
+    |> where([lb], lb.type in [:quiz_question, :code, :file_assignment])
+    |> where([lb], fragment("? && ?", lb.tags, ^tags))
+    |> Repo.all()
   end
 end

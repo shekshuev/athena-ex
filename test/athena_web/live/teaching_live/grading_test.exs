@@ -238,6 +238,18 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
       html = lv |> element("button[phx-click='clear_block_filter']") |> render_click()
       assert html =~ "block2_boy"
     end
+
+    test "filters by block_id for ticket_exam and displays correct label", %{conn: conn} do
+      student = insert(:account, login: "ticket_boy")
+      block = insert(:block, type: :ticket_exam)
+      insert(:submission, account_id: student.id, block_id: block.id)
+
+      {:ok, _lv, html} = live(conn, ~p"/teaching/grading?block_id=#{block.id}")
+
+      assert html =~ "ticket_boy"
+      assert html =~ "Showing submissions filtered by a specific assignment"
+      assert html =~ "Ticket Assessment"
+    end
   end
 
   describe "Grading page (Pagination & Sorting)" do
