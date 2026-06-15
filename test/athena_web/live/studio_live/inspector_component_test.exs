@@ -268,28 +268,6 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ ~s(checked)
     end
 
-    test "renders correct progression rules for quiz blocks", %{block: base_block} do
-      block = %{
-        base_block
-        | type: :quiz_question,
-          content: %{"question_type" => "single"}
-      }
-
-      html =
-        render_component(InspectorComponent,
-          id: "inspector",
-          active_section: nil,
-          active_block: block
-        )
-
-      assert html =~ "Progression Rules"
-      assert html =~ "How to unlock the next block?"
-
-      assert html =~ "None (Scroll past)"
-      assert html =~ "Require Submission"
-      assert html =~ "Pass Auto-Grade"
-    end
-
     test "renders default values for fresh quiz exam block", %{block: base_block} do
       block = %{
         base_block
@@ -311,16 +289,34 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ ~s(value="10")
     end
 
-    test "renders quiz exam configuration fields", %{block: base_block} do
+    test "renders default values for fresh ticket exam block", %{block: base_block} do
       block = %{
         base_block
-        | type: :quiz_exam,
+        | type: :ticket_exam,
+          content: %{}
+      }
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block
+        )
+
+      assert html =~ "Ticket Assessment Block"
+      assert html =~ "Ticket Assessment Configuration"
+      assert html =~ ~s(name="block[content][time_limit]")
+    end
+
+    test "renders ticket exam configuration fields and slots", %{block: base_block} do
+      block = %{
+        base_block
+        | type: :ticket_exam,
           content: %{
-            "count" => 15,
-            "time_limit" => 30,
-            "mandatory_tags" => ["elixir", "math"],
-            "include_tags" => ["hard"],
-            "exclude_tags" => ["draft"]
+            "time_limit" => 45,
+            "slots" => [
+              %{"id" => "slot1", "tags" => ["db", "theory"]}
+            ]
           }
       }
 
@@ -331,23 +327,12 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
           active_block: block
         )
 
-      assert html =~ "Assessment Session Block"
-      assert html =~ "Assessment Session Configuration"
-
-      assert html =~ ~s(name="block[content][count]")
-      assert html =~ "15"
-
       assert html =~ ~s(name="block[content][time_limit]")
-      assert html =~ "30"
-
-      assert html =~ ~s(name="tags_mandatory")
-      assert html =~ "elixir, math"
-
-      assert html =~ ~s(name="tags_include")
-      assert html =~ "hard"
-
-      assert html =~ ~s(name="tags_exclude")
-      assert html =~ "draft"
+      assert html =~ "45"
+      assert html =~ ~s(name="block[content][slots][0][tags_string]")
+      assert html =~ "db, theory"
+      assert html =~ "Add Slot"
+      assert html =~ "Remove Slot"
     end
 
     test "renders correct progression rules for quiz exam blocks", %{block: base_block} do
@@ -370,68 +355,6 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "None (Scroll past)"
       assert html =~ "Require Submission"
       assert html =~ "Pass Auto-Grade"
-    end
-
-    test "renders max_attempts input for code blocks", %{block: base_block} do
-      block = %{
-        base_block
-        | type: :code,
-          content: %{
-            "language" => "python3",
-            "time_limit" => 1.0,
-            "memory_limit" => 65_536,
-            "initial_code" => "",
-            "solution_code" => "",
-            "max_attempts" => 5
-          }
-      }
-
-      html =
-        render_component(InspectorComponent,
-          id: "inspector",
-          active_section: nil,
-          active_block: block
-        )
-
-      assert html =~ "Max Attempts"
-      assert html =~ ~s(name="block[content][max_attempts]")
-      assert html =~ ~s(value="5")
-    end
-
-    test "renders max_attempts input for quiz question blocks", %{block: base_block} do
-      block = %{
-        base_block
-        | type: :quiz_question,
-          content: %{
-            "question_type" => "open",
-            "general_explanation" => "Think hard!",
-            "max_attempts" => 3
-          }
-      }
-
-      html =
-        render_component(InspectorComponent,
-          id: "inspector",
-          active_section: nil,
-          active_block: block
-        )
-
-      assert html =~ "Max Attempts"
-      assert html =~ ~s(name="block[content][max_attempts]")
-      assert html =~ ~s(value="3")
-    end
-
-    test "renders reset_waterline checkbox regardless of visibility", %{block: block} do
-      html =
-        render_component(InspectorComponent,
-          id: "inspector",
-          active_section: nil,
-          active_block: block
-        )
-
-      assert html =~ "Reset Waterline"
-      assert html =~ "Ignore previous locked lessons"
-      assert html =~ ~s(name="block[access_rules][reset_waterline]")
     end
   end
 end

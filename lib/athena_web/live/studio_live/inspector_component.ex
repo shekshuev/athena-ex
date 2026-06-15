@@ -177,10 +177,13 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
             {gettext("Type")}
           </div>
           <div class="text-sm font-medium capitalize">
-            <%= if @block.type == :quiz_exam do %>
-              {gettext("Assessment Session")} {gettext("Block")}
-            <% else %>
-              {Atom.to_string(@block.type) |> String.replace("_", " ")} {gettext("Block")}
+            <%= cond do %>
+              <% @block.type == :quiz_exam -> %>
+                {gettext("Assessment Session")} {gettext("Block")}
+              <% @block.type == :ticket_exam -> %>
+                {gettext("Ticket Assessment")} {gettext("Block")}
+              <% true -> %>
+                {Atom.to_string(@block.type) |> String.replace("_", " ")} {gettext("Block")}
             <% end %>
           </div>
         </div>
@@ -315,6 +318,86 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                 label={gettext("Exclude Tags (Do not use)")}
                 placeholder="draft, deprecated"
               />
+            </div>
+            <div class="divider my-4"></div>
+          <% end %>
+
+          <%= if @block.type == :ticket_exam do %>
+            <div class="space-y-4 mb-6">
+              <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
+                {gettext("Ticket Assessment Configuration")}
+              </div>
+
+              <div class="flex flex-col gap-3">
+                <.input
+                  type="number"
+                  name="block[content][time_limit]"
+                  value={@block.content["time_limit"]}
+                  label={gettext("Time Limit (Minutes)")}
+                  placeholder={gettext("Optional")}
+                  min="1"
+                  phx-debounce="500"
+                />
+                <.input
+                  type="number"
+                  name="block[content][allowed_blur_attempts]"
+                  value={@block.content["allowed_blur_attempts"] || 3}
+                  label={gettext("Allowed Blur Attempts")}
+                  min="0"
+                  phx-debounce="500"
+                />
+              </div>
+
+              <div class="flex items-center justify-between mb-2 mt-6">
+                <label class="label p-0">
+                  <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                    {gettext("Ticket Slots")}
+                  </span>
+                </label>
+                <button
+                  type="button"
+                  phx-click="add_ticket_slot"
+                  phx-value-id={@block.id}
+                  class="btn btn-xs btn-ghost text-primary"
+                >
+                  <.icon name="hero-plus" class="size-3 mr-1" /> {gettext("Add Slot")}
+                </button>
+              </div>
+
+              <div class="space-y-3">
+                <% slots = @block.content["slots"] || [] %>
+                <%= for {slot, index} <- Enum.with_index(slots) do %>
+                  <div class="flex items-start gap-2 relative group bg-base-200/50 p-2 rounded-sm border border-base-300">
+                    <input
+                      type="hidden"
+                      name={"block[content][slots][#{index}][id]"}
+                      value={slot["id"]}
+                    />
+                    <div class="flex-1">
+                      <.input
+                        type="text"
+                        name={"block[content][slots][#{index}][tags_string]"}
+                        value={Enum.join(slot["tags"] || [], ", ")}
+                        placeholder={gettext("e.g. db, theory")}
+                        phx-debounce="500"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      phx-click="remove_ticket_slot"
+                      phx-value-block_id={@block.id}
+                      phx-value-slot_id={slot["id"]}
+                      class="btn btn-ghost btn-sm btn-square text-error mt-7.5"
+                      title={gettext("Remove Slot")}
+                    >
+                      <.icon name="hero-x-mark" class="size-4" />
+                    </button>
+                  </div>
+                <% end %>
+                <div :if={slots == []} class="text-sm italic opacity-50 pb-2">
+                  {gettext("No slots added. Add slots to specify question tags.")}
+                </div>
+              </div>
             </div>
             <div class="divider my-4"></div>
           <% end %>
@@ -548,26 +631,14 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
     ]
   end
 
-  defp completion_options_for(:code),
-    do: [
+  defp completion_options_for(type)
+       when type in [:code, :quiz_question, :quiz_exam, :ticket_exam] do
+    [
       {gettext("None (Scroll past)"), "none"},
       {gettext("Require Submission"), "submit"},
       {gettext("Pass Auto-Grade"), "pass_auto_grade"}
     ]
-
-  defp completion_options_for(:quiz_question),
-    do: [
-      {gettext("None (Scroll past)"), "none"},
-      {gettext("Require Submission"), "submit"},
-      {gettext("Pass Auto-Grade"), "pass_auto_grade"}
-    ]
-
-  defp completion_options_for(:quiz_exam),
-    do: [
-      {gettext("None (Scroll past)"), "none"},
-      {gettext("Require Submission"), "submit"},
-      {gettext("Pass Auto-Grade"), "pass_auto_grade"}
-    ]
+  end
 
   defp completion_options_for(_), do: [{gettext("None"), "none"}]
 end

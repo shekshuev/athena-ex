@@ -1028,6 +1028,69 @@ defmodule AthenaWeb.BlockComponentsTest do
     end
   end
 
+  describe "content_block/1 :ticket_exam" do
+    setup do
+      block =
+        insert(:block,
+          type: :ticket_exam,
+          content: %{
+            "slots" => [
+              %{"id" => "1", "tags" => []},
+              %{"id" => "2", "tags" => []},
+              %{"id" => "3", "tags" => []}
+            ],
+            "time_limit" => 45
+          }
+        )
+
+      %{block: block}
+    end
+
+    test "renders ticket exam banner with slots logic in :edit mode", %{block: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:edit} active={true} />
+        """)
+
+      assert html =~ "Ticket Assessment"
+      assert html =~ "3 Questions"
+      assert html =~ "45 Min"
+      assert html =~ "border-primary"
+      refute html =~ "Start Assessment"
+    end
+
+    test "renders start button for ticket in :play mode", %{block: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} />
+        """)
+
+      assert html =~ "Ticket Assessment"
+      assert html =~ "Start Assessment"
+      assert html =~ "hero-play-solid"
+      refute html =~ "ring-primary"
+    end
+
+    test "renders read-only banner without start button in :review mode", %{block: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:review} />
+        """)
+
+      assert html =~ "Ticket Assessment"
+      assert html =~ "3 Questions"
+      refute html =~ "Start Assessment"
+      refute html =~ "hero-play-solid"
+      refute html =~ "ring-primary"
+    end
+  end
+
   describe "content_block/1 :file_assignment" do
     setup do
       block =

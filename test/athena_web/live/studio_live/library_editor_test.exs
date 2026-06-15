@@ -117,6 +117,58 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       assert updated_block.content["exclude_tags"] == ["draft"]
     end
 
+    test "updates advanced settings for ticket_exam with slots parsing", %{
+      conn: conn,
+      admin: admin
+    } do
+      block = insert(:library_block, type: :ticket_exam, owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      render_hook(lv, "update_meta", %{
+        "library_block" => %{
+          "content" => %{
+            "time_limit" => "45",
+            "allowed_blur_attempts" => "2",
+            "slots" => %{
+              "0" => %{"id" => "s1", "tags_string" => "db, theory"},
+              "1" => %{"id" => "s2", "tags_string" => "  db  ,  practice  "}
+            }
+          }
+        },
+        "tags_string" => ""
+      })
+
+      {:ok, updated_block} = Content.get_library_block(block.id)
+      assert updated_block.content["time_limit"] == 45
+      assert updated_block.content["allowed_blur_attempts"] == 2
+
+      slots = updated_block.content["slots"]
+      assert length(slots) == 2
+      assert Enum.at(slots, 0)["id"] == "s1"
+      assert Enum.at(slots, 0)["tags"] == ["db", "theory"]
+      assert Enum.at(slots, 1)["id"] == "s2"
+      assert Enum.at(slots, 1)["tags"] == ["db", "practice"]
+    end
+
+    test "adds and removes ticket_exam slots via event", %{conn: conn, admin: admin} do
+      block =
+        insert(:library_block, type: :ticket_exam, content: %{"slots" => []}, owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      render_hook(lv, "add_ticket_slot", %{})
+
+      {:ok, block_after_add} = Content.get_library_block(block.id)
+      assert length(block_after_add.content["slots"]) == 1
+      slot_id = hd(block_after_add.content["slots"])["id"]
+
+      render_hook(lv, "remove_ticket_slot", %{"slot_id" => slot_id})
+
+      {:ok, final_block} = Content.get_library_block(block.id)
+      assert final_block.content["slots"] == []
+    end
+
     test "updates advanced settings for code block", %{conn: conn, admin: admin} do
       block = insert(:library_block, type: :code, owner_id: admin.id)
 

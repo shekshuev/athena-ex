@@ -82,6 +82,37 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponentTest do
       assert render(lv) =~ "Template created successfully"
     end
 
+    test "creates a new ticket_exam template with default content", %{
+      conn: conn,
+      current_user: current_user
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/new")
+
+      lv
+      |> form("#library-form", %{
+        "library_block" => %{
+          "title" => "Ticket Master",
+          "type" => "ticket_exam"
+        },
+        "tags_string" => ""
+      })
+      |> render_submit()
+
+      assert_patch(
+        lv,
+        ~p"/studio/library?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10"
+      )
+
+      {:ok, {blocks, _meta}} = Content.list_library_blocks(current_user, %{})
+      block = Enum.find(blocks, &(&1.title == "Ticket Master"))
+
+      assert block != nil
+      assert block.type == :ticket_exam
+      assert block.content["slots"] == []
+      assert block.content["allowed_blur_attempts"] == 3
+      assert is_nil(block.content["time_limit"])
+    end
+
     test "updates an existing template and its tags", %{conn: conn, current_user: current_user} do
       block =
         insert(:library_block,

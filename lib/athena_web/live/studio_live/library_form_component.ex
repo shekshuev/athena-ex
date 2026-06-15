@@ -18,6 +18,7 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
       {gettext("Code Sandbox"), :code},
       {gettext("Quiz Question"), :quiz_question},
       {gettext("Assessment Session"), :quiz_exam},
+      {gettext("Ticket Assessment"), :ticket_exam},
       {gettext("Image"), :image},
       {gettext("Video"), :video},
       {gettext("Files & Materials"), :attachment},
@@ -133,6 +134,14 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
       "mandatory_tags" => [],
       "include_tags" => [],
       "exclude_tags" => []
+    })
+  end
+
+  defp put_default_content(%{"type" => "ticket_exam"} = params) do
+    Map.put_new(params, "content", %{
+      "time_limit" => nil,
+      "allowed_blur_attempts" => 3,
+      "slots" => []
     })
   end
 

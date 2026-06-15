@@ -124,7 +124,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
 
   defp add_content_panel(%{variant: "bottom"} = assigns) do
     ~H"""
-    <div class="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-sm transition-colors">
+    <div class="mt-2 grid grid-cols-2 sm:grid-cols-5 gap-3 rounded-sm transition-colors">
       <.button
         phx-click="add_text_block"
         phx-value-after_id={@after_id}
@@ -176,7 +176,16 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         class="btn btn-outline rounded-sm bg-base-100 border-base-200 hover:border-primary hover:text-primary hover:bg-base-100 flex-col h-auto py-4 gap-2 font-bold"
       >
         <.icon name="hero-academic-cap" class="size-6 opacity-70" />
-        <span>{gettext("Assessment Session")}</span>
+        <span>{gettext("Assessment")}</span>
+      </.button>
+
+      <.button
+        phx-click="add_ticket_exam_block"
+        phx-value-after_id={@after_id}
+        class="btn btn-outline rounded-sm bg-base-100 border-base-200 hover:border-primary hover:text-primary hover:bg-base-100 flex-col h-auto py-4 gap-2 font-bold"
+      >
+        <.icon name="hero-document-duplicate" class="size-6 opacity-70" />
+        <span>{gettext("Ticket Exam")}</span>
       </.button>
 
       <.button
@@ -276,6 +285,17 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary"
       >
         <.icon name="hero-academic-cap" class="size-5" />
+      </.button>
+
+      <.button
+        id={"inline-add-ticket-exam-#{@after_id}"}
+        phx-hook="TippyTooltip"
+        data-tippy-content={gettext("Ticket Assessment")}
+        phx-click="add_ticket_exam_block"
+        phx-value-after_id={@after_id}
+        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary"
+      >
+        <.icon name="hero-document-duplicate" class="size-5" />
       </.button>
 
       <.button

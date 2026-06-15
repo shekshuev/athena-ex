@@ -67,7 +67,7 @@ defmodule Athena.Content.LibraryBlock do
     do: QuizExam.changeset(struct(QuizExam), content_map)
 
   defp build_embed_changeset(:ticket_exam, content_map),
-    do: TicketExam.changeset(%TicketExam{}, content_map)
+    do: TicketExam.changeset(struct(TicketExam), content_map)
 
   defp build_embed_changeset(:code, content_map),
     do: CodeChallenge.changeset(struct(CodeChallenge), content_map)
@@ -81,11 +81,13 @@ defmodule Athena.Content.LibraryBlock do
   defp apply_embed_changes(nil, changeset), do: changeset
 
   defp apply_embed_changes(%Ecto.Changeset{valid?: true} = embed_cs, changeset) do
-    put_change(
-      changeset,
-      :content,
-      Ecto.Changeset.apply_changes(embed_cs) |> Map.from_struct()
-    )
+    pure_string_map =
+      embed_cs
+      |> Ecto.Changeset.apply_changes()
+      |> Jason.encode!()
+      |> Jason.decode!()
+
+    put_change(changeset, :content, pure_string_map)
   end
 
   defp apply_embed_changes(%Ecto.Changeset{valid?: false} = embed_cs, changeset) do

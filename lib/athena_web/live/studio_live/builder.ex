@@ -714,6 +714,77 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
+  def handle_event("add_ticket_slot", %{"id" => block_id}, socket) do
+    if can_edit?(socket) do
+      course = socket.assigns.course
+      block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
+      if block do
+        content_map = normalize_content(block.content || %{})
+        slots = Map.get(content_map, "slots", [])
+
+        new_slot = %{
+          "id" => Ecto.UUID.generate(),
+          "tags" => []
+        }
+
+        new_content = Map.put(content_map, "slots", slots ++ [new_slot])
+
+        {:ok, updated_block} =
+          Content.update_block(socket.assigns.current_user, block, %{"content" => new_content})
+
+        Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
+        {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+      else
+        {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("remove_ticket_slot", %{"block_id" => block_id, "slot_id" => slot_id}, socket) do
+    if can_edit?(socket) do
+      course = socket.assigns.course
+      block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
+      if block do
+        content_map = normalize_content(block.content || %{})
+        slots = Map.get(content_map, "slots", []) |> Enum.reject(&(&1["id"] == slot_id))
+        new_content = Map.put(content_map, "slots", slots)
+
+        {:ok, updated_block} =
+          Content.update_block(socket.assigns.current_user, block, %{"content" => new_content})
+
+        Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
+        {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+      else
+        {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("add_ticket_exam_block", params, socket) do
+    if can_edit?(socket) do
+      attrs = %{
+        "type" => "ticket_exam",
+        "section_id" => socket.assigns.active_section_id,
+        "after_id" => clean_after_id(params["after_id"]),
+        "content" => %{
+          "time_limit" => nil,
+          "allowed_blur_attempts" => 3,
+          "slots" => []
+        }
+      }
+
+      create_and_assign_block(socket, attrs, gettext("Failed to create ticket exam block"))
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_event("update_quiz_content", %{"block_id" => id} = params, socket) do
     with true <- can_edit?(socket),
          block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == id)) do
@@ -1846,7 +1917,33 @@ defmodule AthenaWeb.StudioLive.Builder do
     |> parse_and_put_tags(block_params, "tags_exclude", "exclude_tags")
   end
 
-  defp apply_exam_meta_overrides(overrides, _block_type, _block_params), do: overrides
+  defp apply_exam_meta_overrides(overrides, :ticket_exam, block_params) do
+    content_params =
+      get_in(block_params, ["library_block", "content"]) ||
+        get_in(block_params, ["block", "content"]) ||
+        %{}
+
+    case Map.fetch(content_params, "slots") do
+      {:ok, raw_slots} -> Map.put(overrides, "slots", parse_raw_slots(raw_slots))
+      :error -> overrides
+    end
+  end
+
+  defp apply_exam_meta_overrides(overrides, _, _), do: overrides
+
+  defp parse_raw_slots(raw_slots) when is_map(raw_slots) and not is_struct(raw_slots) do
+    raw_slots
+    |> Enum.sort_by(fn {k, _} -> String.to_integer(k) end)
+    |> Enum.map(fn {_, v} ->
+      %{
+        "id" => v["id"],
+        "tags" => parse_tags(v["tags_string"])
+      }
+    end)
+  end
+
+  defp parse_raw_slots(raw_slots) when is_list(raw_slots), do: raw_slots
+  defp parse_raw_slots(_), do: []
 
   defp parse_and_put_tags(overrides, params, param_key, content_key) do
     if Map.has_key?(params, param_key) do
