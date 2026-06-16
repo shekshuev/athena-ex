@@ -189,7 +189,7 @@ defmodule Athena.Content.Blocks do
         "submission" ->
           true
 
-          "library" ->
+        "library" ->
           true
 
         _ ->
