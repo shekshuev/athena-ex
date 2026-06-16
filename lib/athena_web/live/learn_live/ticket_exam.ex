@@ -510,7 +510,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   def render(assigns) do
     ~H"""
     <div id="ticket-container" class="flex flex-col min-h-screen">
-      <header class="bg-base-100 border-b border-base-300 sticky top-0 z-50">
+      <header class="bg-base-100 border-b border-base-300">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div class="flex items-center justify-between h-16">
             <div class="flex items-center gap-3">
