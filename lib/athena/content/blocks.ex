@@ -189,6 +189,9 @@ defmodule Athena.Content.Blocks do
         "submission" ->
           true
 
+        "library" ->
+          true
+
         _ ->
           can_edit_course?(user, course_id)
       end
@@ -279,6 +282,8 @@ defmodule Athena.Content.Blocks do
     |> Repo.all()
     |> Map.new()
   end
+
+  defp can_edit_course?(_user, "library"), do: true
 
   defp can_edit_course?(user, course_id) do
     has_acl =

@@ -996,6 +996,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
           block_id={@block.id}
           current_user={@current_user}
           upload_type={@upload_type}
+          context="library"
         />
       <% end %>
     </div>
