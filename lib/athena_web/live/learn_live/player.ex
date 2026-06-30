@@ -1199,11 +1199,10 @@ defmodule AthenaWeb.LearnLive.Player do
                   </div>
                 </form>
               <% type when type in [:quiz_exam, :ticket_exam] -> %>
-                <% exam_mode = if submission, do: :review, else: :play %>
                 <div class="relative">
                   <.content_block
                     block={block}
-                    mode={exam_mode}
+                    mode={mode}
                     submission={submission}
                   />
                 </div>

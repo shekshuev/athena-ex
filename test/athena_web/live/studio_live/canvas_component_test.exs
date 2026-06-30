@@ -54,7 +54,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           mode: :edit
         )
 
-      assert html =~ ~s(id="tiptap-edit-block-123")
+      assert html =~ ~s(id="tiptap-edit-block-123-static")
       assert html =~ ~s(phx-hook="TiptapEditor")
       assert html =~ ~s(data-id="block-123")
     end
@@ -434,7 +434,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       refute html =~ "Answer Editor"
       refute html =~ "Manage Files"
 
-      assert html =~ "tiptap-preview-block-1"
+      hash = :erlang.phash2(%{"text" => "hello"})
+      assert html =~ "tiptap-preview-block-1-#{hash}"
     end
   end
 
