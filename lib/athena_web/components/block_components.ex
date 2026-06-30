@@ -100,7 +100,7 @@ defmodule AthenaWeb.BlockComponents do
     <div class="editor-wrapper group/tiptap relative outline-none" tabindex="-1">
       <.tiptap_toolbar mode={@mode} />
       <div
-        id={"tiptap-#{@mode}-#{@block.id}"}
+        id={"tiptap-#{@mode}-#{@block.id}-#{if @mode != :edit, do: :erlang.phash2(@block.content), else: "static"}"}
         phx-hook="TiptapEditor"
         data-id={@block.id}
         data-readonly={to_string(@mode != :edit)}
@@ -158,7 +158,7 @@ defmodule AthenaWeb.BlockComponents do
         <.tiptap_toolbar mode={@mode} />
         <div
           :if={@block.content["description"]}
-          id={"tiptap-desc-#{@mode}-#{@block.id}"}
+          id={"tiptap-desc-#{@mode}-#{@block.id}-#{if @mode != :edit, do: :erlang.phash2(@block.content["description"]), else: "static"}"}
           phx-hook="TiptapEditor"
           data-on-change="update_content"
           data-id={@block.id}
@@ -468,7 +468,7 @@ defmodule AthenaWeb.BlockComponents do
       <div class="editor-wrapper group/tiptap relative outline-none" tabindex="-1">
         <.tiptap_toolbar mode={@mode} />
         <div
-          id={"tiptap-quiz-#{@mode}-#{@block.id}"}
+          id={"tiptap-quiz-#{@mode}-#{@block.id}-#{if @mode != :edit, do: :erlang.phash2(@block.content["body"]), else: "static"}"}
           phx-hook="TiptapEditor"
           data-on-change="update_content"
           data-id={@block.id}
@@ -652,7 +652,7 @@ defmodule AthenaWeb.BlockComponents do
           />
           <div class="flex-1 min-w-0 pt-0.5">
             <div
-              id={"tiptap-player-opt-#{@block.id}-#{opt["id"]}"}
+              id={"tiptap-player-opt-#{@block.id}-#{opt["id"]}-#{if @mode != :edit, do: :erlang.phash2(opt["text"]), else: "static"}"}
               phx-hook="TiptapEditor"
               data-id={@block.id}
               data-readonly="true"
@@ -905,7 +905,7 @@ defmodule AthenaWeb.BlockComponents do
       <div class="editor-wrapper group/tiptap relative outline-none">
         <.tiptap_toolbar mode={@mode} />
         <div
-          id={"tiptap-body-#{@mode}-#{@block.id}"}
+          id={"tiptap-body-#{@mode}-#{@block.id}-#{if @mode != :edit, do: :erlang.phash2(@body_content), else: "static"}"}
           phx-hook="TiptapEditor"
           data-on-change="update_content"
           data-id={@block.id}
