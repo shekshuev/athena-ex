@@ -55,7 +55,12 @@ defmodule AthenaWeb.BlockComponents do
             draft={@draft}
           />
         <% type when type in [:quiz_exam, :ticket_exam] -> %>
-          <.render_any_exam block={@block} mode={@mode} submission={@submission} />
+          <.render_any_exam
+            block={@block}
+            mode={@mode}
+            submission={@submission}
+            hide_submit={@hide_submit}
+          />
         <% :file_assignment -> %>
           <.render_file_assignment
             block={@block}
@@ -95,7 +100,7 @@ defmodule AthenaWeb.BlockComponents do
     <div class="editor-wrapper group/tiptap relative outline-none" tabindex="-1">
       <.tiptap_toolbar mode={@mode} />
       <div
-        id={"tiptap-#{@mode}-#{@block.id}"}
+        id={"tiptap-#{@mode}-#{@block.id}-#{if @mode != :edit, do: :erlang.phash2(@block.content), else: "static"}"}
         phx-hook="TiptapEditor"
         data-id={@block.id}
         data-readonly={to_string(@mode != :edit)}
@@ -153,7 +158,7 @@ defmodule AthenaWeb.BlockComponents do
         <.tiptap_toolbar mode={@mode} />
         <div
           :if={@block.content["description"]}
-          id={"tiptap-desc-#{@mode}-#{@block.id}"}
+          id={"tiptap-desc-#{@mode}-#{@block.id}-#{if @mode != :edit, do: :erlang.phash2(@block.content["description"]), else: "static"}"}
           phx-hook="TiptapEditor"
           data-on-change="update_content"
           data-id={@block.id}
@@ -463,7 +468,7 @@ defmodule AthenaWeb.BlockComponents do
       <div class="editor-wrapper group/tiptap relative outline-none" tabindex="-1">
         <.tiptap_toolbar mode={@mode} />
         <div
-          id={"tiptap-quiz-#{@mode}-#{@block.id}"}
+          id={"tiptap-quiz-#{@mode}-#{@block.id}-#{if @mode != :edit, do: :erlang.phash2(@block.content["body"]), else: "static"}"}
           phx-hook="TiptapEditor"
           data-on-change="update_content"
           data-id={@block.id}
@@ -647,7 +652,7 @@ defmodule AthenaWeb.BlockComponents do
           />
           <div class="flex-1 min-w-0 pt-0.5">
             <div
-              id={"tiptap-player-opt-#{@block.id}-#{opt["id"]}"}
+              id={"tiptap-player-opt-#{@block.id}-#{opt["id"]}-#{if @mode != :edit, do: :erlang.phash2(opt["text"]), else: "static"}"}
               phx-hook="TiptapEditor"
               data-id={@block.id}
               data-readonly="true"
@@ -798,6 +803,7 @@ defmodule AthenaWeb.BlockComponents do
       |> assign(:q_count, q_count)
       |> assign(:exam_title, title)
       |> assign(:exam_icon, icon)
+      |> assign_new(:hide_submit, fn -> false end)
 
     ~H"""
     <div class="p-8 bg-base-100 rounded-sm border border-base-300 text-center">
@@ -823,11 +829,11 @@ defmodule AthenaWeb.BlockComponents do
             <% @submission.status in [:graded, :needs_review, :rejected] -> %>
               <div class="inline-flex flex-col items-center gap-2">
                 <div class={[
-                  "inline-flex items-center gap-3 text-lg font-black px-4 py-2 rounded-sm border",
-                  @submission.status == :graded && "text-success bg-success/10 border-success/30",
+                  "inline-flex items-center gap-3 font-black px-4 py-2 rounded-sm",
+                  @submission.status == :graded && "text-success",
                   @submission.status == :needs_review &&
-                    "text-warning bg-warning/10 border-warning/30",
-                  @submission.status == :rejected && "text-error bg-error/10 border-error/30"
+                    "text-warning",
+                  @submission.status == :rejected && "text-error"
                 ]}>
                   <.icon
                     name={
@@ -850,7 +856,7 @@ defmodule AthenaWeb.BlockComponents do
                   </span>
                 <% end %>
               </div>
-            <% @submission.status in [:pending, :draft, :processing] -> %>
+            <% @submission.status in [:pending, :draft, :processing] and @mode == :play and not @hide_submit -> %>
               <button
                 phx-click="continue_exam"
                 phx-value-block_id={@block.id}
@@ -899,7 +905,7 @@ defmodule AthenaWeb.BlockComponents do
       <div class="editor-wrapper group/tiptap relative outline-none">
         <.tiptap_toolbar mode={@mode} />
         <div
-          id={"tiptap-body-#{@mode}-#{@block.id}"}
+          id={"tiptap-body-#{@mode}-#{@block.id}-#{if @mode != :edit, do: :erlang.phash2(@body_content), else: "static"}"}
           phx-hook="TiptapEditor"
           data-on-change="update_content"
           data-id={@block.id}

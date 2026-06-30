@@ -35,6 +35,14 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
     child_subs = if is_exam, do: Learning.get_child_submissions(submission.id), else: %{}
     questions = if is_exam, do: hydrate_questions(submission.content["questions"] || []), else: []
 
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(Athena.PubSub, "submission:#{account.id}:#{block.id}")
+
+      Enum.each(questions, fn q ->
+        Phoenix.PubSub.subscribe(Athena.PubSub, "submission:#{account.id}:#{q.id}")
+      end)
+    end
+
     {:ok,
      socket
      |> assign(
@@ -273,7 +281,12 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
         <div class="flex-1 w-full min-w-0 space-y-6 ">
           <%= if @block.type in [:quiz_exam, :ticket_exam] do %>
             <div class="space-y-6">
-              <.content_block block={@block} mode={:review} submission={@submission} />
+              <.content_block
+                block={@block}
+                mode={:review}
+                submission={@submission}
+                hide_submit={true}
+              />
 
               <div
                 :for={{q_block, index} <- Enum.with_index(@questions)}
@@ -301,7 +314,12 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                 <% child_sub = Map.get(@child_submissions, q_block.id) %>
                 <% grade_params = Map.get(@child_grades_params, q_block.id) || %{} %>
 
-                <.content_block block={q_block} mode={:review} submission={child_sub} />
+                <.content_block
+                  block={q_block}
+                  mode={:review}
+                  submission={child_sub}
+                  hide_submit={true}
+                />
                 <div class="mt-4">
                   <div class="text-xs font-bold uppercase tracking-wider mb-3">
                     {gettext("Instructor Feedback for this answer")}

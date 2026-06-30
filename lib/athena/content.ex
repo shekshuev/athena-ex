@@ -151,10 +151,6 @@ defmodule Athena.Content do
 
   defdelegate can_view?(user_or_mode, item, overrides), to: Policy
 
-  @doc "Manually trigger a content refresh event for a specific course."
-  def broadcast_course_update(course_id),
-    do: Phoenix.PubSub.broadcast(Athena.PubSub, "course_content:#{course_id}", :refresh_content)
-
   defp notify_subscribers({:ok, %Course{} = course} = result) do
     broadcast_course_update(course.id)
     result
@@ -175,4 +171,7 @@ defmodule Athena.Content do
   end
 
   defp notify_subscribers(result), do: result
+
+  defp broadcast_course_update(course_id),
+    do: Phoenix.PubSub.broadcast(Athena.PubSub, "course_content:#{course_id}", :refresh_content)
 end
