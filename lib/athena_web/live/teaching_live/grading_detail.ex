@@ -56,7 +56,8 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
        child_submissions: child_subs,
        questions: questions,
        manual_score_override: false,
-       child_grades_params: %{}
+       child_grades_params: %{},
+       running_tests: %{}
      )}
   end
 
@@ -172,6 +173,61 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
     end
   end
 
+  @impl true
+  def handle_event("run_code", %{"block_id" => block_id}, socket) do
+    block =
+      if socket.assigns.block.id == block_id do
+        socket.assigns.block
+      else
+        Enum.find(socket.assigns.questions, &(&1.id == block_id))
+      end
+
+    sub =
+      if socket.assigns.submission.block_id == block_id do
+        socket.assigns.submission
+      else
+        Map.get(socket.assigns.child_submissions, block_id)
+      end
+
+    if block && sub do
+      content =
+        if is_struct(sub.content), do: Map.from_struct(sub.content), else: sub.content || %{}
+
+      code =
+        content["code"] || content[:code] || content["text_answer"] || content[:text_answer] || ""
+
+      if code == "" do
+        {:noreply, put_flash(socket, :error, gettext("Student submission is empty."))}
+      else
+        challenge =
+          Ecto.Changeset.apply_changes(
+            Athena.Content.CodeChallenge.changeset(%Athena.Content.CodeChallenge{}, block.content)
+          )
+
+        runner = {:via, :global, :code_runner}
+
+        if :global.whereis_name(:code_runner) != :undefined do
+          task =
+            Task.Supervisor.async(runner, fn ->
+              box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
+              Athena.Execution.verify(code, challenge, box_id)
+            end)
+
+          running_tests = Map.put(socket.assigns[:running_tests] || %{}, task.ref, block.id)
+
+          {:noreply,
+           socket
+           |> assign(:running_tests, running_tests)
+           |> put_flash(:info, gettext("Running student's code... Please wait."))}
+        else
+          {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
+        end
+      end
+    else
+      {:noreply, put_flash(socket, :error, gettext("Could not find submission data."))}
+    end
+  end
+
   defp update_all_child_grades(socket, child_grades, status) do
     Enum.each(child_grades, fn {child_block_id, grade_data} ->
       child_sub = Map.get(socket.assigns.child_submissions, child_block_id)
@@ -235,6 +291,43 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
         })
 
       {:noreply, assign(socket, child_submissions: new_subs, form: form)}
+    end
+  end
+
+  @impl true
+  def handle_info({ref, result}, socket) when is_map_key(socket.assigns.running_tests, ref) do
+    {_block_id, updated_tests} = Map.pop(socket.assigns.running_tests, ref)
+    Process.demonitor(ref, [:flush])
+
+    socket =
+      if result.status == :accepted do
+        put_flash(
+          socket,
+          :info,
+          gettext("Success! Code passed tests (Score: %{score})", score: result.score)
+        )
+      else
+        put_flash(
+          socket,
+          :error,
+          gettext("Code Failed! Status: %{status}.", status: result.status)
+        )
+      end
+
+    {:noreply, assign(socket, :running_tests, updated_tests)}
+  end
+
+  @impl true
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, socket) do
+    if socket.assigns[:running_tests] && is_map_key(socket.assigns.running_tests, ref) do
+      {_block_id, updated_tests} = Map.pop(socket.assigns.running_tests, ref)
+
+      {:noreply,
+       socket
+       |> put_flash(:error, gettext("Test execution failed or runner disconnected."))
+       |> assign(:running_tests, updated_tests)}
+    else
+      {:noreply, socket}
     end
   end
 

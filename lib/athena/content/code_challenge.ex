@@ -7,6 +7,7 @@ defmodule Athena.Content.CodeChallenge do
   import Ecto.Changeset
 
   alias Athena.Content.TestCase
+  alias Athena.Execution
 
   @derive {Jason.Encoder,
            only: [
@@ -33,7 +34,7 @@ defmodule Athena.Content.CodeChallenge do
 
   @primary_key false
   embedded_schema do
-    field :language, :string, default: "python3"
+    field :language, :string, default: Execution.default_language()
     field :time_limit, :float, default: 1.0
     field :memory_limit, :integer, default: 65_536
     field :max_attempts, :integer

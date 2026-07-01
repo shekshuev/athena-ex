@@ -6,6 +6,11 @@ defmodule Athena.Execution do
   """
 
   alias Athena.Execution.Verifier
+  alias Athena.Execution.LanguageConfig
 
   defdelegate verify(code, challenge, box_id), to: Verifier
+
+  defdelegate options, to: LanguageConfig
+  defdelegate default_language, to: LanguageConfig
+  defdelegate cm_lang(lang), to: LanguageConfig
 end

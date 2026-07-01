@@ -8,6 +8,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   """
   use AthenaWeb, :live_component
   alias Athena.Content.{Section, Block}
+  alias Athena.Execution
 
   @doc """
   Lifecycle hook: handles incoming assigns and sets defaults.
@@ -284,7 +285,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                   type="number"
                   name="block[content][time_limit]"
                   value={@block.content["time_limit"]}
-                  label={gettext("Time Limit (Minutes)")}
+                  label={gettext("Time Limit (sec)")}
                   placeholder={gettext("Optional")}
                   min="1"
                 />
@@ -333,7 +334,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                   type="number"
                   name="block[content][time_limit]"
                   value={@block.content["time_limit"]}
-                  label={gettext("Time Limit (Minutes)")}
+                  label={gettext("Time Limit (sec)")}
                   placeholder={gettext("Optional")}
                   min="1"
                   phx-debounce="500"
@@ -402,9 +403,9 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
               <.input
                 type="select"
                 name="block[content][language]"
-                value={@block.content["language"] || "python3"}
+                value={@block.content["language"] || Execution.default_language()}
                 label={gettext("Programming Language")}
-                options={[{"Python 3", "python3"}, {"C++ (GCC)", "cpp"}]}
+                options={Execution.options()}
               />
               <div class="grid grid-cols-2 gap-3">
                 <.input

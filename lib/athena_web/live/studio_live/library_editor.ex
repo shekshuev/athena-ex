@@ -182,7 +182,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
       true ->
         block = socket.assigns.block
         content_map = normalize_content(block.content || %{})
-        options = Map.get(content_map, "options", [])
+        options = parse_raw_list(Map.get(content_map, "options", []))
 
         new_option = %{
           "id" => Ecto.UUID.generate(),
@@ -218,7 +218,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
       true ->
         block = socket.assigns.block
         content_map = normalize_content(block.content || %{})
-        slots = Map.get(content_map, "slots", [])
+        slots = parse_raw_list(Map.get(content_map, "slots", []))
 
         new_slot = %{
           "id" => Ecto.UUID.generate(),
@@ -395,7 +395,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     if can_edit?(socket) do
       block = socket.assigns.block
       content_map = normalize_content(block.content || %{})
-      test_cases = Map.get(content_map, "test_cases", [])
+      test_cases = parse_raw_list(Map.get(content_map, "test_cases", []))
 
       new_tc = %{
         "id" => Ecto.UUID.generate(),
@@ -416,7 +416,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     if can_edit?(socket) do
       block = socket.assigns.block
       content_map = normalize_content(block.content || %{})
-      test_cases = Map.get(content_map, "test_cases", [])
+      test_cases = parse_raw_list(Map.get(content_map, "test_cases", []))
 
       new_tc_list = Enum.reject(test_cases, fn tc -> Map.get(tc, "id") == tc_id end)
       new_content = Map.put(content_map, "test_cases", new_tc_list)
@@ -825,7 +825,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                         type="number"
                         name="library_block[content][time_limit]"
                         value={@block.content["time_limit"]}
-                        label={gettext("Time Limit (Minutes)")}
+                        label={gettext("Time Limit (sec)")}
                         placeholder={gettext("Optional")}
                         min="1"
                         phx-debounce="500"
@@ -886,9 +886,9 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                     <.input
                       type="select"
                       name="library_block[content][language]"
-                      value={@block.content["language"] || "python"}
+                      value={@block.content["language"] || Execution.default_language()}
                       label={gettext("Language")}
-                      options={[{"Python", "python"}, {"SQL", "sql"}, {"Elixir", "elixir"}]}
+                      options={Execution.options()}
                     />
                     <div class="grid grid-cols-2 gap-3">
                       <.input
@@ -1138,4 +1138,13 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
   defp parse_tags(str),
     do:
       str |> String.split(",", trim: true) |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+
+  defp parse_raw_list(raw) when is_map(raw) do
+    raw
+    |> Enum.sort_by(fn {k, _} -> String.to_integer(k) end)
+    |> Enum.map(fn {_, v} -> v end)
+  end
+
+  defp parse_raw_list(raw) when is_list(raw), do: raw
+  defp parse_raw_list(_), do: []
 end

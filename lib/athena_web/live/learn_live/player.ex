@@ -860,7 +860,7 @@ defmodule AthenaWeb.LearnLive.Player do
       end
 
     socket =
-      if submission.status in [:pending, :processing] do
+      if submission.status in [:pending, :processing, :draft] do
         socket
       else
         attempts = Map.get(socket.assigns.attempts_map || %{}, block.id, 0)
