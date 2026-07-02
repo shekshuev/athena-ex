@@ -594,10 +594,18 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
     ~H"""
     <span class={[
       "badge font-bold border tracking-wide rounded-sm",
-      @status == :graded && "bg-success/10 text-success border-success/30",
+      @status in [:graded, :accepted] && "bg-success/10 text-success border-success/30",
       @status == :needs_review && "bg-warning/10 text-warning border-warning/30",
       @status in [:pending, :processing] && "bg-base-200 text-base-content/70 border-base-300",
-      @status == :rejected && "bg-error/10 text-error border-error/30"
+      @status in [
+        :rejected,
+        :wrong_answer,
+        :compilation_error,
+        :runtime_error,
+        :time_limit_exceeded,
+        :memory_limit_exceeded,
+        :system_error
+      ] && "bg-error/10 text-error border-error/30"
     ]}>
       {Atom.to_string(@status) |> String.replace("_", " ") |> String.capitalize()}
     </span>

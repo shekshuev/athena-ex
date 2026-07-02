@@ -5,10 +5,12 @@ defmodule Athena.Execution.TestWorker do
   """
   use Oban.Worker, queue: :code_execution, max_attempts: 1
 
+  require Logger
+
   alias Athena.{Repo, Content}
   alias Athena.Learning
   alias Athena.Learning.Submission
-  alias Athena.Execution.Verifier
+  alias Athena.Execution.{Result, TestResult, Verifier}
 
   @timeout Application.compile_env(:athena, [Athena.Execution.TestWorker, :timeout], 60_000)
 
@@ -44,16 +46,20 @@ defmodule Athena.Execution.TestWorker do
             require Logger
             Logger.error("Remote test execution failed: #{inspect(reason)}")
 
-            %Verifier.Result{
+            %Result{
               status: :rejected,
               score: 0,
+              time: 0.0,
+              memory: 0,
               test_results: [
-                %{
+                %TestResult{
                   status: :error,
                   expected: "",
                   stdout: "Runner node crashed or timed out.",
+                  stderr: nil,
                   input: "",
                   time: 0.0,
+                  memory: 0,
                   is_hidden: false
                 }
               ]
@@ -63,16 +69,20 @@ defmodule Athena.Execution.TestWorker do
         require Logger
         Logger.error("Runner node is not connected during test worker execution!")
 
-        %Verifier.Result{
+        %Result{
           status: :rejected,
           score: 0,
+          time: 0.0,
+          memory: 0,
           test_results: [
-            %{
+            %TestResult{
               status: :error,
               expected: "",
               stdout: "Runner node is not connected!",
+              stderr: nil,
               input: "",
               time: 0.0,
+              memory: 0,
               is_hidden: false
             }
           ]
@@ -99,7 +109,6 @@ defmodule Athena.Execution.TestWorker do
         :ok
 
       {:error, changeset} ->
-        require Logger
         Logger.error("Failed to update test submission: #{inspect(changeset.errors)}")
         :error
     end

@@ -52,6 +52,7 @@ defmodule Athena.Learning.Submissions do
       query
       |> where([s], s.status != :draft)
       |> where([s], is_nil(s.parent_submission_id))
+      |> where([s], fragment("?->>'is_test_run' IS NULL", s.content))
 
     cond do
       "admin" in user.role.permissions ->
@@ -127,6 +128,10 @@ defmodule Athena.Learning.Submissions do
       if existing_draft do
         existing_draft
         |> Submission.changeset(Map.put(safe_attrs, "status", :pending))
+        |> Ecto.Changeset.put_change(
+          :inserted_at,
+          DateTime.utc_now() |> DateTime.truncate(:second)
+        )
         |> Repo.update()
       else
         %Submission{}

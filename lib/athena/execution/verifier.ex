@@ -1,27 +1,13 @@
 defmodule Athena.Execution.Verifier do
   @moduledoc """
   High-level logic to verify a submission against multiple test cases.
-  Aggregates results and calculates the final score.
+  Aggregates results and calculates the final score as a percentage.
   """
   alias Athena.Execution.IsolateRunner
   alias Athena.Execution.LanguageConfig
   alias Athena.Content.CodeChallenge
   alias Athena.Content.TestCase
-
-  defmodule Result do
-    @moduledoc """
-    Represents the final aggregated result of a verification run.
-    """
-    defstruct [:status, :score, :time, :memory, :test_results]
-
-    @type t :: %__MODULE__{
-            status: atom(),
-            score: integer(),
-            time: float(),
-            memory: integer(),
-            test_results: [map()]
-          }
-  end
+  alias Athena.Execution.{Result, TestResult}
 
   @doc """
   Verifies the given code against a list of test cases.
@@ -56,14 +42,25 @@ defmodule Athena.Execution.Verifier do
   end
 
   @doc false
-  @spec run_single_test(TestCase.t(), IsolateRunner.Context.t()) :: map()
+  @spec run_single_test(TestCase.t(), IsolateRunner.Context.t()) :: TestResult.t()
   defp run_single_test(test, ctx) do
     case IsolateRunner.run_execution(test.input, ctx) do
       {:ok, run_info} ->
         evaluate_test(run_info, test)
 
       {:error, _} ->
-        %{status: :system_error, score: 0, time: 0.0, memory: 0}
+        %TestResult{
+          status: :system_error,
+          score: 0,
+          max_score: test.weight,
+          time: 0.0,
+          memory: 0,
+          stdout: "",
+          stderr: nil,
+          input: test.input,
+          expected: test.expected_output,
+          is_hidden: test.is_hidden
+        }
     end
   end
 
@@ -74,7 +71,18 @@ defmodule Athena.Execution.Verifier do
       time: 0.0,
       memory: 0,
       test_results: [
-        %{status: :compilation_error, stderr: stderr, score: 0}
+        %TestResult{
+          status: :compilation_error,
+          stderr: stderr,
+          score: 0,
+          max_score: 0,
+          time: 0.0,
+          memory: 0,
+          stdout: "",
+          input: "",
+          expected: "",
+          is_hidden: false
+        }
       ]
     }
   end
@@ -84,14 +92,15 @@ defmodule Athena.Execution.Verifier do
   end
 
   @doc false
-  @spec evaluate_test(map(), TestCase.t()) :: map()
+  @spec evaluate_test(map(), TestCase.t()) :: TestResult.t()
   defp evaluate_test(%{meta: meta, stdout: stdout, stderr: stderr}, test) do
     status = determine_status(meta, stdout, test.expected_output)
     score = if status == :accepted, do: test.weight, else: 0
 
-    %{
+    %TestResult{
       status: status,
       score: score,
+      max_score: test.weight,
       time: String.to_float(meta["time"] || "0.0"),
       memory: String.to_integer(meta["cg-mem"] || "0"),
       stdout: stdout,
@@ -117,20 +126,29 @@ defmodule Athena.Execution.Verifier do
   end
 
   @doc false
-  @spec summarize([map()]) :: Result.t()
+  @spec summarize([TestResult.t()]) :: Result.t()
   defp summarize(results) do
-    total_score = results |> Enum.map(& &1.score) |> Enum.sum()
+    earned_score = results |> Enum.map(& &1.score) |> Enum.sum()
+    total_possible = results |> Enum.map(& &1.max_score) |> Enum.sum()
+
+    final_score =
+      if total_possible > 0 do
+        round(earned_score / total_possible * 100)
+      else
+        0
+      end
+
     max_time = results |> Enum.map(& &1.time) |> Enum.max(fn -> 0.0 end)
     max_mem = results |> Enum.map(& &1.memory) |> Enum.max(fn -> 0 end)
 
     final_status =
       results
-      |> Enum.find(%{status: :accepted}, fn r -> r.status != :accepted end)
+      |> Enum.find(%TestResult{status: :accepted}, fn r -> r.status != :accepted end)
       |> Map.get(:status)
 
     %Result{
       status: final_status,
-      score: total_score,
+      score: final_score,
       time: max_time,
       memory: max_mem,
       test_results: results
