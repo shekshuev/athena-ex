@@ -19,8 +19,7 @@ defmodule Athena.Execution.TestWorker do
     submission = Repo.get!(Submission, id)
     block = Repo.get!(Content.Block, submission.block_id)
 
-    {:ok, _} = Learning.system_update_submission(submission, %{status: :processing})
-    broadcast_update(submission)
+    {:ok, processing_sub} = Learning.system_update_submission(submission, %{status: :processing})
 
     challenge_attrs = block.content
 
@@ -29,7 +28,7 @@ defmodule Athena.Execution.TestWorker do
         Content.CodeChallenge.changeset(%Content.CodeChallenge{}, challenge_attrs)
       )
 
-    code = submission.content["code"] || ""
+    code = processing_sub.content["code"] || ""
     box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
 
     result =
@@ -43,7 +42,6 @@ defmodule Athena.Execution.TestWorker do
           Task.await(task, @timeout)
         catch
           :exit, reason ->
-            require Logger
             Logger.error("Remote test execution failed: #{inspect(reason)}")
 
             %Result{
@@ -60,13 +58,13 @@ defmodule Athena.Execution.TestWorker do
                   input: "",
                   time: 0.0,
                   memory: 0,
+                  max_score: 0,
                   is_hidden: false
                 }
               ]
             }
         end
       else
-        require Logger
         Logger.error("Runner node is not connected during test worker execution!")
 
         %Result{
@@ -83,6 +81,7 @@ defmodule Athena.Execution.TestWorker do
               input: "",
               time: 0.0,
               memory: 0,
+              max_score: 0,
               is_hidden: false
             }
           ]
@@ -91,19 +90,21 @@ defmodule Athena.Execution.TestWorker do
 
     clean_test_results =
       Enum.map(result.test_results, fn tr ->
-        Map.new(tr, fn {k, v} ->
+        tr
+        |> Map.from_struct()
+        |> Map.new(fn {k, v} ->
           {to_string(k), if(is_atom(v) and not is_boolean(v), do: to_string(v), else: v)}
         end)
       end)
 
-    new_content = Map.put(submission.content || %{}, "execution_results", clean_test_results)
+    new_content = Map.put(processing_sub.content || %{}, "execution_results", clean_test_results)
 
     attrs = %{
       status: :draft,
       content: new_content
     }
 
-    case Learning.system_update_submission(submission, attrs) do
+    case Learning.system_update_submission(processing_sub, attrs) do
       {:ok, updated_sub} ->
         broadcast_update(updated_sub)
         :ok

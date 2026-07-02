@@ -69,12 +69,10 @@ defmodule Athena.Execution.Worker do
         Task.await(task, @timeout)
       catch
         :exit, reason ->
-          require Logger
           Logger.error("Remote execution failed: #{inspect(reason)}")
           build_error_result("Runner node crashed or timed out.")
       end
     else
-      require Logger
       Logger.error("Runner node is not connected during worker execution!")
       build_error_result("Runner node is not connected!")
     end
@@ -95,6 +93,7 @@ defmodule Athena.Execution.Worker do
           input: "",
           time: 0.0,
           memory: 0,
+          max_score: 0,
           is_hidden: false
         }
       ]
@@ -104,7 +103,9 @@ defmodule Athena.Execution.Worker do
   defp update_submission_with_result(submission, result) do
     clean_test_results =
       Enum.map(result.test_results, fn tr ->
-        Map.new(tr, fn {k, v} ->
+        tr
+        |> Map.from_struct()
+        |> Map.new(fn {k, v} ->
           {to_string(k), if(is_atom(v) and not is_boolean(v), do: to_string(v), else: v)}
         end)
       end)
@@ -114,8 +115,10 @@ defmodule Athena.Execution.Worker do
       |> Map.put("execution_results", clean_test_results)
       |> Map.delete("is_test_run")
 
+    mapped_status = if result.status == :accepted, do: :graded, else: :rejected
+
     attrs = %{
-      status: result.status,
+      status: mapped_status,
       score: result.score,
       content: new_content
     }
