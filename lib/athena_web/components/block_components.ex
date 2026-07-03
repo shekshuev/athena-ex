@@ -371,7 +371,10 @@ defmodule AthenaWeb.BlockComponents do
               </button>
             </div>
 
-            <span :if={@block.content["max_attempts"]} class="text-xs text-base-content/50">
+            <span
+              :if={@block.content["max_attempts"]}
+              class="text-xs font-bold uppercase tracking-widest text-base-content/50"
+            >
               {gettext("Attempts:")} {@attempts_count} / {@block.content["max_attempts"]}
             </span>
           </div>

@@ -175,57 +175,72 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
 
   @impl true
   def handle_event("run_code", %{"block_id" => block_id}, socket) do
-    block =
-      if socket.assigns.block.id == block_id do
-        socket.assigns.block
-      else
-        Enum.find(socket.assigns.questions, &(&1.id == block_id))
-      end
+    block = find_grading_block(socket.assigns, block_id)
+    sub = find_grading_submission(socket.assigns, block_id)
 
-    sub =
-      if socket.assigns.submission.block_id == block_id do
-        socket.assigns.submission
-      else
-        Map.get(socket.assigns.child_submissions, block_id)
-      end
-
-    if block && sub do
-      content =
-        if is_struct(sub.content), do: Map.from_struct(sub.content), else: sub.content || %{}
-
-      code =
-        content["code"] || content[:code] || content["text_answer"] || content[:text_answer] || ""
-
-      if code == "" do
-        {:noreply, put_flash(socket, :error, gettext("Student submission is empty."))}
-      else
-        challenge =
-          Ecto.Changeset.apply_changes(
-            Athena.Content.CodeChallenge.changeset(%Athena.Content.CodeChallenge{}, block.content)
-          )
-
-        runner = {:via, :global, :code_runner}
-
-        if :global.whereis_name(:code_runner) != :undefined do
-          task =
-            Task.Supervisor.async(runner, fn ->
-              box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
-              Athena.Execution.verify(code, challenge, box_id)
-            end)
-
-          running_tests = Map.put(socket.assigns[:running_tests] || %{}, task.ref, block.id)
-
-          {:noreply,
-           socket
-           |> assign(:running_tests, running_tests)
-           |> put_flash(:info, gettext("Running student's code... Please wait."))}
-        else
-          {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
-        end
-      end
+    with {:valid?, true} <- {:valid?, not is_nil(block) and not is_nil(sub)},
+         {:code?, code} when code != "" <- {:code?, extract_submitted_code(sub)},
+         {:runner?, true} <- {:runner?, code_runner_available?()} do
+      {:noreply, dispatch_code_execution(socket, block, code)}
     else
-      {:noreply, put_flash(socket, :error, gettext("Could not find submission data."))}
+      {:valid?, false} ->
+        {:noreply, put_flash(socket, :error, gettext("Could not find submission data."))}
+
+      {:code?, ""} ->
+        {:noreply, put_flash(socket, :error, gettext("Student submission is empty."))}
+
+      {:runner?, false} ->
+        {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
     end
+  end
+
+  @doc false
+  defp find_grading_block(assigns, block_id) do
+    if assigns.block.id == block_id do
+      assigns.block
+    else
+      Enum.find(assigns.questions, &(&1.id == block_id))
+    end
+  end
+
+  @doc false
+  defp find_grading_submission(assigns, block_id) do
+    if assigns.submission.block_id == block_id do
+      assigns.submission
+    else
+      Map.get(assigns.child_submissions, block_id)
+    end
+  end
+
+  @doc false
+  defp extract_submitted_code(sub) do
+    content =
+      if is_struct(sub.content), do: Map.from_struct(sub.content), else: sub.content || %{}
+
+    content["code"] || content[:code] || content["text_answer"] || content[:text_answer] || ""
+  end
+
+  @doc false
+  defp code_runner_available?, do: :global.whereis_name(:code_runner) != :undefined
+
+  @doc false
+  defp dispatch_code_execution(socket, block, code) do
+    challenge =
+      Ecto.Changeset.apply_changes(
+        Athena.Content.CodeChallenge.changeset(%Athena.Content.CodeChallenge{}, block.content)
+      )
+
+    task =
+      Task.Supervisor.async({:via, :global, :code_runner}, fn ->
+        box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
+        Athena.Execution.verify(code, challenge, box_id)
+      end)
+
+    running_tests = Map.put(socket.assigns[:running_tests] || %{}, task.ref, block.id)
+
+    socket
+    |> assign(:running_tests, running_tests)
+    |> put_flash(:info, gettext("Running student's code... Please wait."))
   end
 
   defp update_all_child_grades(socket, child_grades, status) do

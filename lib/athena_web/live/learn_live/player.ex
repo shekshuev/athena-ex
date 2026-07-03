@@ -1208,10 +1208,7 @@ defmodule AthenaWeb.LearnLive.Player do
                     </button>
 
                     <div :if={max_attempts} class="text-right">
-                      <span class={[
-                        "text-xs font-bold uppercase tracking-widest",
-                        if(attempts_exhausted, do: "text-error", else: "text-base-content/50")
-                      ]}>
+                      <span class="text-xs font-bold uppercase tracking-widest text-base-content/50">
                         {gettext("Attempts:")} {attempts} / {max_attempts}
                       </span>
                     </div>
