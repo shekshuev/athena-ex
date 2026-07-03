@@ -115,10 +115,8 @@ defmodule Athena.Execution.Worker do
       |> Map.put("execution_results", clean_test_results)
       |> Map.delete("is_test_run")
 
-    mapped_status = if result.status == :accepted, do: :graded, else: :rejected
-
     attrs = %{
-      status: mapped_status,
+      status: :graded,
       score: result.score,
       content: new_content
     }
