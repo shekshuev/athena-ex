@@ -56,7 +56,8 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
        child_submissions: child_subs,
        questions: questions,
        manual_score_override: false,
-       child_grades_params: %{}
+       child_grades_params: %{},
+       running_tests: %{}
      )}
   end
 
@@ -172,6 +173,76 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
     end
   end
 
+  @impl true
+  def handle_event("run_code", %{"block_id" => block_id}, socket) do
+    block = find_grading_block(socket.assigns, block_id)
+    sub = find_grading_submission(socket.assigns, block_id)
+
+    with {:valid?, true} <- {:valid?, not is_nil(block) and not is_nil(sub)},
+         {:code?, code} when code != "" <- {:code?, extract_submitted_code(sub)},
+         {:runner?, true} <- {:runner?, code_runner_available?()} do
+      {:noreply, dispatch_code_execution(socket, block, code)}
+    else
+      {:valid?, false} ->
+        {:noreply, put_flash(socket, :error, gettext("Could not find submission data."))}
+
+      {:code?, ""} ->
+        {:noreply, put_flash(socket, :error, gettext("Student submission is empty."))}
+
+      {:runner?, false} ->
+        {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
+    end
+  end
+
+  @doc false
+  defp find_grading_block(assigns, block_id) do
+    if assigns.block.id == block_id do
+      assigns.block
+    else
+      Enum.find(assigns.questions, &(&1.id == block_id))
+    end
+  end
+
+  @doc false
+  defp find_grading_submission(assigns, block_id) do
+    if assigns.submission.block_id == block_id do
+      assigns.submission
+    else
+      Map.get(assigns.child_submissions, block_id)
+    end
+  end
+
+  @doc false
+  defp extract_submitted_code(sub) do
+    content =
+      if is_struct(sub.content), do: Map.from_struct(sub.content), else: sub.content || %{}
+
+    content["code"] || content[:code] || content["text_answer"] || content[:text_answer] || ""
+  end
+
+  @doc false
+  defp code_runner_available?, do: :global.whereis_name(:code_runner) != :undefined
+
+  @doc false
+  defp dispatch_code_execution(socket, block, code) do
+    challenge =
+      Ecto.Changeset.apply_changes(
+        Athena.Content.CodeChallenge.changeset(%Athena.Content.CodeChallenge{}, block.content)
+      )
+
+    task =
+      Task.Supervisor.async({:via, :global, :code_runner}, fn ->
+        box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
+        Athena.Execution.verify(code, challenge, box_id)
+      end)
+
+    running_tests = Map.put(socket.assigns[:running_tests] || %{}, task.ref, block.id)
+
+    socket
+    |> assign(:running_tests, running_tests)
+    |> put_flash(:info, gettext("Running student's code... Please wait."))
+  end
+
   defp update_all_child_grades(socket, child_grades, status) do
     Enum.each(child_grades, fn {child_block_id, grade_data} ->
       child_sub = Map.get(socket.assigns.child_submissions, child_block_id)
@@ -235,6 +306,43 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
         })
 
       {:noreply, assign(socket, child_submissions: new_subs, form: form)}
+    end
+  end
+
+  @impl true
+  def handle_info({ref, result}, socket) when is_map_key(socket.assigns.running_tests, ref) do
+    {_block_id, updated_tests} = Map.pop(socket.assigns.running_tests, ref)
+    Process.demonitor(ref, [:flush])
+
+    socket =
+      if result.status == :accepted do
+        put_flash(
+          socket,
+          :info,
+          gettext("Success! Code passed tests (Score: %{score})", score: result.score)
+        )
+      else
+        put_flash(
+          socket,
+          :error,
+          gettext("Code Failed! Status: %{status}.", status: result.status)
+        )
+      end
+
+    {:noreply, assign(socket, :running_tests, updated_tests)}
+  end
+
+  @impl true
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, socket) do
+    if socket.assigns[:running_tests] && is_map_key(socket.assigns.running_tests, ref) do
+      {_block_id, updated_tests} = Map.pop(socket.assigns.running_tests, ref)
+
+      {:noreply,
+       socket
+       |> put_flash(:error, gettext("Test execution failed or runner disconnected."))
+       |> assign(:running_tests, updated_tests)}
+    else
+      {:noreply, socket}
     end
   end
 
@@ -501,10 +609,18 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
     ~H"""
     <span class={[
       "badge font-bold border tracking-wide rounded-sm",
-      @status == :graded && "bg-success/10 text-success border-success/30",
+      @status in [:graded, :accepted] && "bg-success/10 text-success border-success/30",
       @status == :needs_review && "bg-warning/10 text-warning border-warning/30",
       @status in [:pending, :processing] && "bg-base-200 text-base-content/70 border-base-300",
-      @status == :rejected && "bg-error/10 text-error border-error/30"
+      @status in [
+        :rejected,
+        :wrong_answer,
+        :compilation_error,
+        :runtime_error,
+        :time_limit_exceeded,
+        :memory_limit_exceeded,
+        :system_error
+      ] && "bg-error/10 text-error border-error/30"
     ]}>
       {Atom.to_string(@status) |> String.replace("_", " ") |> String.capitalize()}
     </span>

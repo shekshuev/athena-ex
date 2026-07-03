@@ -534,7 +534,7 @@ defmodule AthenaWeb.StudioLive.Builder do
       attrs = %{
         "type" => "code",
         "content" => %{
-          "language" => "python3",
+          "language" => Execution.default_language(),
           "time_limit" => 1.0,
           "memory_limit" => 65_536,
           "initial_code" => "",
@@ -667,7 +667,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
       if block do
         content_map = normalize_content(block.content || %{})
-        options = Map.get(content_map, "options", [])
+        options = parse_raw_list(Map.get(content_map, "options", []))
 
         new_option = %{
           "id" => Ecto.UUID.generate(),
@@ -721,7 +721,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
       if block do
         content_map = normalize_content(block.content || %{})
-        slots = Map.get(content_map, "slots", [])
+        slots = parse_raw_list(Map.get(content_map, "slots", []))
 
         new_slot = %{
           "id" => Ecto.UUID.generate(),
@@ -1264,7 +1264,7 @@ defmodule AthenaWeb.StudioLive.Builder do
     if can_edit?(socket) do
       block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
       content_map = normalize_content(block.content || %{})
-      test_cases = Map.get(content_map, "test_cases", [])
+      test_cases = parse_raw_list(Map.get(content_map, "test_cases", []))
 
       new_tc = %{
         "id" => Ecto.UUID.generate(),
@@ -1299,7 +1299,7 @@ defmodule AthenaWeb.StudioLive.Builder do
     if can_edit?(socket) do
       block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
       content_map = normalize_content(block.content || %{})
-      test_cases = Map.get(content_map, "test_cases", [])
+      test_cases = parse_raw_list(Map.get(content_map, "test_cases", []))
 
       new_tc_list = Enum.reject(test_cases, fn tc -> Map.get(tc, "id") == tc_id end)
       new_content = Map.put(content_map, "test_cases", new_tc_list)
@@ -2015,4 +2015,13 @@ defmodule AthenaWeb.StudioLive.Builder do
     |> Enum.map(fn id -> find_section(sections, id) end)
     |> Enum.reject(&is_nil/1)
   end
+
+  defp parse_raw_list(raw) when is_map(raw) do
+    raw
+    |> Enum.sort_by(fn {k, _} -> String.to_integer(k) end)
+    |> Enum.map(fn {_, v} -> v end)
+  end
+
+  defp parse_raw_list(raw) when is_list(raw), do: raw
+  defp parse_raw_list(_), do: []
 end

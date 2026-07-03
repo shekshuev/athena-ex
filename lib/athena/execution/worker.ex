@@ -19,11 +19,13 @@ defmodule Athena.Execution.Worker do
     queue: :code_execution,
     max_attempts: 1
 
+  require Logger
+
   alias Athena.Repo
   alias Athena.Learning
   alias Athena.Learning.Submission
   alias Athena.Content.{Block, CodeChallenge}
-  alias Athena.Execution.Verifier
+  alias Athena.Execution.{Result, TestResult, Verifier}
 
   @timeout Application.compile_env(:athena, [Athena.Execution.Worker, :timeout], 60_000)
 
@@ -67,28 +69,31 @@ defmodule Athena.Execution.Worker do
         Task.await(task, @timeout)
       catch
         :exit, reason ->
-          require Logger
           Logger.error("Remote execution failed: #{inspect(reason)}")
           build_error_result("Runner node crashed or timed out.")
       end
     else
-      require Logger
       Logger.error("Runner node is not connected during worker execution!")
       build_error_result("Runner node is not connected!")
     end
   end
 
   defp build_error_result(message) do
-    %Verifier.Result{
+    %Result{
       status: :rejected,
       score: 0,
+      time: 0.0,
+      memory: 0,
       test_results: [
-        %{
+        %TestResult{
           status: :error,
           expected: "",
           stdout: message,
+          stderr: nil,
           input: "",
           time: 0.0,
+          memory: 0,
+          max_score: 0,
           is_hidden: false
         }
       ]
@@ -98,36 +103,31 @@ defmodule Athena.Execution.Worker do
   defp update_submission_with_result(submission, result) do
     clean_test_results =
       Enum.map(result.test_results, fn tr ->
-        Map.new(tr, fn {k, v} ->
+        tr
+        |> Map.from_struct()
+        |> Map.new(fn {k, v} ->
           {to_string(k), if(is_atom(v) and not is_boolean(v), do: to_string(v), else: v)}
         end)
       end)
 
-    new_content = Map.put(submission.content || %{}, "execution_results", clean_test_results)
+    new_content =
+      (submission.content || %{})
+      |> Map.put("execution_results", clean_test_results)
+      |> Map.delete("is_test_run")
 
     attrs = %{
-      status: result.status,
+      status: :graded,
       score: result.score,
       content: new_content
     }
 
     case Learning.system_update_submission(submission, attrs) do
-      {:ok, updated_sub} ->
-        broadcast_update(updated_sub)
+      {:ok, _updated_sub} ->
         :ok
 
       {:error, changeset} ->
-        require Logger
         Logger.error("Failed to update submission: #{inspect(changeset.errors)}")
         :error
     end
-  end
-
-  defp broadcast_update(submission) do
-    Phoenix.PubSub.broadcast(
-      Athena.PubSub,
-      "submission:#{submission.account_id}:#{submission.block_id}",
-      {:submission_updated, submission}
-    )
   end
 end

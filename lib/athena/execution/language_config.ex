@@ -39,4 +39,26 @@ defmodule Athena.Execution.LanguageConfig do
   end
 
   def get(_), do: nil
+
+  @doc """
+  Returns language list for UI selects.
+  """
+  def options do
+    [
+      {"Python", "python3"},
+      {"C++", "cpp"}
+    ]
+  end
+
+  @doc """
+  Returns the default language identifier.
+  """
+  def default_language, do: "python3"
+
+  @doc """
+  Maps backend language identifiers to CodeMirror language modes.
+  """
+  def cm_lang("cpp"), do: "cpp"
+  def cm_lang("python3"), do: "python"
+  def cm_lang(_), do: "python"
 end

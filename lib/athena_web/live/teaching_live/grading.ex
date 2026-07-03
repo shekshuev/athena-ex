@@ -366,9 +366,17 @@ defmodule AthenaWeb.TeachingLive.Grading do
             <div class={[
               "font-mono font-bold",
               sub.status == :needs_review && "text-base-content/30",
-              sub.status == :rejected && "text-error"
+              sub.status in [
+                :rejected,
+                :wrong_answer,
+                :compilation_error,
+                :runtime_error,
+                :time_limit_exceeded,
+                :memory_limit_exceeded,
+                :system_error
+              ] && "text-error"
             ]}>
-              <%= if sub.status in [:graded, :rejected] do %>
+              <%= if sub.status not in [:pending, :processing, :needs_review, :draft] do %>
                 {sub.score} <span class="text-xs opacity-50 font-normal">/ 100</span>
               <% else %>
                 —
@@ -425,9 +433,17 @@ defmodule AthenaWeb.TeachingLive.Grading do
     ~H"""
     <span class={[
       "badge badge-sm font-bold tracking-wide shrink-0",
-      @status == :graded && "badge-success badge-soft",
+      @status in [:graded, :accepted] && "badge-success badge-soft",
       @status == :needs_review && "badge-warning badge-soft",
-      @status == :rejected && "badge-error badge-soft",
+      @status in [
+        :rejected,
+        :wrong_answer,
+        :compilation_error,
+        :runtime_error,
+        :time_limit_exceeded,
+        :memory_limit_exceeded,
+        :system_error
+      ] && "badge-error badge-soft",
       @status in [:pending, :processing] && "badge-neutral badge-soft"
     ]}>
       {Atom.to_string(@status) |> String.replace("_", " ") |> String.capitalize()}

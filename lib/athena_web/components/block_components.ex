@@ -9,6 +9,8 @@ defmodule AthenaWeb.BlockComponents do
   use Phoenix.Component
   use AthenaWeb, :html
 
+  alias Athena.Execution
+
   @doc """
     Main entry point for rendering any block.
     Routes to specific renderers based on block type.
@@ -201,7 +203,7 @@ defmodule AthenaWeb.BlockComponents do
         assigns[:submission]
       )
 
-    lang = assigns.block.content["language"] || "python3"
+    lang = assigns.block.content["language"] || Execution.default_language()
     is_processing = !!(assigns.submission && assigns.submission.status in [:pending, :processing])
     readonly = !!(assigns.mode not in [:edit, :play] or is_processing)
     execution_results = resolve_execution_results(assigns.draft, assigns.submission)
@@ -209,7 +211,7 @@ defmodule AthenaWeb.BlockComponents do
     assigns =
       assigns
       |> assign(:code, code)
-      |> assign(:cm_lang, map_cm_lang(lang))
+      |> assign(:cm_lang, Execution.cm_lang(lang))
       |> assign(:readonly, readonly)
       |> assign(:execution_results, execution_results)
       |> assign(:is_processing, is_processing)
@@ -233,7 +235,7 @@ defmodule AthenaWeb.BlockComponents do
 
       <label class="label flex justify-between">
         <span class="label-text font-bold text-xs uppercase text-base-content/70">
-          {@block.content["language"] || "python3"}
+          {@block.content["language"] || Execution.default_language()}
         </span>
         <span :if={@mode == :edit} class="label-text font-bold text-xs uppercase text-base-content/70">
           {gettext("Initial Code (Template)")}
@@ -342,17 +344,18 @@ defmodule AthenaWeb.BlockComponents do
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
               <button
+                :if={not (@mode == :review and not @hide_submit)}
                 type="button"
                 phx-click="run_code"
                 phx-value-block_id={@block.id}
                 class="btn btn-outline btn-sm"
-                disabled={@readonly}
+                disabled={@is_processing}
               >
                 <.icon name="hero-play" class="size-4 mr-1" /> {gettext("Run")}
               </button>
 
               <button
-                :if={not @hide_submit}
+                :if={not @hide_submit and @mode == :play}
                 type="submit"
                 class="btn btn-primary btn-sm"
                 disabled={@readonly || @is_processing}
@@ -360,9 +363,7 @@ defmodule AthenaWeb.BlockComponents do
                 <%= cond do %>
                   <% @is_processing -> %>
                     <span class="loading loading-spinner loading-xs"></span> {gettext("Checking...")}
-                  <% @readonly -> %>
-                    {gettext("Locked")}
-                  <% @submission != nil -> %>
+                  <% @submission != nil and @submission.status != :draft -> %>
                     {gettext("Resubmit")}
                   <% true -> %>
                     {gettext("Submit")}
@@ -370,7 +371,10 @@ defmodule AthenaWeb.BlockComponents do
               </button>
             </div>
 
-            <span :if={@block.content["max_attempts"]} class="text-xs text-base-content/50">
+            <span
+              :if={@block.content["max_attempts"]}
+              class="text-xs font-bold uppercase tracking-widest text-base-content/50"
+            >
               {gettext("Attempts:")} {@attempts_count} / {@block.content["max_attempts"]}
             </span>
           </div>
@@ -448,10 +452,6 @@ defmodule AthenaWeb.BlockComponents do
 
   defp do_extract_code(val) when is_binary(val) and val != "", do: val
   defp do_extract_code(_), do: nil
-
-  defp map_cm_lang("cpp"), do: "cpp"
-  defp map_cm_lang("sql"), do: "sql"
-  defp map_cm_lang(_), do: "python"
 
   defp render_quiz_question(assigns) do
     q_type = assigns.block.content["question_type"] || "open"
@@ -1257,7 +1257,7 @@ defmodule AthenaWeb.BlockComponents do
                 <div
                   id={"solution-editor-#{@block.id}"}
                   phx-hook="CodeEditor"
-                  data-language={map_cm_lang(@block.content["language"])}
+                  data-language={Execution.cm_lang(@block.content["language"])}
                   data-readonly="false"
                   data-code={@block.content["solution_code"] || ""}
                   data-input-id={"solution-input-#{@block.id}"}

@@ -3,6 +3,7 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
   A LiveComponent for creating and editing library block metadata.
   Handles the parsing of comma-separated tags.
   """
+  alias Athena.Execution
   use AthenaWeb, :live_component
 
   alias Athena.Content
@@ -113,9 +114,12 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
 
   defp put_default_content(%{"type" => "code"} = params) do
     Map.put_new(params, "content", %{
-      "code" => "IO.puts(:hello)",
-      "language" => "elixir",
-      "execution_mode" => "run"
+      "initial_code" => "",
+      "solution_code" => "",
+      "language" => Execution.default_language(),
+      "time_limit" => 1.0,
+      "memory_limit" => 65_536,
+      "test_cases" => []
     })
   end
 

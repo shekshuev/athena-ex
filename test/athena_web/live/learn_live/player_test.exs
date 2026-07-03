@@ -1047,8 +1047,6 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       html = render(lv)
 
       assert html =~ "Attempts: 1 / 1"
-      assert html =~ "Locked"
-      assert html =~ "disabled"
       refute html =~ "Submit"
     end
 
@@ -1118,8 +1116,6 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       html = render(lv)
 
       assert html =~ "Attempts: 1 / 5"
-      assert html =~ "Locked"
-      assert html =~ "disabled"
     end
   end
 

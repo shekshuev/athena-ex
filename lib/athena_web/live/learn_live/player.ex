@@ -846,6 +846,25 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @impl true
+  def handle_info({:submission_updated, %{status: :draft} = submission}, socket) do
+    real_sub =
+      Learning.get_submission(
+        socket.assigns.current_user.id,
+        submission.block_id,
+        socket.assigns.team_id
+      )
+
+    submissions =
+      if real_sub do
+        Map.put(socket.assigns.submissions, submission.block_id, real_sub)
+      else
+        Map.delete(socket.assigns.submissions, submission.block_id)
+      end
+
+    {:noreply, assign(socket, submissions: submissions)}
+  end
+
+  @impl true
   def handle_info({:submission_updated, submission}, socket) do
     submissions = Map.put(socket.assigns.submissions, submission.block_id, submission)
     block = Enum.find(socket.assigns.blocks, &(&1.id == submission.block_id))
@@ -860,7 +879,7 @@ defmodule AthenaWeb.LearnLive.Player do
       end
 
     socket =
-      if submission.status in [:pending, :processing] do
+      if submission.status in [:pending, :processing, :draft] do
         socket
       else
         attempts = Map.get(socket.assigns.attempts_map || %{}, block.id, 0)
@@ -965,7 +984,7 @@ defmodule AthenaWeb.LearnLive.Player do
     max_attempts = extract_max_attempts(block.content["max_attempts"])
 
     cond do
-      to_string(submission.status) == "accepted" ->
+      submission.score == 100 ->
         {:info, gettext("Success! Code passed all tests.")}
 
       max_attempts != nil and attempts >= max_attempts ->
@@ -1178,7 +1197,7 @@ defmodule AthenaWeb.LearnLive.Player do
                   <div class="mt-6 flex items-center justify-between">
                     <button
                       type="submit"
-                      class="btn btn-primary"
+                      class="btn btn-primary btn-sm"
                       disabled={is_locked}
                     >
                       {cond do
@@ -1189,10 +1208,7 @@ defmodule AthenaWeb.LearnLive.Player do
                     </button>
 
                     <div :if={max_attempts} class="text-right">
-                      <span class={[
-                        "text-xs font-bold uppercase tracking-widest",
-                        if(attempts_exhausted, do: "text-error", else: "text-base-content/50")
-                      ]}>
+                      <span class="text-xs font-bold uppercase tracking-widest text-base-content/50">
                         {gettext("Attempts:")} {attempts} / {max_attempts}
                       </span>
                     </div>
