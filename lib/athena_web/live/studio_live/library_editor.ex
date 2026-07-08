@@ -377,7 +377,8 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
        |> push_event("insert_media", %{
          block_id: socket.assigns.block.id,
          type: "tiptap_image",
-         url: final_url
+         url: final_url,
+         temp_id: temp_id
        })}
     else
       false ->
