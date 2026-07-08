@@ -1558,6 +1558,33 @@ defmodule AthenaWeb.BlockComponents do
         >
           <.icon name="hero-command-line" class="size-5" />
         </button>
+        <div class="dropdown dropdown-end hidden tiptap-lang-control join-item relative z-50">
+          <div
+            role="button"
+            data-action="toggle-lang-dropdown"
+            class="btn btn-sm btn-ghost mx-1 px-2 text-xs font-mono"
+          >
+            <span class="current-lang-label">Auto</span>
+            <.icon name="hero-chevron-down" class="size-3 ml-1" />
+          </div>
+          <ul class="dropdown-content menu p-1 shadow-lg bg-base-100 rounded-sm w-36 text-xs border border-base-300 max-h-60 overflow-y-auto">
+            <li><a data-lang="auto">Auto</a></li>
+            <li><a data-lang="python">Python</a></li>
+            <li><a data-lang="cpp">C++</a></li>
+            <li><a data-lang="java">Java</a></li>
+            <li><a data-lang="go">Go</a></li>
+            <li><a data-lang="rust">Rust</a></li>
+            <li><a data-lang="php">PHP</a></li>
+            <li><a data-lang="javascript">JS</a></li>
+            <li><a data-lang="sql">SQL</a></li>
+            <li><a data-lang="html">HTML</a></li>
+            <li><a data-lang="css">CSS</a></li>
+            <li><a data-lang="xml">XML</a></li>
+            <li><a data-lang="json">JSON</a></li>
+            <li><a data-lang="markdown">MD</a></li>
+            <li><a data-lang="yaml">YAML</a></li>
+          </ul>
+        </div>
         <button
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3 font-bold"
