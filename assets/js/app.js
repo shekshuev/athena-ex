@@ -36,6 +36,7 @@ import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 import { EditorView, basicSetup } from "codemirror";
 import { common, createLowlight } from "lowlight";
+import * as mammoth from "mammoth";
 import { Socket } from "phoenix";
 import { hooks as colocatedHooks } from "phoenix-colocated/athena";
 import "phoenix_html";
@@ -313,15 +314,15 @@ Hooks.TiptapEditor = {
       },
     });
 
-    const extensions = [
+    const getTiptapExtensions = (readOnlyMode) => [
       StarterKit.configure({ codeBlock: false }),
       SmartSpacer,
       CodeBlockLowlight.configure({ lowlight }),
       Underline,
-      Link.configure({ openOnClick: isReadOnly }),
+      Link.configure({ openOnClick: readOnlyMode }),
       Highlight.configure({ multicolor: true }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),
-      Table.configure({ resizable: !isReadOnly }),
+      Table.configure({ resizable: !readOnlyMode }),
       TableRow,
       TableHeader,
       TableCell,
@@ -357,6 +358,8 @@ Hooks.TiptapEditor = {
         HTMLAttributes: { class: "rounded-sm my-4 mx-auto" },
       }),
     ];
+
+    const extensions = getTiptapExtensions(isReadOnly);
 
     const updateToolbarState = (editor) => {
       const wrapper = hook.el.closest(".editor-wrapper");
@@ -757,6 +760,70 @@ Hooks.TiptapEditor = {
         });
 
         toolbar.addEventListener("change", (e) => {
+          if (e.target.classList.contains("tiptap-word-import")) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            this.editor.setEditable(false);
+
+            const reader = new FileReader();
+            reader.onload = (loadEvent) => {
+              mammoth
+                .convertToHtml({ arrayBuffer: loadEvent.target.result })
+                .then((result) => {
+                  this.editor.setEditable(true);
+                  this.editor.chain().focus().insertContent(result.value).run();
+                  e.target.value = "";
+
+                  this.editor.state.doc.descendants((node, pos) => {
+                    if (
+                      node.type.name === "image" &&
+                      node.attrs.src.startsWith("data:image")
+                    ) {
+                      const tempId = crypto.randomUUID();
+
+                      this.editor
+                        .chain()
+                        .setNodeSelection(pos)
+                        .command(({ tr }) => {
+                          tr.setNodeMarkup(pos, null, {
+                            ...node.attrs,
+                            alt: tempId,
+                          });
+                          return true;
+                        })
+                        .run();
+
+                      fetch(node.attrs.src)
+                        .then((res) => res.blob())
+                        .then((blob) => {
+                          hook.clipboardFiles[tempId] = blob;
+                          hook.pushEvent("media_upload_clipboard_request", {
+                            block_id: blockId,
+                            file_name: `word_import_${tempId.substring(0, 8)}.png`,
+                            file_type: blob.type,
+                            file_size: blob.size,
+                            temp_id: tempId,
+                          });
+                        });
+                    }
+                  });
+
+                  hook.pushEvent("update_content", {
+                    id: blockId,
+                    content: this.editor.getJSON(),
+                  });
+                })
+                .catch((err) => {
+                  console.error("Word import error:", err);
+                  this.editor.setEditable(true);
+                  e.target.value = "";
+                });
+            };
+            reader.readAsArrayBuffer(file);
+            return;
+          }
+
           if (e.target.tagName.toLowerCase() === "select") {
             const action = e.target.dataset.action;
             const value = e.target.value;
@@ -817,7 +884,32 @@ Hooks.TiptapEditor = {
 
       this.handleInsertMedia = (e) => {
         if (e.detail.block_id === blockId && e.detail.type === "tiptap_image") {
-          this.editor.chain().focus().setImage({ src: e.detail.url }).run();
+          let replaced = false;
+          const tempId = e.detail.temp_id;
+
+          if (tempId) {
+            this.editor.state.doc.descendants((node, pos) => {
+              if (node.type.name === "image" && node.attrs.alt === tempId) {
+                this.editor
+                  .chain()
+                  .setNodeSelection(pos)
+                  .command(({ tr }) => {
+                    tr.setNodeMarkup(pos, null, {
+                      ...node.attrs,
+                      src: e.detail.url,
+                      alt: "",
+                    });
+                    return true;
+                  })
+                  .run();
+                replaced = true;
+              }
+            });
+          }
+
+          if (!replaced) {
+            this.editor.chain().focus().setImage({ src: e.detail.url }).run();
+          }
 
           hook.pushEvent("update_content", {
             id: blockId,

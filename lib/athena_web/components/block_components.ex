@@ -1666,6 +1666,13 @@ defmodule AthenaWeb.BlockComponents do
         >
           <.icon name="hero-trash" class="size-4" />
         </button>
+        <label
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3 cursor-pointer text-info hover:bg-info/10"
+          data-tippy-content={gettext("Import from .docx")}
+        >
+          <.icon name="hero-document-arrow-up" class="size-5" />
+          <input type="file" accept=".docx" class="hidden tiptap-word-import" />
+        </label>
       </div>
     </div>
     """
