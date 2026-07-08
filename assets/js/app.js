@@ -1,6 +1,17 @@
 import { cpp } from "@codemirror/lang-cpp";
+import { css } from "@codemirror/lang-css";
+import { go } from "@codemirror/lang-go";
+import { html } from "@codemirror/lang-html";
+import { java } from "@codemirror/lang-java";
+import { javascript } from "@codemirror/lang-javascript";
+import { json } from "@codemirror/lang-json";
+import { markdown } from "@codemirror/lang-markdown";
+import { php } from "@codemirror/lang-php";
 import { python } from "@codemirror/lang-python";
+import { rust } from "@codemirror/lang-rust";
 import { sql } from "@codemirror/lang-sql";
+import { xml } from "@codemirror/lang-xml";
+import { yaml } from "@codemirror/lang-yaml";
 import { Compartment, EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { Editor, Extension } from "@tiptap/core";
@@ -96,11 +107,52 @@ Hooks.CodeEditor = {
   mounted() {
     const isReadOnly = this.el.dataset.readonly === "true";
     const language = this.el.dataset.language;
-    const container = this.el.parentElement;
 
     let langExtension = python();
-    if (language === "cpp") langExtension = cpp();
-    if (language === "sql") langExtension = sql();
+    switch (language) {
+      case "python":
+        langExtension = python();
+        break;
+      case "cpp":
+        langExtension = cpp();
+        break;
+      case "sql":
+        langExtension = sql();
+        break;
+      case "javascript":
+        langExtension = javascript();
+        break;
+      case "html":
+        langExtension = html();
+        break;
+      case "css":
+        langExtension = css();
+        break;
+      case "json":
+        langExtension = json();
+        break;
+      case "markdown":
+        langExtension = markdown();
+        break;
+      case "yaml":
+        langExtension = yaml();
+        break;
+      case "rust":
+        langExtension = rust();
+        break;
+      case "go":
+        langExtension = go();
+        break;
+      case "java":
+        langExtension = java();
+        break;
+      case "php":
+        langExtension = php();
+        break;
+      case "xml":
+        langExtension = xml();
+        break;
+    }
 
     const themeCompartment = new Compartment();
 
@@ -321,6 +373,24 @@ Hooks.TiptapEditor = {
           }
         }
       }
+
+      const langControl = toolbar.querySelector(".tiptap-lang-control");
+      if (langControl) {
+        if (editor.isActive("codeBlock")) {
+          langControl.classList.remove("hidden");
+
+          const currentLang =
+            editor.getAttributes("codeBlock").language || "auto";
+
+          const label = langControl.querySelector(".current-lang-label");
+          if (label) {
+            label.textContent =
+              currentLang === "python3" ? "Python" : currentLang.toUpperCase();
+          }
+        } else {
+          langControl.classList.add("hidden");
+        }
+      }
     };
 
     this.editor = new Editor({
@@ -436,9 +506,9 @@ Hooks.TiptapEditor = {
           );
 
           if (hasHtml && imageItems.length > 0) {
-            const html = clipboardData.getData("text/html");
+            const htmlData = clipboardData.getData("text/html");
 
-            if (html.includes("file://")) {
+            if (htmlData.includes("file://")) {
               event.preventDefault();
 
               const text = clipboardData.getData("text/plain");
@@ -533,6 +603,39 @@ Hooks.TiptapEditor = {
         tippy(toolbar.querySelectorAll("[data-tippy-content]"));
 
         toolbar.addEventListener("click", (e) => {
+          const toggleBtn = e.target.closest(
+            '[data-action="toggle-lang-dropdown"]',
+          );
+          if (toggleBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const dropdown = toggleBtn.closest(".dropdown");
+            dropdown.classList.toggle("dropdown-open");
+            return;
+          }
+
+          const langItem = e.target.closest("[data-lang]");
+          if (langItem) {
+            e.preventDefault();
+            e.stopPropagation();
+            const value = langItem.dataset.lang;
+
+            this.editor
+              .chain()
+              .focus()
+              .updateAttributes("codeBlock", {
+                language: value === "auto" ? null : value,
+              })
+              .run();
+
+            const dropdown = langItem.closest(".dropdown");
+            if (dropdown) dropdown.classList.remove("dropdown-open");
+            return;
+          }
+
+          const dropdown = toolbar.querySelector(".tiptap-lang-control");
+          if (dropdown) dropdown.classList.remove("dropdown-open");
+
           const btn = e.target.closest("button");
           if (!btn) return;
           e.preventDefault();
@@ -586,7 +689,25 @@ Hooks.TiptapEditor = {
           if (action === "ordered") chain.toggleOrderedList().run();
 
           if (action === "quote") chain.toggleBlockquote().run();
-          if (action === "code-block") chain.toggleCodeBlock().run();
+          if (action === "code-block") {
+            if (this.editor.isActive("codeBlock")) {
+              chain.toggleCodeBlock().run();
+            } else {
+              const { from, to, empty } = this.editor.state.selection;
+              if (!empty) {
+                const text = this.editor.state.doc.textBetween(from, to, "\n");
+                chain
+                  .deleteRange({ from, to })
+                  .insertContent({
+                    type: "codeBlock",
+                    content: [{ type: "text", text }],
+                  })
+                  .run();
+              } else {
+                chain.toggleCodeBlock().run();
+              }
+            }
+          }
           if (action === "details") {
             if (this.editor.isActive("details")) {
               chain.unsetDetails().run();
@@ -640,6 +761,14 @@ Hooks.TiptapEditor = {
             const action = e.target.dataset.action;
             const value = e.target.value;
             const chain = this.editor.chain().focus();
+          }
+
+          if (action === "set-lang") {
+            chain
+              .updateAttributes("codeBlock", {
+                language: value === "auto" ? null : value,
+              })
+              .run();
           }
         });
 
@@ -698,6 +827,15 @@ Hooks.TiptapEditor = {
       };
       window.addEventListener("phx:insert_media", this.handleInsertMedia);
     }
+
+    this.handleGlobalClick = (e) => {
+      const wrapper = hook.el.closest(".editor-wrapper");
+      if (wrapper && !wrapper.contains(e.target)) {
+        const dropdown = wrapper.querySelector(".tiptap-lang-control");
+        if (dropdown) dropdown.classList.remove("dropdown-open");
+      }
+    };
+    document.addEventListener("click", this.handleGlobalClick);
   },
 
   destroyed() {
@@ -705,6 +843,8 @@ Hooks.TiptapEditor = {
     if (this.handleInsertMedia) {
       window.removeEventListener("phx:insert_media", this.handleInsertMedia);
     }
+
+    document.removeEventListener("click", this.handleGlobalClick);
   },
 };
 
@@ -837,7 +977,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
 });
 
 const savedTheme = localStorage.getItem("phx:theme") || "system";
-const html = document.documentElement;
+const htmlDoc = document.documentElement;
 
 const applyTheme = (theme) => {
   let activeTheme = theme;
@@ -846,7 +986,7 @@ const applyTheme = (theme) => {
       ? "dark"
       : "light";
   }
-  html.setAttribute("data-theme", activeTheme);
+  htmlDoc.setAttribute("data-theme", activeTheme);
 
   document.querySelectorAll(".theme-controller").forEach((cb) => {
     cb.checked = activeTheme === "dark";
