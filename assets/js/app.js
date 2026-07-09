@@ -53,6 +53,21 @@ const ResizableImage = ImageResize.extend({
   name: "image",
 });
 
+const safeUUID = () => {
+  if (
+    typeof window !== "undefined" &&
+    window.crypto &&
+    window.crypto.randomUUID
+  ) {
+    return window.crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
 const isMac =
   typeof window !== "undefined" &&
   navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
@@ -521,7 +536,7 @@ Hooks.TiptapEditor = {
 
               imageItems.forEach((item) => {
                 const file = item.getAsFile();
-                const tempId = crypto.randomUUID();
+                const tempId = safeUUID();
 
                 hook.clipboardFiles[tempId] = file;
 
@@ -543,7 +558,7 @@ Hooks.TiptapEditor = {
 
             imageItems.forEach((item) => {
               const file = item.getAsFile();
-              const tempId = crypto.randomUUID();
+              const tempId = safeUUID();
 
               hook.clipboardFiles[tempId] = file;
 
@@ -780,7 +795,7 @@ Hooks.TiptapEditor = {
                       node.type.name === "image" &&
                       node.attrs.src.startsWith("data:image")
                     ) {
-                      const tempId = crypto.randomUUID();
+                      const tempId = safeUUID();
 
                       this.editor
                         .chain()
