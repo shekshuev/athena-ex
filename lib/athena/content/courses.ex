@@ -138,8 +138,13 @@ defmodule Athena.Content.Courses do
   Shares a course with a specific user account (by UUID) and assigns a role.
   Updates the role if the share already exists via UPSERT.
   """
-  def share_course(user, %Course{} = course, account_id, role \\ :reader) do
-    if can_edit_course?(user, course) do
+  def share_course(user, course, account_id, role \\ :reader)
+
+  def share_course(_user, %Course{owner_id: owner_id}, account_id, _role)
+      when owner_id == account_id, do: {:error, :cannot_share_with_owner}
+
+  def share_course(user, %Course{} = course, account_id, role) do
+    if can_manage_course?(user, course) do
       %CourseShare{}
       |> CourseShare.changeset(%{course_id: course.id, account_id: account_id, role: role})
       |> Repo.insert(
@@ -159,7 +164,7 @@ defmodule Athena.Content.Courses do
   Revokes a specific user's access to a course.
   """
   def revoke_course_share(user, %Course{} = course, account_id) do
-    if can_edit_course?(user, course) do
+    if can_manage_course?(user, course) do
       from(cs in CourseShare, where: cs.course_id == ^course.id and cs.account_id == ^account_id)
       |> Repo.delete_all()
 
@@ -173,7 +178,7 @@ defmodule Athena.Content.Courses do
   Toggles the public visibility of a course.
   """
   def toggle_course_public(user, %Course{} = course, is_public) when is_boolean(is_public) do
-    if can_edit_course?(user, course) do
+    if can_manage_course?(user, course) do
       course
       |> Ecto.Changeset.change(%{is_public: is_public})
       |> Repo.update()
@@ -209,6 +214,11 @@ defmodule Athena.Content.Courses do
         false
       end
     end
+  end
+
+  @doc false
+  defp can_manage_course?(user, course) do
+    Identity.can?(user, "courses.update", course)
   end
 
   @doc false

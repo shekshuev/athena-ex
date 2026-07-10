@@ -410,5 +410,41 @@ defmodule Athena.Content.CoursesTest do
       assert course.id in ids
       assert public_course.id in ids
     end
+
+    test "share_course returns error when trying to share with owner (prevent self-sharing)", %{
+      owner: owner,
+      course: course
+    } do
+      assert {:error, :cannot_share_with_owner} =
+               Courses.share_course(owner, course, owner.id, :reader)
+    end
+
+    test "writer via CourseShare CANNOT share, revoke or toggle public visibility", %{
+      owner: owner,
+      course: course,
+      collaborator: collaborator
+    } do
+      Courses.share_course(owner, course, collaborator.id, :writer)
+      third_guy = insert(:account)
+
+      assert {:error, :unauthorized} =
+               Courses.share_course(collaborator, course, third_guy.id, :reader)
+
+      assert {:error, :unauthorized} = Courses.revoke_course_share(collaborator, course, owner.id)
+      assert {:error, :unauthorized} = Courses.toggle_course_public(collaborator, course, true)
+    end
+
+    test "list_courses excludes soft-deleted courses even if they were shared", %{
+      owner: owner,
+      collaborator: collaborator
+    } do
+      course = insert(:course, owner_id: owner.id)
+      Courses.share_course(owner, course, collaborator.id, :reader)
+      Courses.soft_delete_course(owner, course)
+      {:ok, {fetched_courses, _}} = Courses.list_courses(collaborator, %{})
+      ids = Enum.map(fetched_courses, & &1.id)
+
+      refute course.id in ids
+    end
   end
 end

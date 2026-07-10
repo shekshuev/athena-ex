@@ -91,6 +91,9 @@ defmodule AthenaWeb.StudioLive.CourseShareComponent do
 
         {:noreply, socket}
 
+      {:error, :cannot_share_with_owner} ->
+        {:noreply, put_flash(socket, :error, gettext("Cannot share with owner."))}
+
       {:error, _} ->
         {:noreply, put_flash(socket, :error, gettext("Failed to share course."))}
     end

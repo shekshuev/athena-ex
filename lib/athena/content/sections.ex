@@ -50,23 +50,29 @@ defmodule Athena.Content.Sections do
           {:ok, Section.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
   def create_section(user, attrs) do
     parent_id = Map.get(attrs, "parent_id")
+    provided_course_id = Map.get(attrs, "course_id")
+    parent_course_id = get_course_id_from_parent(parent_id)
 
-    course_id =
-      Map.get(attrs, "course_id") ||
-        get_course_id_from_parent(parent_id)
+    course_id = provided_course_id || parent_course_id
 
-    if course_id && can_edit_course?(user, course_id) do
-      section_id = Map.get(attrs, "id") || Ecto.UUID.generate()
-      parent_path = get_parent_path(parent_id)
+    cond do
+      not is_nil(parent_id) and not is_nil(provided_course_id) and
+          parent_course_id != provided_course_id ->
+        {:error, :unauthorized}
 
-      path_string = Section.build_path(section_id, parent_path)
-      merged_attrs = Map.merge(attrs, %{"path" => path_string, "id" => section_id})
+      course_id && can_edit_course?(user, course_id) ->
+        section_id = Map.get(attrs, "id") || Ecto.UUID.generate()
+        parent_path = get_parent_path(parent_id)
 
-      %Section{id: section_id}
-      |> Section.changeset(merged_attrs)
-      |> Repo.insert()
-    else
-      {:error, :unauthorized}
+        path_string = Section.build_path(section_id, parent_path)
+        merged_attrs = Map.merge(attrs, %{"path" => path_string, "id" => section_id})
+
+        %Section{id: section_id}
+        |> Section.changeset(merged_attrs)
+        |> Repo.insert()
+
+      true ->
+        {:error, :unauthorized}
     end
   end
 
@@ -79,18 +85,39 @@ defmodule Athena.Content.Sections do
   @spec update_section(map(), Section.t(), map()) ::
           {:ok, Section.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
   def update_section(user, %Section{} = section, attrs) do
-    if can_edit_course?(user, section.course_id) do
-      new_parent_id = Map.get(attrs, "parent_id", Map.get(attrs, :parent_id, :not_provided))
+    new_parent_id = Map.get(attrs, "parent_id", Map.get(attrs, :parent_id, :not_provided))
 
-      if parent_id_changed?(section.parent_id, new_parent_id) do
-        handle_parent_id_change(section, attrs, new_parent_id)
-      else
-        section
-        |> Section.changeset(attrs)
-        |> Repo.update()
-      end
+    with :ok <- check_course_edit_rights(user, section.course_id),
+         :ok <- validate_parent_course(section.course_id, new_parent_id) do
+      execute_section_update(section, attrs, new_parent_id)
+    end
+  end
+
+  @doc false
+  defp check_course_edit_rights(user, course_id) do
+    if can_edit_course?(user, course_id), do: :ok, else: {:error, :unauthorized}
+  end
+
+  @doc false
+  defp validate_parent_course(_course_id, :not_provided), do: :ok
+  defp validate_parent_course(_course_id, nil), do: :ok
+
+  defp validate_parent_course(course_id, new_parent_id) do
+    if get_course_id_from_parent(new_parent_id) == course_id do
+      :ok
     else
       {:error, :unauthorized}
+    end
+  end
+
+  @doc false
+  defp execute_section_update(section, attrs, new_parent_id) do
+    if parent_id_changed?(section.parent_id, new_parent_id) do
+      handle_parent_id_change(section, attrs, new_parent_id)
+    else
+      section
+      |> Section.changeset(attrs)
+      |> Repo.update()
     end
   end
 
