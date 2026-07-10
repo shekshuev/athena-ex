@@ -15,7 +15,8 @@ defmodule Athena.Learning.Enrollments do
     CohortInstructor,
     Instructor,
     Cohorts,
-    Cohort
+    Cohort,
+    Content
   }
 
   alias Athena.{Content, Identity}
@@ -82,7 +83,7 @@ defmodule Athena.Learning.Enrollments do
     with {:ok, cohort} <- Cohorts.get_cohort(user, cohort_id),
          {:ok, course} <- Content.get_course(course_id) do
       if Cohorts.can_manage_cohort_processes?(user, cohort) and
-           Identity.can?(user, "courses.read", course) do
+           Content.can_edit_course?(user, course) do
         insert_if_types_match(cohort, course, status)
       else
         {:error, :unauthorized}

@@ -2,6 +2,7 @@ defmodule Athena.Learning.EnrollmentsTest do
   use Athena.DataCase, async: true
 
   alias Athena.Learning.Enrollments
+  alias Athena.Learning
   alias Athena.Learning.Enrollment
   import Athena.Factory
 
@@ -150,7 +151,7 @@ defmodule Athena.Learning.EnrollmentsTest do
       course = insert(:course, owner_id: admin.id)
       cohort = insert(:cohort, owner_id: admin.id)
 
-      Athena.Learning.Cohorts.update_cohort(admin, cohort, %{
+      Learning.update_cohort(admin, cohort, %{
         "instructor_ids" => [inst_profile.id]
       })
 
@@ -185,7 +186,7 @@ defmodule Athena.Learning.EnrollmentsTest do
       course = insert(:course, owner_id: other_instructor.id)
       cohort = insert(:cohort, owner_id: admin.id)
 
-      Athena.Learning.Cohorts.update_cohort(admin, cohort, %{
+      Learning.update_cohort(admin, cohort, %{
         "instructor_ids" => [other_inst_profile.id]
       })
 
@@ -303,12 +304,12 @@ defmodule Athena.Learning.EnrollmentsTest do
       assert hd(enrollments).course.id == course.id
     end
 
-    test "returns cohort-based enrollments for the student (published only)" do
+    test "returns cohort-based enrollments for the student (published only)", %{admin: admin} do
       student = insert(:account)
       cohort = insert(:cohort)
       course = insert(:course, status: :published)
 
-      Athena.Learning.Cohorts.add_student_to_cohort(cohort.id, student.id)
+      Learning.add_student_to_cohort(admin, cohort.id, student.id)
 
       %Enrollment{}
       |> Enrollment.changeset(%{cohort_id: cohort.id, course_id: course.id, status: :active})
@@ -395,12 +396,14 @@ defmodule Athena.Learning.EnrollmentsTest do
       assert Enrollments.has_access?(student.id, course.id)
     end
 
-    test "returns true if student is enrolled via cohort and course is published" do
+    # ДОБАВЛЕН admin В СИГНАТУРУ
+    test "returns true if student is enrolled via cohort and course is published", %{admin: admin} do
       student = insert(:account)
       cohort = insert(:cohort)
       course = insert(:course, status: :published)
 
-      Athena.Learning.Cohorts.add_student_to_cohort(cohort.id, student.id)
+      # ПРОКИНУТ admin
+      Learning.add_student_to_cohort(admin, cohort.id, student.id)
 
       %Enrollment{}
       |> Enrollment.changeset(%{cohort_id: cohort.id, course_id: course.id, status: :active})
@@ -468,7 +471,7 @@ defmodule Athena.Learning.EnrollmentsTest do
       course = insert(:course, owner_id: admin.id)
       student = insert(:account)
 
-      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort.id, student.id)
+      assert {:ok, _} = Learning.add_student_to_cohort(admin, cohort.id, student.id)
       assert {:ok, %Enrollment{}} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
     end
 
@@ -483,7 +486,7 @@ defmodule Athena.Learning.EnrollmentsTest do
       |> Enrollment.changeset(%{account_id: student.id, course_id: course.id, status: :active})
       |> Repo.insert!()
 
-      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort.id, student.id)
+      assert {:ok, _} = Learning.add_student_to_cohort(admin, cohort.id, student.id)
       assert {:error, msg} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
       assert msg =~ "Cannot enroll"
       assert msg =~ "john_doe"
@@ -497,7 +500,7 @@ defmodule Athena.Learning.EnrollmentsTest do
       cohort_a = insert(:cohort, owner_id: admin.id)
       cohort_b = insert(:cohort, owner_id: admin.id)
 
-      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort_a.id, student.id)
+      assert {:ok, _} = Learning.add_student_to_cohort(admin, cohort_a.id, student.id)
       assert {:ok, _} = Enrollments.enroll_cohort(admin, cohort_a.id, course.id)
 
       %Athena.Learning.CohortMembership{}
@@ -533,7 +536,7 @@ defmodule Athena.Learning.EnrollmentsTest do
       end
 
       for student <- [student_1, student_2] do
-        assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort_b.id, student.id)
+        assert {:ok, _} = Learning.add_student_to_cohort(admin, cohort_b.id, student.id)
       end
 
       assert {:error, msg} = Enrollments.enroll_cohort(admin, cohort_b.id, course.id)
@@ -555,7 +558,7 @@ defmodule Athena.Learning.EnrollmentsTest do
       })
       |> Repo.insert!()
 
-      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort.id, student.id)
+      assert {:ok, _} = Learning.add_student_to_cohort(admin, cohort.id, student.id)
 
       assert {:ok, %Enrollment{}} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
     end
@@ -567,8 +570,8 @@ defmodule Athena.Learning.EnrollmentsTest do
       cohort_a = insert(:cohort, owner_id: admin.id)
       cohort_b = insert(:cohort, owner_id: admin.id)
 
-      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort_a.id, student.id)
-      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort_b.id, student.id)
+      assert {:ok, _} = Learning.add_student_to_cohort(admin, cohort_a.id, student.id)
+      assert {:ok, _} = Learning.add_student_to_cohort(admin, cohort_b.id, student.id)
 
       {:ok, enrollment_a} = Enrollments.enroll_cohort(admin, cohort_a.id, course.id)
       Enrollments.update_enrollment(admin, enrollment_a, %{status: :dropped})
@@ -584,8 +587,9 @@ defmodule Athena.Learning.EnrollmentsTest do
       cohort_a = insert(:cohort, owner_id: admin.id)
       cohort_b = insert(:cohort, owner_id: admin.id)
 
-      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort_a.id, student.id)
-      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort_b.id, student.id)
+      assert {:ok, _} = Learning.add_student_to_cohort(admin, cohort_a.id, student.id)
+      assert {:ok, _} = Learning.add_student_to_cohort(admin, cohort_b.id, student.id)
+
       assert {:ok, _} = Enrollments.enroll_cohort(admin, cohort_a.id, course_x.id)
       assert {:ok, %Enrollment{}} = Enrollments.enroll_cohort(admin, cohort_b.id, course_y.id)
     end
@@ -596,7 +600,7 @@ defmodule Athena.Learning.EnrollmentsTest do
       course = insert(:course, owner_id: admin.id)
       student = insert(:account)
 
-      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort.id, student.id)
+      assert {:ok, _} = Learning.add_student_to_cohort(admin, cohort.id, student.id)
       assert {:ok, _} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
 
       assert {:error, %Ecto.Changeset{}} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
@@ -612,13 +616,13 @@ defmodule Athena.Learning.EnrollmentsTest do
       cohort_b = insert(:cohort, owner_id: admin.id)
 
       {:ok, membership_a} =
-        Athena.Learning.Cohorts.add_student_to_cohort(cohort_a.id, student.id)
+        Learning.add_student_to_cohort(admin, cohort_a.id, student.id)
 
       assert {:ok, _} = Enrollments.enroll_cohort(admin, cohort_a.id, course.id)
 
-      Athena.Learning.Cohorts.remove_student_from_cohort(membership_a)
+      Learning.remove_student_from_cohort(admin, membership_a)
 
-      assert {:ok, _} = Athena.Learning.Cohorts.add_student_to_cohort(cohort_b.id, student.id)
+      assert {:ok, _} = Learning.add_student_to_cohort(admin, cohort_b.id, student.id)
       assert {:ok, %Enrollment{}} = Enrollments.enroll_cohort(admin, cohort_b.id, course.id)
     end
   end

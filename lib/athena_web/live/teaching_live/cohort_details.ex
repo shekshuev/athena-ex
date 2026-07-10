@@ -2,7 +2,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   @moduledoc """
   LiveView for viewing a specific cohort and managing its students and courses.
 
-  Displays cohort metadata, a list of assigned courses (enrollments), and a 
+  Displays cohort metadata, a list of assigned courses (enrollments), and a
   paginated list of students (memberships). Integrates with slide-over components
   for adding new students and assigning courses.
   """
@@ -111,7 +111,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   end
 
   def handle_event("confirm_delete", _, %{assigns: %{membership_to_delete: membership}} = socket) do
-    case Learning.remove_student_from_cohort(membership) do
+    case Learning.remove_student_from_cohort(socket.assigns.current_user, membership) do
       {:ok, _} ->
         {:noreply,
          socket

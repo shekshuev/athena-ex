@@ -58,11 +58,15 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponentTest do
       assert hd(memberships).account_id == student_account.id
     end
 
-    test "shows error if the student is already in the cohort", %{conn: conn} do
+    test "shows error if the student is already in the cohort", %{
+      conn: conn,
+      current_user: current_user
+    } do
       cohort = insert(:cohort)
       student_account = insert(:account, login: "existing_student")
 
-      {:ok, _membership} = Learning.add_student_to_cohort(cohort.id, student_account.id)
+      {:ok, _membership} =
+        Learning.add_student_to_cohort(current_user, cohort.id, student_account.id)
 
       {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/add_student")
 

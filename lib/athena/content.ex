@@ -24,6 +24,8 @@ defmodule Athena.Content do
   def soft_delete_course(user, course),
     do: Courses.soft_delete_course(user, course) |> notify_subscribers()
 
+  defdelegate can_edit_course?(user, course), to: Courses
+
   def share_course(user, course, account_id, role) do
     case Courses.share_course(user, course, account_id, role) do
       {:ok, _share} = result ->

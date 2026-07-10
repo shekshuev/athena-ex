@@ -11,7 +11,8 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
         permissions: [
           "cohorts.read",
           "cohorts.update",
-          "courses.read"
+          "courses.read",
+          "courses.update"
         ]
       )
 
@@ -28,7 +29,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
       cohort = insert(:cohort, name: "Spring Bootcamp", owner_id: admin.id)
 
       student = insert(:account, login: "test_student")
-      {:ok, _membership} = Learning.add_student_to_cohort(cohort.id, student.id)
+      {:ok, _membership} = Learning.add_student_to_cohort(admin, cohort.id, student.id)
 
       course = insert(:course, title: "React Native", owner_id: admin.id)
       {:ok, _enrollment} = Learning.enroll_cohort(admin, cohort.id, course.id)
@@ -102,7 +103,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
     test "should delete a membership when confirmed", %{conn: conn, admin: admin} do
       cohort = insert(:cohort, owner_id: admin.id)
       student = insert(:account, login: "doomed_student")
-      {:ok, membership} = Learning.add_student_to_cohort(cohort.id, student.id)
+      {:ok, membership} = Learning.add_student_to_cohort(admin, cohort.id, student.id)
 
       {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}")
 
@@ -148,7 +149,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
 
       cohort = insert(:cohort)
       student = insert(:account)
-      Learning.add_student_to_cohort(cohort.id, student.id)
+      Learning.add_student_to_cohort(super_admin, cohort.id, student.id)
 
       course = insert(:course)
       Learning.enroll_cohort(super_admin, cohort.id, course.id)
@@ -161,9 +162,10 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
     end
 
     test "should show error flash if user tries to trigger delete membership", %{conn: conn} do
+      super_admin = insert(:account, role: insert(:role, permissions: ["admin"]))
       cohort = insert(:cohort)
       student = insert(:account)
-      {:ok, membership} = Learning.add_student_to_cohort(cohort.id, student.id)
+      {:ok, membership} = Learning.add_student_to_cohort(super_admin, cohort.id, student.id)
 
       {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}")
 
@@ -180,12 +182,14 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
           permissions: [
             "cohorts.read",
             "cohorts.update",
-            "courses.read"
+            "courses.read",
+            "courses.update"
           ],
           policies: %{
             "cohorts.read" => ["own_only"],
             "cohorts.update" => ["own_only"],
-            "courses.read" => ["own_only"]
+            "courses.read" => ["own_only"],
+            "courses.update" => ["own_only"]
           }
         )
 
@@ -203,7 +207,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
       my_cohort = insert(:cohort, owner_id: instructor.id)
 
       student = insert(:account)
-      {:ok, my_membership} = Learning.add_student_to_cohort(my_cohort.id, student.id)
+      {:ok, my_membership} = Learning.add_student_to_cohort(instructor, my_cohort.id, student.id)
 
       my_course = insert(:course, owner_id: instructor.id)
       {:ok, my_enrollment} = Learning.enroll_cohort(instructor, my_cohort.id, my_course.id)
