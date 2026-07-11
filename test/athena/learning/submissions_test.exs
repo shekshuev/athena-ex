@@ -1236,6 +1236,7 @@ defmodule Athena.Learning.SubmissionsTest do
       exam_block: exam_block
     } do
       expired_time = DateTime.add(DateTime.utc_now(), -10, :second) |> DateTime.truncate(:second)
+      course = insert(:course)
 
       expired_sub =
         Repo.insert!(%Submission{
@@ -1246,7 +1247,14 @@ defmodule Athena.Learning.SubmissionsTest do
         })
 
       {:ok, result_sub} =
-        Submissions.get_or_create_exam_attempt(account.id, exam_block.id, nil, 3600, %{})
+        Submissions.get_or_create_exam_attempt(
+          course.id,
+          account.id,
+          exam_block.id,
+          nil,
+          3600,
+          %{}
+        )
 
       assert result_sub.id == expired_sub.id
       assert result_sub.status == :time_limit_exceeded
@@ -1256,8 +1264,12 @@ defmodule Athena.Learning.SubmissionsTest do
       account: account,
       exam_block: exam_block
     } do
+      course = insert(:course)
       lb1 = insert(:library_block, type: :quiz_question, tags: ["tag1"])
       lb2 = insert(:library_block, type: :quiz_question, tags: ["tag2"])
+
+      insert(:course_library_block, course: course, library_block: lb1)
+      insert(:course_library_block, course: course, library_block: lb2)
 
       exam_config = %{
         "time_limit" => 60,
@@ -1268,7 +1280,14 @@ defmodule Athena.Learning.SubmissionsTest do
       }
 
       {:ok, submission} =
-        Submissions.get_or_create_exam_attempt(account.id, exam_block.id, nil, 3600, exam_config)
+        Submissions.get_or_create_exam_attempt(
+          course.id,
+          account.id,
+          exam_block.id,
+          nil,
+          3600,
+          exam_config
+        )
 
       assert submission.content["type"] == "ticket_exam"
       assert length(submission.content["questions"]) == 2

@@ -634,6 +634,7 @@ defmodule Athena.Learning.Submissions do
   Intelligently routes to either `quiz_exam` or `ticket_exam` generator logic.
   """
   def get_or_create_exam_attempt(
+        course_id,
         account_id,
         exam_block_id,
         cohort_id,
@@ -647,9 +648,14 @@ defmodule Athena.Learning.Submissions do
         questions =
           if is_ticket do
             usage = get_ticket_usage(exam_block_id, cohort_id)
-            Athena.Content.Library.generate_ticket_questions(exam_config["slots"], usage)
+
+            Athena.Content.Library.generate_ticket_questions(
+              course_id,
+              exam_config["slots"],
+              usage
+            )
           else
-            Athena.Content.generate_exam_questions(exam_config)
+            Athena.Content.generate_exam_questions(course_id, exam_config)
           end
 
         expires_at = DateTime.add(DateTime.utc_now(), time_limit_sec, :second)

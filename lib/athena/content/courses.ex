@@ -5,7 +5,7 @@ defmodule Athena.Content.Courses do
 
   import Ecto.Query
   alias Athena.Repo
-  alias Athena.Content.{Course, CourseShare}
+  alias Athena.Content.{Course, CourseShare, CourseLibraryBlock, LibraryBlock}
   alias Athena.Identity
 
   @doc """
@@ -243,5 +243,56 @@ defmodule Athena.Content.Courses do
     else
       from c in query, where: false
     end
+  end
+
+  @doc """
+  Pins a library block to a course workspace (Course Bank).
+  Requires write permissions on the course.
+  """
+  @spec pin_library_block(map(), String.t(), String.t()) ::
+          {:ok, CourseLibraryBlock.t()} | {:error, Ecto.Changeset.t() | atom()}
+  def pin_library_block(user, course_id, library_block_id) do
+    with {:ok, course} <- get_course(course_id),
+         :ok <- check_course_write_rights(user, course) do
+      %CourseLibraryBlock{}
+      |> CourseLibraryBlock.changeset(%{course_id: course_id, library_block_id: library_block_id})
+      |> Repo.insert()
+    end
+  end
+
+  @doc """
+  Unpins a library block from a course workspace.
+  """
+  @spec unpin_library_block(map(), String.t(), String.t()) ::
+          {:ok, {integer(), nil}} | {:error, atom()}
+  def unpin_library_block(user, course_id, library_block_id) do
+    with {:ok, course} <- get_course(course_id),
+         :ok <- check_course_write_rights(user, course) do
+      query =
+        from(clb in CourseLibraryBlock,
+          where: clb.course_id == ^course_id and clb.library_block_id == ^library_block_id
+        )
+
+      {:ok, Repo.delete_all(query)}
+    end
+  end
+
+  @doc """
+  Lists all library blocks pinned to a specific course.
+  """
+  @spec list_course_workspace_blocks(map(), String.t()) :: [LibraryBlock.t()]
+  def list_course_workspace_blocks(user, course_id) do
+    with {:ok, _course} <- get_course(user, course_id) do
+      CourseLibraryBlock
+      |> where(course_id: ^course_id)
+      |> join(:inner, [clb], lb in LibraryBlock, on: clb.library_block_id == lb.id)
+      |> select([clb, lb], lb)
+      |> Repo.all()
+    end
+  end
+
+  @doc false
+  defp check_course_write_rights(user, course) do
+    if can_edit_course?(user, course), do: :ok, else: {:error, :unauthorized}
   end
 end

@@ -8,6 +8,8 @@ defmodule Athena.Content.CourseLibraryBlock do
 
   alias Athena.Content.{Course, LibraryBlock}
 
+  @type t :: %__MODULE__{}
+
   @primary_key false
   @foreign_key_type :binary_id
 

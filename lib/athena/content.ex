@@ -113,8 +113,8 @@ defmodule Athena.Content do
   defdelegate create_library_block(user, attrs), to: Library
   defdelegate update_library_block(user, block, attrs), to: Library
   defdelegate delete_library_block(user, block), to: Library
-  defdelegate generate_exam_questions(params), to: Library
-  defdelegate generate_ticket_questions(slots, usage), to: Library
+  defdelegate generate_exam_questions(course_id, params), to: Library
+  defdelegate generate_ticket_questions(course_id, slots, usage), to: Library
 
   def share_block(user, block, account_id, role) do
     case Library.share_block(user, block, account_id, role) do

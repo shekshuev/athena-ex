@@ -5,7 +5,9 @@ defmodule Athena.Content.Library do
 
   import Ecto.Query
   alias Athena.{Repo, Identity}
-  alias Athena.Content.{LibraryBlock, LibraryBlockShare, Block, TicketUsage}
+  alias Athena.Content.{LibraryBlock, LibraryBlockShare, Block, TicketUsage, CourseLibraryBlock}
+
+  use Gettext, backend: AthenaWeb.Gettext
 
   @doc "Lists library blocks with Flop pagination and filtering, scoped by ACL."
   @spec list_library_blocks(map(), map()) ::
@@ -95,7 +97,17 @@ defmodule Athena.Content.Library do
           {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
   def delete_library_block(user, %LibraryBlock{} = block) do
     if can_edit_block?(user, block) do
-      Repo.delete(block)
+      block
+      |> Ecto.Changeset.change()
+      |> Ecto.Changeset.foreign_key_constraint(:course_library_blocks,
+        name: :course_library_blocks_library_block_id_fkey,
+        message:
+          dgettext_noop(
+            "errors",
+            "is pinned to a course and cannot be deleted"
+          )
+      )
+      |> Repo.delete()
     else
       {:error, :unauthorized}
     end
@@ -104,22 +116,23 @@ defmodule Athena.Content.Library do
   @doc """
   Generates a snapshot of questions for a quiz_exam based on tag rules.
   Uses PostgreSQL array intersection operator (&&) for massive performance.
+  RESTRICTED to the course workspace pool.
   """
-  @spec generate_exam_questions(map() | nil) :: [Block.t()]
-  def generate_exam_questions(exam_config) when is_map(exam_config) do
+  @spec generate_exam_questions(String.t(), map() | nil) :: [Block.t()]
+  def generate_exam_questions(course_id, exam_config) when is_map(exam_config) do
     count = Map.get(exam_config, "count", 10)
     mandatory_tags = Map.get(exam_config, "mandatory_tags", [])
     include_tags = Map.get(exam_config, "include_tags", [])
     exclude_tags = Map.get(exam_config, "exclude_tags", [])
 
-    mandatory_blocks = fetch_exam_blocks(mandatory_tags, exclude_tags, count)
+    mandatory_blocks = fetch_exam_blocks(course_id, mandatory_tags, exclude_tags, count)
 
     remaining_count = count - length(mandatory_blocks)
 
     random_blocks =
       if remaining_count > 0 and include_tags != [] do
         mandatory_ids = Enum.map(mandatory_blocks, & &1.id)
-        fetch_exam_blocks(include_tags, exclude_tags, remaining_count, mandatory_ids)
+        fetch_exam_blocks(course_id, include_tags, exclude_tags, remaining_count, mandatory_ids)
       else
         []
       end
@@ -137,13 +150,17 @@ defmodule Athena.Content.Library do
     end)
   end
 
-  def generate_exam_questions(_), do: []
+  def generate_exam_questions(_, _), do: []
 
-  defp fetch_exam_blocks([], _exclude, _limit), do: []
+  defp fetch_exam_blocks(course_id, tags, exclude_tags, limit, exclude_ids \\ [])
 
-  defp fetch_exam_blocks(tags, exclude_tags, limit, exclude_ids \\ []) do
+  defp fetch_exam_blocks(_course_id, [], _exclude_tags, _limit, _exclude_ids), do: []
+
+  defp fetch_exam_blocks(course_id, tags, exclude_tags, limit, exclude_ids) do
     query =
       LibraryBlock
+      |> join(:inner, [lb], clb in CourseLibraryBlock, on: clb.library_block_id == lb.id)
+      |> where([lb, clb], clb.course_id == ^course_id)
       |> where([lb], lb.type in [:quiz_question, :code, :file_assignment])
       |> where([lb], fragment("? && ?", lb.tags, ^tags))
 
@@ -277,14 +294,11 @@ defmodule Athena.Content.Library do
 
   @doc """
   Generates a list of questions for a ticket (:ticket_exam) based on slots and a counter map.
-  The counter map is derived from the Learning context and looks like this: %{"question_uuid" => count}
-
-  The selection is based on the principle of a deck of cards: questions with the fewest number of occurrences are selected.
-  If the counters are equal, the selection is purely random.
+  RESTRICTED to the course workspace pool.
   """
-  @spec generate_ticket_questions([map()], TicketUsage.t()) :: [Block.t()]
-  def generate_ticket_questions(slots, %TicketUsage{} = usage) when is_list(slots) do
-    candidate_blocks = fetch_candidates_for_slots(slots)
+  @spec generate_ticket_questions(String.t(), [map()], TicketUsage.t()) :: [Block.t()]
+  def generate_ticket_questions(course_id, slots, %TicketUsage{} = usage) when is_list(slots) do
+    candidate_blocks = fetch_candidates_for_slots(course_id, slots)
 
     {selected_blocks, _final_counts} =
       Enum.reduce(slots, {[], usage.counts}, fn slot, {acc_blocks, acc_counts} ->
@@ -294,16 +308,16 @@ defmodule Athena.Content.Library do
     build_ticket_blocks(selected_blocks)
   end
 
-  def generate_ticket_questions(_slots, _usage), do: []
+  def generate_ticket_questions(_course_id, _slots, _usage), do: []
 
   @doc false
-  defp fetch_candidates_for_slots(slots) do
+  defp fetch_candidates_for_slots(course_id, slots) do
     all_tags =
       slots
       |> Enum.flat_map(&Map.get(&1, "tags", []))
       |> Enum.uniq()
 
-    fetch_candidates_by_tags(all_tags)
+    fetch_candidates_by_tags(course_id, all_tags)
   end
 
   @doc false
@@ -354,12 +368,12 @@ defmodule Athena.Content.Library do
   end
 
   @doc false
-  defp fetch_candidates_by_tags([]) do
-    []
-  end
+  defp fetch_candidates_by_tags(_course_id, []), do: []
 
-  defp fetch_candidates_by_tags(tags) do
+  defp fetch_candidates_by_tags(course_id, tags) do
     LibraryBlock
+    |> join(:inner, [lb], clb in CourseLibraryBlock, on: clb.library_block_id == lb.id)
+    |> where([lb, clb], clb.course_id == ^course_id)
     |> where([lb], lb.type in [:quiz_question, :code, :file_assignment])
     |> where([lb], fragment("? && ?", lb.tags, ^tags))
     |> Repo.all()

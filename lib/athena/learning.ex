@@ -113,6 +113,7 @@ defmodule Athena.Learning do
   and broadcasts the result so the Grading dashboard updates in real-time.
   """
   def get_or_create_exam_attempt(
+        course_id,
         account_id,
         exam_block_id,
         cohort_id,
@@ -120,6 +121,7 @@ defmodule Athena.Learning do
         exam_config
       ) do
     Submissions.get_or_create_exam_attempt(
+      course_id,
       account_id,
       exam_block_id,
       cohort_id,

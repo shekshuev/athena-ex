@@ -531,6 +531,7 @@ defmodule AthenaWeb.LearnLive.Player do
     time_limit_sec = get_time_limit_sec(block)
 
     case Learning.get_or_create_exam_attempt(
+           socket.assigns.course.id,
            user.id,
            block.id,
            socket.assigns.team_id,

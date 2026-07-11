@@ -6,7 +6,14 @@ defmodule Athena.Content.LibraryBlock do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Athena.Content.{QuizQuestion, QuizExam, TicketExam, CodeChallenge, FileAssignment}
+  alias Athena.Content.{
+    QuizQuestion,
+    QuizExam,
+    TicketExam,
+    CodeChallenge,
+    FileAssignment,
+    CourseLibraryBlock
+  }
 
   use Gettext, backend: AthenaWeb.Gettext
 
@@ -35,7 +42,7 @@ defmodule Athena.Content.LibraryBlock do
     field :tags, {:array, :string}, default: []
     field :owner_id, :binary_id
     field :is_public, :boolean, default: false
-    has_many :course_library_blocks, Athena.Content.CourseLibraryBlock
+    has_many :course_library_blocks, CourseLibraryBlock
 
     timestamps(type: :utc_datetime)
   end
