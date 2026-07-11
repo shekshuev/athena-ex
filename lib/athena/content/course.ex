@@ -38,6 +38,9 @@ defmodule Athena.Content.Course do
     has_many :sections, Section
     has_many :shares, Athena.Content.CourseShare, on_delete: :delete_all
 
+    many_to_many :library_blocks, Athena.Content.LibraryBlock,
+      join_through: Athena.Content.CourseLibraryBlock
+
     timestamps(type: :utc_datetime)
   end
 
