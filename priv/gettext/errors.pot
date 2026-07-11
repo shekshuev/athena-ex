@@ -222,7 +222,7 @@ msgstr ""
 msgid "please provide an answer or select a choice"
 msgstr ""
 
-#: lib/athena/learning/enrollments.ex:118
+#: lib/athena/learning/enrollments.ex:119
 #, elixir-autogen, elixir-format
 msgid "Cannot enroll: the following students already have access to this course: %{logins}"
 msgstr ""

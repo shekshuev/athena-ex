@@ -1200,7 +1200,7 @@ defmodule Athena.Learning.SubmissionsTest do
       assert result == {:error, :time_limit_exceeded}
     end
 
-    test "get_active_exam_submission returns the valid unexpired attempt", %{
+    test "get_active_exam_submission returns the latest pending attempt even if expired", %{
       account: account,
       exam_block: exam_block
     } do
@@ -1209,28 +1209,47 @@ defmodule Athena.Learning.SubmissionsTest do
         |> DateTime.add(-10, :second)
         |> DateTime.truncate(:second)
 
-      Repo.insert!(%Submission{
-        account_id: account.id,
-        block_id: exam_block.id,
-        status: :pending,
-        expires_at: expired_time
-      })
-
-      {:ok, active_parent} =
-        Submissions.start_exam_submission(account.id, exam_block.id, nil, 3600)
+      expired_sub =
+        Repo.insert!(%Submission{
+          account_id: account.id,
+          block_id: exam_block.id,
+          status: :pending,
+          expires_at: expired_time
+        })
 
       fetched = Submissions.get_active_exam_submission(account.id, exam_block.id)
 
       assert fetched != nil
-      assert fetched.id == active_parent.id
-      assert DateTime.after?(fetched.expires_at, DateTime.utc_now())
+      assert fetched.id == expired_sub.id
+      assert DateTime.compare(DateTime.utc_now(), fetched.expires_at) == :gt
     end
 
-    test "get_active_exam_submission returns nil if no active attempt exists", %{
+    test "get_active_exam_submission returns nil if no pending attempt exists", %{
       account: account,
       exam_block: exam_block
     } do
       assert Submissions.get_active_exam_submission(account.id, exam_block.id) == nil
+    end
+
+    test "get_or_create_exam_attempt transitions expired submission to :time_limit_exceeded", %{
+      account: account,
+      exam_block: exam_block
+    } do
+      expired_time = DateTime.add(DateTime.utc_now(), -10, :second) |> DateTime.truncate(:second)
+
+      expired_sub =
+        Repo.insert!(%Submission{
+          account_id: account.id,
+          block_id: exam_block.id,
+          status: :pending,
+          expires_at: expired_time
+        })
+
+      {:ok, result_sub} =
+        Submissions.get_or_create_exam_attempt(account.id, exam_block.id, nil, 3600, %{})
+
+      assert result_sub.id == expired_sub.id
+      assert result_sub.status == :time_limit_exceeded
     end
 
     test "get_or_create_exam_attempt uses ticket logic when exam config has slots", %{
