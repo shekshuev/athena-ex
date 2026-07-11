@@ -60,6 +60,9 @@ defmodule Athena.Content do
   end
 
   defdelegate list_course_shares(course), to: Courses
+  defdelegate list_course_workspace_blocks(user, course_id), to: Courses
+  defdelegate pin_library_block(user, course_id, library_block_id), to: Courses
+  defdelegate unpin_library_block(user, course_id, library_block_id), to: Courses
 
   defdelegate get_section(user, id), to: Sections
   defdelegate get_section(id), to: Sections

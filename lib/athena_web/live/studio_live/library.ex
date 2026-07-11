@@ -24,6 +24,9 @@ defmodule AthenaWeb.StudioLive.Library do
      |> assign(block_to_delete: nil)
      |> assign(block_to_share: nil)
      |> assign(has_blocks: false)
+     |> assign(course_bank_mode: false)
+     |> assign(course: nil)
+     |> assign(pinned_ids: MapSet.new())
      |> stream(:library_blocks, [])}
   end
 
@@ -60,6 +63,26 @@ defmodule AthenaWeb.StudioLive.Library do
         socket
         |> assign(search: search, type_filter: type, tag_filter: tag, has_blocks: false)
         |> stream(:library_blocks, [], reset: true)
+    end
+  end
+
+  defp apply_action(socket, :course_library, %{"id" => course_id}) do
+    case Content.get_course(socket.assigns.current_user, course_id) do
+      {:ok, course} ->
+        pinned_blocks =
+          Content.list_course_workspace_blocks(socket.assigns.current_user, course.id)
+
+        pinned_ids = MapSet.new(Enum.map(pinned_blocks, & &1.id))
+
+        socket
+        |> assign(page_title: gettext("Course Bank: %{title}", title: course.title))
+        |> assign(library_block: nil)
+        |> assign(course_bank_mode: true, course: course, pinned_ids: pinned_ids)
+
+      _ ->
+        socket
+        |> put_flash(:error, gettext("Course not found or access denied."))
+        |> push_navigate(to: ~p"/studio/courses")
     end
   end
 
@@ -168,6 +191,33 @@ defmodule AthenaWeb.StudioLive.Library do
 
   def handle_event("cancel_share", _, socket) do
     {:noreply, assign(socket, block_to_share: nil)}
+  end
+
+  def handle_event("toggle_pin", %{"id" => block_id}, socket) do
+    if socket.assigns.course_bank_mode do
+      course_id = socket.assigns.course.id
+      pinned_ids = socket.assigns.pinned_ids
+
+      if MapSet.member?(pinned_ids, block_id) do
+        case Content.unpin_library_block(socket.assigns.current_user, course_id, block_id) do
+          {:ok, _} ->
+            {:noreply, assign(socket, pinned_ids: MapSet.delete(pinned_ids, block_id))}
+
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, gettext("Failed to unpin block."))}
+        end
+      else
+        case Content.pin_library_block(socket.assigns.current_user, course_id, block_id) do
+          {:ok, _} ->
+            {:noreply, assign(socket, pinned_ids: MapSet.put(pinned_ids, block_id))}
+
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, gettext("Failed to pin block."))}
+        end
+      end
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -321,9 +371,22 @@ defmodule AthenaWeb.StudioLive.Library do
         <div>
           <h1 class="text-2xl font-display font-bold text-base-content">{gettext("Library")}</h1>
           <p class="text-base-content/60">
-            {gettext("Manage reusable content templates and quiz questions.")}
+            <%= if @course_bank_mode do %>
+              {gettext("Toggle switches to pin or unpin questions for this course's assessments.")}
+            <% else %>
+              {gettext("Manage reusable content templates and quiz questions.")}
+            <% end %>
           </p>
         </div>
+        <.link
+          :if={@course_bank_mode}
+          navigate={~p"/studio/courses/#{@course.id}/builder"}
+          class="btn btn-outline"
+        >
+          <.icon name="hero-arrow-left" class="size-5" />
+          {gettext("Back to Builder")}
+        </.link>
+
         <.button
           :if={Identity.can?(@current_user, "library.create")}
           patch={~p"/studio/library/new?#{build_query_params(assigns, %{})}"}
@@ -403,6 +466,16 @@ defmodule AthenaWeb.StudioLive.Library do
 
       <div :if={@has_blocks}>
         <.table id="library-blocks" rows={@streams.library_blocks} meta={@meta} path_fn={path_fn}>
+          <:col :let={{_id, block}} :if={@course_bank_mode} label={gettext("In Course")}>
+            <input
+              type="checkbox"
+              class="toggle toggle-primary toggle-sm"
+              phx-click="toggle_pin"
+              phx-value-id={block.id}
+              checked={MapSet.member?(@pinned_ids, block.id)}
+            />
+          </:col>
+
           <:col :let={{_id, block}} label={gettext("Title")} sort="title">
             <div class="flex flex-col gap-1 items-start">
               <span class="font-bold">{block.title}</span>

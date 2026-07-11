@@ -1479,6 +1479,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             active_section_id={@active_section_id}
             viewing_parent_id={@viewing_parent_id}
             role={@role}
+            course={@course}
           />
         </div>
       </div>

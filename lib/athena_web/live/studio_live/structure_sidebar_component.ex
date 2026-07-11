@@ -140,6 +140,13 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponent do
           <.icon name="hero-map" class="size-5" />
         </button>
 
+        <.link
+          navigate={~p"/studio/courses/#{@course.id}/library"}
+          class="btn btn-ghost btn-sm font-bold opacity-70 hover:opacity-100"
+        >
+          <.icon name="hero-bookmark-square" class="size-5" />
+        </.link>
+
         <label class="btn btn-ghost btn-sm btn-square swap swap-rotate opacity-70 hover:opacity-100">
           <input
             type="checkbox"
