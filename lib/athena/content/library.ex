@@ -9,16 +9,33 @@ defmodule Athena.Content.Library do
 
   use Gettext, backend: AthenaWeb.Gettext
 
-  @doc "Lists library blocks with Flop pagination and filtering, scoped by ACL."
+  @doc "Lists library blocks with Flop pagination and filtering, scoped by ACL and optionally course bank."
   @spec list_library_blocks(map(), map()) ::
           {:ok, {[LibraryBlock.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_library_blocks(user, params \\ %{}) do
     tag_search = Map.get(params, "tag_search")
-    flop_params = Map.delete(params, "tag_search")
+    course_id = Map.get(params, "course_id")
+    pinned_only = Map.get(params, "pinned_only") in [true, "true"]
+
+    flop_params = Map.drop(params, ["tag_search", "course_id", "pinned_only"])
 
     query =
       from(lb in LibraryBlock)
-      |> scope_library_reads(user)
+      |> scope_library_reads(user, course_id)
+
+    query =
+      if pinned_only and is_binary(course_id) do
+        from(lb in query,
+          where:
+            lb.id in subquery(
+              from clb in CourseLibraryBlock,
+                where: clb.course_id == ^course_id,
+                select: clb.library_block_id
+            )
+        )
+      else
+        query
+      end
 
     query =
       if is_binary(tag_search) and tag_search != "" do
@@ -250,7 +267,7 @@ defmodule Athena.Content.Library do
   end
 
   @doc false
-  defp scope_library_reads(query, user) do
+  defp scope_library_reads(query, user, course_id \\ nil) do
     if Identity.can?(user, "library.read") do
       policies = Map.get(user.role.policies || %{}, "library.read", [])
 
@@ -260,11 +277,21 @@ defmodule Athena.Content.Library do
             where: s.account_id == ^user.id,
             select: s.library_block_id
 
+        pinned_block_ids =
+          if is_binary(course_id) do
+            from clb in CourseLibraryBlock,
+              where: clb.course_id == ^course_id,
+              select: clb.library_block_id
+          else
+            from clb in CourseLibraryBlock, where: false, select: clb.library_block_id
+          end
+
         from b in query,
           where:
             b.owner_id == ^user.id or
               b.is_public == true or
-              b.id in subquery(shared_block_ids)
+              b.id in subquery(shared_block_ids) or
+              b.id in subquery(pinned_block_ids)
       else
         query
       end

@@ -62,6 +62,42 @@ defmodule Athena.Content.LibraryTest do
       assert length(blocks) == 2
       assert meta.total_count == 2
     end
+
+    test "should filter only pinned blocks, if course_id passed and pinned_only = true", %{
+      owner1: owner1
+    } do
+      course = insert(:course)
+      pinned_block = insert(:library_block, owner_id: owner1.id)
+      _other_block = insert(:library_block, owner_id: owner1.id)
+
+      insert(:course_library_block, course: course, library_block: pinned_block)
+
+      assert {:ok, {blocks, _meta}} =
+               Library.list_library_blocks(owner1, %{
+                 "course_id" => course.id,
+                 "pinned_only" => "true"
+               })
+
+      assert length(blocks) == 1
+      assert hd(blocks).id == pinned_block.id
+    end
+
+    test "should show blocks in course library, which doesn't belongs to user, if course_id passed",
+         %{
+           owner1: owner1,
+           owner2: owner2
+         } do
+      course = insert(:course)
+
+      secret_block = insert(:library_block, owner_id: owner2.id, is_public: false)
+
+      insert(:course_library_block, course: course, library_block: secret_block)
+
+      assert {:ok, {blocks, _meta}} =
+               Library.list_library_blocks(owner1, %{"course_id" => course.id})
+
+      assert Enum.any?(blocks, fn b -> b.id == secret_block.id end)
+    end
   end
 
   describe "get_library_block/1 (Without ACL - Internal)" do
@@ -181,10 +217,7 @@ defmodule Athena.Content.LibraryTest do
       block = insert(:library_block, owner_id: owner1.id)
       course = insert(:course)
 
-      Repo.insert!(%Athena.Content.CourseLibraryBlock{
-        course_id: course.id,
-        library_block_id: block.id
-      })
+      insert(:course_library_block, course: course, library_block: block)
 
       assert {:error, changeset} = Library.delete_library_block(owner1, block)
 
@@ -341,10 +374,7 @@ defmodule Athena.Content.LibraryTest do
         )
 
       for b <- blocks do
-        Repo.insert!(%Athena.Content.CourseLibraryBlock{
-          course_id: course.id,
-          library_block_id: b.id
-        })
+        insert(:course_library_block, course: course, library_block: b)
       end
 
       params = %{
@@ -368,10 +398,7 @@ defmodule Athena.Content.LibraryTest do
           content: %{"body" => %{"text" => "mandatory"}, "question_type" => "single"}
         )
 
-      Repo.insert!(%Athena.Content.CourseLibraryBlock{
-        course_id: course.id,
-        library_block_id: b.id
-      })
+      insert(:course_library_block, course: course, library_block: b)
 
       params = %{
         "count" => 5,
@@ -395,10 +422,7 @@ defmodule Athena.Content.LibraryTest do
           content: %{"language" => "python", "code" => "print('hello')"}
         )
 
-      Repo.insert!(%Athena.Content.CourseLibraryBlock{
-        course_id: course.id,
-        library_block_id: b.id
-      })
+      insert(:course_library_block, course: course, library_block: b)
 
       params = %{
         "count" => 1,
@@ -424,10 +448,7 @@ defmodule Athena.Content.LibraryTest do
           content: %{"max_files" => 3}
         )
 
-      Repo.insert!(%Athena.Content.CourseLibraryBlock{
-        course_id: course.id,
-        library_block_id: b.id
-      })
+      insert(:course_library_block, course: course, library_block: b)
 
       params = %{
         "count" => 1,
@@ -592,10 +613,7 @@ defmodule Athena.Content.LibraryTest do
       q3 = insert(:library_block, type: :quiz_question, tags: ["db", "practice"], owner_id: owner)
 
       for q <- [q1, q2, q3] do
-        Repo.insert!(%Athena.Content.CourseLibraryBlock{
-          course_id: course.id,
-          library_block_id: q.id
-        })
+        insert(:course_library_block, course: course, library_block: q)
       end
 
       %{course: course, q1: q1, q2: q2, q3: q3}

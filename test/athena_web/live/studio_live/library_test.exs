@@ -7,7 +7,13 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
   setup %{conn: conn} do
     role =
       insert(:role,
-        permissions: ["library.read", "library.create", "library.update", "library.delete"]
+        permissions: [
+          "library.read",
+          "library.create",
+          "library.update",
+          "library.delete",
+          "courses.read"
+        ]
       )
 
     admin = insert(:account, role: role)
@@ -44,7 +50,7 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
 
       assert_patched(
         lv,
-        ~p"/studio/library?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10&search=Python"
+        ~p"/studio/library?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10&pinned_only=false&search=Python"
       )
     end
   end
@@ -61,7 +67,7 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
 
       assert_patched(
         lv,
-        ~p"/studio/library?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=100"
+        ~p"/studio/library?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=100&pinned_only=false"
       )
     end
 
@@ -77,7 +83,7 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
 
       assert_patched(
         lv,
-        ~p"/studio/library?order_by[]=title&order_directions[]=asc&page=1&page_size=10"
+        ~p"/studio/library?order_by[]=title&order_directions[]=asc&page=1&page_size=10&pinned_only=false"
       )
     end
 
@@ -346,6 +352,78 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
       assert html =~ "Share Template: Shareable Block"
 
       assert html =~ "share-#{block.id}"
+    end
+  end
+
+  describe "Course Bank Mode (:course_library)" do
+    setup %{admin: admin} do
+      course = insert(:course, owner_id: admin.id)
+      %{course: course}
+    end
+
+    test "should enable pinned_only by default and show only pinned blocks", %{
+      conn: conn,
+      admin: admin,
+      course: course
+    } do
+      pinned_block = insert(:library_block, title: "Pinned Question", owner_id: admin.id)
+      _other_block = insert(:library_block, title: "Other Question", owner_id: admin.id)
+
+      insert(:course_library_block, course: course, library_block: pinned_block)
+
+      {:ok, _lv, html} = live(conn, "/studio/courses/#{course.id}/library")
+
+      assert html =~ "Course Bank"
+      assert html =~ "Pinned Question"
+      refute html =~ "Other Question"
+
+      assert html =~
+               ~s(name="pinned_only" value="true" class="toggle toggle-primary toggle-sm" checked)
+    end
+
+    test "should show all blocks when pinned_only turns off", %{
+      conn: conn,
+      admin: admin,
+      course: course
+    } do
+      insert(:library_block, title: "Hidden Question", owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, "/studio/courses/#{course.id}/library")
+
+      html =
+        lv
+        |> form("form[phx-change='update_filters']", %{"pinned_only" => "false", "type" => "all"})
+        |> render_change()
+
+      assert html =~ "Hidden Question"
+    end
+
+    test "should correctly pin and unpin block", %{
+      conn: conn,
+      admin: admin,
+      course: course
+    } do
+      block = insert(:library_block, title: "Toggle Me", owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, "/studio/courses/#{course.id}/library?pinned_only=false")
+
+      lv
+      |> element("input[phx-click='toggle_pin'][phx-value-id='#{block.id}']")
+      |> render_click()
+
+      assert Athena.Repo.get_by(Athena.Content.CourseLibraryBlock,
+               library_block_id: block.id,
+               course_id: course.id
+             )
+
+      lv
+      |> element("input[phx-click='toggle_pin'][phx-value-id='#{block.id}']")
+      |> render_click()
+
+      refute Athena.Repo.get_by(Athena.Content.CourseLibraryBlock,
+               library_block_id: block.id,
+               course_id: course.id
+             )
     end
   end
 end

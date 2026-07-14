@@ -35,7 +35,19 @@ defmodule AthenaWeb.StudioLive.Library do
     uri = URI.parse(url)
     current_path = if uri.query, do: "#{uri.path}?#{uri.query}", else: uri.path
 
-    socket = assign(socket, :current_path, current_path)
+    course_id =
+      params["course_id"] ||
+        if(socket.assigns.live_action == :course_library, do: params["id"]) ||
+        (socket.assigns[:course] && socket.assigns.course.id)
+
+    default_pinned = if course_id, do: "true", else: "false"
+    pinned_only = Map.get(params, "pinned_only", default_pinned) in ["true", true]
+
+    socket =
+      socket
+      |> assign(:current_path, current_path)
+      |> assign(:course_id_context, course_id)
+      |> assign(:pinned_only, pinned_only)
 
     {:noreply, load_blocks(socket, params)}
   end
@@ -46,7 +58,12 @@ defmodule AthenaWeb.StudioLive.Library do
     tag = Map.get(params, "tag", "")
 
     flop_filters = build_flop_filters(search, type, tag)
-    flop_params = Map.merge(params, %{"filters" => flop_filters})
+
+    flop_params =
+      params
+      |> Map.merge(%{"filters" => flop_filters})
+      |> Map.put("course_id", socket.assigns.course_id_context)
+      |> Map.put("pinned_only", socket.assigns.pinned_only)
 
     case Content.list_library_blocks(socket.assigns.current_user, flop_params) do
       {:ok, {blocks, meta}} ->
@@ -125,6 +142,7 @@ defmodule AthenaWeb.StudioLive.Library do
       "search" => params["search"] || "",
       "type" => params["type"] || "all",
       "tag" => params["tag"] || "",
+      "pinned_only" => params["pinned_only"] == "true",
       "page" => 1
     }
 
@@ -350,6 +368,8 @@ defmodule AthenaWeb.StudioLive.Library do
       "search" => assigns.search,
       "type" => assigns.type_filter,
       "tag" => assigns.tag_filter,
+      "pinned_only" => to_string(assigns.pinned_only),
+      "course_id" => assigns[:course_id_context],
       "page" => meta.current_page,
       "page_size" => meta.page_size,
       "order_by" => order_by,
@@ -358,6 +378,7 @@ defmodule AthenaWeb.StudioLive.Library do
     |> Map.merge(stringified_overrides)
     |> Enum.reject(fn
       {_, v} when is_list(v) -> v == []
+      {"pinned_only", v} -> v == "false" and not assigns.course_bank_mode
       {_, v} -> v in [nil, "", "all"]
     end)
     |> Map.new()
@@ -445,6 +466,18 @@ defmodule AthenaWeb.StudioLive.Library do
               placeholder={gettext("e.g. math, exam")}
               phx-debounce="500"
             />
+            <div :if={@course_bank_mode} class="form-control">
+              <label class="label cursor-pointer justify-start gap-2 h-full py-0 mt-8">
+                <input
+                  type="checkbox"
+                  name="pinned_only"
+                  value="true"
+                  class="toggle toggle-primary toggle-sm"
+                  checked={@pinned_only}
+                />
+                <span class="label-text font-bold">{gettext("Only Course Bank")}</span>
+              </label>
+            </div>
           </div>
         </form>
       </div>
@@ -506,7 +539,10 @@ defmodule AthenaWeb.StudioLive.Library do
             <% info = block_badges(block, @current_user) %>
             <% can_edit =
               info.role in [:owner, :writer] or Identity.can?(@current_user, "library.update", block) %>
-            <% can_view = can_edit or info.role == :reader or info.is_public %>
+
+            <% is_pinned = @course_bank_mode && MapSet.member?(@pinned_ids, block.id) %>
+
+            <% can_view = can_edit or info.role == :reader or info.is_public or is_pinned %>
 
             <div class="flex justify-end gap-2">
               <.button
