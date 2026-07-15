@@ -18,7 +18,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
   def mount(%{"id" => id} = params, _session, socket) do
     return_to = Map.get(params, "return_to", ~p"/studio/library")
 
-    with {:ok, block} <- Content.get_library_block(socket.assigns.current_user, id),
+    with {:ok, block} <- Content.get_library_block(id),
          role when role != :none <- determine_role(block, socket.assigns.current_user) do
       if connected?(socket) do
         Phoenix.PubSub.subscribe(Athena.PubSub, "user_library:#{socket.assigns.current_user.id}")
@@ -31,7 +31,11 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
        socket
        |> assign(
          role: role,
-         page_title: gettext("Edit Template"),
+         page_title:
+           if(role in [:owner, :writer],
+             do: gettext("Edit Template"),
+             else: gettext("View Template")
+           ),
          block: block,
          form: form,
          return_to: return_to,
@@ -1007,11 +1011,14 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
   defp determine_role(block, user) do
     shares = Content.list_block_shares(block)
 
+    is_pinned_to_course? = Content.pinned_to_any_course?(block.id)
+
     cond do
       block.owner_id == user.id -> :owner
       share = Enum.find(shares, &(&1.account_id == user.id)) -> share.role
       Identity.can?(user, "library.update", block) -> :writer
       block.is_public -> :reader
+      is_pinned_to_course? -> :reader
       true -> :none
     end
   end

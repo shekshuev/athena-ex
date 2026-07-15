@@ -127,6 +127,7 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponent do
         <a
           href={"/locale/#{if current_locale == "ru", do: "en", else: "ru"}"}
           class="btn btn-ghost btn-sm font-bold opacity-70 hover:opacity-100"
+          title={gettext("Switch Language")}
         >
           {String.upcase(current_locale)}
         </a>
@@ -141,13 +142,17 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponent do
         </button>
 
         <.link
-          navigate={~p"/studio/courses/#{@course.id}/library"}
+          navigate={~p"/studio/courses/#{@course.id}/library?is_pinned=true"}
           class="btn btn-ghost btn-sm font-bold opacity-70 hover:opacity-100"
+          title={gettext("Open Course Library")}
         >
           <.icon name="hero-bookmark-square" class="size-5" />
         </.link>
 
-        <label class="btn btn-ghost btn-sm btn-square swap swap-rotate opacity-70 hover:opacity-100">
+        <label
+          class="btn btn-ghost btn-sm btn-square swap swap-rotate opacity-70 hover:opacity-100"
+          title={gettext("Toggle Theme")}
+        >
           <input
             type="checkbox"
             value="dark"

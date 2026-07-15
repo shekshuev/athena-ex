@@ -61,8 +61,28 @@ defmodule Athena.Content do
 
   defdelegate list_course_shares(course), to: Courses
   defdelegate list_course_workspace_blocks(user, course_id), to: Courses
-  defdelegate pin_library_block(user, course_id, library_block_id), to: Courses
-  defdelegate unpin_library_block(user, course_id, library_block_id), to: Courses
+
+  def pin_library_block(user, course_id, library_block_id) do
+    case Courses.pin_library_block(user, course_id, library_block_id) do
+      {:ok, _} = result ->
+        Phoenix.PubSub.broadcast(Athena.PubSub, "course_library:#{course_id}", :refresh_library)
+        result
+
+      error ->
+        error
+    end
+  end
+
+  def unpin_library_block(user, course_id, library_block_id) do
+    case Courses.unpin_library_block(user, course_id, library_block_id) do
+      {:ok, _} = result ->
+        Phoenix.PubSub.broadcast(Athena.PubSub, "course_library:#{course_id}", :refresh_library)
+        result
+
+      error ->
+        error
+    end
+  end
 
   defdelegate get_section(user, id), to: Sections
   defdelegate get_section(id), to: Sections
@@ -118,6 +138,7 @@ defmodule Athena.Content do
   defdelegate delete_library_block(user, block), to: Library
   defdelegate generate_exam_questions(course_id, params), to: Library
   defdelegate generate_ticket_questions(course_id, slots, usage), to: Library
+  defdelegate pinned_to_any_course?(library_block_id), to: Library
 
   def share_block(user, block, account_id, role) do
     case Library.share_block(user, block, account_id, role) do

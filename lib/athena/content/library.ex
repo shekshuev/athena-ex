@@ -20,7 +20,7 @@ defmodule Athena.Content.Library do
     flop_params = Map.drop(params, ["tag_search", "course_id", "pinned_only"])
 
     query =
-      from(lb in LibraryBlock)
+      from(lb in LibraryBlock, preload: [:course_library_blocks])
       |> scope_library_reads(user, course_id)
 
     query =
@@ -128,6 +128,16 @@ defmodule Athena.Content.Library do
     else
       {:error, :unauthorized}
     end
+  end
+
+  @doc """
+  Checks if a library block is pinned to any course workspace.
+  """
+  @spec pinned_to_any_course?(String.t()) :: boolean()
+  def pinned_to_any_course?(library_block_id) do
+    Repo.exists?(
+      from(clb in CourseLibraryBlock, where: clb.library_block_id == ^library_block_id)
+    )
   end
 
   @doc """

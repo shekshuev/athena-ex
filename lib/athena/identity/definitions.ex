@@ -11,6 +11,7 @@ defmodule Athena.Identity.Definitions do
   cohorts.create cohorts.read cohorts.update cohorts.delete
   settings.read settings.update
   files.read files.create files.delete
+  system.cache
   admin
   """
 

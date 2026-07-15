@@ -12,7 +12,8 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
           "library.create",
           "library.update",
           "library.delete",
-          "courses.read"
+          "courses.read",
+          "courses.update"
         ]
       )
 
@@ -50,7 +51,7 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
 
       assert_patched(
         lv,
-        ~p"/studio/library?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10&pinned_only=false&search=Python"
+        ~p"/studio/library?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10&search=Python"
       )
     end
   end
@@ -67,7 +68,7 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
 
       assert_patched(
         lv,
-        ~p"/studio/library?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=100&pinned_only=false"
+        ~p"/studio/library?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=100"
       )
     end
 
@@ -83,7 +84,7 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
 
       assert_patched(
         lv,
-        ~p"/studio/library?order_by[]=title&order_directions[]=asc&page=1&page_size=10&pinned_only=false"
+        ~p"/studio/library?order_by[]=title&order_directions[]=asc&page=1&page_size=10"
       )
     end
 

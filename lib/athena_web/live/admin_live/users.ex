@@ -98,16 +98,24 @@ defmodule AthenaWeb.AdminLive.Users do
   end
 
   def handle_event("clear_cache", _params, socket) do
-    case Identity.clear_cache() do
-      {:ok, _} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, gettext("Account cache cleared successfully"))}
+    if Identity.can?(socket.assigns.current_user, "users.delete") do
+      Identity.clear_cache()
+      |> case do
+        {:ok, _} ->
+          {:noreply,
+           socket
+           |> put_flash(:info, gettext("Account cache cleared successfully"))}
 
-      {:error, _} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, gettext("Failed to clear account cache"))}
+        {:error, _} ->
+          {:noreply,
+           socket
+           |> put_flash(:error, gettext("Failed to clear account cache"))}
+      end
+    else
+      {:noreply,
+       socket
+       |> put_flash(:error, gettext("You don't have permission to clear users cache."))
+       |> push_patch(to: ~p"/admin/users")}
     end
   end
 
@@ -168,6 +176,7 @@ defmodule AthenaWeb.AdminLive.Users do
         </div>
         <div class="flex gap-2">
           <.button
+            :if={Identity.can?(@current_user, "system.cache")}
             type="button"
             phx-click="clear_cache"
             class="btn btn-outline btn-warning"
