@@ -24,7 +24,7 @@ defmodule AthenaWeb.StudioLive.Library do
      |> assign(block_to_delete: nil)
      |> assign(block_to_share: nil)
      |> assign(has_blocks: false)
-     |> assign(course_bank_mode: false)
+     |> assign(course_library_mode: false)
      |> assign(course: nil)
      |> assign(pinned_ids: MapSet.new())
      |> stream(:library_blocks, [])}
@@ -98,9 +98,9 @@ defmodule AthenaWeb.StudioLive.Library do
         pinned_ids = MapSet.new(Enum.map(pinned_blocks, & &1.id))
 
         socket
-        |> assign(page_title: gettext("Course Bank: %{title}", title: course.title))
+        |> assign(page_title: gettext("Course Library: %{title}", title: course.title))
         |> assign(library_block: nil)
-        |> assign(course_bank_mode: true, course: course, pinned_ids: pinned_ids)
+        |> assign(course_library_mode: true, course: course, pinned_ids: pinned_ids)
 
       _ ->
         socket
@@ -155,7 +155,7 @@ defmodule AthenaWeb.StudioLive.Library do
     query_params = build_query_params(socket.assigns, overrides)
 
     target_path =
-      if socket.assigns.course_bank_mode do
+      if socket.assigns.course_library_mode do
         ~p"/studio/courses/#{socket.assigns.course.id}/library?#{query_params}"
       else
         ~p"/studio/library?#{query_params}"
@@ -166,7 +166,7 @@ defmodule AthenaWeb.StudioLive.Library do
 
   def handle_event("reset_filters", _params, socket) do
     target_path =
-      if socket.assigns.course_bank_mode do
+      if socket.assigns.course_library_mode do
         ~p"/studio/courses/#{socket.assigns.course.id}/library"
       else
         ~p"/studio/library"
@@ -179,7 +179,7 @@ defmodule AthenaWeb.StudioLive.Library do
     params = build_query_params(socket.assigns, %{"page_size" => size, "page" => 1})
 
     target_path =
-      if socket.assigns.course_bank_mode do
+      if socket.assigns.course_library_mode do
         ~p"/studio/courses/#{socket.assigns.course.id}/library?#{params}"
       else
         ~p"/studio/library?#{params}"
@@ -196,7 +196,7 @@ defmodule AthenaWeb.StudioLive.Library do
       {:noreply, assign(socket, block_to_delete: block)}
     else
       target_path =
-        if socket.assigns.course_bank_mode do
+        if socket.assigns.course_library_mode do
           ~p"/studio/courses/#{socket.assigns.course.id}/library"
         else
           ~p"/studio/library"
@@ -248,7 +248,7 @@ defmodule AthenaWeb.StudioLive.Library do
   end
 
   def handle_event("toggle_pin", %{"id" => block_id}, socket) do
-    if socket.assigns.course_bank_mode do
+    if socket.assigns.course_library_mode do
       course_id = socket.assigns.course.id
       pinned_ids = socket.assigns.pinned_ids
 
@@ -293,7 +293,7 @@ defmodule AthenaWeb.StudioLive.Library do
   @impl true
   def handle_info(:refresh_library, socket) do
     socket =
-      if socket.assigns.course_bank_mode do
+      if socket.assigns.course_library_mode do
         pinned_blocks =
           Content.list_course_workspace_blocks(
             socket.assigns.current_user,
@@ -426,306 +426,333 @@ defmodule AthenaWeb.StudioLive.Library do
     |> Map.merge(stringified_overrides)
     |> Enum.reject(fn
       {_, v} when is_list(v) -> v == []
-      {"pinned_only", _v} -> not Map.get(assigns, :course_bank_mode, false)
+      {"pinned_only", _v} -> not Map.get(assigns, :course_library_mode, false)
       {_, v} -> v in [nil, "", "all"]
     end)
     |> Map.new()
   end
 
   @impl true
-  def render(assigns) do
-    ~H"""
-    <div class="space-y-6">
-      <div class="flex justify-between items-center">
-        <div>
-          <h1 class="text-2xl font-display font-bold text-base-content">{gettext("Library")}</h1>
-          <p class="text-base-content/60">
-            <%= if @course_bank_mode do %>
-              {gettext("Toggle switches to pin or unpin questions for this course's assessments.")}
-            <% else %>
-              {gettext("Manage reusable content templates and quiz questions.")}
-            <% end %>
-          </p>
-        </div>
-        <div class="flex gap-2">
-          <.link
-            :if={@course_bank_mode}
-            navigate={~p"/studio/courses/#{@course.id}/builder"}
-            class="btn btn-outline"
-          >
-            <.icon name="hero-arrow-left" class="size-5" />
-            {gettext("Back to Builder")}
-          </.link>
+    def render(assigns) do
+      ~H"""
+      <div class={@course_library_mode && "fixed inset-0 z-50 bg-base-100 overflow-y-auto p-4 pb-20 sm:p-8"}>
+        <div class={@course_library_mode && "max-w-7xl mx-auto"}>
 
-          <.button
-            :if={Identity.can?(@current_user, "library.create")}
-            patch={~p"/studio/library/new?#{build_query_params(assigns, %{})}"}
-            class="btn btn-primary"
-          >
-            <.icon name="hero-plus" class="size-5" />
-            {gettext("Create Template")}
-          </.button>
-        </div>
-      </div>
+          <div class="space-y-6">
+            <div class="flex justify-between items-center">
 
-      <div class="bg-base-100 border border-base-200 rounded-box p-4 mb-6">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="font-bold text-sm uppercase tracking-wider opacity-70">{gettext("Filters")}</h2>
-          <button
-            phx-click="reset_filters"
-            type="button"
-            class="btn btn-ghost btn-xs text-base-content/60 hover:text-error transition-colors"
-          >
-            <.icon name="hero-arrow-path" class="size-3 mr-1" />
-            {gettext("Reset All")}
-          </button>
-        </div>
+              <div class="flex items-center gap-4">
+                <.link
+                  :if={@course_library_mode}
+                  navigate={~p"/studio/courses/#{@course.id}/builder"}
+                  class="btn btn-ghost btn-sm btn-square rounded-sm hover:bg-base-200"
+                  title={gettext("Back to Builder")}
+                >
+                  <.icon name="hero-arrow-left" class="size-5" />
+                </.link>
 
-        <form phx-change="update_filters" phx-submit="update_filters" class="space-y-4">
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <.input
-              type="text"
-              name="search"
-              value={@search}
-              label={gettext("Template Title")}
-              placeholder={gettext("Search templates...")}
-              phx-debounce="500"
-            />
-            <.input
-              type="select"
-              name="type"
-              value={@type_filter}
-              options={[
-                {gettext("All Types"), "all"},
-                {gettext("Text Block"), "text"},
-                {gettext("Code Sandbox"), "code"},
-                {gettext("Quiz Question"), "quiz_question"},
-                {gettext("Assessment Session"), "quiz_exam"},
-                {gettext("Image"), "image"},
-                {gettext("Video"), "video"},
-                {gettext("Files & Materials"), "attachment"},
-                {gettext("File Assignment"), "file_assignment"}
-              ]}
-              label={gettext("Block Type")}
-            />
-            <.input
-              type="text"
-              name="tag"
-              value={@tag_filter}
-              label={gettext("Tags (comma separated)")}
-              placeholder={gettext("e.g. math, exam")}
-              phx-debounce="500"
-            />
-            <div class="flex flex-col justify-end pb-2">
-              <.input
-                :if={@course_bank_mode}
-                type="checkbox"
-                name="pinned_only"
-                value="true"
-                label={gettext("Only Course Library")}
-                class="checkbox checkbox-primary checkbox-sm"
-                phx-debounce="500"
-              />
+                <div>
+                  <h1 class="text-2xl font-display font-bold text-base-content">
+                    {@page_title}
+                  </h1>
+                  <p class="text-base-content/60">
+                    <%= if @course_library_mode do %>
+                      {gettext("Toggle switches to pin or unpin questions for this course's assessments.")}
+                    <% else %>
+                      {gettext("Manage reusable content templates and quiz questions.")}
+                    <% end %>
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex gap-2">
+                <% new_patch =
+                  if @course_library_mode,
+                    do: ~p"/studio/courses/#{@course.id}/library/new?#{build_query_params(assigns, %{})}",
+                    else: ~p"/studio/library/new?#{build_query_params(assigns, %{})}" %>
+                <.button
+                  :if={Identity.can?(@current_user, "library.create")}
+                  patch={new_patch}
+                  class="btn btn-primary"
+                >
+                  <.icon name="hero-plus" class="size-5" />
+                  <span class="hidden sm:inline">{gettext("Create Template")}</span>
+                  <span class="sm:hidden">{gettext("Create")}</span>
+                </.button>
+              </div>
             </div>
+
+            <div class="bg-base-100 border border-base-200 rounded-box p-4 mb-6">
+              <div class="flex items-center justify-between mb-4">
+                <h2 class="font-bold text-sm uppercase tracking-wider opacity-70">
+                  {gettext("Filters")}
+                </h2>
+                <button
+                  phx-click="reset_filters"
+                  type="button"
+                  class="btn btn-ghost btn-xs text-base-content/60 hover:text-error transition-colors"
+                >
+                  <.icon name="hero-arrow-path" class="size-3 mr-1" />
+                  {gettext("Reset All")}
+                </button>
+              </div>
+
+              <form phx-change="update_filters" phx-submit="update_filters" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <.input
+                    type="text"
+                    name="search"
+                    value={@search}
+                    label={gettext("Template Title")}
+                    placeholder={gettext("Search templates...")}
+                    phx-debounce="500"
+                  />
+                  <.input
+                    type="select"
+                    name="type"
+                    value={@type_filter}
+                    options={[
+                      {gettext("All Types"), "all"},
+                      {gettext("Text Block"), "text"},
+                      {gettext("Code Sandbox"), "code"},
+                      {gettext("Quiz Question"), "quiz_question"},
+                      {gettext("Assessment Session"), "quiz_exam"},
+                      {gettext("Image"), "image"},
+                      {gettext("Video"), "video"},
+                      {gettext("Files & Materials"), "attachment"},
+                      {gettext("File Assignment"), "file_assignment"}
+                    ]}
+                    label={gettext("Block Type")}
+                  />
+                  <.input
+                    type="text"
+                    name="tag"
+                    value={@tag_filter}
+                    label={gettext("Tags (comma separated)")}
+                    placeholder={gettext("e.g. math, exam")}
+                    phx-debounce="500"
+                  />
+                  <div class="flex flex-col justify-end pb-2">
+                    <.input
+                      :if={@course_library_mode}
+                      type="checkbox"
+                      name="pinned_only"
+                      value={@pinned_only}
+                      label={gettext("Only Course Library")}
+                      class="checkbox checkbox-primary checkbox-sm"
+                      phx-debounce="500"
+                    />
+                  </div>
+                </div>
+              </form>
+            </div>
+
+            <div
+              :if={not @has_blocks}
+              class="text-center py-24 px-6 border border-dashed border-base-300 rounded-box mt-4"
+            >
+              <.icon name="hero-archive-box" class="size-16 text-base-content/20 mb-4 mx-auto" />
+              <h3 class="text-xl font-bold text-base-content">
+                {gettext("No templates found")}
+              </h3>
+              <p class="text-base-content/60 mt-2 max-w-sm mx-auto text-sm">
+                {gettext("No library blocks match your search or filter criteria.")}
+              </p>
+            </div>
+
+            <% path_fn = fn overrides ->
+              if assigns.course_library_mode do
+                ~p"/studio/courses/#{assigns.course.id}/library?#{build_query_params(assigns, overrides)}"
+              else
+                ~p"/studio/library?#{build_query_params(assigns, overrides)}"
+              end
+            end %>
+
+            <div :if={@has_blocks}>
+              <.table id="library-blocks" rows={@streams.library_blocks} meta={@meta} path_fn={path_fn}>
+                <:col :let={{_id, block}} :if={@course_library_mode} label={gettext("In Course")}>
+                  <% info = block_badges(block, @current_user) %>
+                  <% is_course_owner = @course && @course.owner_id == @current_user.id %>
+                  <% can_toggle =
+                    is_course_owner or info.role in [:owner, :writer] or
+                      Identity.can?(@current_user, "library.update", block) %>
+
+                  <.input
+                    :if={can_toggle}
+                    type="checkbox"
+                    name={"pin_#{block.id}"}
+                    value={MapSet.member?(@pinned_ids, block.id)}
+                    phx-click="toggle_pin"
+                    phx-value-id={block.id}
+                    class="checkbox checkbox-primary checkbox-sm"
+                  />
+
+                  <.input
+                    :if={not can_toggle}
+                    type="checkbox"
+                    name={"pin_#{block.id}"}
+                    value={MapSet.member?(@pinned_ids, block.id)}
+                    disabled
+                    class="checkbox checkbox-primary checkbox-sm opacity-50 cursor-not-allowed"
+                    title={gettext("Only block owner or course owner can unpin this.")}
+                  />
+                </:col>
+
+                <:col :let={{_id, block}} label={gettext("Title")} sort="title">
+                  <div class="flex flex-col gap-1 items-start">
+                    <span class="font-bold">{block.title}</span>
+                    <.access_badges info={block_badges(block, @current_user)} />
+                  </div>
+                </:col>
+
+                <:col :let={{_id, block}} label={gettext("Type")} sort="type">
+                  <.type_badge type={block.type} />
+                </:col>
+
+                <:col :let={{_id, block}} label={gettext("Tags")}>
+                  <div class="flex flex-wrap gap-1">
+                    <span :for={tag <- block.tags || []} class="badge badge-xs badge-neutral">
+                      {tag}
+                    </span>
+                    <span :if={(block.tags || []) == []} class="text-xs opacity-40 italic">
+                      {gettext("No tags")}
+                    </span>
+                  </div>
+                </:col>
+
+                <:col :let={{_id, block}} label={gettext("Created At")} sort="inserted_at">
+                  <span class="text-sm opacity-60">{Calendar.strftime(block.inserted_at, "%d.%m.%Y")}</span>
+                </:col>
+
+                <:action :let={{_id, block}}>
+                  <% info = block_badges(block, @current_user) %>
+                  <% can_edit =
+                    info.role in [:owner, :writer] or Identity.can?(@current_user, "library.update", block) %>
+                  <% is_pinned = @course_library_mode && MapSet.member?(@pinned_ids, block.id) %>
+
+                  <% can_view = can_edit or info.role == :reader or info.is_public or is_pinned %>
+
+                  <% is_pinned_anywhere =
+                    (Ecto.assoc_loaded?(block.course_library_blocks) && block.course_library_blocks != []) or
+                      is_pinned %>
+
+                  <div class="flex justify-end gap-2">
+                    <.button
+                      :if={can_view}
+                      navigate={~p"/studio/library/#{block.id}/editor?#{[return_to: @current_path]}"}
+                      class="btn btn-primary btn-xs btn-square btn-soft"
+                      title={if can_edit, do: gettext("Open Editor"), else: gettext("View Template")}
+                    >
+                      <.icon
+                        name={if can_edit, do: "hero-wrench-screwdriver", else: "hero-eye"}
+                        class="size-4"
+                      />
+                    </.button>
+
+                    <% edit_patch =
+                      if @course_library_mode,
+                        do: ~p"/studio/courses/#{@course.id}/library/#{block.id}/edit?#{build_query_params(assigns, %{})}",
+                        else: ~p"/studio/library/#{block.id}/edit?#{build_query_params(assigns, %{})}" %>
+                    <.button
+                      :if={can_edit}
+                      patch={edit_patch}
+                      class="btn btn-ghost btn-xs btn-square"
+                      title={gettext("Edit Metadata")}
+                    >
+                      <.icon name="hero-pencil-square" class="size-4" />
+                    </.button>
+
+                    <.button
+                      :if={info.role == :owner or Identity.can?(@current_user, "library.update", block)}
+                      type="button"
+                      phx-click="share_click"
+                      phx-value-id={block.id}
+                      class="btn btn-ghost btn-xs btn-square"
+                      title={gettext("Share Access")}
+                    >
+                      <.icon name="hero-share" class="size-4" />
+                    </.button>
+
+                    <.button
+                      :if={
+                        (info.role == :owner or Identity.can?(@current_user, "library.delete", block)) and
+                          not is_pinned_anywhere
+                      }
+                      type="button"
+                      phx-click="delete_click"
+                      phx-value-id={block.id}
+                      class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
+                      title={gettext("Delete")}
+                    >
+                      <.icon name="hero-trash" class="size-4" />
+                    </.button>
+                  </div>
+                </:action>
+              </.table>
+
+              <div class="flex justify-end mt-8">
+                <.pagination meta={@meta} path_fn={path_fn} />
+              </div>
+            </div>
+
           </div>
-        </form>
-      </div>
-
-      <div
-        :if={not @has_blocks}
-        class="text-center py-24 px-6 border border-dashed border-base-300 rounded-box mt-4"
-      >
-        <.icon name="hero-archive-box" class="size-16 text-base-content/20 mb-4 mx-auto" />
-        <h3 class="text-xl font-bold text-base-content">
-          {gettext("No templates found")}
-        </h3>
-        <p class="text-base-content/60 mt-2 max-w-sm mx-auto text-sm">
-          {gettext("No library blocks match your search or filter criteria.")}
-        </p>
-      </div>
-
-      <% path_fn = fn overrides ->
-        if assigns.course_bank_mode do
-          ~p"/studio/courses/#{assigns.course.id}/library?#{build_query_params(assigns, overrides)}"
-        else
-          ~p"/studio/library?#{build_query_params(assigns, overrides)}"
-        end
-      end %>
-
-      <div :if={@has_blocks}>
-        <.table id="library-blocks" rows={@streams.library_blocks} meta={@meta} path_fn={path_fn}>
-          <:col :let={{_id, block}} :if={@course_bank_mode} label={gettext("In Course")}>
-            <% info = block_badges(block, @current_user) %>
-            <% is_course_owner = @course && @course.owner_id == @current_user.id %>
-            <% can_toggle =
-              is_course_owner or info.role in [:owner, :writer] or
-                Identity.can?(@current_user, "library.update", block) %>
-
-            <.input
-              :if={can_toggle}
-              type="checkbox"
-              name={"pin_#{block.id}"}
-              value={MapSet.member?(@pinned_ids, block.id)}
-              phx-click="toggle_pin"
-              phx-value-id={block.id}
-              class="checkbox checkbox-primary checkbox-sm"
-            />
-
-            <.input
-              :if={not can_toggle}
-              type="checkbox"
-              name={"pin_#{block.id}"}
-              value={MapSet.member?(@pinned_ids, block.id)}
-              disabled
-              class="checkbox checkbox-primary checkbox-sm opacity-50 cursor-not-allowed"
-              title={gettext("Only block owner or course owner can unpin this.")}
-            />
-          </:col>
-
-          <:col :let={{_id, block}} label={gettext("Title")} sort="title">
-            <div class="flex flex-col gap-1 items-start">
-              <span class="font-bold">{block.title}</span>
-              <.access_badges info={block_badges(block, @current_user)} />
-            </div>
-          </:col>
-
-          <:col :let={{_id, block}} label={gettext("Type")} sort="type">
-            <.type_badge type={block.type} />
-          </:col>
-
-          <:col :let={{_id, block}} label={gettext("Tags")}>
-            <div class="flex flex-wrap gap-1">
-              <span :for={tag <- block.tags || []} class="badge badge-xs badge-neutral">
-                {tag}
-              </span>
-              <span :if={(block.tags || []) == []} class="text-xs opacity-40 italic">
-                {gettext("No tags")}
-              </span>
-            </div>
-          </:col>
-
-          <:col :let={{_id, block}} label={gettext("Created At")} sort="inserted_at">
-            <span class="text-sm opacity-60">{Calendar.strftime(block.inserted_at, "%d.%m.%Y")}</span>
-          </:col>
-
-          <:action :let={{_id, block}}>
-            <% info = block_badges(block, @current_user) %>
-            <% can_edit =
-              info.role in [:owner, :writer] or Identity.can?(@current_user, "library.update", block) %>
-            <% is_pinned = @course_bank_mode && MapSet.member?(@pinned_ids, block.id) %>
-
-            <% can_view = can_edit or info.role == :reader or info.is_public or is_pinned %>
-
-            <% is_pinned_anywhere =
-              (Ecto.assoc_loaded?(block.course_library_blocks) && block.course_library_blocks != []) or
-                is_pinned %>
-
-            <div class="flex justify-end gap-2">
-              <.button
-                :if={can_view}
-                navigate={~p"/studio/library/#{block.id}/editor?#{[return_to: @current_path]}"}
-                class="btn btn-primary btn-xs btn-square btn-soft"
-                title={if can_edit, do: gettext("Open Editor"), else: gettext("View Template")}
-              >
-                <.icon
-                  name={if can_edit, do: "hero-wrench-screwdriver", else: "hero-eye"}
-                  class="size-4"
-                />
-              </.button>
-
-              <.button
-                :if={can_edit}
-                patch={~p"/studio/library/#{block.id}/edit?#{build_query_params(assigns, %{})}"}
-                class="btn btn-ghost btn-xs btn-square"
-                title={gettext("Edit Metadata")}
-              >
-                <.icon name="hero-pencil-square" class="size-4" />
-              </.button>
-
-              <.button
-                :if={info.role == :owner or Identity.can?(@current_user, "library.update", block)}
-                type="button"
-                phx-click="share_click"
-                phx-value-id={block.id}
-                class="btn btn-ghost btn-xs btn-square"
-                title={gettext("Share Access")}
-              >
-                <.icon name="hero-share" class="size-4" />
-              </.button>
-
-              <.button
-                :if={
-                  (info.role == :owner or Identity.can?(@current_user, "library.delete", block)) and
-                    not is_pinned_anywhere
-                }
-                type="button"
-                phx-click="delete_click"
-                phx-value-id={block.id}
-                class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
-                title={gettext("Delete")}
-              >
-                <.icon name="hero-trash" class="size-4" />
-              </.button>
-            </div>
-          </:action>
-        </.table>
-
-        <div class="flex justify-end mt-8">
-          <.pagination meta={@meta} path_fn={path_fn} />
         </div>
+
+        <% base_patch =
+          if @course_library_mode,
+            do: ~p"/studio/courses/#{@course.id}/library?#{build_query_params(assigns, %{})}",
+            else: ~p"/studio/library?#{build_query_params(assigns, %{})}" %>
+        <.slide_over
+          id="library-slideover"
+          show={@live_action in [:new, :edit]}
+          title={@page_title}
+          on_close={JS.patch(base_patch)}
+        >
+          <.live_component
+            :if={@library_block}
+            module={LibraryFormComponent}
+            id={@library_block.id || :new}
+            action={@live_action}
+            library_block={@library_block}
+            current_user={@current_user}
+            patch={base_patch}
+          />
+        </.slide_over>
+
+        <.modal
+          id="delete-library-modal"
+          show={@block_to_delete != nil}
+          title={gettext("Delete Template")}
+          description={
+            gettext(
+              "Are you sure you want to permanently delete this template? This action cannot be undone."
+            )
+          }
+          confirm_label={gettext("Delete")}
+          danger={true}
+          on_cancel={JS.push("cancel_delete")}
+          on_confirm={JS.push("confirm_delete")}
+        />
+
+        <.modal
+          id="share-library-modal"
+          show={@block_to_share != nil}
+          title={
+            gettext("Share Template: %{title}",
+              title: if(@block_to_share, do: @block_to_share.title, else: "")
+            )
+          }
+          on_cancel={JS.push("cancel_share")}
+        >
+          <.live_component
+            :if={@block_to_share}
+            module={LibraryShareComponent}
+            id={"share-#{@block_to_share.id}"}
+            library_block={@block_to_share}
+            current_user={@current_user}
+          />
+        </.modal>
       </div>
-
-      <.slide_over
-        id="library-slideover"
-        show={@live_action in [:new, :edit]}
-        title={@page_title}
-        on_close={JS.patch(~p"/studio/library?#{build_query_params(assigns, %{})}")}
-      >
-        <.live_component
-          :if={@library_block}
-          module={LibraryFormComponent}
-          id={@library_block.id || :new}
-          action={@live_action}
-          library_block={@library_block}
-          current_user={@current_user}
-          patch={~p"/studio/library?#{build_query_params(assigns, %{})}"}
-        />
-      </.slide_over>
-
-      <.modal
-        id="delete-library-modal"
-        show={@block_to_delete != nil}
-        title={gettext("Delete Template")}
-        description={
-          gettext(
-            "Are you sure you want to permanently delete this template? This action cannot be undone."
-          )
-        }
-        confirm_label={gettext("Delete")}
-        danger={true}
-        on_cancel={JS.push("cancel_delete")}
-        on_confirm={JS.push("confirm_delete")}
-      />
-
-      <.modal
-        id="share-library-modal"
-        show={@block_to_share != nil}
-        title={
-          gettext("Share Template: %{title}",
-            title: if(@block_to_share, do: @block_to_share.title, else: "")
-          )
-        }
-        on_cancel={JS.push("cancel_share")}
-      >
-        <.live_component
-          :if={@block_to_share}
-          module={LibraryShareComponent}
-          id={"share-#{@block_to_share.id}"}
-          library_block={@block_to_share}
-          current_user={@current_user}
-        />
-      </.modal>
-    </div>
-    """
-  end
+      """
+    end
 end

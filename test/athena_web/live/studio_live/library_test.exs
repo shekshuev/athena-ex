@@ -374,7 +374,7 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
 
       {:ok, _lv, html} = live(conn, "/studio/courses/#{course.id}/library")
 
-      assert html =~ "Course Bank"
+      assert html =~ "Course Library"
       assert html =~ "Pinned Question"
       refute html =~ "Other Question"
 
