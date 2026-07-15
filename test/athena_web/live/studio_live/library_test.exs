@@ -378,8 +378,7 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
       assert html =~ "Pinned Question"
       refute html =~ "Other Question"
 
-      assert html =~
-               ~s(name="pinned_only" value="true" class="toggle toggle-primary toggle-sm" checked)
+      assert html =~ ~r/name="pinned_only"[^>]*checked/
     end
 
     test "should show all blocks when pinned_only turns off", %{
