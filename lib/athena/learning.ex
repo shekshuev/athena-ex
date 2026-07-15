@@ -38,8 +38,8 @@ defmodule Athena.Learning do
 
   defdelegate list_cohort_memberships(cohort_id, params \\ %{}), to: Cohorts
   defdelegate get_cohort_membership!(id), to: Cohorts
-  defdelegate add_student_to_cohort(cohort_id, account_id), to: Cohorts
-  defdelegate remove_student_from_cohort(membership), to: Cohorts
+  defdelegate add_student_to_cohort(user, cohort_id, account_id), to: Cohorts
+  defdelegate remove_student_from_cohort(user, membership), to: Cohorts
   defdelegate can_manage_cohort_processes?(user, cohort), to: Cohorts
   defdelegate can_view_cohort_processes?(user, cohort), to: Cohorts
 
@@ -113,6 +113,7 @@ defmodule Athena.Learning do
   and broadcasts the result so the Grading dashboard updates in real-time.
   """
   def get_or_create_exam_attempt(
+        course_id,
         account_id,
         exam_block_id,
         cohort_id,
@@ -120,6 +121,7 @@ defmodule Athena.Learning do
         exam_config
       ) do
     Submissions.get_or_create_exam_attempt(
+      course_id,
       account_id,
       exam_block_id,
       cohort_id,

@@ -228,7 +228,13 @@ msgstr ""
 msgid "please provide an answer or select a choice"
 msgstr ""
 
-#: lib/athena/learning/enrollments.ex:118
+#: lib/athena/learning/enrollments.ex:119
 #, elixir-autogen, elixir-format
 msgid "Cannot enroll: the following students already have access to this course: %{logins}"
+msgstr ""
+
+#: lib/athena/content/library.ex:122
+#: lib/athena/content/library_block.ex:63
+#, elixir-autogen, elixir-format
+msgid "is pinned to a course and cannot be deleted"
 msgstr ""

@@ -5,7 +5,7 @@ defmodule Athena.Content.Courses do
 
   import Ecto.Query
   alias Athena.Repo
-  alias Athena.Content.{Course, CourseShare}
+  alias Athena.Content.{Course, CourseShare, CourseLibraryBlock, LibraryBlock}
   alias Athena.Identity
 
   @doc """
@@ -138,8 +138,13 @@ defmodule Athena.Content.Courses do
   Shares a course with a specific user account (by UUID) and assigns a role.
   Updates the role if the share already exists via UPSERT.
   """
-  def share_course(user, %Course{} = course, account_id, role \\ :reader) do
-    if can_edit_course?(user, course) do
+  def share_course(user, course, account_id, role \\ :reader)
+
+  def share_course(_user, %Course{owner_id: owner_id}, account_id, _role)
+      when owner_id == account_id, do: {:error, :cannot_share_with_owner}
+
+  def share_course(user, %Course{} = course, account_id, role) do
+    if can_manage_course?(user, course) do
       %CourseShare{}
       |> CourseShare.changeset(%{course_id: course.id, account_id: account_id, role: role})
       |> Repo.insert(
@@ -159,7 +164,7 @@ defmodule Athena.Content.Courses do
   Revokes a specific user's access to a course.
   """
   def revoke_course_share(user, %Course{} = course, account_id) do
-    if can_edit_course?(user, course) do
+    if can_manage_course?(user, course) do
       from(cs in CourseShare, where: cs.course_id == ^course.id and cs.account_id == ^account_id)
       |> Repo.delete_all()
 
@@ -173,7 +178,7 @@ defmodule Athena.Content.Courses do
   Toggles the public visibility of a course.
   """
   def toggle_course_public(user, %Course{} = course, is_public) when is_boolean(is_public) do
-    if can_edit_course?(user, course) do
+    if can_manage_course?(user, course) do
       course
       |> Ecto.Changeset.change(%{is_public: is_public})
       |> Repo.update()
@@ -212,6 +217,11 @@ defmodule Athena.Content.Courses do
   end
 
   @doc false
+  defp can_manage_course?(user, course) do
+    Identity.can?(user, "courses.update", course)
+  end
+
+  @doc false
   defp scope_course_reads(query, user) do
     if Identity.can?(user, "courses.read") do
       policies = Map.get(user.role.policies || %{}, "courses.read", [])
@@ -233,5 +243,56 @@ defmodule Athena.Content.Courses do
     else
       from c in query, where: false
     end
+  end
+
+  @doc """
+  Pins a library block to a course workspace (Course Bank).
+  Requires write permissions on the course.
+  """
+  @spec pin_library_block(map(), String.t(), String.t()) ::
+          {:ok, CourseLibraryBlock.t()} | {:error, Ecto.Changeset.t() | atom()}
+  def pin_library_block(user, course_id, library_block_id) do
+    with {:ok, course} <- get_course(course_id),
+         :ok <- check_course_write_rights(user, course) do
+      %CourseLibraryBlock{}
+      |> CourseLibraryBlock.changeset(%{course_id: course_id, library_block_id: library_block_id})
+      |> Repo.insert()
+    end
+  end
+
+  @doc """
+  Unpins a library block from a course workspace.
+  """
+  @spec unpin_library_block(map(), String.t(), String.t()) ::
+          {:ok, {integer(), nil}} | {:error, atom()}
+  def unpin_library_block(user, course_id, library_block_id) do
+    with {:ok, course} <- get_course(course_id),
+         :ok <- check_course_write_rights(user, course) do
+      query =
+        from(clb in CourseLibraryBlock,
+          where: clb.course_id == ^course_id and clb.library_block_id == ^library_block_id
+        )
+
+      {:ok, Repo.delete_all(query)}
+    end
+  end
+
+  @doc """
+  Lists all library blocks pinned to a specific course.
+  """
+  @spec list_course_workspace_blocks(map(), String.t()) :: [LibraryBlock.t()]
+  def list_course_workspace_blocks(user, course_id) do
+    with {:ok, _course} <- get_course(user, course_id) do
+      CourseLibraryBlock
+      |> where(course_id: ^course_id)
+      |> join(:inner, [clb], lb in LibraryBlock, on: clb.library_block_id == lb.id)
+      |> select([clb, lb], lb)
+      |> Repo.all()
+    end
+  end
+
+  @doc false
+  defp check_course_write_rights(user, course) do
+    if can_edit_course?(user, course), do: :ok, else: {:error, :unauthorized}
   end
 end

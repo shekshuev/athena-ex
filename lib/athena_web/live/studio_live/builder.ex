@@ -1006,7 +1006,6 @@ defmodule AthenaWeb.StudioLive.Builder do
   def handle_event("media_upload_clipboard_request", params, socket) do
     if can_edit?(socket) do
       %{
-        "block_id" => _block_id,
         "file_name" => file_name,
         "file_type" => mime_type,
         "temp_id" => temp_id,
@@ -1128,7 +1127,10 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   def handle_event("open_library_picker", params, socket) do
     if can_edit?(socket) do
-      {:ok, {blocks, _meta}} = Content.list_library_blocks(socket.assigns.current_user, %{})
+      flop_params = %{"course_id" => socket.assigns.course.id, "pinned_only" => true}
+
+      {:ok, {blocks, _meta}} =
+        Content.list_library_blocks(socket.assigns.current_user, flop_params)
 
       {:noreply,
        assign(socket,
@@ -1152,12 +1154,15 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   def handle_event("search_library", %{"search" => search}, socket) do
     if can_edit?(socket) do
+      flop_params = %{"course_id" => socket.assigns.course.id, "pinned_only" => true}
+
       flop_params =
         if search != "",
-          do: %{
-            "filters" => %{"0" => %{"field" => "title", "op" => "ilike_and", "value" => search}}
-          },
-          else: %{}
+          do:
+            Map.put(flop_params, "filters", %{
+              "0" => %{"field" => "title", "op" => "ilike_and", "value" => search}
+            }),
+          else: flop_params
 
       {:ok, {blocks, _meta}} =
         Content.list_library_blocks(socket.assigns.current_user, flop_params)
@@ -1479,6 +1484,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             active_section_id={@active_section_id}
             viewing_parent_id={@viewing_parent_id}
             role={@role}
+            course={@course}
           />
         </div>
       </div>
@@ -1537,7 +1543,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             type="button"
             phx-click="move_section"
             phx-value-target_id="root"
-            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-sm flex items-center gap-2 text-sm transition-colors font-medium mb-2 border-b border-base-200 text-base-content"
+            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-sm flex items-center gap-2 text-sm transition-colors font-medium mb-2 border-b border-base-300 text-base-content"
           >
             <.icon name="hero-home" class="size-4 text-primary" />
             <span class="truncate">{gettext("Course Root (Top Level)")}</span>
@@ -1558,7 +1564,7 @@ defmodule AthenaWeb.StudioLive.Builder do
           <.button
             type="button"
             phx-click="jump_to_root"
-            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-sm flex items-center gap-2 text-sm transition-colors font-medium mb-2 border-b border-base-200 text-base-content"
+            class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-sm flex items-center gap-2 text-sm transition-colors font-medium mb-2 border-b border-base-300 text-base-content"
           >
             <.icon name="hero-home" class="size-4 text-primary" />
             <span class="truncate">{gettext("View Root Level")}</span>
@@ -1599,55 +1605,90 @@ defmodule AthenaWeb.StudioLive.Builder do
       <.slide_over
         id="library-picker-slideover"
         show={@library_picker_open}
-        title={gettext("Library")}
+        title={gettext("Course Library")}
         on_close={JS.push("close_library_picker")}
       >
-        <div class="flex flex-col h-full">
-          <div class="p-6 border-b border-base-200 shrink-0">
+        <div class="flex flex-col h-full -m-6">
+          <div class="p-6 border-b border-base-300 shrink-0 bg-base-100 sticky z-10">
             <.form
               for={nil}
               id="library-search-form"
               phx-change="search_library"
               phx-submit="search_library"
             >
-              <.input
-                type="text"
-                name="search"
-                value={@library_search}
-                placeholder={gettext("Search templates...")}
-                phx-debounce="300"
-              />
+              <div class="relative">
+                <.icon
+                  name="hero-magnifying-glass"
+                  class="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-base-content/40"
+                />
+                <input
+                  type="text"
+                  name="search"
+                  value={@library_search}
+                  placeholder={gettext("Search pinned blocks...")}
+                  class="input w-full pl-10 transition-all"
+                  phx-debounce="300"
+                  autocomplete="off"
+                />
+              </div>
             </.form>
           </div>
-          <div class="flex-1 overflow-y-auto p-6 space-y-4">
-            <div
+
+          <div class="flex-1 overflow-y-auto">
+            <button
               :for={lib_block <- @library_blocks}
-              class="p-5 bg-base-100 border border-base-300 rounded-sm hover:border-primary/50 transition-colors flex flex-col gap-3"
+              type="button"
+              phx-click="insert_from_library"
+              phx-value-id={lib_block.id}
+              class="w-full text-left group flex items-center justify-between py-5 px-6 border-b border-base-200 transition-all hover:border-base-content/40"
             >
-              <div class="flex justify-between items-start">
-                <h4 class="font-bold text-lg leading-tight">{lib_block.title}</h4>
-                <span class="badge badge-sm badge-outline uppercase tracking-widest text-[10px] font-black shrink-0">
-                  {lib_block.type}
-                </span>
+              <div class="flex items-center gap-4 w-full min-w-0">
+                <.icon
+                  name="hero-document-text"
+                  class="size-5 text-base-content/30 group-hover:text-primary transition-colors shrink-0"
+                />
+
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 mb-1">
+                    <.type_badge type={lib_block.type} />
+                  </div>
+                  <h4 class="text-base font-bold text-base-content group-hover:text-primary transition-colors leading-tight truncate">
+                    {lib_block.title}
+                  </h4>
+                  <div :if={(lib_block.tags || []) != []} class="flex flex-wrap gap-1 mt-1.5">
+                    <span
+                      :for={tag <- lib_block.tags}
+                      class="text-[10px] font-bold uppercase tracking-widest text-base-content/40"
+                    >
+                      #{tag}
+                    </span>
+                  </div>
+                </div>
               </div>
-              <div class="flex flex-wrap gap-1">
-                <span :for={tag <- lib_block.tags || []} class="badge badge-xs badge-neutral">
-                  {tag}
-                </span>
+            </button>
+
+            <div
+              :if={@library_blocks == []}
+              class="flex flex-col items-center justify-center py-12 px-4 text-center"
+            >
+              <div class="size-16 rounded-sm bg-base-200 flex items-center justify-center mb-4">
+                <.icon name="hero-archive-box" class="size-8 text-base-content/20" />
               </div>
-              <div class="mt-2 text-right border-t border-base-200 pt-3">
-                <.button
-                  type="button"
-                  phx-click="insert_from_library"
-                  phx-value-id={lib_block.id}
-                  class="btn btn-sm btn-primary w-full sm:w-auto"
-                >
-                  {gettext("Insert Block")}
-                </.button>
-              </div>
-            </div>
-            <div :if={@library_blocks == []} class="text-center py-10 opacity-50 font-medium">
-              {gettext("No templates found.")}
+              <h3 class="font-bold text-base-content text-lg">{gettext("No blocks found")}</h3>
+              <p class="text-sm text-base-content/50 mt-2">
+                <%= if @library_search == "" do %>
+                  {gettext("This course library is empty. Pin templates from the main library first.")}
+                <% else %>
+                  {gettext("No pinned blocks match your search query.")}
+                <% end %>
+              </p>
+              <.link
+                :if={@library_search == ""}
+                navigate={~p"/studio/courses/#{@course.id}/library"}
+                class="btn btn-primary btn-sm mt-6"
+              >
+                {gettext("Manage Course Library")}
+              </.link>
             </div>
           </div>
         </div>
@@ -1809,6 +1850,14 @@ defmodule AthenaWeb.StudioLive.Builder do
         />
       </div>
     </div>
+    """
+  end
+
+  defp type_badge(assigns) do
+    ~H"""
+    <span class="badge badge-sm font-bold border border-base-200 bg-base-100 text-base-content/70 uppercase tracking-widest text-[10px]">
+      {Atom.to_string(@type) |> String.replace("_", " ")}
+    </span>
     """
   end
 

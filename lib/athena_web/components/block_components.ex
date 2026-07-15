@@ -822,18 +822,23 @@ defmodule AthenaWeb.BlockComponents do
         <%= if @submission do %>
           <%= cond do %>
             <% @submission.status == :graded && (@submission.content["cheat_count"] || 0) >= (@block.content["allowed_blur_attempts"] || 3) -> %>
-              <div class="inline-flex items-center gap-2 text-xl font-black text-error bg-error/10 border border-error/30 px-6 py-3 rounded-sm">
+              <div class="text-xs font-bold uppercase tracking-widest mt-2">
                 <.icon name="hero-x-circle-solid" class="size-6" />
                 {gettext("Assessment Failed (Violations)")}
               </div>
-            <% @submission.status in [:graded, :needs_review, :rejected] -> %>
+            <% @submission.status == :time_limit_exceeded -> %>
+              <div class="text-xs font-bold uppercase tracking-widest mt-2">
+                <.icon name="hero-clock-solid" class="size-6" />
+                {gettext("Assessment Failed (Time Out)")}
+              </div>
+            <% @submission.status in [:graded, :needs_review, :rejected, :time_limit_exceeded] -> %>
               <div class="inline-flex flex-col items-center gap-2">
                 <div class={[
                   "inline-flex items-center gap-3 font-black px-4 py-2 rounded-sm",
                   @submission.status == :graded && "text-success",
                   @submission.status == :needs_review &&
                     "text-warning",
-                  @submission.status == :rejected && "text-error"
+                  @submission.status in [:rejected, :time_limit_exceeded] && "text-error"
                 ]}>
                   <.icon
                     name={
@@ -841,6 +846,7 @@ defmodule AthenaWeb.BlockComponents do
                         :graded -> "hero-check-circle-solid"
                         :needs_review -> "hero-clock-solid"
                         :rejected -> "hero-x-circle-solid"
+                        :time_limit_exceeded -> "hero-clock-solid"
                         _ -> "hero-information-circle-solid"
                       end
                     }
@@ -860,6 +866,7 @@ defmodule AthenaWeb.BlockComponents do
               <button
                 phx-click="continue_exam"
                 phx-value-block_id={@block.id}
+                phx-disable-with={gettext("Loading...")}
                 class="btn btn-primary px-12"
               >
                 {gettext("Continue Assessment")}
@@ -872,6 +879,7 @@ defmodule AthenaWeb.BlockComponents do
             <button
               phx-click="start_exam"
               phx-value-block_id={@block.id}
+              phx-disable-with={gettext("Starting...")}
               class="btn btn-primary px-10"
             >
               {gettext("Start Assessment")} <.icon name="hero-play-solid" class="size-4 ml-2" />
@@ -1681,9 +1689,13 @@ defmodule AthenaWeb.BlockComponents do
   defp tiptap_toolbar(assigns), do: ~H""
 
   @doc false
-  defp clean_filename(url) do
+  defp clean_filename(nil), do: "unknown_file"
+
+  defp clean_filename(url) when is_binary(url) do
     url
     |> Path.basename()
     |> String.replace(~r/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/i, "")
   end
+
+  defp clean_filename(_), do: "unknown_file"
 end

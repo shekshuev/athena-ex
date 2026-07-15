@@ -1,28 +1,36 @@
 defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponentTest do
   use AthenaWeb.ConnCase, async: true
   import Phoenix.LiveViewTest
+  import Athena.Factory
 
   alias AthenaWeb.StudioLive.Builder.StructureSidebarComponent
-  alias Athena.Content.Section
-  alias EctoLtree.LabelTree
 
-  defp mock_section(id, title, labels, children \\ []) do
-    %Section{
+  defp build_test_course do
+    build(:course, id: Ecto.UUID.generate())
+  end
+
+  defp build_test_section(id, title, labels, course, children \\ []) do
+    build(:section,
       id: id,
       title: title,
-      path: %LabelTree{labels: labels},
+      course: course,
+      course_id: course.id,
+      path: %EctoLtree.LabelTree{labels: labels},
       children: children
-    }
+    )
   end
 
   describe "Root Level" do
     test "renders empty state message when no sections exist" do
+      course = build_test_course()
+
       html =
         render_component(StructureSidebarComponent,
           sections: [],
           viewing_parent_id: nil,
           active_section_id: nil,
-          role: :owner
+          role: :owner,
+          course: course
         )
 
       assert html =~ "No sections yet. Create your first one!"
@@ -31,15 +39,18 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponentTest do
     end
 
     test "renders root sections and highlights active section" do
-      s1 = mock_section("uuid-1", "Intro to Elixir", ["uuid_1"])
-      s2 = mock_section("uuid-2", "Advanced OTP", ["uuid_2"])
+      course = build_test_course()
+
+      s1 = build_test_section("uuid-1", "Intro to Elixir", ["uuid_1"], course)
+      s2 = build_test_section("uuid-2", "Advanced OTP", ["uuid_2"], course)
 
       html =
         render_component(StructureSidebarComponent,
           sections: [s1, s2],
           viewing_parent_id: nil,
           active_section_id: "uuid-1",
-          role: :owner
+          role: :owner,
+          course: course
         )
 
       assert html =~ "Intro to Elixir"
@@ -52,19 +63,26 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponentTest do
 
   describe "Drill-down (Nested Levels)" do
     test "renders children and chevrons when viewing a parent" do
-      grandchild = mock_section("uuid-gc", "Grandchild", ["uuid_p", "uuid_c", "uuid_gc"])
+      course = build_test_course()
+
+      grandchild =
+        build_test_section("uuid-gc", "Grandchild", ["uuid_p", "uuid_c", "uuid_gc"], course)
 
       child =
-        mock_section("uuid-child", "Child Lesson", ["uuid_parent", "uuid_child"], [grandchild])
+        build_test_section("uuid-child", "Child Lesson", ["uuid_parent", "uuid_child"], course, [
+          grandchild
+        ])
 
-      parent = mock_section("uuid-parent", "Parent Folder", ["uuid_parent"], [child])
+      parent =
+        build_test_section("uuid-parent", "Parent Folder", ["uuid_parent"], course, [child])
 
       html =
         render_component(StructureSidebarComponent,
           sections: [parent],
           viewing_parent_id: "uuid-parent",
           active_section_id: nil,
-          role: :owner
+          role: :owner,
+          course: course
         )
 
       assert html =~ "Child Lesson"
@@ -79,14 +97,16 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponentTest do
     end
 
     test "renders specific empty message when viewing an empty parent folder" do
-      parent = mock_section("uuid-empty", "Empty Folder", ["uuid_empty"], [])
+      course = build_test_course()
+      parent = build_test_section("uuid-empty", "Empty Folder", ["uuid_empty"], course, [])
 
       html =
         render_component(StructureSidebarComponent,
           sections: [parent],
           viewing_parent_id: "uuid-empty",
           active_section_id: nil,
-          role: :owner
+          role: :owner,
+          course: course
         )
 
       assert html =~ "This folder is empty."
@@ -96,14 +116,16 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponentTest do
 
   describe "Role-based Rendering" do
     test "renders Add button and Sortable hook for writer/owner" do
-      section = mock_section("uuid-1", "Intro", ["uuid_1"])
+      course = build_test_course()
+      section = build_test_section("uuid-1", "Intro", ["uuid_1"], course)
 
       html =
         render_component(StructureSidebarComponent,
           sections: [section],
           viewing_parent_id: nil,
           active_section_id: nil,
-          role: :writer
+          role: :writer,
+          course: course
         )
 
       assert html =~ "Add Section"
@@ -112,14 +134,16 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponentTest do
     end
 
     test "hides Add button and Sortable hook for reader" do
-      section = mock_section("uuid-1", "Intro", ["uuid_1"])
+      course = build_test_course()
+      section = build_test_section("uuid-1", "Intro", ["uuid_1"], course)
 
       html =
         render_component(StructureSidebarComponent,
           sections: [section],
           viewing_parent_id: nil,
           active_section_id: nil,
-          role: :reader
+          role: :reader,
+          course: course
         )
 
       refute html =~ "Add Section"
@@ -130,12 +154,15 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponentTest do
 
   describe "New UI Features" do
     test "renders course map button in footer" do
+      course = build_test_course()
+
       html =
         render_component(StructureSidebarComponent,
           sections: [],
           viewing_parent_id: nil,
           active_section_id: nil,
-          role: :owner
+          role: :owner,
+          course: course
         )
 
       assert html =~ "open_quick_nav"
@@ -144,26 +171,31 @@ defmodule AthenaWeb.StudioLive.Builder.StructureSidebarComponentTest do
     end
 
     test "hides 'Up' button at root level" do
+      course = build_test_course()
+
       html =
         render_component(StructureSidebarComponent,
           sections: [],
           viewing_parent_id: nil,
           active_section_id: nil,
-          role: :owner
+          role: :owner,
+          course: course
         )
 
       refute html =~ "phx-click=\"drill_up\""
     end
 
     test "shows 'Up' button when inside a folder" do
-      parent = mock_section("uuid-p", "Parent", ["uuid_p"])
+      course = build_test_course()
+      parent = build_test_section("uuid-p", "Parent", ["uuid_p"], course)
 
       html =
         render_component(StructureSidebarComponent,
           sections: [parent],
           viewing_parent_id: "uuid-p",
           active_section_id: nil,
-          role: :owner
+          role: :owner,
+          course: course
         )
 
       assert html =~ "phx-click=\"drill_up\""

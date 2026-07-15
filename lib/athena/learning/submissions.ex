@@ -578,7 +578,7 @@ defmodule Athena.Learning.Submissions do
         where: s.block_id == ^question_block_id,
         where: s.account_id == ^account_id
 
-    case Repo.one(query) do
+    case query |> limit(1) |> Repo.one() do
       nil ->
         %Submission{}
         |> Submission.changeset(%{
@@ -605,15 +605,12 @@ defmodule Athena.Learning.Submissions do
   Gets the active (pending/draft) exam submission for a student, if it hasn't expired.
   """
   def get_active_exam_submission(account_id, exam_block_id) do
-    now = DateTime.utc_now()
-
     query =
       from s in Submission,
         where: s.account_id == ^account_id,
         where: s.block_id == ^exam_block_id,
         where: s.status in [:pending, :draft],
         where: is_nil(s.parent_submission_id),
-        where: s.expires_at > ^now,
         order_by: [desc: s.inserted_at],
         limit: 1
 
@@ -637,6 +634,7 @@ defmodule Athena.Learning.Submissions do
   Intelligently routes to either `quiz_exam` or `ticket_exam` generator logic.
   """
   def get_or_create_exam_attempt(
+        course_id,
         account_id,
         exam_block_id,
         cohort_id,
@@ -650,9 +648,14 @@ defmodule Athena.Learning.Submissions do
         questions =
           if is_ticket do
             usage = get_ticket_usage(exam_block_id, cohort_id)
-            Athena.Content.Library.generate_ticket_questions(exam_config["slots"], usage)
+
+            Athena.Content.Library.generate_ticket_questions(
+              course_id,
+              exam_config["slots"],
+              usage
+            )
           else
-            Athena.Content.generate_exam_questions(exam_config)
+            Athena.Content.generate_exam_questions(course_id, exam_config)
           end
 
         expires_at = DateTime.add(DateTime.utc_now(), time_limit_sec, :second)
@@ -678,7 +681,13 @@ defmodule Athena.Learning.Submissions do
         |> Repo.insert()
 
       submission ->
-        {:ok, submission}
+        now = DateTime.utc_now()
+
+        if submission.expires_at && DateTime.compare(now, submission.expires_at) == :gt do
+          system_update_submission(submission, %{status: :time_limit_exceeded})
+        else
+          {:ok, submission}
+        end
     end
   end
 

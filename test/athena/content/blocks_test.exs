@@ -214,6 +214,23 @@ defmodule Athena.Content.BlocksTest do
       block = insert(:block, section: s)
       assert {:error, :unauthorized} = Blocks.update_block(student, block, %{"type" => "code"})
     end
+
+    test "prevents IDOR: user cannot move block to or from unpermitted sections", %{
+      instructor: instructor,
+      other_instructor: other
+    } do
+      c1 = insert(:course, owner_id: instructor.id)
+      s1 = insert(:section, course: c1)
+      b1 = insert(:block, section: s1)
+
+      c2 = insert(:course, owner_id: other.id)
+      s2 = insert(:section, course: c2)
+
+      assert {:error, :unauthorized} =
+               Blocks.update_block(instructor, b1, %{"section_id" => s2.id})
+
+      assert {:error, :unauthorized} = Blocks.update_block(other, b1, %{"section_id" => s2.id})
+    end
   end
 
   describe "reorder_block/3" do

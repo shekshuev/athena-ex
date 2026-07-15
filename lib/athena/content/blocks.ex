@@ -121,7 +121,13 @@ defmodule Athena.Content.Blocks do
   @spec update_block(map(), Block.t(), map()) ::
           {:ok, Block.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
   def update_block(user, %Block{} = block, attrs) do
-    if can_edit_section?(user, block.section_id) do
+    new_section_id = Map.get(attrs, "section_id") || Map.get(attrs, :section_id, block.section_id)
+
+    has_rights? =
+      can_edit_section?(user, block.section_id) and
+        (new_section_id == block.section_id or can_edit_section?(user, new_section_id))
+
+    if has_rights? do
       block
       |> Block.changeset(attrs)
       |> Repo.update()

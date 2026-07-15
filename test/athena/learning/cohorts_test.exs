@@ -248,32 +248,32 @@ defmodule Athena.Learning.CohortsTest do
   end
 
   describe "Memberships" do
-    test "add_student_to_cohort/2 creates a membership" do
+    test "add_student_to_cohort/3 creates a membership", %{admin: admin} do
       cohort = insert(:cohort)
       account = insert(:account)
 
       assert {:ok, %CohortMembership{} = membership} =
-               Cohorts.add_student_to_cohort(cohort.id, account.id)
+               Cohorts.add_student_to_cohort(admin, cohort.id, account.id)
 
       assert membership.cohort_id == cohort.id
       assert membership.account_id == account.id
     end
 
-    test "enforces unique membership constraint" do
+    test "enforces unique membership constraint", %{admin: admin} do
       cohort = insert(:cohort)
       account = insert(:account)
 
-      assert {:ok, _} = Cohorts.add_student_to_cohort(cohort.id, account.id)
+      assert {:ok, _} = Cohorts.add_student_to_cohort(admin, cohort.id, account.id)
 
-      assert {:error, changeset} = Cohorts.add_student_to_cohort(cohort.id, account.id)
+      assert {:error, changeset} = Cohorts.add_student_to_cohort(admin, cohort.id, account.id)
       assert "has already been taken" in errors_on(changeset).cohort_id
     end
 
-    test "list_cohort_memberships/2 returns paginated and enriched memberships" do
+    test "list_cohort_memberships/2 returns paginated and enriched memberships", %{admin: admin} do
       cohort = insert(:cohort)
       account = insert(:account, login: "student_john")
 
-      Cohorts.add_student_to_cohort(cohort.id, account.id)
+      Cohorts.add_student_to_cohort(admin, cohort.id, account.id)
 
       {:ok, {memberships, meta}} = Cohorts.list_cohort_memberships(cohort.id, %{})
 
@@ -284,12 +284,12 @@ defmodule Athena.Learning.CohortsTest do
       assert membership.account.login == "student_john"
     end
 
-    test "remove_student_from_cohort/1 deletes the membership" do
+    test "remove_student_from_cohort/2 deletes the membership", %{admin: admin} do
       cohort = insert(:cohort)
       account = insert(:account)
-      {:ok, membership} = Cohorts.add_student_to_cohort(cohort.id, account.id)
+      {:ok, membership} = Cohorts.add_student_to_cohort(admin, cohort.id, account.id)
 
-      assert {:ok, _deleted} = Cohorts.remove_student_from_cohort(membership)
+      assert {:ok, _deleted} = Cohorts.remove_student_from_cohort(admin, membership)
 
       assert_raise Ecto.NoResultsError, fn ->
         Cohorts.get_cohort_membership!(membership.id)
@@ -348,24 +348,26 @@ defmodule Athena.Learning.CohortsTest do
   end
 
   describe "add_student_to_cohort/2 — overlap prevention" do
-    test "allows adding student when cohort has no course enrollments" do
+    test "allows adding student when cohort has no course enrollments", %{admin: admin} do
       cohort = insert(:cohort)
       account = insert(:account)
 
-      assert {:ok, %CohortMembership{}} = Cohorts.add_student_to_cohort(cohort.id, account.id)
+      assert {:ok, %CohortMembership{}} =
+               Cohorts.add_student_to_cohort(admin, cohort.id, account.id)
     end
 
-    test "allows adding student when they have no access to cohort's courses" do
+    test "allows adding student when they have no access to cohort's courses", %{admin: admin} do
       cohort = insert(:cohort)
       course = insert(:course, status: :published)
       account = insert(:account)
 
       insert(:enrollment, cohort: cohort, course_id: course.id, account_id: nil, status: :active)
 
-      assert {:ok, %CohortMembership{}} = Cohorts.add_student_to_cohort(cohort.id, account.id)
+      assert {:ok, %CohortMembership{}} =
+               Cohorts.add_student_to_cohort(admin, cohort.id, account.id)
     end
 
-    test "REJECTS student already in another cohort enrolled on the same course" do
+    test "REJECTS student already in another cohort enrolled on the same course", %{admin: admin} do
       course = insert(:course, title: "Elixir Mastery", status: :published)
       account = insert(:account)
 
@@ -386,15 +388,15 @@ defmodule Athena.Learning.CohortsTest do
         status: :active
       )
 
-      assert {:ok, _} = Cohorts.add_student_to_cohort(cohort_a.id, account.id)
+      assert {:ok, _} = Cohorts.add_student_to_cohort(admin, cohort_a.id, account.id)
 
-      assert {:error, msg} = Cohorts.add_student_to_cohort(cohort_b.id, account.id)
+      assert {:error, msg} = Cohorts.add_student_to_cohort(admin, cohort_b.id, account.id)
       assert msg =~ "Cannot add student"
       assert msg =~ "Elixir Mastery"
       assert msg =~ "through other enrollment"
     end
 
-    test "REJECTS student with individual enrollment on cohort's course" do
+    test "REJECTS student with individual enrollment on cohort's course", %{admin: admin} do
       course = insert(:course, title: "Phoenix Deep Dive", status: :published)
       account = insert(:account)
       cohort = insert(:cohort)
@@ -408,11 +410,11 @@ defmodule Athena.Learning.CohortsTest do
 
       insert(:enrollment, cohort: cohort, course_id: course.id, account_id: nil, status: :active)
 
-      assert {:error, msg} = Cohorts.add_student_to_cohort(cohort.id, account.id)
+      assert {:error, msg} = Cohorts.add_student_to_cohort(admin, cohort.id, account.id)
       assert msg =~ "Phoenix Deep Dive"
     end
 
-    test "lists all conflicting courses in error message" do
+    test "lists all conflicting courses in error message", %{admin: admin} do
       course1 = insert(:course, title: "Course Alpha", status: :published)
       course2 = insert(:course, title: "Course Beta", status: :published)
       account = insert(:account)
@@ -448,14 +450,14 @@ defmodule Athena.Learning.CohortsTest do
         status: :active
       )
 
-      assert {:ok, _} = Cohorts.add_student_to_cohort(cohort_a.id, account.id)
+      assert {:ok, _} = Cohorts.add_student_to_cohort(admin, cohort_a.id, account.id)
 
-      assert {:error, msg} = Cohorts.add_student_to_cohort(cohort_b.id, account.id)
+      assert {:error, msg} = Cohorts.add_student_to_cohort(admin, cohort_b.id, account.id)
       assert msg =~ "Course Alpha"
       assert msg =~ "Course Beta"
     end
 
-    test "IGNORES dropped enrollments when checking overlaps" do
+    test "IGNORES dropped enrollments when checking overlaps", %{admin: admin} do
       course = insert(:course, title: "Dropped Course", status: :published)
       account = insert(:account)
 
@@ -483,21 +485,23 @@ defmodule Athena.Learning.CohortsTest do
         status: :active
       )
 
-      assert {:ok, %CohortMembership{}} = Cohorts.add_student_to_cohort(cohort_b.id, account.id)
+      assert {:ok, %CohortMembership{}} =
+               Cohorts.add_student_to_cohort(admin, cohort_b.id, account.id)
     end
 
-    test "allows re-adding student to the SAME cohort (no self-conflict)" do
+    test "allows re-adding student to the SAME cohort (no self-conflict)", %{admin: admin} do
       course = insert(:course, status: :published)
       account = insert(:account)
       cohort = insert(:cohort)
 
       insert(:enrollment, cohort: cohort, course_id: course.id, account_id: nil, status: :active)
-      assert {:ok, _} = Cohorts.add_student_to_cohort(cohort.id, account.id)
+      assert {:ok, _} = Cohorts.add_student_to_cohort(admin, cohort.id, account.id)
 
-      assert {:error, %Ecto.Changeset{}} = Cohorts.add_student_to_cohort(cohort.id, account.id)
+      assert {:error, %Ecto.Changeset{}} =
+               Cohorts.add_student_to_cohort(admin, cohort.id, account.id)
     end
 
-    test "does not affect students not in the conflicting course" do
+    test "does not affect students not in the conflicting course", %{admin: admin} do
       course_x = insert(:course, title: "Course X", status: :published)
       course_y = insert(:course, title: "Course Y", status: :published)
 
@@ -519,9 +523,10 @@ defmodule Athena.Learning.CohortsTest do
         status: :active
       )
 
-      assert {:ok, _} = Cohorts.add_student_to_cohort(cohort_a.id, account.id)
+      assert {:ok, _} = Cohorts.add_student_to_cohort(admin, cohort_a.id, account.id)
 
-      assert {:ok, %CohortMembership{}} = Cohorts.add_student_to_cohort(cohort_b.id, account.id)
+      assert {:ok, %CohortMembership{}} =
+               Cohorts.add_student_to_cohort(admin, cohort_b.id, account.id)
     end
   end
 end

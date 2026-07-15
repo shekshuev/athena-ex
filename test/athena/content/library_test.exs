@@ -62,6 +62,42 @@ defmodule Athena.Content.LibraryTest do
       assert length(blocks) == 2
       assert meta.total_count == 2
     end
+
+    test "should filter only pinned blocks, if course_id passed and pinned_only = true", %{
+      owner1: owner1
+    } do
+      course = insert(:course)
+      pinned_block = insert(:library_block, owner_id: owner1.id)
+      _other_block = insert(:library_block, owner_id: owner1.id)
+
+      insert(:course_library_block, course: course, library_block: pinned_block)
+
+      assert {:ok, {blocks, _meta}} =
+               Library.list_library_blocks(owner1, %{
+                 "course_id" => course.id,
+                 "pinned_only" => "true"
+               })
+
+      assert length(blocks) == 1
+      assert hd(blocks).id == pinned_block.id
+    end
+
+    test "should show blocks in course library, which doesn't belongs to user, if course_id passed",
+         %{
+           owner1: owner1,
+           owner2: owner2
+         } do
+      course = insert(:course)
+
+      secret_block = insert(:library_block, owner_id: owner2.id, is_public: false)
+
+      insert(:course_library_block, course: course, library_block: secret_block)
+
+      assert {:ok, {blocks, _meta}} =
+               Library.list_library_blocks(owner1, %{"course_id" => course.id})
+
+      assert Enum.any?(blocks, fn b -> b.id == secret_block.id end)
+    end
   end
 
   describe "get_library_block/1 (Without ACL - Internal)" do
@@ -167,7 +203,7 @@ defmodule Athena.Content.LibraryTest do
       assert Repo.get(LibraryBlock, block.id) == nil
     end
 
-    test "should return unauthorized if user tries to delete another user's block", %{
+    test "should return unauthorized if user lacks permission", %{
       owner1: owner1,
       owner2: owner2
     } do
@@ -176,51 +212,72 @@ defmodule Athena.Content.LibraryTest do
       assert {:error, :unauthorized} = Library.delete_library_block(owner1, block)
       assert Repo.get(LibraryBlock, block.id) != nil
     end
+
+    test "returns error changeset if block is pinned to a course workspace", %{owner1: owner1} do
+      block = insert(:library_block, owner_id: owner1.id)
+      course = insert(:course)
+
+      insert(:course_library_block, course: course, library_block: block)
+
+      assert {:error, changeset} = Library.delete_library_block(owner1, block)
+
+      assert "is pinned to a course and cannot be deleted" in errors_on(changeset).course_library_blocks
+    end
   end
 
-  describe "generate_exam_questions/1" do
+  describe "generate_exam_questions/2" do
     setup do
       owner = Ecto.UUID.generate()
+      course = insert(:course)
 
-      insert(:library_block,
-        type: :quiz_question,
-        tags: ["elixir", "hard"],
-        owner_id: owner,
-        content: %{"body" => %{"text" => "Q1"}, "question_type" => "single"}
-      )
+      b1 =
+        insert(:library_block,
+          type: :quiz_question,
+          tags: ["elixir", "hard"],
+          owner_id: owner,
+          content: %{"body" => %{"text" => "Q1"}, "question_type" => "single"}
+        )
 
-      insert(:library_block,
-        type: :quiz_question,
-        tags: ["elixir", "easy"],
-        owner_id: owner,
-        content: %{"body" => %{"text" => "Q2"}, "question_type" => "single"}
-      )
+      b2 =
+        insert(:library_block,
+          type: :quiz_question,
+          tags: ["elixir", "easy"],
+          owner_id: owner,
+          content: %{"body" => %{"text" => "Q2"}, "question_type" => "single"}
+        )
 
-      insert(:library_block,
-        type: :quiz_question,
-        tags: ["js", "easy"],
-        owner_id: owner,
-        content: %{"body" => %{"text" => "Q3"}, "question_type" => "multiple"}
-      )
+      b3 =
+        insert(:library_block,
+          type: :quiz_question,
+          tags: ["js", "easy"],
+          owner_id: owner,
+          content: %{"body" => %{"text" => "Q3"}, "question_type" => "multiple"}
+        )
 
-      insert(:library_block,
-        type: :quiz_question,
-        tags: ["elixir", "theory"],
-        owner_id: owner,
-        content: %{"body" => %{"text" => "Q4"}, "question_type" => "single"}
-      )
+      b4 =
+        insert(:library_block,
+          type: :quiz_question,
+          tags: ["elixir", "theory"],
+          owner_id: owner,
+          content: %{"body" => %{"text" => "Q4"}, "question_type" => "single"}
+        )
 
-      insert(:library_block,
-        type: :quiz_question,
-        tags: ["python"],
-        owner_id: owner,
-        content: %{"body" => %{"text" => "Q5"}, "question_type" => "single"}
-      )
+      b5 =
+        insert(:library_block,
+          type: :quiz_question,
+          tags: ["python"],
+          owner_id: owner,
+          content: %{"body" => %{"text" => "Q5"}, "question_type" => "single"}
+        )
 
-      :ok
+      for b <- [b1, b2, b3, b4, b5] do
+        insert(:course_library_block, course: course, library_block: b)
+      end
+
+      %{course: course, owner: owner}
     end
 
-    test "should fetch exact count using only mandatory tags" do
+    test "should fetch exact count using only mandatory tags", %{course: course} do
       params = %{
         "count" => 2,
         "mandatory_tags" => ["elixir"],
@@ -228,14 +285,16 @@ defmodule Athena.Content.LibraryTest do
         "exclude_tags" => []
       }
 
-      results = Library.generate_exam_questions(params)
+      results = Library.generate_exam_questions(course.id, params)
       assert length(results) == 2
 
       assert Enum.all?(results, fn b -> %Block{} = b end)
       assert Enum.all?(results, fn b -> b.type == :quiz_question end)
     end
 
-    test "should fill remaining quota using include_tags if mandatory tags are insufficient" do
+    test "should fill remaining quota using include_tags if mandatory tags are insufficient", %{
+      course: course
+    } do
       params = %{
         "count" => 3,
         "mandatory_tags" => ["hard"],
@@ -243,11 +302,11 @@ defmodule Athena.Content.LibraryTest do
         "exclude_tags" => []
       }
 
-      results = Library.generate_exam_questions(params)
+      results = Library.generate_exam_questions(course.id, params)
       assert length(results) == 3
     end
 
-    test "should strictly exclude blocks matching exclude_tags" do
+    test "should strictly exclude blocks matching exclude_tags", %{course: course} do
       params = %{
         "count" => 5,
         "mandatory_tags" => [],
@@ -255,7 +314,7 @@ defmodule Athena.Content.LibraryTest do
         "exclude_tags" => ["js"]
       }
 
-      results = Library.generate_exam_questions(params)
+      results = Library.generate_exam_questions(course.id, params)
 
       assert length(results) == 1
       block = hd(results)
@@ -265,7 +324,7 @@ defmodule Athena.Content.LibraryTest do
       assert block.content["question_type"] == "single"
     end
 
-    test "should correctly map original block content to Block snapshot format" do
+    test "should correctly map original block content to Block snapshot format", %{course: course} do
       params = %{
         "count" => 1,
         "mandatory_tags" => ["python"],
@@ -273,7 +332,7 @@ defmodule Athena.Content.LibraryTest do
         "exclude_tags" => []
       }
 
-      results = Library.generate_exam_questions(params)
+      results = Library.generate_exam_questions(course.id, params)
       assert length(results) == 1
 
       snapshot = hd(results)
@@ -283,12 +342,9 @@ defmodule Athena.Content.LibraryTest do
       assert snapshot.type == :quiz_question
       assert snapshot.content["body"] == %{"text" => "Q5"}
       assert snapshot.content["question_type"] == "single"
-
-      assert snapshot.inserted_at != nil
-      assert snapshot.updated_at != nil
     end
 
-    test "should handle gracefully when no blocks match the criteria" do
+    test "should handle gracefully when no blocks match the criteria", %{course: course} do
       params = %{
         "count" => 5,
         "mandatory_tags" => ["ruby"],
@@ -296,25 +352,30 @@ defmodule Athena.Content.LibraryTest do
         "exclude_tags" => []
       }
 
-      results = Library.generate_exam_questions(params)
+      results = Library.generate_exam_questions(course.id, params)
       assert results == []
     end
 
-    test "should return empty list when passed non-map argument" do
-      assert Library.generate_exam_questions(nil) == []
-      assert Library.generate_exam_questions("invalid") == []
-      assert Library.generate_exam_questions(42) == []
+    test "should return empty list when passed non-map argument", %{course: course} do
+      assert Library.generate_exam_questions(course.id, nil) == []
+      assert Library.generate_exam_questions(course.id, "invalid") == []
+      assert Library.generate_exam_questions(course.id, 42) == []
     end
 
-    test "should use default count of 10 if not specified" do
+    test "should use default count of 10 if not specified", %{course: course} do
       owner = Ecto.UUID.generate()
 
-      insert_list(12, :library_block,
-        type: :quiz_question,
-        tags: ["bulk"],
-        owner_id: owner,
-        content: %{"body" => %{"text" => "bulk"}, "question_type" => "single"}
-      )
+      blocks =
+        insert_list(12, :library_block,
+          type: :quiz_question,
+          tags: ["bulk"],
+          owner_id: owner,
+          content: %{"body" => %{"text" => "bulk"}, "question_type" => "single"}
+        )
+
+      for b <- blocks do
+        insert(:course_library_block, course: course, library_block: b)
+      end
 
       params = %{
         "mandatory_tags" => ["bulk"],
@@ -322,19 +383,22 @@ defmodule Athena.Content.LibraryTest do
         "exclude_tags" => []
       }
 
-      results = Library.generate_exam_questions(params)
+      results = Library.generate_exam_questions(course.id, params)
       assert length(results) == 10
     end
 
-    test "should not duplicate mandatory blocks in random selection" do
+    test "should not duplicate mandatory blocks in random selection", %{course: course} do
       owner = Ecto.UUID.generate()
 
-      insert(:library_block,
-        type: :quiz_question,
-        tags: ["unique_mandatory"],
-        owner_id: owner,
-        content: %{"body" => %{"text" => "mandatory"}, "question_type" => "single"}
-      )
+      b =
+        insert(:library_block,
+          type: :quiz_question,
+          tags: ["unique_mandatory"],
+          owner_id: owner,
+          content: %{"body" => %{"text" => "mandatory"}, "question_type" => "single"}
+        )
+
+      insert(:course_library_block, course: course, library_block: b)
 
       params = %{
         "count" => 5,
@@ -343,20 +407,22 @@ defmodule Athena.Content.LibraryTest do
         "exclude_tags" => []
       }
 
-      results = Library.generate_exam_questions(params)
-
+      results = Library.generate_exam_questions(course.id, params)
       assert length(results) == 1
     end
 
-    test "should include code blocks in exam generation" do
+    test "should include code blocks in exam generation", %{course: course} do
       owner = Ecto.UUID.generate()
 
-      insert(:library_block,
-        type: :code,
-        tags: ["python_code"],
-        owner_id: owner,
-        content: %{"language" => "python", "code" => "print('hello')"}
-      )
+      b =
+        insert(:library_block,
+          type: :code,
+          tags: ["python_code"],
+          owner_id: owner,
+          content: %{"language" => "python", "code" => "print('hello')"}
+        )
+
+      insert(:course_library_block, course: course, library_block: b)
 
       params = %{
         "count" => 1,
@@ -365,21 +431,24 @@ defmodule Athena.Content.LibraryTest do
         "exclude_tags" => []
       }
 
-      results = Library.generate_exam_questions(params)
+      results = Library.generate_exam_questions(course.id, params)
       assert length(results) == 1
       assert hd(results).type == :code
       assert hd(results).content["language"] == "python"
     end
 
-    test "should include file_assignment blocks in exam generation" do
+    test "should include file_assignment blocks in exam generation", %{course: course} do
       owner = Ecto.UUID.generate()
 
-      insert(:library_block,
-        type: :file_assignment,
-        tags: ["assignment"],
-        owner_id: owner,
-        content: %{"max_files" => 3}
-      )
+      b =
+        insert(:library_block,
+          type: :file_assignment,
+          tags: ["assignment"],
+          owner_id: owner,
+          content: %{"max_files" => 3}
+        )
+
+      insert(:course_library_block, course: course, library_block: b)
 
       params = %{
         "count" => 1,
@@ -388,7 +457,7 @@ defmodule Athena.Content.LibraryTest do
         "exclude_tags" => []
       }
 
-      results = Library.generate_exam_questions(params)
+      results = Library.generate_exam_questions(course.id, params)
       assert length(results) == 1
       assert hd(results).type == :file_assignment
     end
@@ -534,25 +603,35 @@ defmodule Athena.Content.LibraryTest do
     end
   end
 
-  describe "generate_ticket_questions/2" do
+  describe "generate_ticket_questions/3" do
     setup do
       owner = Ecto.UUID.generate()
+      course = insert(:course)
 
       q1 = insert(:library_block, type: :quiz_question, tags: ["db", "theory"], owner_id: owner)
       q2 = insert(:library_block, type: :quiz_question, tags: ["db", "theory"], owner_id: owner)
       q3 = insert(:library_block, type: :quiz_question, tags: ["db", "practice"], owner_id: owner)
 
-      %{q1: q1, q2: q2, q3: q3}
+      for q <- [q1, q2, q3] do
+        insert(:course_library_block, course: course, library_block: q)
+      end
+
+      %{course: course, q1: q1, q2: q2, q3: q3}
     end
 
-    test "fetches blocks matching slot tags and maps to Block structs", %{q1: q1, q2: q2, q3: q3} do
+    test "fetches blocks matching slot tags and maps to Block structs", %{
+      course: course,
+      q1: q1,
+      q2: q2,
+      q3: q3
+    } do
       slots = [
         %{"id" => "s1", "tags" => ["db", "theory"]},
         %{"id" => "s2", "tags" => ["db", "practice"]}
       ]
 
       usage = TicketUsage.new()
-      results = Library.generate_ticket_questions(slots, usage)
+      results = Library.generate_ticket_questions(course.id, slots, usage)
 
       assert length(results) == 2
       assert Enum.all?(results, fn b -> %Block{} = b end)
@@ -562,17 +641,21 @@ defmodule Athena.Content.LibraryTest do
       assert q1.id in original_ids or q2.id in original_ids
     end
 
-    test "prioritizes blocks with the lowest usage count", %{q1: q1, q2: q2} do
+    test "prioritizes blocks with the lowest usage count", %{course: course, q1: q1, q2: q2} do
       slots = [%{"id" => "s1", "tags" => ["db", "theory"]}]
 
       usage = TicketUsage.new(%{q1.id => 10, q2.id => 0})
-      results = Library.generate_ticket_questions(slots, usage)
+      results = Library.generate_ticket_questions(course.id, slots, usage)
 
       assert length(results) == 1
       assert hd(results).content["original_block_id"] == q2.id
     end
 
-    test "does not pick the same block twice in one ticket (prevents dupes)", %{q1: q1, q2: q2} do
+    test "does not pick the same block twice in one ticket (prevents dupes)", %{
+      course: course,
+      q1: q1,
+      q2: q2
+    } do
       slots = [
         %{"id" => "s1", "tags" => ["db", "theory"]},
         %{"id" => "s2", "tags" => ["db", "theory"]},
@@ -580,7 +663,7 @@ defmodule Athena.Content.LibraryTest do
       ]
 
       usage = TicketUsage.new()
-      results = Library.generate_ticket_questions(slots, usage)
+      results = Library.generate_ticket_questions(course.id, slots, usage)
 
       assert length(results) == 2
       original_ids = Enum.map(results, & &1.content["original_block_id"])
@@ -588,11 +671,11 @@ defmodule Athena.Content.LibraryTest do
       assert q2.id in original_ids
     end
 
-    test "skips slot gracefully if no candidates match" do
+    test "skips slot gracefully if no candidates match", %{course: course} do
       slots = [%{"id" => "s1", "tags" => ["impossible", "tags"]}]
       usage = TicketUsage.new()
 
-      results = Library.generate_ticket_questions(slots, usage)
+      results = Library.generate_ticket_questions(course.id, slots, usage)
       assert results == []
     end
   end

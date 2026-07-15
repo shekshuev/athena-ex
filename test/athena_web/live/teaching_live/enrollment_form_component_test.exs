@@ -101,11 +101,13 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponentTest do
           permissions: [
             "cohorts.read",
             "cohorts.update",
-            "courses.read"
+            "courses.read",
+            "courses.update"
           ],
           policies: %{
             "cohorts.update" => ["own_only"],
-            "courses.read" => ["own_only"]
+            "courses.read" => ["own_only"],
+            "courses.update" => ["own_only"]
           }
         )
 

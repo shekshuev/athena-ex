@@ -65,9 +65,14 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
   end
 
   def handle_event("save", _, socket) do
-    %{cohort_id: cohort_id, selected_account: %{id: account_id}, patch: patch} = socket.assigns
+    %{
+      cohort_id: cohort_id,
+      selected_account: %{id: account_id},
+      patch: patch,
+      current_user: current_user
+    } = socket.assigns
 
-    case Learning.add_student_to_cohort(cohort_id, account_id) do
+    case Learning.add_student_to_cohort(current_user, cohort_id, account_id) do
       {:ok, membership} ->
         send(self(), {__MODULE__, {:saved, membership}})
 

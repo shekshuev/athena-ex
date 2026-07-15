@@ -6,7 +6,16 @@ defmodule Athena.Content.LibraryBlock do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Athena.Content.{QuizQuestion, QuizExam, TicketExam, CodeChallenge, FileAssignment}
+  alias Athena.Content.{
+    QuizQuestion,
+    QuizExam,
+    TicketExam,
+    CodeChallenge,
+    FileAssignment,
+    CourseLibraryBlock
+  }
+
+  use Gettext, backend: AthenaWeb.Gettext
 
   @type t :: %__MODULE__{}
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -33,6 +42,7 @@ defmodule Athena.Content.LibraryBlock do
     field :tags, {:array, :string}, default: []
     field :owner_id, :binary_id
     field :is_public, :boolean, default: false
+    has_many :course_library_blocks, CourseLibraryBlock
 
     timestamps(type: :utc_datetime)
   end
@@ -47,6 +57,14 @@ defmodule Athena.Content.LibraryBlock do
     |> validate_required([:title, :type, :content, :owner_id])
     |> validate_length(:title, min: 3, max: 255)
     |> validate_content_by_type()
+    |> foreign_key_constraint(:course_library_blocks,
+      name: :course_library_blocks_library_block_id_fkey,
+      message:
+        dgettext_noop(
+          "errors",
+          "is pinned to a course and cannot be deleted"
+        )
+    )
   end
 
   @doc false

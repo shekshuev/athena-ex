@@ -225,11 +225,27 @@ defmodule Athena.Learning.Cohorts do
   Prevents enrollment if the student already has access to any course
   that this cohort is currently enrolled in (via another cohort or individual enrollment).
   """
-  @spec add_student_to_cohort(String.t(), String.t()) ::
+  @spec add_student_to_cohort(map(), String.t(), String.t()) ::
           {:ok, CohortMembership.t()}
           | {:error, Ecto.Changeset.t()}
           | {:error, String.t()}
-  def add_student_to_cohort(cohort_id, account_id) do
+          | {:error, :unauthorized}
+  def add_student_to_cohort(user, cohort_id, account_id) do
+    cohort = Repo.get!(Cohort, cohort_id)
+
+    with :ok <- check_cohort_manage_rights(user, cohort),
+         :ok <- validate_no_student_overlap(cohort_id, account_id) do
+      do_insert_membership(cohort_id, account_id)
+    end
+  end
+
+  @doc false
+  defp check_cohort_manage_rights(user, cohort) do
+    if can_manage_cohort_processes?(user, cohort), do: :ok, else: {:error, :unauthorized}
+  end
+
+  @doc false
+  defp validate_no_student_overlap(cohort_id, account_id) do
     enrolled_course_ids =
       from(e in Enrollment,
         where: e.cohort_id == ^cohort_id and e.status != :dropped,
@@ -238,26 +254,29 @@ defmodule Athena.Learning.Cohorts do
       |> Repo.all()
 
     if enrolled_course_ids == [] do
-      do_insert_membership(cohort_id, account_id)
+      :ok
     else
       overlapping_course_ids =
         find_overlapping_courses(account_id, enrolled_course_ids, cohort_id)
 
-      if overlapping_course_ids == [] do
-        do_insert_membership(cohort_id, account_id)
-      else
-        course_titles =
-          from(c in Content.Course,
-            where: c.id in ^overlapping_course_ids,
-            select: c.title
-          )
-          |> Repo.all()
-          |> Enum.join(", ")
-
-        {:error,
-         "Cannot add student: they already have access to course(s): #{course_titles} through other enrollment(s)"}
-      end
+      check_overlapping_results(overlapping_course_ids)
     end
+  end
+
+  @doc false
+  defp check_overlapping_results([]), do: :ok
+
+  defp check_overlapping_results(overlapping_course_ids) do
+    course_titles =
+      from(c in Content.Course,
+        where: c.id in ^overlapping_course_ids,
+        select: c.title
+      )
+      |> Repo.all()
+      |> Enum.join(", ")
+
+    {:error,
+     "Cannot add student: they already have access to course(s): #{course_titles} through other enrollment(s)"}
   end
 
   @doc false
@@ -299,10 +318,16 @@ defmodule Athena.Learning.Cohorts do
   @doc """
   Removes a student account from a cohort.
   """
-  @spec remove_student_from_cohort(CohortMembership.t()) ::
+  @spec remove_student_from_cohort(map(), CohortMembership.t()) ::
           {:ok, CohortMembership.t()} | {:error, Ecto.Changeset.t()}
-  def remove_student_from_cohort(%CohortMembership{} = membership) do
-    Repo.delete(membership)
+  def remove_student_from_cohort(user, %CohortMembership{} = membership) do
+    cohort = Repo.get!(Cohort, membership.cohort_id)
+
+    if can_manage_cohort_processes?(user, cohort) do
+      Repo.delete(membership)
+    else
+      {:error, :unauthorized}
+    end
   end
 
   @doc """

@@ -25,6 +25,7 @@ defmodule AthenaWeb.LearnLive.Exam do
          time_limit_sec <- get_time_limit_sec(block),
          {:ok, submission} <-
            Learning.get_or_create_exam_attempt(
+             course_id,
              user.id,
              block_id,
              team_id,

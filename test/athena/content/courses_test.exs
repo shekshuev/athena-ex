@@ -410,5 +410,134 @@ defmodule Athena.Content.CoursesTest do
       assert course.id in ids
       assert public_course.id in ids
     end
+
+    test "share_course returns error when trying to share with owner (prevent self-sharing)", %{
+      owner: owner,
+      course: course
+    } do
+      assert {:error, :cannot_share_with_owner} =
+               Courses.share_course(owner, course, owner.id, :reader)
+    end
+
+    test "writer via CourseShare CANNOT share, revoke or toggle public visibility", %{
+      owner: owner,
+      course: course,
+      collaborator: collaborator
+    } do
+      Courses.share_course(owner, course, collaborator.id, :writer)
+      third_guy = insert(:account)
+
+      assert {:error, :unauthorized} =
+               Courses.share_course(collaborator, course, third_guy.id, :reader)
+
+      assert {:error, :unauthorized} = Courses.revoke_course_share(collaborator, course, owner.id)
+      assert {:error, :unauthorized} = Courses.toggle_course_public(collaborator, course, true)
+    end
+
+    test "list_courses excludes soft-deleted courses even if they were shared", %{
+      owner: owner,
+      collaborator: collaborator
+    } do
+      course = insert(:course, owner_id: owner.id)
+      Courses.share_course(owner, course, collaborator.id, :reader)
+      Courses.soft_delete_course(owner, course)
+      {:ok, {fetched_courses, _}} = Courses.list_courses(collaborator, %{})
+      ids = Enum.map(fetched_courses, & &1.id)
+
+      refute course.id in ids
+    end
+  end
+
+  describe "Course Workspace (Library Blocks)" do
+    setup %{instructor: owner, other_instructor: hacker} do
+      course = insert(:course, owner_id: owner.id)
+      library_block = insert(:library_block, owner_id: owner.id)
+
+      %{course: course, library_block: library_block, owner: owner, hacker: hacker}
+    end
+
+    test "pin_library_block/3 successfully pins a block to a course", %{
+      owner: owner,
+      course: course,
+      library_block: library_block
+    } do
+      assert {:ok, _course_lib_block} =
+               Courses.pin_library_block(owner, course.id, library_block.id)
+
+      pinned = Courses.list_course_workspace_blocks(owner, course.id)
+      assert length(pinned) == 1
+      assert hd(pinned).id == library_block.id
+    end
+
+    test "pin_library_block/3 prevents pinning the same block twice", %{
+      owner: owner,
+      course: course,
+      library_block: library_block
+    } do
+      assert {:ok, _} = Courses.pin_library_block(owner, course.id, library_block.id)
+
+      assert {:error, %Ecto.Changeset{}} =
+               Courses.pin_library_block(owner, course.id, library_block.id)
+    end
+
+    test "pin_library_block/3 returns unauthorized if user lacks write access to course", %{
+      hacker: hacker,
+      course: course,
+      library_block: library_block
+    } do
+      assert {:error, :unauthorized} =
+               Courses.pin_library_block(hacker, course.id, library_block.id)
+    end
+
+    test "unpin_library_block/3 successfully removes a block from a course", %{
+      owner: owner,
+      course: course,
+      library_block: library_block
+    } do
+      Courses.pin_library_block(owner, course.id, library_block.id)
+
+      assert {:ok, {1, nil}} = Courses.unpin_library_block(owner, course.id, library_block.id)
+      assert Courses.list_course_workspace_blocks(owner, course.id) == []
+    end
+
+    test "unpin_library_block/3 returns unauthorized if user lacks write access", %{
+      owner: owner,
+      hacker: hacker,
+      course: course,
+      library_block: library_block
+    } do
+      Courses.pin_library_block(owner, course.id, library_block.id)
+
+      assert {:error, :unauthorized} =
+               Courses.unpin_library_block(hacker, course.id, library_block.id)
+    end
+
+    test "list_course_workspace_blocks/2 returns only blocks pinned to the specific course", %{
+      owner: owner,
+      course: course
+    } do
+      lb1 = insert(:library_block, owner_id: owner.id)
+      lb2 = insert(:library_block, owner_id: owner.id)
+      lb3 = insert(:library_block, owner_id: owner.id)
+
+      Courses.pin_library_block(owner, course.id, lb1.id)
+      Courses.pin_library_block(owner, course.id, lb3.id)
+
+      blocks = Courses.list_course_workspace_blocks(owner, course.id)
+
+      assert length(blocks) == 2
+
+      ids = Enum.map(blocks, & &1.id)
+      assert lb1.id in ids
+      assert lb3.id in ids
+      refute lb2.id in ids
+    end
+
+    test "list_course_workspace_blocks/2 returns error if user cannot read the course", %{
+      hacker: hacker,
+      course: course
+    } do
+      assert {:error, :not_found} = Courses.list_course_workspace_blocks(hacker, course.id)
+    end
   end
 end

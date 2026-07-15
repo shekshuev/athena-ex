@@ -143,6 +143,24 @@ defmodule Athena.Content.SectionsTest do
 
       assert {:error, :unauthorized} = Sections.create_section(instructor, attrs)
     end
+
+    test "prevents IDOR: fails if provided course_id does not match parent's course_id", %{
+      admin: admin
+    } do
+      course1 = insert(:course, owner_id: admin.id)
+      course2 = insert(:course, owner_id: admin.id)
+
+      {:ok, parent} =
+        Sections.create_section(admin, %{"title" => "Parent", "course_id" => course1.id})
+
+      attrs = %{
+        "title" => "Hacked Child",
+        "course_id" => course2.id,
+        "parent_id" => parent.id
+      }
+
+      assert {:error, :unauthorized} = Sections.create_section(admin, attrs)
+    end
   end
 
   describe "update_section/3" do
@@ -217,6 +235,22 @@ defmodule Athena.Content.SectionsTest do
 
       assert {:error, :unauthorized} =
                Sections.update_section(instructor, section, %{"title" => "Hacked"})
+    end
+
+    test "prevents IDOR: fails if moving section to a parent belonging to a different course", %{
+      admin: admin
+    } do
+      course1 = insert(:course, owner_id: admin.id)
+      course2 = insert(:course, owner_id: admin.id)
+
+      {:ok, target_parent} =
+        Sections.create_section(admin, %{"title" => "C2 Root", "course_id" => course2.id})
+
+      {:ok, section_to_move} =
+        Sections.create_section(admin, %{"title" => "C1 Child", "course_id" => course1.id})
+
+      assert {:error, :unauthorized} =
+               Sections.update_section(admin, section_to_move, %{"parent_id" => target_parent.id})
     end
   end
 

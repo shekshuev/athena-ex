@@ -6,7 +6,16 @@ defmodule Athena.Factory do
 
   alias Athena.Identity.{Account, Role, Profile}
   alias Athena.Media.{File, Quota}
-  alias Athena.Content.{Course, Section, Block, LibraryBlock, CourseShare, LibraryBlockShare}
+
+  alias Athena.Content.{
+    Course,
+    Section,
+    Block,
+    LibraryBlock,
+    CourseShare,
+    LibraryBlockShare,
+    CourseLibraryBlock
+  }
 
   alias Athena.Learning.{
     Cohort,
@@ -174,6 +183,13 @@ defmodule Athena.Factory do
       library_block: build(:library_block),
       account_id: Ecto.UUID.generate(),
       role: :reader
+    }
+  end
+
+  def course_library_block_factory do
+    %CourseLibraryBlock{
+      course: build(:course),
+      library_block: build(:library_block)
     }
   end
 end
