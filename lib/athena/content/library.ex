@@ -277,37 +277,55 @@ defmodule Athena.Content.Library do
   end
 
   @doc false
-  defp scope_library_reads(query, user, course_id \\ nil) do
-    if Identity.can?(user, "library.read") do
-      policies = Map.get(user.role.policies || %{}, "library.read", [])
+  defp scope_library_reads(query, user, course_id \\ nil)
 
-      if "own_only" in policies do
-        shared_block_ids =
-          from s in LibraryBlockShare,
-            where: s.account_id == ^user.id,
-            select: s.library_block_id
+  defp scope_library_reads(query, user, course_id) do
+    cond do
+      not Identity.can?(user, "library.read") ->
+        from(b in query, where: false)
 
-        pinned_block_ids =
-          if is_binary(course_id) do
-            from clb in CourseLibraryBlock,
-              where: clb.course_id == ^course_id,
-              select: clb.library_block_id
-          else
-            from clb in CourseLibraryBlock, where: false, select: clb.library_block_id
-          end
+      "own_only" in get_own_only_policies(user) ->
+        scope_own_only_reads(query, user, course_id)
 
-        from b in query,
-          where:
-            b.owner_id == ^user.id or
-              b.is_public == true or
-              b.id in subquery(shared_block_ids) or
-              b.id in subquery(pinned_block_ids)
-      else
+      true ->
         query
-      end
-    else
-      from b in query, where: false
     end
+  end
+
+  @doc false
+  defp get_own_only_policies(user) do
+    Map.get(user.role.policies || %{}, "library.read", [])
+  end
+
+  defp scope_own_only_reads(query, user, course_id) do
+    shared_block_ids =
+      from(s in LibraryBlockShare,
+        where: s.account_id == ^user.id,
+        select: s.library_block_id
+      )
+
+    pinned_block_ids = get_pinned_block_ids(course_id)
+
+    from(b in query,
+      where:
+        b.owner_id == ^user.id or
+          b.is_public == true or
+          b.id in subquery(shared_block_ids) or
+          b.id in subquery(pinned_block_ids)
+    )
+  end
+
+  @doc false
+  defp get_pinned_block_ids(course_id) when is_binary(course_id) do
+    from(clb in CourseLibraryBlock,
+      where: clb.course_id == ^course_id,
+      select: clb.library_block_id
+    )
+  end
+
+  @doc false
+  defp get_pinned_block_ids(_course_id) do
+    from(clb in CourseLibraryBlock, where: false, select: clb.library_block_id)
   end
 
   @doc """
