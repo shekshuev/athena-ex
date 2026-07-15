@@ -820,6 +820,8 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
           owner_id: admin.id
         )
 
+      insert(:course_library_block, course: course, library_block: lib_block)
+
       {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
 
       lv
@@ -847,8 +849,11 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       section: section,
       admin: admin
     } do
-      insert(:library_block, title: "Alpha Template", owner_id: admin.id)
-      insert(:library_block, title: "Beta Template", owner_id: admin.id)
+      alpha = insert(:library_block, title: "Alpha Template", owner_id: admin.id)
+      beta = insert(:library_block, title: "Beta Template", owner_id: admin.id)
+
+      insert(:course_library_block, course: course, library_block: alpha)
+      insert(:course_library_block, course: course, library_block: beta)
 
       {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
 
