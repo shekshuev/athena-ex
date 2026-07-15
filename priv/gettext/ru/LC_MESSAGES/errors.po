@@ -229,7 +229,8 @@ msgstr "пожалуйста, введите ответ или выберите 
 msgid "Cannot enroll: the following students already have access to this course: %{logins}"
 msgstr "Невозможно зачислить: следующие студенты уже имеют доступ к этому курсу: %{logins}"
 
-#: lib/athena/content/library_block.ex:56
+#: lib/athena/content/library.ex:122
+#: lib/athena/content/library_block.ex:63
 #, elixir-autogen, elixir-format
 msgid "is pinned to a course and cannot be deleted"
 msgstr "прикреплен к курсу и не может быть удален"

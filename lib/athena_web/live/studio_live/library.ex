@@ -454,7 +454,7 @@ defmodule AthenaWeb.StudioLive.Library do
                 <p class="text-base-content/60">
                   <%= if @course_library_mode do %>
                     {gettext(
-                      "Toggle switches to pin or unpin questions for this course's assessments."
+                      "Toggle checkboxes to pin or unpin questions for this course's assessments."
                     )}
                   <% else %>
                     {gettext("Manage reusable content templates and quiz questions.")}
@@ -640,9 +640,14 @@ defmodule AthenaWeb.StudioLive.Library do
                     is_pinned %>
 
                 <div class="flex justify-end gap-2">
+                  <% editor_path =
+                    if @course_library_mode,
+                      do: ~p"/studio/courses/#{@course.id}/library/#{block.id}/editor",
+                      else: ~p"/studio/library/#{block.id}/editor" %>
+
                   <.button
                     :if={can_view}
-                    navigate={~p"/studio/library/#{block.id}/editor?#{[return_to: @current_path]}"}
+                    navigate={editor_path}
                     class="btn btn-primary btn-xs btn-square btn-soft"
                     title={if can_edit, do: gettext("Open Editor"), else: gettext("View Template")}
                   >
