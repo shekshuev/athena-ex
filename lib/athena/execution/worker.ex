@@ -59,11 +59,16 @@ defmodule Athena.Execution.Worker do
   end
 
   defp execute_code(code, challenge, box_id) do
+    runner = {:via, :global, :code_runner}
+
     if :global.whereis_name(:code_runner) != :undefined do
       task =
-        Task.Supervisor.async({:via, :global, :code_runner}, fn ->
-          Verifier.verify(code, challenge, box_id)
-        end)
+        Task.Supervisor.async_nolink(
+          runner,
+          Verifier,
+          :verify,
+          [code, challenge, box_id]
+        )
 
       try do
         Task.await(task, @timeout)

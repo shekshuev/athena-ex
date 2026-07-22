@@ -1,0 +1,16 @@
+services:
+  athena_runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner
+    container_name: athena_runner_dev
+    restart: "no"
+    privileged: true
+    network_mode: "host"
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    environment:
+      - SERVER_ROLE=runner
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=runner1@127.0.0.1
+      - RELEASE_COOKIE=dev_cookie_12345

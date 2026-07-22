@@ -30,7 +30,7 @@ defmodule Athena.Execution.IsolateRunner do
   @spec run_test(String.t(), String.t() | nil, Context.t()) ::
           {:ok, %{meta: map(), stdout: String.t(), stderr: String.t()}} | {:error, atom()}
   def run_test(code, input, %Context{} = ctx) do
-    System.cmd(@isolate_bin, ["--cleanup", "--cg", "-b", "#{ctx.box_id}"])
+    System.cmd(@isolate_bin, ["--cleanup", "-b", "#{ctx.box_id}"])
 
     try do
       with {:ok, ctx} <- init_sandbox(ctx),
@@ -60,7 +60,7 @@ defmodule Athena.Execution.IsolateRunner do
   """
   @spec setup_sandbox(String.t(), Context.t()) :: {:ok, Context.t()} | {:error, any()}
   def setup_sandbox(code, %Context{} = ctx) do
-    System.cmd(@isolate_bin, ["--cleanup", "--cg", "-b", "#{ctx.box_id}"])
+    System.cmd(@isolate_bin, ["--cleanup", "-b", "#{ctx.box_id}"])
 
     with {:ok, ctx} <- init_sandbox(ctx),
          :ok <- write_source(code, ctx),
@@ -120,7 +120,6 @@ defmodule Athena.Execution.IsolateRunner do
     args =
       [
         "--run",
-        "--cg",
         "-b",
         "#{ctx.box_id}",
         "-M",
@@ -129,7 +128,8 @@ defmodule Athena.Execution.IsolateRunner do
         "10240",
         "-t",
         "10.0",
-        "--cg-mem=262144",
+        "-m",
+        "262144",
         "-p128",
         "-E",
         "PATH=/usr/sbin:/usr/bin:/sbin:/bin",
@@ -152,7 +152,7 @@ defmodule Athena.Execution.IsolateRunner do
   @doc false
   @spec init_sandbox(Context.t()) :: {:ok, Context.t()} | {:error, :init_failed}
   defp init_sandbox(ctx) do
-    case System.cmd(@isolate_bin, ["--init", "--cg", "-b", "#{ctx.box_id}"]) do
+    case System.cmd(@isolate_bin, ["--init", "-b", "#{ctx.box_id}"]) do
       {path, 0} ->
         work_dir = String.trim(path)
         box_dir = Path.join(work_dir, "box")
@@ -175,7 +175,6 @@ defmodule Athena.Execution.IsolateRunner do
     args =
       [
         "--run",
-        "--cg",
         "-b",
         "#{ctx.box_id}",
         "-M",
@@ -188,7 +187,8 @@ defmodule Athena.Execution.IsolateRunner do
         "#{ctx.time_limit + 1.0}",
         "-f",
         "1024",
-        "--cg-mem=#{ctx.memory_limit}",
+        "-m",
+        "#{ctx.memory_limit}",
         "-p64",
         "-E",
         "PATH=/usr/sbin:/usr/bin:/sbin:/bin",
@@ -218,7 +218,7 @@ defmodule Athena.Execution.IsolateRunner do
   @doc false
   @spec cleanup_sandbox(Context.t()) :: :ok
   defp cleanup_sandbox(ctx) do
-    System.cmd(@isolate_bin, ["--cleanup", "--cg", "-b", "#{ctx.box_id}"])
+    System.cmd(@isolate_bin, ["--cleanup", "-b", "#{ctx.box_id}"])
     :ok
   end
 

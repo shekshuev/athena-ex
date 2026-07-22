@@ -7,11 +7,25 @@ on:
 
 jobs:
   docker:
-    name: Build and Push Docker Image
+    name: Build and Push Docker Images
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: "all"
+            file: "./Dockerfile"
+            suffix: ""
+          - variant: "web"
+            file: "./Dockerfile.web"
+            suffix: "-web"
+          - variant: "runner"
+            file: "./Dockerfile.runner"
+            suffix: "-runner"
 
     steps:
       - name: Checkout repository
@@ -31,16 +45,16 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/${{ github.repository }}${{ matrix.suffix }}
           tags: |
             type=ref,event=tag
             type=raw,value=latest
 
-      - name: Build and push Docker image
+      - name: Build and push Docker image (${{ matrix.variant }})
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile
+          file: ${{ matrix.file }}
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -60,11 +74,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Pull Docker image
-        run: docker pull ghcr.io/${{ github.repository }}:latest
+        run: docker pull ghcr.io/${{ github.repository }}-runner:latest
 
       - name: Extract Release from Docker
         run: |
-          docker create --name temp_container ghcr.io/${{ github.repository }}:latest
+          docker create --name temp_container ghcr.io/${{ github.repository }}-runner:latest
           docker cp temp_container:/app/ ./athena_release
           docker rm temp_container
           tar -czvf athena-runner-linux-amd64.tar.gz -C ./athena_release .

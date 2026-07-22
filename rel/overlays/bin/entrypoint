@@ -1,8 +1,11 @@
 #!/bin/bash
 set -e
 
-# Накатываем миграции
-/app/bin/migrate
+if [ "$SERVER_ROLE" != "runner" ]; then
+  if [ -f "/app/bin/migrate" ]; then
+    echo "Running migrations..."
+    /app/bin/migrate
+  fi
+fi
 
-# Запускаем сервак
 exec /app/bin/server

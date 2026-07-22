@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  athena_runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner
+    container_name: athena_runner_1
+    restart: always
+    privileged: true
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    env_file:
+      - .env
+    environment:
+      - SERVER_ROLE=runner
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=runner1@athena_runner
+      - RELEASE_COOKIE=${RELEASE_COOKIE}
+    networks:
+      - athena-network
+
+networks:
+  athena-network:
+    external: true

@@ -551,11 +551,16 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     runner = {:via, :global, :code_runner}
 
     if :global.whereis_name(:code_runner) != :undefined do
+      box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
+
       task =
-        Task.Supervisor.async(runner, fn ->
-          box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
-          Execution.verify(code, challenge, box_id)
-        end)
+        Task.Supervisor.async_nolink(
+          runner,
+          Execution,
+          :verify,
+          [code, challenge, box_id]
+        )
+
 
       updated_tests = Map.put(socket.assigns.running_tests, task.ref, block.id)
 
