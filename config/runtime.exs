@@ -30,9 +30,9 @@ server_role = System.get_env("SERVER_ROLE")
 queues =
   server_role
   |> case do
-    "runner" -> [code_execution: System.schedulers_online() * 2]
-    "default" -> [code_execution: System.schedulers_online() * 2]
-    _ -> [code_execution: System.schedulers_online() * 2, default: 10]
+    "runner" -> []
+    "default" -> [code_execution: System.schedulers_online() * 2, default: 10, maintenance: 2]
+    _ -> [code_execution: System.schedulers_online() * 2, default: 10, maintenance: 2]
   end
 
 config :athena, :server_role, server_role
@@ -137,7 +137,7 @@ if config_env() == :prod do
         Oban.Plugins.Pruner,
         {Oban.Plugins.Cron,
          crontab: [
-           {media_cron, Athena.Workers.MediaCleanup}
+           {media_cron, {Athena.Workers.MediaCleanup, queue: :maintenance}}
          ]}
       ]
   end
