@@ -6,7 +6,7 @@ defmodule Athena.Workers.MediaCleanup do
   Checks both Block.content and Submission.content for file references
   to ensure files used in file assignments are not prematurely deleted.
   """
-  use Oban.Worker, queue: :default, max_attempts: 3
+  use Oban.Worker, queue: :maintenance, max_attempts: 3
 
   require Logger
   import Ecto.Query
