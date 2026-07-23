@@ -17,7 +17,7 @@ import Config
 # Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
 # script that automatically sets the env var above.
 
-server_role = System.get_env("SERVER_ROLE", "default")
+server_role = System.get_env("SERVER_ROLE", "all")
 config :athena, :server_role, server_role
 
 config :athena, :default_locale, System.get_env("DEFAULT_LOCALE") || "en"
