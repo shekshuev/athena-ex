@@ -59,22 +59,29 @@ defmodule Athena.Execution.Worker do
   end
 
   defp execute_code(code, challenge, box_id) do
-    if :global.whereis_name(:code_runner) != :undefined do
-      task =
-        Task.Supervisor.async({:via, :global, :code_runner}, fn ->
-          Verifier.verify(code, challenge, box_id)
-        end)
+    case :pg.get_members(Athena.PG, :code_runners) do
+      [] ->
+        Logger.error("Runner node is not connected during worker execution!")
+        build_error_result("Runner node is not connected!")
 
-      try do
-        Task.await(task, @timeout)
-      catch
-        :exit, reason ->
-          Logger.error("Remote execution failed: #{inspect(reason)}")
-          build_error_result("Runner node crashed or timed out.")
-      end
-    else
-      Logger.error("Runner node is not connected during worker execution!")
-      build_error_result("Runner node is not connected!")
+      runners ->
+        runner_pid = Enum.random(runners)
+
+        task =
+          Task.Supervisor.async_nolink(
+            runner_pid,
+            Verifier,
+            :verify,
+            [code, challenge, box_id]
+          )
+
+        try do
+          Task.await(task, @timeout)
+        catch
+          :exit, reason ->
+            Logger.error("Remote execution failed: #{inspect(reason)}")
+            build_error_result("Runner node crashed or timed out.")
+        end
     end
   end
 

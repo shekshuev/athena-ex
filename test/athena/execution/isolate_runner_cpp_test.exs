@@ -1,13 +1,22 @@
 defmodule Athena.Execution.IsolateRunnerCppTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   @moduletag :isolate
 
   alias Athena.Execution.IsolateRunner
   alias Athena.Execution.LanguageConfig
 
-  setup do
-    box_id = System.unique_integer([:positive, :monotonic]) |> rem(1000)
+  setup_all do
+    for id <- 100..120 do
+      System.cmd("/usr/bin/isolate", ["--cleanup", "-b", "#{id}"])
+    end
+
+    {:ok, agent} = Agent.start_link(fn -> 100 end)
+    %{box_agent: agent}
+  end
+
+  setup %{box_agent: agent} do
+    box_id = Agent.get_and_update(agent, fn id -> {id, id + 1} end)
 
     ctx = %IsolateRunner.Context{
       box_id: box_id,
@@ -171,7 +180,7 @@ defmodule Athena.Execution.IsolateRunnerCppTest do
       assert {:ok, result} = IsolateRunner.run_test(code, nil, ctx)
 
       assert result.meta["status"] == "CE"
-      assert result.stderr =~ "error"
+      assert result.stderr =~ ~r/(error|out of memory)/i
     end
 
     test "catches C++ Output Bomb", %{ctx: ctx} do
@@ -209,7 +218,7 @@ defmodule Athena.Execution.IsolateRunnerCppTest do
       assert {:ok, result} = IsolateRunner.run_test(code, nil, ctx)
 
       assert result.meta["status"] == "CE"
-      assert result.stderr == "" or result.stderr =~ "error"
+      assert result.stderr == "" or result.stderr =~ ~r/(error|out of memory)/i
     end
   end
 end

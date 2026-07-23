@@ -502,7 +502,7 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp code_runner_available?, do: :global.whereis_name(:code_runner) != :undefined
+  defp code_runner_available?, do: :pg.get_members(Athena.PG, :code_runners) != []
 
   @doc false
   defp process_code_submission(socket, block, code) do

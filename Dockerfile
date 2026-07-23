@@ -13,7 +13,7 @@
 #
 ARG ELIXIR_VERSION=1.19.5
 ARG OTP_VERSION=27.3.4.10
-ARG DEBIAN_VERSION=bullseye-20260518-slim
+ARG DEBIAN_VERSION=bookworm-20260610-slim
 ARG COMMIT_SHA="dev"
 
 
@@ -83,16 +83,34 @@ RUN mix release
 FROM ${RUNNER_IMAGE} AS final
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends libstdc++6 openssl libncurses6 locales ca-certificates \
+  && apt-get install -y --no-install-recommends \
+     libstdc++6 openssl libncurses6 locales ca-certificates \
+     python3 g++ git make gcc libcap-dev pkg-config libseccomp-dev libsystemd-dev \
   && rm -rf /var/lib/apt/lists/*
 
 # Set the locale
-RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \
+  RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \
   && locale-gen
 
 ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 ENV LC_ALL=en_US.UTF-8
+
+RUN git clone https://github.com/ioi/isolate.git /tmp/isolate \
+  && cd /tmp/isolate \
+  && make isolate \
+  && make install \
+  && rm -rf /tmp/isolate \
+  && ln -s /usr/local/bin/isolate /usr/bin/isolate
+
+RUN useradd -r -s /bin/false isolate \
+  && echo "isolate:100000:65536" >> /etc/subuid \
+  && echo "isolate:100000:65536" >> /etc/subgid \
+  && echo "root:100000:65536" >> /etc/subuid \
+  && echo "root:100000:65536" >> /etc/subgid
+
+RUN mkdir -p /run/isolate/locks /var/local/lib/isolate \
+  && chmod 777 /var/local/lib/isolate
 
 WORKDIR "/app"
 RUN chown nobody /app

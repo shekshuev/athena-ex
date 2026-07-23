@@ -1,8 +1,33 @@
 #!/bin/bash
 set -e
 
-# Накатываем миграции
-/app/bin/migrate
+ROLE="${SERVER_ROLE:-all}"
 
-# Запускаем сервак
+if [ "$(id -u)" = '0' ] && { [ "$ROLE" = "runner" ] || [ "$ROLE" = "all" ]; }; then
+    echo "Initializing cgroups v2 for isolate (role: $ROLE)..."
+    
+    mkdir -p /run/isolate/locks /var/local/lib/isolate
+    chmod 777 /var/local/lib/isolate
+
+    mkdir -p /sys/fs/cgroup/isolate
+    mkdir -p /sys/fs/cgroup/init
+
+    for pid in $(cat /sys/fs/cgroup/cgroup.procs 2>/dev/null); do
+        echo $pid > /sys/fs/cgroup/init/cgroup.procs 2>/dev/null || true
+    done
+
+    echo "+cpu +memory +pids" > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null || true
+    echo "+cpu +memory +pids" > /sys/fs/cgroup/isolate/cgroup.subtree_control 2>/dev/null || true
+
+    rm -rf /run/isolate/cgroup
+    echo "/sys/fs/cgroup/isolate" > /run/isolate/cgroup
+fi
+
+if [ "$ROLE" != "runner" ]; then
+  if [ -f "/app/bin/migrate" ]; then
+    echo "Running migrations..."
+    /app/bin/migrate
+  fi
+fi
+
 exec /app/bin/server

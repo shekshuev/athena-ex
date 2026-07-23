@@ -548,23 +548,28 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
         )
       )
 
-    runner = {:via, :global, :code_runner}
+    case :pg.get_members(Athena.PG, :code_runners) do
+      [] ->
+        {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
 
-    if :global.whereis_name(:code_runner) != :undefined do
-      task =
-        Task.Supervisor.async(runner, fn ->
-          box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
-          Execution.verify(code, challenge, box_id)
-        end)
+      runners ->
+        runner_pid = Enum.random(runners)
+        box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
 
-      updated_tests = Map.put(socket.assigns.running_tests, task.ref, block.id)
+        task =
+          Task.Supervisor.async_nolink(
+            runner_pid,
+            Execution,
+            :verify,
+            [code, challenge, box_id]
+          )
 
-      {:noreply,
-       socket
-       |> assign(:running_tests, updated_tests)
-       |> put_flash(:info, gettext("Testing reference solution... Please wait."))}
-    else
-      {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
+        updated_tests = Map.put(socket.assigns.running_tests, task.ref, block.id)
+
+        {:noreply,
+         socket
+         |> assign(:running_tests, updated_tests)
+         |> put_flash(:info, gettext("Testing reference solution... Please wait."))}
     end
   end
 

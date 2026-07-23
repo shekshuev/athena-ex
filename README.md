@@ -119,40 +119,136 @@ Triggered on PRs and pushes to `main` and `develop`.
 
 ## Code Runner Note
 
-> The code execution feature relies on [isolate](https://github.com/ioi/isolate), which utilizes Linux kernel features (cgroups, namespaces) to provide a truly secure sandbox, preventing malicious system calls and enforcing strict resource constraints.
+> The code execution feature relies on [isolate](https://github.com/ioi/isolate), which utilizes Linux kernel features (namespaces, rlimits) to provide a secure sandbox for untrusted code execution.
 >
-> **On Linux:** Ensure `isolate` is installed and you have sudo rights (or configured sudoers).
+> **Inside Docker:** `isolate` uses Linux **cgroups v2** (`--cg`) for accurate memory tracking (RSS), CPU limits, and multi-threading/fork-bomb protection.
 >
-> **On macOS/Windows:** You cannot run the code execution engine natively. Development involving code execution should be done inside a Linux VM or Docker container.
+> Any container running code execution (`all` or `runner` roles) requires:
+>
+> - `privileged: true`
+> - `pid: "host"`
+> - `cgroup: host`
+> - Volume mount: `/sys/fs/cgroup:/sys/fs/cgroup:rw`
+>
+> **On macOS/Windows:** Native execution is not supported.
 
-### Deployment Roles & Hybrid Architecture
+---
 
-Because the `isolate` code execution engine requires deep Linux kernel access (cgroups v2, namespaces) that Docker restricts, Athena is designed to be deployed in a "hybrid" distributed mode without splitting the monolithic codebase.
+## Deployment Modes & Architecture
 
-You can control the behavior of the application using the `SERVER_ROLE` environment variable:
+Athena supports both single-container monoliths and multi-node distributed setups out of a single codebase using the `SERVER_ROLE` environment variable.
 
-- **`default` (Web Node):** Serves the Phoenix LiveView UI, handles HTTP requests, and manages background tasks like media cleanup. This node is completely safe to run inside a standard Docker container.
-- **`runner` (Code Execution Worker):** A headless node that listens strictly for code execution jobs and interfaces with the native `isolate` binary. This node **must** be run directly on a bare-metal Linux host or a fully privileged VM.
+### Available Server Roles
 
-The nodes automatically discover and connect to each other using `libcluster` (via Gossip) and share state via Oban and PostgreSQL.
+- **`all` (Monolith / Combined Mode):** Runs both the Phoenix Web UI and the Code Execution Engine in a single container. Ideal for small-to-medium deployments, single-node VPS, or local development. _(Requires `privileged: true` in Docker)_.
+- **`default` (Web Node):** Serves the Phoenix LiveView UI, HTTP endpoints, and manages background database/storage tasks. Lightweight, unprivileged container.
+- **`runner` (Execution Node):** Headless worker node that executes student submissions inside `isolate`. Can be scaled horizontally across multiple servers. _(Requires `privileged: true` in Docker)_.
 
-#### Running the Hybrid Setup
+---
 
-To start the nodes, ensure both share the same database connection and `ERLANG_COOKIE`.
+## Production Deployment
 
-1. Start the Web Node (e.g., inside Docker):
+Official Docker images are automatically built for all deployment scenarios:
 
-```bash
-SERVER_ROLE=default iex --name web@127.0.0.1 --cookie super_secret -S mix phx.server
+- **All-in-One Image:** `ghcr.io/shekshuev/athena-ex:latest`
+- **Web-Only Image:** `ghcr.io/shekshuev/athena-ex-web:latest`
+- **Runner-Only Image:** `ghcr.io/shekshuev/athena-ex-runner:latest`
+
+### Option 1: All-in-One Deployment
+
+Spin up the full stack (Web + Runner + DB + Storage) in a single compose configuration:
+
+```yaml
+athena:
+  image: ghcr.io/shekshuev/athena-ex:latest
+  container_name: athena_prod
+  privileged: true
+  pid: "host"
+  cgroup: host
+  restart: always
+  env_file:
+    - .env
+  environment:
+    - SERVER_ROLE=all
+    - RELEASE_COOKIE=${RELEASE_COOKIE}
+  volumes:
+    - /sys/fs/cgroup:/sys/fs/cgroup:rw
+  ports:
+    - "${WEB_PORT_EXTERNAL:-80}:4000"
+  depends_on:
+    - postgres
+    - minio
+  networks:
+    - athena-network
+
+networks:
+  athena-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  minio_data:
 ```
 
-2. Start the Runner Node (on the bare-metal host with `isolate` installed):
+### Option 2: Distributed Deployment (Web + Scalable Runners)
 
-```bash
-SERVER_ROLE=runner iex --name runner@127.0.0.1 --cookie super_secret -S mix
+In distributed mode, Web and Runner nodes form an Erlang cluster via `libcluster` using a shared `RELEASE_COOKIE` over `network_mode: "host"` or container networking.
+
+```yaml
+version: "3.8"
+
+services:
+  athena_web:
+    image: ghcr.io/shekshuev/athena-ex-web:latest
+    container_name: athena_web
+    restart: always
+    network_mode: "host"
+    env_file:
+      - .env
+    environment:
+      - SERVER_ROLE=default
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=web@127.0.0.1
+      - RELEASE_COOKIE=${RELEASE_COOKIE}
+    depends_on:
+      - postgres
+      - minio
+
+  athena_runner:
+    image: ghcr.io/shekshuev/athena-ex-runner:latest
+    container_name: athena_runner
+    privileged: true
+    pid: "host"
+    cgroup: host
+    restart: always
+    network_mode: "host"
+    env_file:
+      - .env
+    environment:
+      - SERVER_ROLE=runner
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=runner1@127.0.0.1
+      - RELEASE_COOKIE=${RELEASE_COOKIE}
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
 ```
 
-_Note: If no `SERVER_ROLE` is provided, Athena will boot in a combined mode (starting both the web endpoint and the runner supervisor). This is primarily useful for local development or testing on a Linux machine._
+### Manual Cluster Startup (IEx)
+
+If running directly on bare-metal or separate VMs:
+
+1. **Start the Web Node:**
+
+   ```bash
+   SERVER_ROLE=default iex --name web@127.0.0.1 --cookie super_secret -S mix phx.server
+   ```
+
+2. **Start the Runner Node:**
+   ```bash
+   SERVER_ROLE=runner iex --name runner1@127.0.0.1 --cookie super_secret -S mix
+   ```
+
+_Note: If no `SERVER_ROLE` is provided, Athena will boot in a combined mode._
 
 ## Contributing
 

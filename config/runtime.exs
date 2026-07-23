@@ -16,26 +16,22 @@ import Config
 #
 # Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
 # script that automatically sets the env var above.
+
+server_role = System.get_env("SERVER_ROLE", "all")
+config :athena, :server_role, server_role
+
+config :athena, :default_locale, System.get_env("DEFAULT_LOCALE") || "en"
+
 if System.get_env("PHX_SERVER") do
   config :athena, AthenaWeb.Endpoint, server: true
 end
 
+if server_role == "runner" do
+  config :athena, ecto_repos: []
+end
+
 config :athena, AthenaWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
-
-config :athena, :default_locale, System.get_env("DEFAULT_LOCALE") || "en"
-
-server_role = System.get_env("SERVER_ROLE")
-
-queues =
-  server_role
-  |> case do
-    "runner" -> []
-    "default" -> [code_execution: System.schedulers_online() * 2, default: 10, maintenance: 2]
-    _ -> [code_execution: System.schedulers_online() * 2, default: 10, maintenance: 2]
-  end
-
-config :athena, :server_role, server_role
 
 if server_role in ["default", "runner"] do
   config :libcluster,
@@ -50,30 +46,35 @@ if server_role in ["default", "runner"] do
     ]
 end
 
+queues =
+  server_role
+  |> case do
+    "runner" -> []
+    "default" -> [code_execution: System.schedulers_online() * 2, default: 10, maintenance: 2]
+    _ -> [code_execution: System.schedulers_online() * 2, default: 10, maintenance: 2]
+  end
+
 config :athena, Oban,
   repo: Athena.Repo,
   queues: queues
 
 if config_env() == :prod do
-  database_url =
-    System.get_env("DATABASE_URL") ||
-      raise """
-      environment variable DATABASE_URL is missing.
-      For example: ecto://USER:PASS@HOST/DATABASE
-      """
-
-  maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
-
-  config :athena, Athena.Repo,
-    # ssl: true,
-    url: database_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
-    # For machines with several cores, consider starting multiple pools of `pool_size`
-    # pool_count: 4,
-    socket_options: maybe_ipv6,
-    types: Athena.PostgresTypes
-
   if server_role != "runner" do
+    database_url =
+      System.get_env("DATABASE_URL") ||
+        raise """
+        environment variable DATABASE_URL is missing.
+        For example: ecto://USER:PASS@HOST/DATABASE
+        """
+
+    maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
+
+    config :athena, Athena.Repo,
+      url: database_url,
+      pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+      socket_options: maybe_ipv6,
+      types: Athena.PostgresTypes
+
     if System.get_env("FORCE_SSL") == "true" do
       config :athena, AthenaWeb.Endpoint,
         force_ssl: [
@@ -110,9 +111,7 @@ if config_env() == :prod do
         ip: {0, 0, 0, 0, 0, 0, 0, 0}
       ],
       secret_key_base: secret_key_base
-  end
 
-  if server_role != "runner" do
     config :ex_aws,
       access_key_id: System.get_env("MINIO_ACCESS_KEY") || raise("MINIO_ACCESS_KEY is missing"),
       secret_access_key:
@@ -127,9 +126,7 @@ if config_env() == :prod do
       bucket: System.get_env("MINIO_BUCKET"),
       public_host: System.get_env("MINIO_PUBLIC_HOST"),
       public_port: System.get_env("MINIO_PORT_EXTERNAL")
-  end
 
-  if config_env() != :test and server_role != "runner" do
     media_cron = System.get_env("MEDIA_CLEANUP_CRON") || "0 * * * *"
 
     config :athena, Oban,
