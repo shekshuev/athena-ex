@@ -2,6 +2,7 @@ defmodule Athena.Execution.IsolateRunner do
   @moduledoc """
   Low-level wrapper around the `isolate` binary.
   Handles sandbox lifecycle: init -> setup -> run -> cleanup.
+  Uses cgroups (--cg) for strict and accurate resource limiting.
   """
   require Logger
 
@@ -11,6 +12,7 @@ defmodule Athena.Execution.IsolateRunner do
     @moduledoc """
     Execution context for a single sandbox run.
     """
+
     defstruct [:box_id, :work_dir, :box_dir, :lang_config, :time_limit, :memory_limit]
 
     @type t :: %__MODULE__{
@@ -30,7 +32,7 @@ defmodule Athena.Execution.IsolateRunner do
   @spec run_test(String.t(), String.t() | nil, Context.t()) ::
           {:ok, %{meta: map(), stdout: String.t(), stderr: String.t()}} | {:error, atom()}
   def run_test(code, input, %Context{} = ctx) do
-    System.cmd(@isolate_bin, ["--cleanup", "-b", "#{ctx.box_id}"])
+    System.cmd(@isolate_bin, ["--cleanup", "--cg", "-b", "#{ctx.box_id}"])
 
     try do
       with {:ok, ctx} <- init_sandbox(ctx),
@@ -60,7 +62,7 @@ defmodule Athena.Execution.IsolateRunner do
   """
   @spec setup_sandbox(String.t(), Context.t()) :: {:ok, Context.t()} | {:error, any()}
   def setup_sandbox(code, %Context{} = ctx) do
-    System.cmd(@isolate_bin, ["--cleanup", "-b", "#{ctx.box_id}"])
+    System.cmd(@isolate_bin, ["--cleanup", "--cg", "-b", "#{ctx.box_id}"])
 
     with {:ok, ctx} <- init_sandbox(ctx),
          :ok <- write_source(code, ctx),
@@ -120,6 +122,7 @@ defmodule Athena.Execution.IsolateRunner do
     args =
       [
         "--run",
+        "--cg",
         "-b",
         "#{ctx.box_id}",
         "-M",
@@ -154,9 +157,9 @@ defmodule Athena.Execution.IsolateRunner do
   @doc false
   @spec init_sandbox(Context.t(), integer()) :: {:ok, Context.t()} | {:error, :init_failed}
   defp init_sandbox(ctx, retries \\ 5) do
-    System.cmd(@isolate_bin, ["--cleanup", "-b", "#{ctx.box_id}"])
+    System.cmd(@isolate_bin, ["--cleanup", "--cg", "-b", "#{ctx.box_id}"])
 
-    case System.cmd(@isolate_bin, ["--init", "-b", "#{ctx.box_id}"]) do
+    case System.cmd(@isolate_bin, ["--init", "--cg", "-b", "#{ctx.box_id}"]) do
       {path, 0} ->
         work_dir = String.trim(path)
         box_dir = Path.join(work_dir, "box")
@@ -184,6 +187,7 @@ defmodule Athena.Execution.IsolateRunner do
     args =
       [
         "--run",
+        "--cg",
         "-b",
         "#{ctx.box_id}",
         "-M",
@@ -227,13 +231,13 @@ defmodule Athena.Execution.IsolateRunner do
   @doc false
   @spec cleanup_sandbox(Context.t()) :: :ok
   defp cleanup_sandbox(ctx) do
-    case System.cmd(@isolate_bin, ["--cleanup", "-b", "#{ctx.box_id}"]) do
+    case System.cmd(@isolate_bin, ["--cleanup", "--cg", "-b", "#{ctx.box_id}"]) do
       {_, 0} ->
         :ok
 
       _ ->
         Process.sleep(100)
-        System.cmd(@isolate_bin, ["--cleanup", "-b", "#{ctx.box_id}"])
+        System.cmd(@isolate_bin, ["--cleanup", "--cg", "-b", "#{ctx.box_id}"])
         :ok
     end
   end

@@ -5,6 +5,8 @@ services:
     image: ghcr.io/shekshuev/athena-ex:latest
     container_name: athena_web
     privileged: true
+    pid: "host"
+    cgroup: "host"
     restart: always
     env_file:
       - .env

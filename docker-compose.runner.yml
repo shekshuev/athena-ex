@@ -8,6 +8,8 @@ services:
     container_name: athena_runner_1
     restart: always
     privileged: true
+    pid: "host"
+    cgroup: "host"
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     env_file:

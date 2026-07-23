@@ -7,6 +7,8 @@ services:
     restart: "no"
     privileged: true
     network_mode: "host"
+    pid: "host"
+    cgroup: "host"
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     environment:

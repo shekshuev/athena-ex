@@ -21,89 +21,83 @@ defmodule Athena.Execution.TestWorker do
 
     {:ok, processing_sub} = Learning.system_update_submission(submission, %{status: :processing})
 
-    challenge_attrs = block.content
-
     challenge =
       Ecto.Changeset.apply_changes(
-        Content.CodeChallenge.changeset(%Content.CodeChallenge{}, challenge_attrs)
+        Content.CodeChallenge.changeset(%Content.CodeChallenge{}, block.content)
       )
 
     code = processing_sub.content["code"] || ""
     box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
 
-    result =
-      case :pg.get_members(Athena.PG, :code_runners) do
-        [] ->
-          Logger.error("Runner node is not connected during test worker execution!")
+    result = execute_code(code, challenge, box_id)
+    clean_results = clean_test_results(result.test_results)
 
-          %Result{
-            status: :rejected,
-            score: 0,
-            time: 0.0,
-            memory: 0,
-            test_results: [
-              %TestResult{
-                status: :error,
-                expected: "",
-                stdout: "Runner node is not connected!",
-                stderr: nil,
-                input: "",
-                time: 0.0,
-                memory: 0,
-                max_score: 0,
-                is_hidden: false
-              }
-            ]
-          }
+    update_and_broadcast(processing_sub, clean_results)
+  end
 
-        runners ->
-          runner_pid = Enum.random(runners)
+  defp execute_code(code, challenge, box_id) do
+    case :pg.get_members(Athena.PG, :code_runners) do
+      [] ->
+        Logger.error("Runner node is not connected during test worker execution!")
+        build_error_result("Runner node is not connected!")
 
-          task =
-            Task.Supervisor.async_nolink(
-              runner_pid,
-              Verifier,
-              :verify,
-              [code, challenge, box_id]
-            )
+      runners ->
+        runner_pid = Enum.random(runners)
+        run_remote_task(runner_pid, code, challenge, box_id)
+    end
+  end
 
-          try do
-            Task.await(task, @timeout)
-          catch
-            :exit, reason ->
-              Logger.error("Remote test execution failed: #{inspect(reason)}")
+  defp run_remote_task(runner_pid, code, challenge, box_id) do
+    task =
+      Task.Supervisor.async_nolink(
+        runner_pid,
+        Verifier,
+        :verify,
+        [code, challenge, box_id]
+      )
 
-              %Result{
-                status: :rejected,
-                score: 0,
-                time: 0.0,
-                memory: 0,
-                test_results: [
-                  %TestResult{
-                    status: :error,
-                    expected: "",
-                    stdout: "Runner node crashed or timed out.",
-                    stderr: nil,
-                    input: "",
-                    time: 0.0,
-                    memory: 0,
-                    max_score: 0,
-                    is_hidden: false
-                  }
-                ]
-              }
-          end
-      end
+    try do
+      Task.await(task, @timeout)
+    catch
+      :exit, reason ->
+        Logger.error("Remote test execution failed: #{inspect(reason)}")
+        build_error_result("Runner node crashed or timed out.")
+    end
+  end
 
-    clean_test_results =
-      Enum.map(result.test_results, fn tr ->
-        tr
-        |> Map.from_struct()
-        |> Map.new(fn {k, v} ->
-          {to_string(k), if(is_atom(v) and not is_boolean(v), do: to_string(v), else: v)}
-        end)
+  defp build_error_result(message) do
+    %Result{
+      status: :rejected,
+      score: 0,
+      time: 0.0,
+      memory: 0,
+      test_results: [
+        %TestResult{
+          status: :error,
+          expected: "",
+          stdout: message,
+          stderr: nil,
+          input: "",
+          time: 0.0,
+          memory: 0,
+          max_score: 0,
+          is_hidden: false
+        }
+      ]
+    }
+  end
+
+  defp clean_test_results(test_results) do
+    Enum.map(test_results, fn tr ->
+      tr
+      |> Map.from_struct()
+      |> Map.new(fn {k, v} ->
+        {to_string(k), if(is_atom(v) and not is_boolean(v), do: to_string(v), else: v)}
       end)
+    end)
+  end
 
+  defp update_and_broadcast(processing_sub, clean_test_results) do
     new_content = Map.put(processing_sub.content || %{}, "execution_results", clean_test_results)
 
     attrs = %{
