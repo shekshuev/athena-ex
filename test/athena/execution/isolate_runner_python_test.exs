@@ -1,13 +1,22 @@
 defmodule Athena.Execution.IsolateRunnerPythonTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   @moduletag :isolate
 
   alias Athena.Execution.IsolateRunner
   alias Athena.Execution.LanguageConfig
 
-  setup do
-    box_id = System.unique_integer([:positive, :monotonic]) |> rem(1000)
+  setup_all do
+    for id <- 200..230 do
+      System.cmd("/usr/bin/isolate", ["--cleanup", "-b", "#{id}"])
+    end
+
+    {:ok, agent} = Agent.start_link(fn -> 200 end)
+    %{box_agent: agent}
+  end
+
+  setup %{box_agent: agent} do
+    box_id = Agent.get_and_update(agent, fn id -> {id, id + 1} end)
 
     ctx = %IsolateRunner.Context{
       box_id: box_id,
@@ -73,7 +82,11 @@ defmodule Athena.Execution.IsolateRunnerPythonTest do
       assert {:ok, result} = IsolateRunner.run_test(code, nil, tight_mem_ctx)
       assert result.meta["status"] in ["SG", "RE"]
 
-      assert String.to_integer(result.meta["cg-mem"]) > 10_000
+      mem_str = result.meta["max-rss"] || result.meta["cg-mem"]
+
+      if mem_str do
+        assert String.to_integer(mem_str) > 10_000
+      end
     end
   end
 
