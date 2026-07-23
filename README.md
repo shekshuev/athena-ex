@@ -121,7 +121,14 @@ Triggered on PRs and pushes to `main` and `develop`.
 
 > The code execution feature relies on [isolate](https://github.com/ioi/isolate), which utilizes Linux kernel features (namespaces, rlimits) to provide a secure sandbox for untrusted code execution.
 >
-> **Inside Docker:** `isolate` runs smoothly out of the box inside standard Linux Docker containers without complex cgroup host-mounts. The container running code execution simply requires `privileged: true` to create Linux namespaces.
+> **Inside Docker:** `isolate` uses Linux **cgroups v2** (`--cg`) for accurate memory tracking (RSS), CPU limits, and multi-threading/fork-bomb protection.
+>
+> Any container running code execution (`all` or `runner` roles) requires:
+>
+> - `privileged: true`
+> - `pid: "host"`
+> - `cgroup: host`
+> - Volume mount: `/sys/fs/cgroup:/sys/fs/cgroup:rw`
 >
 > **On macOS/Windows:** Native execution is not supported.
 
@@ -152,47 +159,27 @@ Official Docker images are automatically built for all deployment scenarios:
 Spin up the full stack (Web + Runner + DB + Storage) in a single compose configuration:
 
 ```yaml
-version: "3.8"
-
-services:
-  athena:
-    image: ghcr.io/shekshuev/athena-ex:latest
-    container_name: athena_prod
-    privileged: true
-    restart: always
-    env_file:
-      - .env
-    environment:
-      - SERVER_ROLE=all
-      - RELEASE_COOKIE=${RELEASE_COOKIE}
-    ports:
-      - "${WEB_PORT_EXTERNAL:-80}:4000"
-    depends_on:
-      - postgres
-      - minio
-    networks:
-      - athena-network
-
-  postgres:
-    image: postgres:15-alpine
-    restart: always
-    env_file:
-      - .env
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - athena-network
-
-  minio:
-    image: minio/minio
-    restart: always
-    command: server /data --console-address ":9001"
-    env_file:
-      - .env
-    volumes:
-      - minio_data:/data
-    networks:
-      - athena-network
+athena:
+  image: ghcr.io/shekshuev/athena-ex:latest
+  container_name: athena_prod
+  privileged: true
+  pid: "host"
+  cgroup: host
+  restart: always
+  env_file:
+    - .env
+  environment:
+    - SERVER_ROLE=all
+    - RELEASE_COOKIE=${RELEASE_COOKIE}
+  volumes:
+    - /sys/fs/cgroup:/sys/fs/cgroup:rw
+  ports:
+    - "${WEB_PORT_EXTERNAL:-80}:4000"
+  depends_on:
+    - postgres
+    - minio
+  networks:
+    - athena-network
 
 networks:
   athena-network:
@@ -231,6 +218,8 @@ services:
     image: ghcr.io/shekshuev/athena-ex-runner:latest
     container_name: athena_runner
     privileged: true
+    pid: "host"
+    cgroup: host
     restart: always
     network_mode: "host"
     env_file:
@@ -240,6 +229,8 @@ services:
       - RELEASE_DISTRIBUTION=name
       - RELEASE_NODE=runner1@127.0.0.1
       - RELEASE_COOKIE=${RELEASE_COOKIE}
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
 ```
 
 ### Manual Cluster Startup (IEx)
