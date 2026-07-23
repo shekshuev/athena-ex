@@ -11,14 +11,15 @@ defmodule AthenaWeb.LearnLive.TicketExamTest do
     insert(:enrollment, account_id: user.id, course_id: course.id)
     section = insert(:section, course: course)
 
-    if :global.whereis_name(:code_runner) == :undefined do
-      :global.register_name(:code_runner, self())
+    case Process.whereis(Athena.PG) do
+      nil -> :pg.start_link(Athena.PG)
+      _pid -> :ok
     end
 
+    :pg.join(Athena.PG, :code_runners, self())
+
     on_exit(fn ->
-      if :global.whereis_name(:code_runner) == self() do
-        :global.unregister_name(:code_runner)
-      end
+      :pg.leave(Athena.PG, :code_runners, self())
     end)
 
     %{conn: conn, user: user, course: course, section: section}

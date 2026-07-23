@@ -13,8 +13,12 @@ defmodule Athena.Application do
 
     topologies = Application.get_env(:libcluster, :topologies) || []
 
+    common_children = [
+      %{id: Athena.PG, start: {:pg, :start_link, [Athena.PG]}}
+    ]
+
     children =
-      cluster_children(topologies) ++ children_for_role(server_role)
+      cluster_children(topologies) ++ common_children ++ children_for_role(server_role)
 
     opts = [strategy: :one_for_one, name: Athena.Supervisor]
 
@@ -32,7 +36,18 @@ defmodule Athena.Application do
   @doc false
   defp children_for_role("runner"),
     do: [
-      {Task.Supervisor, name: {:via, :global, :code_runner}}
+      {Task.Supervisor, name: Athena.Execution.TaskSupervisor},
+      Supervisor.child_spec(
+        {Task,
+         fn ->
+           case Process.whereis(Athena.Execution.TaskSupervisor) do
+             nil -> :ok
+             pid -> :pg.join(Athena.PG, :code_runners, pid)
+           end
+         end},
+        id: :register_runner_in_pg,
+        restart: :temporary
+      )
     ]
 
   defp children_for_role("default"),

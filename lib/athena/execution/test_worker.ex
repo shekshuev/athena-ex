@@ -32,65 +32,67 @@ defmodule Athena.Execution.TestWorker do
     box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
 
     result =
-      if :global.whereis_name(:code_runner) != :undefined do
-        runner = {:via, :global, :code_runner}
+      case :pg.get_members(Athena.PG, :code_runners) do
+        [] ->
+          Logger.error("Runner node is not connected during test worker execution!")
 
-        task =
-          Task.Supervisor.async_nolink(
-            runner,
-            Verifier,
-            :verify,
-            [code, challenge, box_id]
-          )
+          %Result{
+            status: :rejected,
+            score: 0,
+            time: 0.0,
+            memory: 0,
+            test_results: [
+              %TestResult{
+                status: :error,
+                expected: "",
+                stdout: "Runner node is not connected!",
+                stderr: nil,
+                input: "",
+                time: 0.0,
+                memory: 0,
+                max_score: 0,
+                is_hidden: false
+              }
+            ]
+          }
 
-        try do
-          Task.await(task, @timeout)
-        catch
-          :exit, reason ->
-            Logger.error("Remote test execution failed: #{inspect(reason)}")
+        runners ->
+          runner_pid = Enum.random(runners)
 
-            %Result{
-              status: :rejected,
-              score: 0,
-              time: 0.0,
-              memory: 0,
-              test_results: [
-                %TestResult{
-                  status: :error,
-                  expected: "",
-                  stdout: "Runner node crashed or timed out.",
-                  stderr: nil,
-                  input: "",
-                  time: 0.0,
-                  memory: 0,
-                  max_score: 0,
-                  is_hidden: false
-                }
-              ]
-            }
-        end
-      else
-        Logger.error("Runner node is not connected during test worker execution!")
+          task =
+            Task.Supervisor.async_nolink(
+              runner_pid,
+              Verifier,
+              :verify,
+              [code, challenge, box_id]
+            )
 
-        %Result{
-          status: :rejected,
-          score: 0,
-          time: 0.0,
-          memory: 0,
-          test_results: [
-            %TestResult{
-              status: :error,
-              expected: "",
-              stdout: "Runner node is not connected!",
-              stderr: nil,
-              input: "",
-              time: 0.0,
-              memory: 0,
-              max_score: 0,
-              is_hidden: false
-            }
-          ]
-        }
+          try do
+            Task.await(task, @timeout)
+          catch
+            :exit, reason ->
+              Logger.error("Remote test execution failed: #{inspect(reason)}")
+
+              %Result{
+                status: :rejected,
+                score: 0,
+                time: 0.0,
+                memory: 0,
+                test_results: [
+                  %TestResult{
+                    status: :error,
+                    expected: "",
+                    stdout: "Runner node crashed or timed out.",
+                    stderr: nil,
+                    input: "",
+                    time: 0.0,
+                    memory: 0,
+                    max_score: 0,
+                    is_hidden: false
+                  }
+                ]
+              }
+          end
       end
 
     clean_test_results =

@@ -221,7 +221,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
   end
 
   @doc false
-  defp code_runner_available?, do: :global.whereis_name(:code_runner) != :undefined
+  defp code_runner_available?, do: :pg.get_members(Athena.PG, :code_runners) != []
 
   @doc false
   defp dispatch_code_execution(socket, block, code) do
