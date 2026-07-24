@@ -1,7 +1,7 @@
 defmodule Athena.Content.CodeChallenge do
   @moduledoc """
   Embedded schema for blocks of type `:code`.
-  Stores language settings, execution limits, and test cases.
+  Stores language settings, execution limits, test cases, or SQL configuration.
   """
   use Ecto.Schema
   import Ecto.Changeset
@@ -48,7 +48,7 @@ defmodule Athena.Content.CodeChallenge do
 
   @doc """
   Validates and applies changes to a `CodeChallenge` struct.
-  Enforces presence and safe boundaries for execution limits.
+  Enforces presence and safe boundaries for execution limits and SQL settings.
   """
   @spec changeset(t() | Ecto.Changeset.t(), map()) :: Ecto.Changeset.t()
   def changeset(schema, attrs) do
@@ -67,5 +67,39 @@ defmodule Athena.Content.CodeChallenge do
     |> validate_number(:time_limit, greater_than: 0.0, less_than_or_equal_to: 15.0)
     |> validate_number(:memory_limit, greater_than: 16_384, less_than_or_equal_to: 524_288)
     |> validate_number(:max_attempts, greater_than: 0)
+    |> maybe_validate_sql_body()
+  end
+
+  defp maybe_validate_sql_body(changeset) do
+    if get_field(changeset, :language) == "sql" do
+      body = get_field(changeset, :body) || %{}
+      mode = Map.get(body, "evaluation_mode")
+
+      cond do
+        mode not in ["query_result", "state_verification"] ->
+          add_error(
+            changeset,
+            :body,
+            "evaluation_mode must be 'query_result' or 'state_verification'"
+          )
+
+        mode == "query_result" and
+            (is_nil(Map.get(body, "solution_sql")) or Map.get(body, "solution_sql") == "") ->
+          add_error(changeset, :body, "solution_sql is required for query_result evaluation mode")
+
+        mode == "state_verification" and
+            (is_nil(Map.get(body, "check_sql")) or Map.get(body, "check_sql") == "") ->
+          add_error(
+            changeset,
+            :body,
+            "check_sql is required for state_verification evaluation mode"
+          )
+
+        true ->
+          changeset
+      end
+    else
+      changeset
+    end
   end
 end
