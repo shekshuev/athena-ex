@@ -1,20 +1,138 @@
 defmodule Athena.Execution.Verifier do
   @moduledoc """
-  High-level logic to verify a submission against multiple test cases.
+  High-level logic to verify a submission against multiple test cases or SQL verifiers.
   Aggregates results and calculates the final score as a percentage.
   """
-  alias Athena.Execution.IsolateRunner
-  alias Athena.Execution.LanguageConfig
-  alias Athena.Content.CodeChallenge
-  alias Athena.Content.TestCase
-  alias Athena.Execution.{Result, TestResult}
+  alias Athena.Content.{CodeChallenge, TestCase}
+  alias Athena.Execution.{Result, TestResult, IsolateRunner, SqlRunner, LanguageConfig}
 
   @doc """
-  Verifies the given code against a list of test cases.
-  Compiles the code ONCE, then runs it against all tests.
+  Verifies the given code against test cases or SQL evaluation rules.
   """
   @spec verify(String.t(), CodeChallenge.t(), integer()) :: Result.t()
-  def verify(code, %CodeChallenge{} = challenge, box_id) do
+  def verify(code, %CodeChallenge{language: "sql"} = challenge, box_id),
+    do: verify_sql(code, challenge, box_id)
+
+  def verify(code, %CodeChallenge{} = challenge, box_id),
+    do: verify_isolate(code, challenge, box_id)
+
+  defp verify_sql(code, challenge, box_id) do
+    setup_sql = get_challenge_field(challenge, :setup_sql)
+    eval_mode = get_challenge_field(challenge, :evaluation_mode) || "query_result"
+    time_limit = challenge.time_limit || 2.0
+
+    execution_res =
+      SqlRunner.execute_in_sandbox(box_id, setup_sql, fn conn ->
+        case to_string(eval_mode) do
+          "query_result" ->
+            solution_sql = get_challenge_field(challenge, :solution_sql)
+            evaluate_sql_query_result(conn, code, solution_sql, time_limit)
+
+          "state_verification" ->
+            check_sql = get_challenge_field(challenge, :check_sql)
+            evaluate_sql_state(conn, code, check_sql, time_limit)
+
+          mode ->
+            {:error, {:system_error, "Unknown SQL evaluation mode: #{mode}"}}
+        end
+      end)
+
+    format_sql_execution_result(execution_res)
+  end
+
+  defp evaluate_sql_query_result(conn, student_sql, solution_sql, time_limit) do
+    with {:ok, expected_res} <- SqlRunner.query(conn, solution_sql, time_limit),
+         {:ok, actual_res} <- SqlRunner.query(conn, student_sql, time_limit) do
+      if normalize_sql_result(expected_res) == normalize_sql_result(actual_res) do
+        {:ok, :accepted, "Query result matches expected output."}
+      else
+        {:error, :wrong_answer, "Result set does not match the expected data."}
+      end
+    else
+      {:error, :timeout} ->
+        {:error, :time_limit_exceeded, "Query execution timed out."}
+
+      {:error, {:sql_error, msg}} ->
+        {:error, :runtime_error, msg}
+
+      {:error, {:system_error, reason}} ->
+        {:error, :system_error, inspect(reason)}
+    end
+  end
+
+  defp evaluate_sql_state(conn, student_sql, check_sql, time_limit) do
+    with {:ok, _} <- SqlRunner.query(conn, student_sql, time_limit),
+         {:ok, check_res} <- SqlRunner.query(conn, check_sql, time_limit) do
+      case check_res.rows do
+        [["OK"]] ->
+          {:ok, :accepted, "State verification passed."}
+
+        [[error_msg]] ->
+          {:error, :wrong_answer, to_string(error_msg)}
+
+        _ ->
+          {:error, :wrong_answer, "Check script did not return 'OK'."}
+      end
+    else
+      {:error, :timeout} ->
+        {:error, :time_limit_exceeded, "Query execution timed out."}
+
+      {:error, {:sql_error, msg}} ->
+        {:error, :runtime_error, msg}
+
+      {:error, {:system_error, reason}} ->
+        {:error, :system_error, inspect(reason)}
+    end
+  end
+
+  defp normalize_sql_result(%Postgrex.Result{columns: cols, rows: rows}) do
+    {cols || [], Enum.sort(rows || [])}
+  end
+
+  defp format_sql_execution_result({:ok, {:ok, status, message}}) do
+    build_sql_result(status, message)
+  end
+
+  defp format_sql_execution_result({:ok, {:error, status, message}}) do
+    build_sql_result(status, message)
+  end
+
+  defp format_sql_execution_result({:error, {:setup_error, msg}}) do
+    build_sql_result(:compilation_error, "Setup SQL Error: #{msg}")
+  end
+
+  defp format_sql_execution_result({:error, {:system_error, reason}}) do
+    build_sql_result(:system_error, "Database error: #{inspect(reason)}")
+  end
+
+  defp build_sql_result(status, message) do
+    score = if status == :accepted, do: 100, else: 0
+
+    %Result{
+      status: status,
+      score: score,
+      time: 0.01,
+      memory: 1024,
+      test_results: [
+        %TestResult{
+          status: status,
+          score: score,
+          max_score: 100,
+          stdout: if(status == :accepted, do: message, else: ""),
+          stderr: if(status != :accepted, do: message, else: nil),
+          expected: "OK",
+          input: "",
+          is_hidden: false
+        }
+      ]
+    }
+  end
+
+  defp get_challenge_field(%CodeChallenge{} = challenge, field) do
+    Map.get(challenge, field) || Map.get(challenge.body || %{}, to_string(field))
+  end
+
+  defp verify_isolate(code, %CodeChallenge{} = challenge, box_id) do
     lang_config = LanguageConfig.get(challenge.language)
 
     ctx = %IsolateRunner.Context{

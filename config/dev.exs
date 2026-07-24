@@ -13,6 +13,11 @@ config :athena, Athena.Repo,
   pool_size: 10,
   types: Athena.PostgresTypes
 
+config :athena, Athena.Execution.SqlRunner,
+  url:
+    System.get_env("RUNNER_DATABASE_URL") ||
+      "ecto://postgres:postgres@#{external_host}:5432/postgres"
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #

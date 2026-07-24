@@ -85,6 +85,9 @@ config :mime, :extensions, %{
 config :athena, Athena.Execution.Worker, timeout: 60_000
 config :athena, Athena.Execution.TestWorker, timeout: 60_000
 
+config :athena, Athena.Execution.SqlRunner,
+  url: "ecto://postgres:postgres@localhost:5432/postgres"
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

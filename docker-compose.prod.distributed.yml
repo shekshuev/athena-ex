@@ -30,6 +30,20 @@ services:
       - RELEASE_DISTRIBUTION=name
       - RELEASE_NODE=runner1@127.0.0.1
       - RELEASE_COOKIE=${RELEASE_COOKIE}
+    depends_on:
+      - athena_runner_pg
+
+  athena_runner_pg:
+    image: postgres:16-alpine
+    container_name: athena_runner_pg_dev
+    restart: "no"
+    network_mode: "host"
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_RUNNER_PASSWORD}
+      - POSTGRES_INITDB_ARGS=--nosync
+    command: postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off -c log_statement=none -p 5433
+    tmpfs:
+      - /var/lib/postgresql/data:size=512m
 
   postgres:
     image: postgres:15-alpine
