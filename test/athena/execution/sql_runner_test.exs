@@ -1,8 +1,8 @@
 defmodule Athena.Execution.SqlRunnerTest do
   use ExUnit.Case, async: false
 
-  alias Athena.Execution.{SqlRunner, Verifier}
   alias Athena.Content.CodeChallenge
+  alias Athena.Execution.{SqlRunner, Verifier}
 
   setup_all do
     {:ok, agent} = Agent.start_link(fn -> 9000 end)
@@ -144,7 +144,11 @@ defmodule Athena.Execution.SqlRunnerTest do
       assert result.score == 100
       assert [test_res] = result.test_results
       assert test_res.status == :accepted
-      assert test_res.stdout =~ "Query result matches"
+
+      payload = Jason.decode!(test_res.stdout)
+      assert payload["type"] == "sql_query"
+      assert payload["status"] == "accepted"
+      assert payload["rows"] == [["Laptop", 1000]]
     end
 
     test "query_result: normalizes row order if student returns same rows in different order", %{
@@ -200,7 +204,11 @@ defmodule Athena.Execution.SqlRunnerTest do
       assert result.score == 100
       assert [test_res] = result.test_results
       assert test_res.status == :accepted
-      assert test_res.stdout =~ "State verification passed"
+
+      payload = Jason.decode!(test_res.stdout)
+      assert payload["type"] == "sql_state"
+      assert payload["status"] == "accepted"
+      assert payload["message"] == "State verification passed."
     end
   end
 
@@ -229,7 +237,12 @@ defmodule Athena.Execution.SqlRunnerTest do
       assert result.score == 0
       assert [test_res] = result.test_results
       assert test_res.status == :wrong_answer
-      assert test_res.stderr =~ "Result set does not match"
+
+      payload = Jason.decode!(test_res.stdout)
+      assert payload["type"] == "sql_query"
+      assert payload["status"] == "wrong_answer"
+      assert payload["rows"] == [["Laptop"], ["Mouse"]]
+      assert payload["expected_rows"] == [["Laptop"]]
     end
 
     test "query_result: rejects query when column count or structure differs", %{
@@ -285,7 +298,11 @@ defmodule Athena.Execution.SqlRunnerTest do
       assert result.score == 0
       assert [test_res] = result.test_results
       assert test_res.status == :wrong_answer
-      assert test_res.stderr == "Expected 3 active accounts, got 1"
+
+      payload = Jason.decode!(test_res.stdout)
+      assert payload["type"] == "sql_state"
+      assert payload["status"] == "wrong_answer"
+      assert payload["message"] == "Expected 3 active accounts, got 1"
     end
   end
 

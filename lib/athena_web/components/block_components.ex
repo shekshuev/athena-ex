@@ -285,57 +285,13 @@ defmodule AthenaWeb.BlockComponents do
         </div>
       </div>
 
-      <%= if @execution_results != [] do %>
-        <div class="mt-2 bg-base-300/20 rounded-sm border border-base-300 overflow-hidden">
-          <table class="table table-xs w-full font-mono">
-            <thead class="bg-base-300/50 uppercase tracking-widest text-[10px]">
-              <tr>
-                <th class="w-12">#</th>
-                <th class="w-32">{gettext("Result")}</th>
-                <th>{gettext("Details")}</th>
-                <th class="text-right">{gettext("Time")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <%= for {res, idx} <- Enum.with_index(@execution_results) do %>
-                <tr class="border-base-300">
-                  <td class="opacity-40">{idx + 1}</td>
-                  <td class={
-                    if res["status"] == "accepted",
-                      do: "text-success font-bold",
-                      else: "text-error font-bold"
-                  }>
-                    {String.upcase(res["status"])}
-                  </td>
-                  <td>
-                    <%= if res["is_hidden"] do %>
-                      <span class="opacity-30 italic flex items-center gap-1 text-[10px]">
-                        <.icon name="hero-eye-slash" class="size-3" />
-                        {gettext("Hidden Test")}
-                      </span>
-                    <% else %>
-                      <%= if res["status"] != "accepted" do %>
-                        <div class="text-[10px] space-y-1">
-                          <div class="flex gap-1">
-                            <span class="font-bold opacity-40">IN:</span><span>{res["input"]}</span>
-                          </div>
-                          <div class="flex gap-1">
-                            <span class="font-bold text-error/60">GOT:</span><span class="text-error">{res["stdout"]}</span>
-                          </div>
-                          <div class="flex gap-1 border-t border-base-300 pt-1">
-                            <span class="font-bold text-success/60">EXP:</span><span class="text-success">{res["expected"]}</span>
-                          </div>
-                        </div>
-                      <% else %>
-                        <span class="opacity-20 text-[10px]">---</span>
-                      <% end %>
-                    <% end %>
-                  </td>
-                  <td class="text-right opacity-50 text-[10px]">{res["time"]}s</td>
-                </tr>
-              <% end %>
-            </tbody>
-          </table>
+      <%= if @execution_results != [] and @execution_results != nil do %>
+        <div class="mt-4">
+          <%= if @block.content["language"] == "sql" do %>
+            <.sql_execution_results results={@execution_results} />
+          <% else %>
+            <.standard_execution_results results={@execution_results} />
+          <% end %>
         </div>
       <% end %>
 
@@ -1789,4 +1745,266 @@ defmodule AthenaWeb.BlockComponents do
   end
 
   defp clean_filename(_), do: "unknown_file"
+
+  @doc false
+  attr :results, :list, required: true
+
+  defp standard_execution_results(assigns) do
+    ~H"""
+    <div class="border border-base-300 rounded-sm overflow-hidden">
+      <div class="overflow-x-auto max-h-96">
+        <table class="table table-xs w-full font-mono">
+          <thead class="sticky top-0 bg-base-200 z-10">
+            <tr class="uppercase tracking-wider text-[10px] border-b border-base-300">
+              <th class="w-12 font-bold">#</th>
+              <th class="w-32 font-bold">{gettext("Result")}</th>
+              <th class="font-bold">{gettext("Details")}</th>
+              <th class="text-right font-bold">{gettext("Time")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <%= for {res, idx} <- Enum.with_index(@results) do %>
+              <tr class="border-b border-base-200 hover:bg-base-200/50">
+                <td class="text-base-content/40">{idx + 1}</td>
+                <td>
+                  <span class={[
+                    "font-bold uppercase tracking-wider",
+                    res["status"] == "accepted" && "text-success",
+                    res["status"] != "accepted" && "text-error"
+                  ]}>
+                    {String.upcase(to_string(res["status"]))}
+                  </span>
+                </td>
+                <td>
+                  <%= if res["is_hidden"] do %>
+                    <span class="text-base-content/40 italic flex items-center gap-1 text-[10px]">
+                      <.icon name="hero-eye-slash" class="size-3" />
+                      {gettext("Hidden Test")}
+                    </span>
+                  <% else %>
+                    <%= if res["status"] != "accepted" do %>
+                      <div class="text-[10px] space-y-1">
+                        <div class="flex gap-1">
+                          <span class="font-bold text-base-content/40">IN:</span>
+                          <span class="text-base-content">{res["input"]}</span>
+                        </div>
+                        <div class="flex gap-1">
+                          <span class="font-bold text-error/60">GOT:</span>
+                          <span class="text-error">{res["stdout"]}</span>
+                        </div>
+                        <div class="flex gap-1 border-t border-base-300 pt-1">
+                          <span class="font-bold text-success/60">EXP:</span>
+                          <span class="text-success">{res["expected"]}</span>
+                        </div>
+                      </div>
+                    <% else %>
+                      <span class="text-base-content/20 text-[10px]">—</span>
+                    <% end %>
+                  <% end %>
+                </td>
+                <td class="text-right text-base-content/50 text-[10px]">{res["time"]}s</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    """
+  end
+
+  @doc false
+  attr :results, :list, required: true
+
+  defp sql_execution_results(assigns) do
+    ~H"""
+    <div class="space-y-4">
+      <div :for={res <- @results} class="space-y-4">
+        <% payload = decode_sql_payload(res) %>
+
+        <%= if payload["status"] in ["sql_error", "timeout", "system_error"] or (payload["stderr"] && payload["stderr"] != "") do %>
+          <div class="p-4 bg-error/10 border border-error/30 rounded-sm text-error">
+            <div class="font-bold flex items-center gap-2 mb-3 text-xs uppercase tracking-wider">
+              <.icon name="hero-exclamation-triangle" class="size-4" />
+              {if payload["status"] == "timeout",
+                do: gettext("Time Limit Exceeded"),
+                else: gettext("PostgreSQL Error")}
+            </div>
+            <pre class="font-mono text-xs whitespace-pre-wrap leading-relaxed bg-base-200 p-3 rounded-sm border border-base-300 text-base-content overflow-x-auto">{payload["stderr"] || payload["message"]}</pre>
+          </div>
+        <% else %>
+          <%= if payload["type"] == "sql_state" do %>
+            <div class={[
+              "p-4 rounded-sm border flex items-center justify-between",
+              payload["status"] == "accepted" && "bg-success/10 border-success/30",
+              payload["status"] != "accepted" && "bg-error/10 border-error/30"
+            ]}>
+              <div class={[
+                "flex items-center gap-2 font-bold text-sm",
+                payload["status"] == "accepted" && "text-success",
+                payload["status"] != "accepted" && "text-error"
+              ]}>
+                <.icon
+                  name={
+                    if payload["status"] == "accepted",
+                      do: "hero-check-circle-solid",
+                      else: "hero-x-circle-solid"
+                  }
+                  class="size-5"
+                />
+                <span>
+                  {payload["message"] ||
+                    if payload["status"] == "accepted",
+                      do: gettext("State Verification Passed"),
+                      else: gettext("State Verification Failed")}
+                </span>
+              </div>
+              <span :if={payload["time"]} class="text-xs font-mono text-base-content/50">
+                {payload["time"]}s
+              </span>
+            </div>
+          <% else %>
+            <div class="space-y-4">
+              <div class="flex items-center justify-between flex-wrap gap-2">
+                <div class="flex items-center gap-3">
+                  <span class={[
+                    "badge badge-sm font-bold uppercase tracking-wider rounded-sm",
+                    payload["status"] == "accepted" && "badge-success",
+                    payload["status"] != "accepted" && "badge-error"
+                  ]}>
+                    {String.upcase(payload["status"])}
+                  </span>
+                  <span class="text-xs font-medium text-base-content/60">
+                    {if payload["status"] == "accepted",
+                      do: gettext("Outputs match"),
+                      else: gettext("Results do not match")}
+                  </span>
+                </div>
+                <span :if={payload["time"]} class="text-xs font-mono text-base-content/50">
+                  {payload["time"]}s
+                </span>
+              </div>
+
+              <%= if payload["status"] == "accepted" do %>
+                <.sql_table
+                  title={gettext("Query Output")}
+                  columns={payload["columns"] || []}
+                  rows={payload["rows"] || []}
+                  variant="success"
+                />
+              <% else %>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <.sql_table
+                    title={gettext("Your Output")}
+                    columns={payload["columns"] || []}
+                    rows={payload["rows"] || []}
+                    variant="error"
+                  />
+                  <.sql_table
+                    title={gettext("Expected Output")}
+                    columns={payload["expected_columns"] || []}
+                    rows={payload["expected_rows"] || []}
+                    variant="expected"
+                  />
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  defp decode_sql_payload(res) do
+    raw_map = normalize_content_map(res)
+    stdout = Map.get(raw_map, "stdout")
+
+    decoded =
+      if is_binary(stdout) and stdout != "" do
+        case Jason.decode(stdout) do
+          {:ok, map} when is_map(map) -> map
+          _ -> %{"message" => stdout}
+        end
+      else
+        %{}
+      end
+
+    raw_map
+    |> Map.merge(decoded)
+    |> Map.update("status", "accepted", &to_string/1)
+  end
+
+  defp normalize_content_map(%{__struct__: _} = struct) do
+    struct |> Map.from_struct() |> normalize_content_map()
+  end
+
+  defp normalize_content_map(map) when is_map(map) do
+    Map.new(map, fn {k, v} -> {to_string(k), v} end)
+  end
+
+  defp normalize_content_map(_), do: %{}
+
+  attr :title, :string, required: true
+  attr :columns, :list, required: true
+  attr :rows, :list, required: true
+  attr :variant, :string, default: "default"
+
+  defp sql_table(assigns) do
+    ~H"""
+    <div class={[
+      "border rounded-sm overflow-hidden",
+      @variant == "success" && "border-success/30",
+      @variant == "error" && "border-error/30",
+      @variant == "expected" && "border-primary/30",
+      @variant == "default" && "border-base-300"
+    ]}>
+      <div class={[
+        "px-4 py-2.5 text-xs font-bold uppercase tracking-wider flex items-center justify-between border-b",
+        @variant == "success" && "bg-success/10 text-success border-success/30",
+        @variant == "error" && "bg-error/10 text-error border-error/30",
+        @variant == "expected" && "bg-primary/10 text-primary border-primary/30",
+        @variant == "default" && "bg-base-200 text-base-content border-base-300"
+      ]}>
+        <span>{@title}</span>
+        <span class="font-mono text-[10px] opacity-60">{length(@rows)} {gettext("rows")}</span>
+      </div>
+
+      <div class="overflow-x-auto max-h-80">
+        <table :if={@columns != []} class="table table-xs w-full font-mono">
+          <thead class="sticky top-0 bg-base-200 z-10">
+            <tr class="border-b border-base-300">
+              <th
+                :for={col <- @columns}
+                class="font-bold text-base-content/70 uppercase tracking-wider text-[10px]"
+              >
+                {col}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={row <- @rows} class="border-b border-base-200 hover:bg-base-200/50">
+              <td
+                :for={cell <- row}
+                class={[
+                  cell == "NULL" && "italic text-base-content/30 font-sans",
+                  cell != "NULL" && "text-base-content"
+                ]}
+              >
+                {cell}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div
+          :if={@columns == [] or @rows == []}
+          class="p-8 text-center text-xs italic text-base-content/40"
+        >
+          <.icon name="hero-circle-stack" class="size-8 mx-auto mb-2 opacity-30" />
+          {gettext("Empty result set")}
+        </div>
+      </div>
+    </div>
+    """
+  end
 end
