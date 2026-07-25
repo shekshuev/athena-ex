@@ -3,6 +3,8 @@ defmodule Athena.Execution.Verifier do
   High-level logic to verify a submission against multiple test cases or SQL verifiers.
   Aggregates results and calculates the final score as a percentage.
   """
+  require Logger
+
   alias Athena.Content.{CodeChallenge, TestCase}
   alias Athena.Execution.{LanguageConfig, IsolateRunner, Result, SqlRunner, TestResult}
 
@@ -37,7 +39,13 @@ defmodule Athena.Execution.Verifier do
         end
       end)
 
-    format_sql_execution_result(execution_res)
+    res = format_sql_execution_result(execution_res)
+
+    Logger.info(
+      "[Verifier] SQL Box #{box_id} (#{eval_mode}) -> status=#{res.status}, score=#{res.score}"
+    )
+
+    res
   end
 
   defp evaluate_sql_query_result(conn, student_sql, solution_sql, time_limit) do
@@ -246,12 +254,23 @@ defmodule Athena.Execution.Verifier do
       case IsolateRunner.setup_sandbox(code, ctx) do
         {:ok, ready_ctx} ->
           results = Enum.map(challenge.test_cases, &run_single_test(&1, ready_ctx))
-          summarize(results)
+          res = summarize(results)
+
+          Logger.info(
+            "[Verifier] Isolate Box #{box_id} [#{challenge.language}] -> status=#{res.status}, score=#{res.score}%"
+          )
+
+          res
 
         {:error, {:compilation_error, stderr}} ->
+          Logger.warning(
+            "[Verifier] Isolate Box #{box_id} [#{challenge.language}] -> compilation_error"
+          )
+
           build_compile_error_result(stderr)
 
         {:error, _reason} ->
+          Logger.error("[Verifier] Isolate Box #{box_id} [#{challenge.language}] -> system_error")
           build_system_error_result()
       end
     after

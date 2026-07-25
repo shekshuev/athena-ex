@@ -158,15 +158,22 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   @doc false
   @spec block_inspector(map()) :: Phoenix.LiveView.Rendered.t()
   defp block_inspector(assigns) do
-    attrs = %{}
-    attrs = if assigns.block.access_rules, do: attrs, else: Map.put(attrs, "access_rules", %{})
+    block_changeset =
+      if assigns[:block_changeset] && assigns[:block_changeset].data.id == assigns.block.id do
+        assigns.block_changeset
+      else
+        attrs = %{}
 
-    attrs =
-      if assigns.block.completion_rule,
-        do: attrs,
-        else: Map.put(attrs, "completion_rule", %{"type" => "none"})
+        attrs =
+          if assigns.block.access_rules, do: attrs, else: Map.put(attrs, "access_rules", %{})
 
-    block_changeset = Block.changeset(assigns.block, attrs)
+        attrs =
+          if assigns.block.completion_rule,
+            do: attrs,
+            else: Map.put(attrs, "completion_rule", %{"type" => "none"})
+
+        Block.changeset(assigns.block, attrs)
+      end
 
     assigns = assign(assigns, :form, to_form(block_changeset))
 

@@ -496,7 +496,13 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
              )}
 
           {:error, changeset} ->
-            {:noreply, assign(socket, form: to_form(changeset))}
+            changeset = %{changeset | action: :update}
+            err_msg = format_changeset_errors(changeset)
+
+            {:noreply,
+             socket
+             |> put_flash(:error, gettext("Validation error: %{err}", err: err_msg))
+             |> assign(form: to_form(changeset))}
         end
 
       _ ->
@@ -612,11 +618,17 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
   defp update_and_assign(socket, block, params) do
     case Content.update_library_block(socket.assigns.current_user, block, params) do
       {:ok, updated} ->
-        {:noreply, assign(socket, block: updated)}
+        {:noreply,
+         assign(socket, block: updated, form: to_form(LibraryBlock.changeset(updated, %{})))}
 
       {:error, changeset} ->
-        in_memory_block = Ecto.Changeset.apply_changes(changeset)
-        {:noreply, assign(socket, block: in_memory_block)}
+        changeset = %{changeset | action: :update}
+        err_msg = format_changeset_errors(changeset)
+
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("Validation error: %{err}", err: err_msg))
+         |> assign(form: to_form(changeset))}
     end
   end
 
@@ -1259,4 +1271,25 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
   end
 
   defp deep_merge(_left, right), do: right
+
+  defp format_changeset_errors(changeset) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(fn {msg, opts} ->
+      Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
+        to_string(Keyword.get(opts, String.to_atom(key), key))
+      end)
+    end)
+    |> flatten_errors()
+    |> Enum.map_join(", ", fn {k, v} -> "#{k} #{v}" end)
+  end
+
+  defp flatten_errors(errors) when is_map(errors) do
+    Enum.flat_map(errors, fn
+      {k, v} when is_list(v) ->
+        [{k, Enum.join(v, "; ")}]
+
+      {k, v} when is_map(v) ->
+        flatten_errors(v) |> Enum.map(fn {sub_k, sub_v} -> {"#{k}.#{sub_k}", sub_v} end)
+    end)
+  end
 end

@@ -874,6 +874,7 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
+  @impl true
   def handle_event("update_block_meta", %{"block" => block_params} = params, socket) do
     id = block_params["id"]
 
@@ -898,19 +899,19 @@ defmodule AthenaWeb.StudioLive.Builder do
             :refresh_tree
           )
 
-          {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+          {:noreply,
+           socket
+           |> assign(:active_block_changeset, nil)
+           |> assign(blocks: replace_block(socket.assigns.blocks, updated_block))}
 
-        {:error, changeset} ->
-          in_memory_block = Ecto.Changeset.apply_changes(changeset)
-
-          Phoenix.PubSub.broadcast(
-            Athena.PubSub,
-            "builder:#{socket.assigns.course.id}",
-            :refresh_tree
-          )
+        {:error, %Ecto.Changeset{} = changeset} ->
+          changeset = %{changeset | action: :update}
+          err_msg = format_changeset_errors(changeset)
 
           {:noreply,
-           assign(socket, blocks: replace_block(socket.assigns.blocks, in_memory_block))}
+           socket
+           |> put_flash(:error, gettext("Validation error: %{err}", err: err_msg))
+           |> assign(:active_block_changeset, changeset)}
       end
     else
       _ -> {:noreply, socket}
@@ -1349,6 +1350,27 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
+  defp format_changeset_errors(changeset) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(fn {msg, opts} ->
+      Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
+        to_string(Keyword.get(opts, String.to_atom(key), key))
+      end)
+    end)
+    |> flatten_errors()
+    |> Enum.map_join(", ", fn {k, v} -> "#{k} #{v}" end)
+  end
+
+  defp flatten_errors(errors) when is_map(errors) do
+    Enum.flat_map(errors, fn
+      {k, v} when is_list(v) ->
+        [{k, Enum.join(v, "; ")}]
+
+      {k, v} when is_map(v) ->
+        flatten_errors(v) |> Enum.map(fn {sub_k, sub_v} -> {"#{k}.#{sub_k}", sub_v} end)
+    end)
+  end
+
   defp dispatch_test_run(socket, _block, "", _test_cases) do
     {:noreply, put_flash(socket, :error, gettext("Please write a Reference Solution first!"))}
   end
@@ -1532,6 +1554,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             id="inspector-component"
             active_section={@active_section}
             active_block={@active_block}
+            block_changeset={assigns[:active_block_changeset]}
           />
         </div>
       </div>
