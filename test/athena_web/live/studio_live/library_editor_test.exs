@@ -527,4 +527,107 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       assert updated_block.tags == ["new", "tags"]
     end
   end
+
+  describe "SQL Template Operations" do
+    test "updates SQL block configuration and preserves evaluation mode via deep_merge", %{
+      conn: conn,
+      admin: admin
+    } do
+      block =
+        insert(:library_block,
+          type: :code,
+          content: %{
+            "language" => "sql",
+            "time_limit" => 2.0,
+            "body" => %{
+              "evaluation_mode" => "state_verification",
+              "setup_sql" => "CREATE TABLE users (id INT);",
+              "check_sql" => "SELECT 'OK';"
+            }
+          },
+          owner_id: admin.id
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      render_hook(lv, "update_block_meta", %{
+        "block" => %{
+          "id" => block.id,
+          "content" => %{
+            "body" => %{
+              "setup_sql" => "CREATE TABLE users (id INT, active BOOL);"
+            }
+          }
+        }
+      })
+
+      {:ok, updated} = Content.get_library_block(block.id)
+      assert updated.content["body"]["evaluation_mode"] == "state_verification"
+      assert updated.content["body"]["setup_sql"] == "CREATE TABLE users (id INT, active BOOL);"
+      assert updated.content["body"]["check_sql"] == "SELECT 'OK';"
+    end
+
+    test "updates Tiptap description without wiping SQL configs in body", %{
+      conn: conn,
+      admin: admin
+    } do
+      block =
+        insert(:library_block,
+          type: :code,
+          content: %{
+            "language" => "sql",
+            "body" => %{
+              "evaluation_mode" => "query_result",
+              "setup_sql" => "CREATE TABLE t (id INT);",
+              "solution_sql" => "SELECT * FROM t;"
+            }
+          },
+          owner_id: admin.id
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      new_desc = %{
+        "type" => "doc",
+        "content" => [
+          %{
+            "type" => "paragraph",
+            "content" => [%{"type" => "text", "text" => "Library SQL query"}]
+          }
+        ]
+      }
+
+      render_hook(lv, "update_content", %{"content" => new_desc})
+
+      {:ok, updated} = Content.get_library_block(block.id)
+      assert updated.content["body"]["description"] == new_desc
+      assert updated.content["body"]["evaluation_mode"] == "query_result"
+      assert updated.content["body"]["setup_sql"] == "CREATE TABLE t (id INT);"
+      assert updated.content["body"]["solution_sql"] == "SELECT * FROM t;"
+    end
+
+    test "run_instructor_test validates solution_sql presence for query_result mode", %{
+      conn: conn,
+      admin: admin
+    } do
+      block =
+        insert(:library_block,
+          type: :code,
+          content: %{
+            "language" => "sql",
+            "body" => %{
+              "evaluation_mode" => "query_result",
+              "setup_sql" => "CREATE TABLE t (id INT);",
+              "solution_sql" => ""
+            }
+          },
+          owner_id: admin.id
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      html = render_hook(lv, "run_instructor_test", %{})
+      assert html =~ "Please write a Reference Solution SQL first!"
+    end
+  end
 end

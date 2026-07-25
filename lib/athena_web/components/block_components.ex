@@ -344,7 +344,7 @@ defmodule AthenaWeb.BlockComponents do
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
               <button
-                :if={not (@mode == :review and not @hide_submit)}
+                :if={@mode == :play or (@mode == :review and @hide_submit)}
                 type="button"
                 phx-click="run_code"
                 phx-value-block_id={@block.id}

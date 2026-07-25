@@ -394,30 +394,12 @@ defmodule AthenaWeb.LearnLive.Player do
     end
   end
 
+  @impl true
   def handle_event("run_code", %{"block_id" => block_id}, socket) do
     block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
     draft = Map.get(socket.assigns.drafts || %{}, block_id, %{})
-    code = Map.get(draft, "code", "")
 
-    cond do
-      is_nil(block) or block.type != :code ->
-        {:noreply, socket}
-
-      not code_runner_available?() ->
-        {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
-
-      true ->
-        case Learning.test_code(socket.assigns.current_user, block, code) do
-          {:ok, _draft} ->
-            new_drafts =
-              Map.put(socket.assigns.drafts || %{}, block_id, Map.get(draft, "content", draft))
-
-            {:noreply, assign(socket, :drafts, new_drafts)}
-
-          {:error, _} ->
-            {:noreply, put_flash(socket, :error, gettext("Failed to enqueue code execution."))}
-        end
-    end
+    do_run_code(socket, block, draft)
   end
 
   def handle_event(
@@ -460,6 +442,45 @@ defmodule AthenaWeb.LearnLive.Player do
   def handle_event("save_draft", _params, socket) do
     {:noreply, socket}
   end
+
+  defp do_run_code(socket, nil, _draft), do: {:noreply, socket}
+
+  defp do_run_code(socket, %{type: :code} = block, draft) do
+    code = extract_code_from_draft(draft)
+
+    cond do
+      String.trim(code) == "" ->
+        {:noreply, put_flash(socket, :error, gettext("Please write some code first!"))}
+
+      not code_runner_available?() ->
+        {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
+
+      true ->
+        case Learning.test_code(socket.assigns.current_user, block, code) do
+          {:ok, _draft} ->
+            new_drafts =
+              Map.put(socket.assigns.drafts || %{}, block.id, Map.get(draft, "content", draft))
+
+            {:noreply, assign(socket, :drafts, new_drafts)}
+
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, gettext("Failed to enqueue code execution."))}
+        end
+    end
+  end
+
+  defp do_run_code(socket, _block, _draft), do: {:noreply, socket}
+
+  defp extract_code_from_draft(%{"code" => c}) when is_binary(c) and c != "", do: c
+  defp extract_code_from_draft(%{"text_answer" => t}) when is_binary(t) and t != "", do: t
+
+  defp extract_code_from_draft(%{"content" => %{"code" => c}}) when is_binary(c) and c != "",
+    do: c
+
+  defp extract_code_from_draft(%{"content" => %{"text_answer" => t}})
+       when is_binary(t) and t != "", do: t
+
+  defp extract_code_from_draft(_), do: ""
 
   @doc false
   defp build_file_submission_attrs(block_id, assigns, file_urls) do
