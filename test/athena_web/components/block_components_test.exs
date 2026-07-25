@@ -283,6 +283,135 @@ defmodule AthenaWeb.BlockComponentsTest do
     end
   end
 
+  describe "content_block/1 :code (sql)" do
+    setup do
+      sql_block_query =
+        insert(:block,
+          type: :code,
+          content: %{
+            "language" => "sql",
+            "initial_code" => "SELECT * FROM users;",
+            "body" => %{
+              "description" => %{
+                "type" => "doc",
+                "content" => [
+                  %{
+                    "type" => "paragraph",
+                    "content" => [%{"type" => "text", "text" => "Find all users"}]
+                  }
+                ]
+              },
+              "evaluation_mode" => "query_result",
+              "setup_sql" => "CREATE TABLE users (id INT);",
+              "solution_sql" => "SELECT * FROM users;"
+            }
+          }
+        )
+
+      sql_block_state =
+        insert(:block,
+          type: :code,
+          content: %{
+            "language" => "sql",
+            "initial_code" => "UPDATE users SET active = true;",
+            "body" => %{
+              "description" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+              "evaluation_mode" => "state_verification",
+              "setup_sql" => "CREATE TABLE users (id INT, active BOOL);",
+              "check_sql" =>
+                "SELECT CASE WHEN count(*) = 0 THEN 'OK' ELSE 'Err' END FROM users WHERE NOT active;"
+            }
+          }
+        )
+
+      %{sql_block_query: sql_block_query, sql_block_state: sql_block_state}
+    end
+
+    test "renders sql block in :play mode with SQL code editor and run controls", %{
+      sql_block_query: block
+    } do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} />
+        """)
+
+      assert html =~ "sql"
+      assert html =~ "SELECT * FROM users;"
+      assert html =~ ~s(data-language="sql")
+      assert html =~ ~s(phx-click="run_code")
+      assert html =~ ~s(phx-value-block_id="#{block.id}")
+      assert html =~ "Run"
+      assert html =~ "Submit"
+    end
+
+    test "renders sql block sandbox configuration in :edit mode for query_result", %{
+      sql_block_query: block
+    } do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.block_editor block={@block} />
+        """)
+
+      assert html =~ "Sandbox Configuration"
+      assert html =~ "1. Setup SQL / Schema &amp; Seed"
+      assert html =~ "2. Reference Solution SQL"
+      assert html =~ ~s(id="setup-sql-editor-#{block.id}")
+      assert html =~ ~s(id="solution-sql-editor-#{block.id}")
+      assert html =~ "CREATE TABLE users (id INT);"
+      assert html =~ "SELECT * FROM users;"
+      refute html =~ "Test Cases"
+    end
+
+    test "renders sql block sandbox configuration in :edit mode for state_verification", %{
+      sql_block_state: block
+    } do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.block_editor block={@block} />
+        """)
+
+      assert html =~ "Sandbox Configuration"
+      assert html =~ "1. Setup SQL / Schema &amp; Seed"
+      assert html =~ "3. Verification Check SQL"
+      assert html =~ ~s(id="setup-sql-editor-#{block.id}")
+      assert html =~ ~s(id="check-sql-editor-#{block.id}")
+      assert html =~ "CREATE TABLE users (id INT, active BOOL);"
+      refute html =~ "Test Cases"
+    end
+
+    test "renders execution results table in :play mode when results are present in draft", %{
+      sql_block_query: block
+    } do
+      draft = %{
+        "execution_results" => [
+          %{
+            "status" => "accepted",
+            "stdout" => "Query result matches",
+            "stderr" => "",
+            "time" => 0.05,
+            "is_hidden" => false
+          }
+        ]
+      }
+
+      assigns = %{block: block, draft: draft}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} draft={@draft} />
+        """)
+
+      assert html =~ "ACCEPTED"
+      assert html =~ "0.05s"
+    end
+  end
+
   describe "content_block/1 :quiz_question (single choice)" do
     setup do
       block =

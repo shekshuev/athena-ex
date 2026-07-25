@@ -176,24 +176,13 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
   @impl true
   def handle_event("update_content", %{"content" => parsed}, socket) do
-    case can_edit?(socket) do
-      true ->
-        block = socket.assigns.block
-        content_map = normalize_content(block.content || %{})
+    if can_edit?(socket) do
+      block = socket.assigns.block
+      new_content = build_updated_content(block, parsed)
 
-        new_content =
-          case block.type do
-            :attachment -> Map.put(content_map, "description", parsed)
-            :quiz_question -> Map.put(content_map, "body", parsed)
-            :code -> Map.put(content_map, "body", parsed)
-            :file_assignment -> Map.put(content_map, "body", parsed)
-            _ -> parsed
-          end
-
-        update_and_assign(socket, block, %{"content" => new_content})
-
-      _ ->
-        {:noreply, socket}
+      update_and_assign(socket, block, %{"content" => new_content})
+    else
+      {:noreply, socket}
     end
   end
 
@@ -452,10 +441,16 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     if can_edit?(socket) do
       block = socket.assigns.block
       content_map = normalize_content(block.content || %{})
-      code = content_map["solution_code"] || ""
-      test_cases = content_map["test_cases"] || []
 
-      dispatch_test_run(socket, block, code, test_cases)
+      if content_map["language"] == "sql" do
+        body = content_map["body"] || %{}
+        code = body["solution_sql"] || ""
+        dispatch_sql_test_run(socket, block, code, body)
+      else
+        code = content_map["solution_code"] || ""
+        test_cases = content_map["test_cases"] || []
+        dispatch_test_run(socket, block, code, test_cases)
+      end
     else
       {:noreply, socket}
     end
@@ -488,7 +483,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
           |> apply_quiz_meta_overrides(content_overrides)
           |> apply_exam_meta_overrides(block.type, form_data)
 
-        final_content = Map.merge(content_map, content_overrides)
+        final_content = deep_merge(content_map, content_overrides)
         final_params = Map.put(params, "content", final_content)
 
         case Content.update_library_block(socket.assigns.current_user, block, final_params) do
@@ -522,12 +517,49 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
         |> apply_quiz_meta_overrides(content_overrides)
         |> apply_exam_meta_overrides(block.type, params)
 
-      new_content = Map.merge(content_map, content_overrides)
+      new_content = deep_merge(content_map, content_overrides)
       final_params = Map.put(block_params, "content", new_content)
 
       update_and_assign(socket, block, final_params)
     else
       {:noreply, socket}
+    end
+  end
+
+  defp build_updated_content(%{type: :attachment} = block, parsed) do
+    block.content |> normalize_content() |> Map.put("description", parsed)
+  end
+
+  defp build_updated_content(%{type: :quiz_question} = block, parsed) do
+    block.content |> normalize_content() |> Map.put("body", parsed)
+  end
+
+  defp build_updated_content(%{type: :file_assignment} = block, parsed) do
+    block.content |> normalize_content() |> Map.put("body", parsed)
+  end
+
+  defp build_updated_content(%{type: :code} = block, parsed) do
+    content_map = normalize_content(block.content || %{})
+
+    if content_map["language"] == "sql" do
+      body = Map.get(content_map, "body")
+      body_map = if is_map(body), do: body, else: %{}
+      Map.put(content_map, "body", Map.put(body_map, "description", parsed))
+    else
+      Map.put(content_map, "body", parsed)
+    end
+  end
+
+  defp build_updated_content(_block, parsed), do: parsed
+
+  defp dispatch_sql_test_run(socket, block, code, body) do
+    mode = body["evaluation_mode"] || "query_result"
+
+    if mode == "query_result" and String.trim(code) == "" do
+      {:noreply,
+       put_flash(socket, :error, gettext("Please write a Reference Solution SQL first!"))}
+    else
+      execute_remote_verifier(socket, block, code)
     end
   end
 
@@ -540,6 +572,10 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
   end
 
   defp dispatch_test_run(socket, block, code, _test_cases) do
+    execute_remote_verifier(socket, block, code)
+  end
+
+  defp execute_remote_verifier(socket, block, code) do
     challenge =
       Ecto.Changeset.apply_changes(
         Athena.Content.CodeChallenge.changeset(
@@ -920,28 +956,56 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                         label={gettext("Language")}
                         options={Execution.options()}
                       />
-                      <div class="grid grid-cols-2 gap-3">
+
+                      <%= if @block.content["language"] == "sql" do %>
+                        <.input
+                          type="select"
+                          name="library_block[content][body][evaluation_mode]"
+                          value={
+                            get_in(@block.content, ["body", "evaluation_mode"]) || "query_result"
+                          }
+                          label={gettext("Evaluation Mode")}
+                          options={[
+                            {gettext("Query Result"), "query_result"},
+                            {gettext("State Verification"), "state_verification"}
+                          ]}
+                        />
+
                         <.input
                           type="number"
                           name="library_block[content][time_limit]"
-                          value={@block.content["time_limit"] || 1.0}
+                          value={@block.content["time_limit"] || 2.0}
                           label={gettext("Time Limit (s)")}
                           step="0.1"
                           min="0.1"
                           max="15.0"
                           phx-debounce="500"
                         />
-                        <.input
-                          type="number"
-                          name="library_block[content][memory_limit]"
-                          value={@block.content["memory_limit"] || 65_536}
-                          label={gettext("Memory (KB)")}
-                          step="1024"
-                          min="16384"
-                          max="524288"
-                          phx-debounce="500"
-                        />
-                      </div>
+                      <% else %>
+                        <div class="grid grid-cols-2 gap-3">
+                          <.input
+                            type="number"
+                            name="library_block[content][time_limit]"
+                            value={@block.content["time_limit"] || 1.0}
+                            label={gettext("Time Limit (s)")}
+                            step="0.1"
+                            min="0.1"
+                            max="15.0"
+                            phx-debounce="500"
+                          />
+                          <.input
+                            type="number"
+                            name="library_block[content][memory_limit]"
+                            value={@block.content["memory_limit"] || 65_536}
+                            label={gettext("Memory (KB)")}
+                            step="1024"
+                            min="16384"
+                            max="524288"
+                            phx-debounce="500"
+                          />
+                        </div>
+                      <% end %>
+
                       <div class="mt-2">
                         <.input
                           type="number"
@@ -1183,4 +1247,16 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
   defp parse_raw_list(raw) when is_list(raw), do: raw
   defp parse_raw_list(_), do: []
+
+  defp deep_merge(left, right) when is_map(left) and is_map(right) do
+    Map.merge(left, right, fn _key, val1, val2 ->
+      if is_map(val1) and is_map(val2) do
+        deep_merge(val1, val2)
+      else
+        val2
+      end
+    end)
+  end
+
+  defp deep_merge(_left, right), do: right
 end

@@ -230,11 +230,17 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
         Athena.Content.CodeChallenge.changeset(%Athena.Content.CodeChallenge{}, block.content)
       )
 
+    runners = :pg.get_members(Athena.PG, :code_runners)
+    runner_pid = Enum.random(runners)
+    box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
+
     task =
-      Task.Supervisor.async({:via, :global, :code_runner}, fn ->
-        box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
-        Athena.Execution.verify(code, challenge, box_id)
-      end)
+      Task.Supervisor.async_nolink(
+        runner_pid,
+        Athena.Execution,
+        :verify,
+        [code, challenge, box_id]
+      )
 
     running_tests = Map.put(socket.assigns[:running_tests] || %{}, task.ref, block.id)
 
@@ -470,7 +476,12 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
               <div class="flex items-center justify-between mb-6 pb-4 border-b border-base-300">
                 <h2 class="text-lg font-bold">{gettext("Question Content")}</h2>
               </div>
-              <.content_block block={@block} mode={:review} submission={@submission} />
+              <.content_block
+                block={@block}
+                mode={:review}
+                submission={@submission}
+                hide_submit={true}
+              />
             </div>
           <% end %>
         </div>

@@ -38,6 +38,15 @@ defmodule Athena.Execution.LanguageConfig do
     }
   end
 
+  def get("sql") do
+    %__MODULE__{
+      id: 82,
+      name: "PostgreSQL (16)",
+      source_file: "query.sql",
+      run_cmd: ""
+    }
+  end
+
   def get(_), do: nil
 
   @doc """
@@ -46,7 +55,8 @@ defmodule Athena.Execution.LanguageConfig do
   def options do
     [
       {"Python", "python3"},
-      {"C++", "cpp"}
+      {"C++", "cpp"},
+      {"SQL (PostgreSQL 16)", "sql"}
     ]
   end
 

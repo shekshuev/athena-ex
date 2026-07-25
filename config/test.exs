@@ -17,6 +17,9 @@ config :athena, Athena.Repo,
   pool_size: System.schedulers_online() * 2,
   types: Athena.PostgresTypes
 
+config :athena, Athena.Execution.SqlRunner,
+  url: System.get_env("RUNNER_DATABASE_URL") || "ecto://postgres:postgres@localhost:5432/postgres"
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :athena, AthenaWeb.Endpoint,

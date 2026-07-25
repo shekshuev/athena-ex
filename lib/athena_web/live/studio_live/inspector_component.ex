@@ -400,6 +400,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
               <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
                 {gettext("Execution Settings")}
               </div>
+
               <.input
                 type="select"
                 name="block[content][language]"
@@ -407,28 +408,54 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                 label={gettext("Programming Language")}
                 options={Execution.options()}
               />
-              <div class="grid grid-cols-2 gap-3">
+
+              <%= if @block.content["language"] == "sql" do %>
+                <.input
+                  type="select"
+                  name="block[content][body][evaluation_mode]"
+                  value={get_in(@block.content, ["body", "evaluation_mode"]) || "query_result"}
+                  label={gettext("Evaluation Mode")}
+                  options={[
+                    {gettext("Query Result"), "query_result"},
+                    {gettext("State Verification"), "state_verification"}
+                  ]}
+                />
+
                 <.input
                   type="number"
                   name="block[content][time_limit]"
-                  value={@block.content["time_limit"] || 1.0}
+                  value={@block.content["time_limit"] || 2.0}
                   label={gettext("Time Limit (s)")}
                   step="0.1"
                   min="0.1"
                   max="15.0"
                   phx-debounce="500"
                 />
-                <.input
-                  type="number"
-                  name="block[content][memory_limit]"
-                  value={@block.content["memory_limit"] || 65_536}
-                  label={gettext("Memory (KB)")}
-                  step="1024"
-                  min="16384"
-                  max="524288"
-                  phx-debounce="500"
-                />
-              </div>
+              <% else %>
+                <div class="grid grid-cols-2 gap-3">
+                  <.input
+                    type="number"
+                    name="block[content][time_limit]"
+                    value={@block.content["time_limit"] || 1.0}
+                    label={gettext("Time Limit (s)")}
+                    step="0.1"
+                    min="0.1"
+                    max="15.0"
+                    phx-debounce="500"
+                  />
+                  <.input
+                    type="number"
+                    name="block[content][memory_limit]"
+                    value={@block.content["memory_limit"] || 65_536}
+                    label={gettext("Memory (KB)")}
+                    step="1024"
+                    min="16384"
+                    max="524288"
+                    phx-debounce="500"
+                  />
+                </div>
+              <% end %>
+
               <div class="mt-2">
                 <.input
                   type="number"

@@ -22,16 +22,18 @@ config :athena, :server_role, server_role
 
 config :athena, :default_locale, System.get_env("DEFAULT_LOCALE") || "en"
 
-if System.get_env("PHX_SERVER") do
-  config :athena, AthenaWeb.Endpoint, server: true
-end
-
 if server_role == "runner" do
   config :athena, ecto_repos: []
 end
 
-config :athena, AthenaWeb.Endpoint,
-  http: [port: String.to_integer(System.get_env("PORT", "4000"))]
+if server_role != "runner" do
+  if System.get_env("PHX_SERVER") do
+    config :athena, AthenaWeb.Endpoint, server: true
+  end
+
+  config :athena, AthenaWeb.Endpoint,
+    http: [port: String.to_integer(System.get_env("PORT", "4000"))]
+end
 
 if server_role in ["default", "runner"] do
   config :libcluster,
@@ -46,17 +48,11 @@ if server_role in ["default", "runner"] do
     ]
 end
 
-queues =
-  server_role
-  |> case do
-    "runner" -> []
-    "default" -> [code_execution: System.schedulers_online() * 2, default: 10, maintenance: 2]
-    _ -> [code_execution: System.schedulers_online() * 2, default: 10, maintenance: 2]
-  end
-
-config :athena, Oban,
-  repo: Athena.Repo,
-  queues: queues
+if server_role != "runner" do
+  config :athena, Oban,
+    repo: Athena.Repo,
+    queues: [code_execution: System.schedulers_online() * 2, default: 10, maintenance: 2]
+end
 
 if config_env() == :prod do
   if server_role != "runner" do
@@ -137,6 +133,14 @@ if config_env() == :prod do
            {media_cron, {Athena.Workers.MediaCleanup, queue: :maintenance}}
          ]}
       ]
+  end
+
+  if server_role in ["runner", "all"] do
+    runner_db_url =
+      System.get_env("RUNNER_DATABASE_URL") ||
+        "ecto://postgres:#{System.get_env("POSTGRES_RUNNER_PASSWORD", "runner_secret")}@127.0.0.1:5433/postgres"
+
+    config :athena, Athena.Execution.SqlRunner, url: runner_db_url
   end
 
   # ## SSL Support
