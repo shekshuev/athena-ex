@@ -40,7 +40,11 @@ defmodule Athena.Execution.Verifier do
       end)
 
     res = format_sql_execution_result(execution_res)
-    Logger.info("[Verifier] SQL Box #{box_id} (#{eval_mode}) -> status=#{res.status}, score=#{res.score}")
+
+    Logger.info(
+      "[Verifier] SQL Box #{box_id} (#{eval_mode}) -> status=#{res.status}, score=#{res.score}"
+    )
+
     res
   end
 
@@ -251,11 +255,18 @@ defmodule Athena.Execution.Verifier do
         {:ok, ready_ctx} ->
           results = Enum.map(challenge.test_cases, &run_single_test(&1, ready_ctx))
           res = summarize(results)
-          Logger.info("[Verifier] Isolate Box #{box_id} [#{challenge.language}] -> status=#{res.status}, score=#{res.score}%")
+
+          Logger.info(
+            "[Verifier] Isolate Box #{box_id} [#{challenge.language}] -> status=#{res.status}, score=#{res.score}%"
+          )
+
           res
 
         {:error, {:compilation_error, stderr}} ->
-          Logger.warning("[Verifier] Isolate Box #{box_id} [#{challenge.language}] -> compilation_error")
+          Logger.warning(
+            "[Verifier] Isolate Box #{box_id} [#{challenge.language}] -> compilation_error"
+          )
+
           build_compile_error_result(stderr)
 
         {:error, _reason} ->

@@ -155,11 +155,18 @@ defmodule Athena.Execution.IsolateRunner do
     File.rm(meta_path)
 
     if exit_code == 0 do
-      Logger.debug("[IsolateRunner] Box #{ctx.box_id} [#{ctx.lang_config.name}] compiled successfully.")
+      Logger.debug(
+        "[IsolateRunner] Box #{ctx.box_id} [#{ctx.lang_config.name}] compiled successfully."
+      )
+
       :ok
     else
       err_output = read_box_file(ctx, "compile_err.txt")
-      Logger.warning("[IsolateRunner] Box #{ctx.box_id} [#{ctx.lang_config.name}] compilation failed:\n#{err_output}")
+
+      Logger.warning(
+        "[IsolateRunner] Box #{ctx.box_id} [#{ctx.lang_config.name}] compilation failed:\n#{err_output}"
+      )
+
       {:error, {:compilation_error, err_output}}
     end
   end
@@ -169,7 +176,9 @@ defmodule Athena.Execution.IsolateRunner do
   defp init_sandbox(ctx, retries \\ 5) do
     System.cmd(@isolate_bin, ["--cleanup", "--cg", "-b", "#{ctx.box_id}"], stderr_to_stdout: true)
 
-    case System.cmd(@isolate_bin, ["--init", "--cg", "-b", "#{ctx.box_id}"], stderr_to_stdout: true) do
+    case System.cmd(@isolate_bin, ["--init", "--cg", "-b", "#{ctx.box_id}"],
+           stderr_to_stdout: true
+         ) do
       {path, 0} ->
         work_dir = String.trim(path)
         box_dir = Path.join(work_dir, "box")
@@ -230,7 +239,11 @@ defmodule Athena.Execution.IsolateRunner do
 
     if exit_code >= 2 do
       File.rm(meta_path)
-      Logger.error("[IsolateRunner] Box #{ctx.box_id} fatal isolate error (exit_code=#{exit_code})")
+
+      Logger.error(
+        "[IsolateRunner] Box #{ctx.box_id} fatal isolate error (exit_code=#{exit_code})"
+      )
+
       {:error, :system_failure}
     else
       meta = parse_meta(meta_path)
@@ -240,7 +253,10 @@ defmodule Athena.Execution.IsolateRunner do
       time = meta["time"] || "0.0"
       exitcode = meta["exitcode"] || "0"
 
-      Logger.info("[IsolateRunner] Box #{ctx.box_id} [#{ctx.lang_config.name}] -> status=#{status}, exitcode=#{exitcode}, time=#{time}s")
+      Logger.info(
+        "[IsolateRunner] Box #{ctx.box_id} [#{ctx.lang_config.name}] -> status=#{status}, exitcode=#{exitcode}, time=#{time}s"
+      )
+
       {:ok, meta}
     end
   end
@@ -248,13 +264,19 @@ defmodule Athena.Execution.IsolateRunner do
   @doc false
   @spec cleanup_sandbox(Context.t()) :: :ok
   defp cleanup_sandbox(ctx) do
-    case System.cmd(@isolate_bin, ["--cleanup", "--cg", "-b", "#{ctx.box_id}"], stderr_to_stdout: true) do
+    case System.cmd(@isolate_bin, ["--cleanup", "--cg", "-b", "#{ctx.box_id}"],
+           stderr_to_stdout: true
+         ) do
       {_, 0} ->
         :ok
 
       _ ->
         Process.sleep(100)
-        System.cmd(@isolate_bin, ["--cleanup", "--cg", "-b", "#{ctx.box_id}"], stderr_to_stdout: true)
+
+        System.cmd(@isolate_bin, ["--cleanup", "--cg", "-b", "#{ctx.box_id}"],
+          stderr_to_stdout: true
+        )
+
         :ok
     end
   end
