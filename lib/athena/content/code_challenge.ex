@@ -73,30 +73,16 @@ defmodule Athena.Content.CodeChallenge do
   defp maybe_validate_sql_body(changeset) do
     if get_field(changeset, :language) == "sql" do
       body = get_field(changeset, :body) || %{}
-      mode = Map.get(body, "evaluation_mode")
+      mode = Map.get(body, "evaluation_mode") || "query_result"
 
-      cond do
-        mode not in ["query_result", "state_verification"] ->
-          add_error(
-            changeset,
-            :body,
-            "evaluation_mode must be 'query_result' or 'state_verification'"
-          )
-
-        mode == "query_result" and
-            (is_nil(Map.get(body, "solution_sql")) or Map.get(body, "solution_sql") == "") ->
-          add_error(changeset, :body, "solution_sql is required for query_result evaluation mode")
-
-        mode == "state_verification" and
-            (is_nil(Map.get(body, "check_sql")) or Map.get(body, "check_sql") == "") ->
-          add_error(
-            changeset,
-            :body,
-            "check_sql is required for state_verification evaluation mode"
-          )
-
-        true ->
-          changeset
+      if mode in ["query_result", "state_verification"] do
+        changeset
+      else
+        add_error(
+          changeset,
+          :body,
+          "evaluation_mode must be 'query_result' or 'state_verification'"
+        )
       end
     else
       changeset

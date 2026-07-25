@@ -887,7 +887,7 @@ defmodule AthenaWeb.StudioLive.Builder do
         |> apply_quiz_meta_overrides(content_overrides)
         |> apply_exam_meta_overrides(block.type, params)
 
-      new_content = Map.merge(content_map, content_overrides)
+      new_content = deep_merge(content_map, content_overrides)
       final_params = Map.put(block_params, "content", new_content)
 
       case Content.update_block(socket.assigns.current_user, block, final_params) do
@@ -1332,7 +1332,15 @@ defmodule AthenaWeb.StudioLive.Builder do
   def handle_event("run_instructor_test", %{"id" => block_id}, socket) do
     with true <- can_edit?(socket),
          block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == block_id)) do
-      code = block.content["solution_code"] || ""
+      lang = block.content["language"]
+
+      code =
+        if lang == "sql" do
+          get_in(block.content, ["body", "solution_sql"]) || block.content["solution_code"] || ""
+        else
+          block.content["solution_code"] || ""
+        end
+
       test_cases = block.content["test_cases"] || []
 
       dispatch_test_run(socket, block, code, test_cases)
@@ -1345,41 +1353,44 @@ defmodule AthenaWeb.StudioLive.Builder do
     {:noreply, put_flash(socket, :error, gettext("Please write a Reference Solution first!"))}
   end
 
-  defp dispatch_test_run(socket, _block, _code, []) do
-    {:noreply, put_flash(socket, :warning, gettext("Add at least one Test Case before testing."))}
-  end
+  defp dispatch_test_run(socket, block, code, test_cases) do
+    is_sql = block.content["language"] == "sql"
 
-  defp dispatch_test_run(socket, block, code, _test_cases) do
-    challenge =
-      Ecto.Changeset.apply_changes(
-        Athena.Content.CodeChallenge.changeset(
-          %Athena.Content.CodeChallenge{},
-          block.content
-        )
-      )
-
-    case :pg.get_members(Athena.PG, :code_runners) do
-      [] ->
-        {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
-
-      runners ->
-        runner_pid = Enum.random(runners)
-        box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
-
-        task =
-          Task.Supervisor.async_nolink(
-            runner_pid,
-            Execution,
-            :verify,
-            [code, challenge, box_id]
+    if not is_sql and test_cases == [] do
+      {:noreply,
+       put_flash(socket, :warning, gettext("Add at least one Test Case before testing."))}
+    else
+      challenge =
+        Ecto.Changeset.apply_changes(
+          Athena.Content.CodeChallenge.changeset(
+            %Athena.Content.CodeChallenge{},
+            block.content
           )
+        )
 
-        updated_tests = Map.put(socket.assigns.running_tests, task.ref, block.id)
+      case :pg.get_members(Athena.PG, :code_runners) do
+        [] ->
+          {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
 
-        {:noreply,
-         socket
-         |> assign(:running_tests, updated_tests)
-         |> put_flash(:info, gettext("Testing reference solution... Please wait."))}
+        runners ->
+          runner_pid = Enum.random(runners)
+          box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
+
+          task =
+            Task.Supervisor.async_nolink(
+              runner_pid,
+              Execution,
+              :verify,
+              [code, challenge, box_id]
+            )
+
+          updated_tests = Map.put(socket.assigns.running_tests, task.ref, block.id)
+
+          {:noreply,
+           socket
+           |> assign(:running_tests, updated_tests)
+           |> put_flash(:info, gettext("Testing reference solution... Please wait."))}
+      end
     end
   end
 
@@ -2079,4 +2090,16 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   defp parse_raw_list(raw) when is_list(raw), do: raw
   defp parse_raw_list(_), do: []
+
+  defp deep_merge(left, right) when is_map(left) and is_map(right) do
+    Map.merge(left, right, fn _key, val1, val2 ->
+      if is_map(val1) and is_map(val2) do
+        deep_merge(val1, val2)
+      else
+        val2
+      end
+    end)
+  end
+
+  defp deep_merge(_left, right), do: right
 end

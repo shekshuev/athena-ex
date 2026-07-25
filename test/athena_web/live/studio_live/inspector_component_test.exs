@@ -356,5 +356,47 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "Require Submission"
       assert html =~ "Pass Auto-Grade"
     end
+
+    test "renders sql code block execution settings with time limit and without memory limit", %{
+      block: base_block
+    } do
+      block = %{
+        base_block
+        | type: :code,
+          content: %{
+            "language" => "sql",
+            "time_limit" => 2.0,
+            "body" => %{
+              "evaluation_mode" => "query_result",
+              "setup_sql" => "CREATE TABLE users (id INT);",
+              "solution_sql" => "SELECT * FROM users;"
+            }
+          }
+      }
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block
+        )
+
+      assert html =~ "code Block"
+      assert html =~ "Execution Settings"
+      assert html =~ "Programming Language"
+      assert html =~ "Evaluation Mode"
+      assert html =~ "Query Result"
+      assert html =~ "State Verification"
+      assert html =~ ~s(name="block[content][body][evaluation_mode]")
+
+      assert html =~ "Time Limit (s)"
+      assert html =~ ~s(name="block[content][time_limit]")
+
+      refute html =~ "Memory (KB)"
+      refute html =~ ~s(name="block[content][memory_limit]")
+
+      assert html =~ "Max Attempts"
+      assert html =~ ~s(name="block[content][max_attempts]")
+    end
   end
 end

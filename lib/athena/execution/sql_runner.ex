@@ -208,14 +208,28 @@ defmodule Athena.Execution.SqlRunner do
 
   defp parse_db_url(url) do
     uri = URI.parse(url)
-    userinfo = uri.userinfo && String.split(uri.userinfo, ":")
+    {username, password} = parse_userinfo(uri.userinfo)
 
     [
-      username: (userinfo && Enum.at(userinfo, 0)) || "postgres",
-      password: (userinfo && Enum.at(userinfo, 1)) || "postgres",
+      username: username,
+      password: password,
       hostname: uri.host || "127.0.0.1",
       port: uri.port || 5432,
-      database: (uri.path && String.trim_leading(uri.path, "/")) || "postgres"
+      database: clean_database_name(uri.path)
     ]
   end
+
+  defp parse_userinfo(nil), do: {"postgres", "postgres"}
+
+  defp parse_userinfo(userinfo) do
+    case String.split(userinfo, ":") do
+      [user, pass] -> {user, pass}
+      [user] -> {user, "postgres"}
+      _ -> {"postgres", "postgres"}
+    end
+  end
+
+  defp clean_database_name(nil), do: "postgres"
+  defp clean_database_name(""), do: "postgres"
+  defp clean_database_name(path), do: String.trim_leading(path, "/")
 end

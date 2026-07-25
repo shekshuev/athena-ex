@@ -1247,127 +1247,218 @@ defmodule AthenaWeb.BlockComponents do
           >
             <input type="hidden" name="block[id]" value={@block.id} />
 
-            <div class="mb-6 relative">
-              <label class="label">
-                <span class="label-text font-bold text-xs uppercase text-base-content/70">
-                  {gettext("Reference Solution (Hidden from students)")}
-                </span>
-              </label>
+            <%= if @block.content["language"] == "sql" do %>
+              <% mode = get_in(@block.content, ["body", "evaluation_mode"]) || "query_result" %>
 
-              <input
-                type="hidden"
-                id={"solution-input-#{@block.id}"}
-                name="block[content][solution_code]"
-                value={@block.content["solution_code"]}
-              />
-
-              <div class="overflow-hidden rounded-sm border border-base-300 bg-base-200 dark:bg-[#282c34]">
-                <div
-                  id={"solution-editor-#{@block.id}"}
-                  phx-hook="CodeEditor"
-                  data-language={Execution.cm_lang(@block.content["language"])}
-                  data-readonly="false"
-                  data-code={@block.content["solution_code"] || ""}
-                  data-input-id={"solution-input-#{@block.id}"}
-                  phx-update="ignore"
-                  class="w-full text-sm font-mono outline-none"
-                >
+              <div class="mb-6 relative">
+                <label class="label">
+                  <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                    {gettext("1. Setup SQL / Schema & Seed (Hidden from students)")}
+                  </span>
+                </label>
+                <input
+                  type="hidden"
+                  id={"setup-sql-input-#{@block.id}"}
+                  name="block[content][body][setup_sql]"
+                  value={get_in(@block.content, ["body", "setup_sql"])}
+                />
+                <div class="overflow-hidden rounded-sm border border-base-300 bg-base-200 dark:bg-[#282c34]">
+                  <div
+                    id={"setup-sql-editor-#{@block.id}"}
+                    phx-hook="CodeEditor"
+                    data-language="sql"
+                    data-readonly="false"
+                    data-code={get_in(@block.content, ["body", "setup_sql"]) || ""}
+                    data-input-id={"setup-sql-input-#{@block.id}"}
+                    phx-update="ignore"
+                    class="w-full text-sm font-mono outline-none"
+                  >
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div class="flex items-center justify-between mb-2 mt-8">
-              <label class="label">
-                <span class="label-text font-bold text-xs uppercase text-base-content/70">
-                  {gettext("Test Cases")}
-                </span>
-              </label>
-              <button
-                type="button"
-                phx-click="add_test_case"
-                phx-value-id={@block.id}
-                phx-target={assigns[:target]}
-                class="btn btn-xs btn-ghost text-primary"
-              >
-                <.icon name="hero-plus" class="size-3 mr-1" /> {gettext("Add Case")}
-              </button>
-            </div>
-
-            <div class="space-y-3">
-              <% raw_cases = @block.content["test_cases"] || []
-
-              test_cases =
-                if is_map(raw_cases) do
-                  raw_cases
-                  |> Enum.sort_by(fn {k, _} -> String.to_integer(k) end)
-                  |> Enum.map(fn {_, v} -> v end)
-                else
-                  raw_cases
-                end %>
-
-              <%= for {tc, index} <- Enum.with_index(test_cases) do %>
-                <div class="flex gap-2 items-start bg-base-200/50 p-2 rounded-sm border border-base-300 relative group">
-                  <input
-                    type="hidden"
-                    name={"block[content][test_cases][#{index}][id]"}
-                    value={tc["id"]}
-                  />
-
-                  <div class="flex-1">
-                    <textarea
-                      name={"block[content][test_cases][#{index}][input]"}
-                      class="textarea w-full font-mono text-xs h-16 resize-none"
-                      placeholder="stdin"
-                    >{tc["input"]}</textarea>
+              <div class="mb-6 relative">
+                <label class="label">
+                  <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                    {gettext("2. Reference Solution SQL")}
+                  </span>
+                </label>
+                <input
+                  type="hidden"
+                  id={"solution-sql-input-#{@block.id}"}
+                  name="block[content][body][solution_sql]"
+                  value={
+                    get_in(@block.content, ["body", "solution_sql"]) ||
+                      @block.content["solution_code"]
+                  }
+                />
+                <div class="overflow-hidden rounded-sm border border-base-300 bg-base-200 dark:bg-[#282c34]">
+                  <div
+                    id={"solution-sql-editor-#{@block.id}"}
+                    phx-hook="CodeEditor"
+                    data-language="sql"
+                    data-readonly="false"
+                    data-code={
+                      get_in(@block.content, ["body", "solution_sql"]) ||
+                        @block.content["solution_code"] || ""
+                    }
+                    data-input-id={"solution-sql-input-#{@block.id}"}
+                    phx-update="ignore"
+                    class="w-full text-sm font-mono outline-none"
+                  >
                   </div>
-                  <div class="flex-1">
-                    <textarea
-                      name={"block[content][test_cases][#{index}][expected_output]"}
-                      class="textarea w-full font-mono text-xs h-16 resize-none"
-                      placeholder="stdout"
-                    >{tc["expected_output"]}</textarea>
+                </div>
+              </div>
+
+              <div :if={mode == "state_verification"} class="mb-6 relative">
+                <label class="label">
+                  <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                    {gettext("3. Verification Check SQL (Must return 'OK' on success)")}
+                  </span>
+                </label>
+                <input
+                  type="hidden"
+                  id={"check-sql-input-#{@block.id}"}
+                  name="block[content][body][check_sql]"
+                  value={get_in(@block.content, ["body", "check_sql"])}
+                />
+                <div class="overflow-hidden rounded-sm border border-base-300 bg-base-200 dark:bg-[#282c34]">
+                  <div
+                    id={"check-sql-editor-#{@block.id}"}
+                    phx-hook="CodeEditor"
+                    data-language="sql"
+                    data-readonly="false"
+                    data-code={get_in(@block.content, ["body", "check_sql"]) || ""}
+                    data-input-id={"check-sql-input-#{@block.id}"}
+                    phx-update="ignore"
+                    class="w-full text-sm font-mono outline-none"
+                  >
                   </div>
-                  <div class="w-20">
+                </div>
+              </div>
+            <% else %>
+              <div class="mb-6 relative">
+                <label class="label">
+                  <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                    {gettext("Reference Solution (Hidden from students)")}
+                  </span>
+                </label>
+
+                <input
+                  type="hidden"
+                  id={"solution-input-#{@block.id}"}
+                  name="block[content][solution_code]"
+                  value={@block.content["solution_code"]}
+                />
+
+                <div class="overflow-hidden rounded-sm border border-base-300 bg-base-200 dark:bg-[#282c34]">
+                  <div
+                    id={"solution-editor-#{@block.id}"}
+                    phx-hook="CodeEditor"
+                    data-language={Execution.cm_lang(@block.content["language"])}
+                    data-readonly="false"
+                    data-code={@block.content["solution_code"] || ""}
+                    data-input-id={"solution-input-#{@block.id}"}
+                    phx-update="ignore"
+                    class="w-full text-sm font-mono outline-none"
+                  >
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex items-center justify-between mb-2 mt-8">
+                <label class="label">
+                  <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                    {gettext("Test Cases")}
+                  </span>
+                </label>
+                <button
+                  type="button"
+                  phx-click="add_test_case"
+                  phx-value-id={@block.id}
+                  phx-target={assigns[:target]}
+                  class="btn btn-xs btn-ghost text-primary"
+                >
+                  <.icon name="hero-plus" class="size-3 mr-1" /> {gettext("Add Case")}
+                </button>
+              </div>
+
+              <div class="space-y-3">
+                <% raw_cases = @block.content["test_cases"] || []
+
+                test_cases =
+                  if is_map(raw_cases) do
+                    raw_cases
+                    |> Enum.sort_by(fn {k, _} -> String.to_integer(k) end)
+                    |> Enum.map(fn {_, v} -> v end)
+                  else
+                    raw_cases
+                  end %>
+
+                <%= for {tc, index} <- Enum.with_index(test_cases) do %>
+                  <div class="flex gap-2 items-start bg-base-200/50 p-2 rounded-sm border border-base-300 relative group">
                     <input
-                      type="number"
-                      name={"block[content][test_cases][#{index}][weight]"}
-                      value={tc["weight"]}
-                      class="input input-sm w-full text-center"
-                      placeholder="Weight %"
+                      type="hidden"
+                      name={"block[content][test_cases][#{index}][id]"}
+                      value={tc["id"]}
                     />
 
-                    <div class="mt-2 text-center" title="Hide test data from students">
-                      <label class="cursor-pointer flex items-center justify-center gap-1 text-[10px]">
-                        <input
-                          type="hidden"
-                          name={"block[content][test_cases][#{index}][is_hidden]"}
-                          value="false"
-                        />
-                        <input
-                          type="checkbox"
-                          name={"block[content][test_cases][#{index}][is_hidden]"}
-                          value="true"
-                          checked={tc["is_hidden"] in [true, "true"]}
-                          class="checkbox checkbox-xs"
-                        />
-                        <.icon name="hero-eye-slash" class="size-3 text-base-content/60" />
-                      </label>
+                    <div class="flex-1">
+                      <textarea
+                        name={"block[content][test_cases][#{index}][input]"}
+                        class="textarea w-full font-mono text-xs h-16 resize-none"
+                        placeholder="stdin"
+                      >{tc["input"]}</textarea>
                     </div>
-                  </div>
+                    <div class="flex-1">
+                      <textarea
+                        name={"block[content][test_cases][#{index}][expected_output]"}
+                        class="textarea w-full font-mono text-xs h-16 resize-none"
+                        placeholder="stdout"
+                      >{tc["expected_output"]}</textarea>
+                    </div>
+                    <div class="w-20">
+                      <input
+                        type="number"
+                        name={"block[content][test_cases][#{index}][weight]"}
+                        value={tc["weight"]}
+                        class="input input-sm w-full text-center"
+                        placeholder="Weight %"
+                      />
 
-                  <button
-                    type="button"
-                    phx-click="remove_test_case"
-                    phx-value-block_id={@block.id}
-                    phx-value-tc_id={tc["id"]}
-                    phx-target={assigns[:target]}
-                    class="btn btn-ghost btn-xs text-error absolute -right-2 -top-2 bg-base-100 rounded-sm border border-base-200"
-                  >
-                    <.icon name="hero-x-mark" class="size-3" />
-                  </button>
-                </div>
-              <% end %>
-            </div>
+                      <div class="mt-2 text-center" title="Hide test data from students">
+                        <label class="cursor-pointer flex items-center justify-center gap-1 text-[10px]">
+                          <input
+                            type="hidden"
+                            name={"block[content][test_cases][#{index}][is_hidden]"}
+                            value="false"
+                          />
+                          <input
+                            type="checkbox"
+                            name={"block[content][test_cases][#{index}][is_hidden]"}
+                            value="true"
+                            checked={tc["is_hidden"] in [true, "true"]}
+                            class="checkbox checkbox-xs"
+                          />
+                          <.icon name="hero-eye-slash" class="size-3 text-base-content/60" />
+                        </label>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      phx-click="remove_test_case"
+                      phx-value-block_id={@block.id}
+                      phx-value-tc_id={tc["id"]}
+                      phx-target={assigns[:target]}
+                      class="btn btn-ghost btn-xs text-error absolute -right-2 -top-2 bg-base-100 rounded-sm border border-base-200"
+                    >
+                      <.icon name="hero-x-mark" class="size-3" />
+                    </button>
+                  </div>
+                <% end %>
+              </div>
+            <% end %>
           </form>
         </div>
       <% end %>
