@@ -130,7 +130,7 @@ if config_env() == :prod do
         Oban.Plugins.Pruner,
         {Oban.Plugins.Cron,
          crontab: [
-           {media_cron, {Athena.Workers.MediaCleanup, queue: :maintenance}}
+           {media_cron, Athena.Workers.MediaCleanup, queue: :maintenance}
          ]}
       ]
   end
