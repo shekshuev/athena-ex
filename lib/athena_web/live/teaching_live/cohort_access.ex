@@ -90,7 +90,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
 
         {:noreply, put_flash(socket, :error, error_msg)}
 
-      {:error, :unauthorized} ->
+      {:error, :forbidden} ->
         {:noreply, put_flash(socket, :error, gettext("Permission denied."))}
     end
   end
@@ -121,7 +121,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
          |> assign(:overrides, overrides)
          |> put_flash(:info, gettext("Override removed. Inheriting global rules."))}
 
-      {:error, :unauthorized} ->
+      {:error, :forbidden} ->
         {:noreply, put_flash(socket, :error, gettext("Permission denied."))}
     end
   end
