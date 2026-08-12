@@ -20,7 +20,7 @@ defmodule AthenaWeb.Plugs.FetchCurrentUser do
 
           _ ->
             conn
-            |> delete_session(:user_id)
+            |> delete_session(:account_id)
             |> assign(:current_user, nil)
         end
     end
