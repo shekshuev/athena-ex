@@ -5,10 +5,10 @@ defmodule AthenaWeb.Plugs.FetchCurrentUserTest do
   alias AthenaWeb.Plugs.FetchCurrentUser
 
   @session_options Plug.Session.init(
-    store: :cookie,
-    key: "_app",
-    signing_salt: "secret_salt"
-  )
+                     store: :cookie,
+                     key: "_app",
+                     signing_salt: "secret_salt"
+                   )
 
   test "clears :account_id from session when account does not exist" do
     non_existent_id = -1
