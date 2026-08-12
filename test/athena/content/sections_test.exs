@@ -134,14 +134,14 @@ defmodule Athena.Content.SectionsTest do
       assert "can't be blank" in errors_on(changeset).title
     end
 
-    test "returns unauthorized if instructor tries to add section to someone else's course", %{
+    test "returns forbidden if instructor tries to add section to someone else's course", %{
       instructor: instructor,
       other_instructor: other
     } do
       course = insert(:course, owner_id: other.id)
       attrs = %{"title" => "Hacked", "course_id" => course.id}
 
-      assert {:error, :unauthorized} = Sections.create_section(instructor, attrs)
+      assert {:error, :forbidden} = Sections.create_section(instructor, attrs)
     end
 
     test "prevents IDOR: fails if provided course_id does not match parent's course_id", %{
@@ -159,7 +159,7 @@ defmodule Athena.Content.SectionsTest do
         "parent_id" => parent.id
       }
 
-      assert {:error, :unauthorized} = Sections.create_section(admin, attrs)
+      assert {:error, :forbidden} = Sections.create_section(admin, attrs)
     end
   end
 
@@ -226,14 +226,14 @@ defmodule Athena.Content.SectionsTest do
       assert Enum.join(updated_grandchild.path.labels, ".") == expected_grandchild_path
     end
 
-    test "returns unauthorized if user lacks edit rights on course", %{
+    test "returns forbidden if user lacks edit rights on course", %{
       instructor: instructor,
       other_instructor: other
     } do
       course = insert(:course, owner_id: other.id)
       section = insert(:section, course: course)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Sections.update_section(instructor, section, %{"title" => "Hacked"})
     end
 
@@ -249,7 +249,7 @@ defmodule Athena.Content.SectionsTest do
       {:ok, section_to_move} =
         Sections.create_section(admin, %{"title" => "C1 Child", "course_id" => course1.id})
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Sections.update_section(admin, section_to_move, %{"parent_id" => target_parent.id})
     end
   end
@@ -262,14 +262,14 @@ defmodule Athena.Content.SectionsTest do
       assert Repo.get(Section, section.id) == nil
     end
 
-    test "returns unauthorized if user lacks edit rights on course", %{
+    test "returns forbidden if user lacks edit rights on course", %{
       instructor: instructor,
       other_instructor: other
     } do
       course = insert(:course, owner_id: other.id)
       section = insert(:section, course: course)
 
-      assert {:error, :unauthorized} = Sections.delete_section(instructor, section)
+      assert {:error, :forbidden} = Sections.delete_section(instructor, section)
     end
   end
 
@@ -296,14 +296,14 @@ defmodule Athena.Content.SectionsTest do
       assert new_s2.order == 2
     end
 
-    test "returns unauthorized if user lacks edit rights on course", %{
+    test "returns forbidden if user lacks edit rights on course", %{
       instructor: instructor,
       other_instructor: other
     } do
       course = insert(:course, owner_id: other.id)
       section = insert(:section, course: course)
 
-      assert {:error, :unauthorized} = Sections.reorder_section(instructor, section, 0)
+      assert {:error, :forbidden} = Sections.reorder_section(instructor, section, 0)
     end
   end
 
@@ -907,7 +907,7 @@ defmodule Athena.Content.SectionsTest do
 
       attrs = %{"title" => "Should Fail", "course_id" => course.id}
 
-      assert {:error, :unauthorized} = Sections.create_section(instructor, attrs)
+      assert {:error, :forbidden} = Sections.create_section(instructor, attrs)
     end
 
     test "writer via CourseShare can update section", %{
@@ -934,7 +934,7 @@ defmodule Athena.Content.SectionsTest do
 
       section = insert(:section, course: course)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Sections.update_section(instructor, section, %{"title" => "Hacked"})
     end
 

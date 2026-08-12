@@ -47,7 +47,7 @@ defmodule Athena.Content.Sections do
   The `path` is automatically computed based on the `parent_id`.
   """
   @spec create_section(map(), map()) ::
-          {:ok, Section.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+          {:ok, Section.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def create_section(user, attrs) do
     parent_id = Map.get(attrs, "parent_id")
     provided_course_id = Map.get(attrs, "course_id")
@@ -58,7 +58,7 @@ defmodule Athena.Content.Sections do
     cond do
       not is_nil(parent_id) and not is_nil(provided_course_id) and
           parent_course_id != provided_course_id ->
-        {:error, :unauthorized}
+        {:error, :forbidden}
 
       course_id && can_edit_course?(user, course_id) ->
         section_id = Map.get(attrs, "id") || Ecto.UUID.generate()
@@ -72,7 +72,7 @@ defmodule Athena.Content.Sections do
         |> Repo.insert()
 
       true ->
-        {:error, :unauthorized}
+        {:error, :forbidden}
     end
   end
 
@@ -83,7 +83,7 @@ defmodule Athena.Content.Sections do
   for the section and ALL its descendant sections in the tree to keep the hierarchy consistent.
   """
   @spec update_section(map(), Section.t(), map()) ::
-          {:ok, Section.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+          {:ok, Section.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def update_section(user, %Section{} = section, attrs) do
     new_parent_id = Map.get(attrs, "parent_id", Map.get(attrs, :parent_id, :not_provided))
 
@@ -95,7 +95,7 @@ defmodule Athena.Content.Sections do
 
   @doc false
   defp check_course_edit_rights(user, course_id) do
-    if can_edit_course?(user, course_id), do: :ok, else: {:error, :unauthorized}
+    if can_edit_course?(user, course_id), do: :ok, else: {:error, :forbidden}
   end
 
   @doc false
@@ -106,7 +106,7 @@ defmodule Athena.Content.Sections do
     if get_course_id_from_parent(new_parent_id) == course_id do
       :ok
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -128,12 +128,12 @@ defmodule Athena.Content.Sections do
   deleting a parent section will automatically remove all its descendants.
   """
   @spec delete_section(map(), Section.t()) ::
-          {:ok, Section.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+          {:ok, Section.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def delete_section(user, %Section{} = section) do
     if can_edit_course?(user, section.course_id) do
       Repo.delete(section)
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -170,7 +170,7 @@ defmodule Athena.Content.Sections do
 
       {:ok, %{section | order: new_index}}
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
