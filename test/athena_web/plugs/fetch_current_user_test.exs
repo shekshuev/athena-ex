@@ -13,7 +13,7 @@ defmodule AthenaWeb.Plugs.FetchCurrentUserTest do
                    )
 
   test "clears :account_id from session when account does not exist" do
-    non_existent_id = -1
+    non_existent_id = Ecto.UUID.generate()
 
     conn =
       conn(:get, "/")
