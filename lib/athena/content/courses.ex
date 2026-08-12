@@ -64,7 +64,7 @@ defmodule Athena.Content.Courses do
   Creates a new course. Automatically sets the owner_id to the creator.
   """
   @spec create_course(map(), map()) ::
-          {:ok, Course.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+          {:ok, Course.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def create_course(user, attrs) do
     if Identity.can?(user, "courses.create") do
       attrs =
@@ -75,7 +75,7 @@ defmodule Athena.Content.Courses do
       |> Course.changeset(attrs)
       |> Repo.insert()
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -83,14 +83,14 @@ defmodule Athena.Content.Courses do
   Updates an existing course.
   """
   @spec update_course(map(), Course.t(), map()) ::
-          {:ok, Course.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+          {:ok, Course.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def update_course(user, %Course{} = course, attrs) do
     if can_edit_course?(user, course) do
       course
       |> Course.changeset(attrs)
       |> Repo.update()
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -98,14 +98,14 @@ defmodule Athena.Content.Courses do
   Soft-deletes a course by setting the `deleted_at` timestamp.
   """
   @spec soft_delete_course(map(), Course.t()) ::
-          {:ok, Course.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+          {:ok, Course.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def soft_delete_course(user, %Course{} = course) do
     if Identity.can?(user, "courses.delete", course) do
       course
       |> Ecto.Changeset.change(%{deleted_at: DateTime.utc_now(:second)})
       |> Repo.update()
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -156,7 +156,7 @@ defmodule Athena.Content.Courses do
         {:error, changeset} -> {:error, changeset}
       end
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -170,7 +170,7 @@ defmodule Athena.Content.Courses do
 
       {:ok, :revoked}
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -183,7 +183,7 @@ defmodule Athena.Content.Courses do
       |> Ecto.Changeset.change(%{is_public: is_public})
       |> Repo.update()
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -293,6 +293,6 @@ defmodule Athena.Content.Courses do
 
   @doc false
   defp check_course_write_rights(user, course) do
-    if can_edit_course?(user, course), do: :ok, else: {:error, :unauthorized}
+    if can_edit_course?(user, course), do: :ok, else: {:error, :forbidden}
   end
 end
