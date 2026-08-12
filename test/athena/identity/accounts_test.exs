@@ -230,8 +230,8 @@ defmodule Athena.Identity.AccountsTest do
       assert "can't be blank" in errors_on(changeset).first_name
     end
 
-    test "should return unauthorized if user lacks users.create", %{student: student} do
-      assert {:error, :unauthorized} = Accounts.register_admin_user(student, %{}, %{})
+    test "should return forbidden if user lacks users.create", %{student: student} do
+      assert {:error, :forbidden} = Accounts.register_admin_user(student, %{}, %{})
     end
   end
 
@@ -250,9 +250,9 @@ defmodule Athena.Identity.AccountsTest do
       assert updated_account.profile.first_name == "NewName"
     end
 
-    test "student returns unauthorized when trying to update another user", %{student: student} do
+    test "student returns forbidden when trying to update another user", %{student: student} do
       account = insert(:account)
-      assert {:error, :unauthorized} = Accounts.update_admin_user(student, account, %{}, %{})
+      assert {:error, :forbidden} = Accounts.update_admin_user(student, account, %{}, %{})
     end
   end
 
