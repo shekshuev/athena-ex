@@ -265,7 +265,7 @@ defmodule Athena.Learning.SchedulesTest do
       assert {:ok, _} = Schedules.set_override(instructor, cohort, course, attrs)
     end
 
-    test "returns unauthorized if instructor owns NEITHER cohort nor course and is NOT a co-instructor",
+    test "returns forbidden if instructor owns NEITHER cohort nor course and is NOT a co-instructor",
          %{
            instructor: instructor,
            other_cohort: cohort,
@@ -278,10 +278,10 @@ defmodule Athena.Learning.SchedulesTest do
         resource_id: Ecto.UUID.generate()
       }
 
-      assert {:error, :unauthorized} = Schedules.set_override(instructor, cohort, course, attrs)
+      assert {:error, :forbidden} = Schedules.set_override(instructor, cohort, course, attrs)
     end
 
-    test "returns unauthorized if co-instructor lacks 'cohorts.update' permission (e.g. read-only observer)",
+    test "returns forbidden if co-instructor lacks 'cohorts.update' permission (e.g. read-only observer)",
          %{
            admin: admin,
            other_cohort: cohort,
@@ -300,9 +300,9 @@ defmodule Athena.Learning.SchedulesTest do
         resource_id: Ecto.UUID.generate()
       }
 
-      assert {:error, :unauthorized} = Schedules.set_override(observer, cohort, course, attrs)
+      assert {:error, :forbidden} = Schedules.set_override(observer, cohort, course, attrs)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Schedules.clear_override(observer, cohort, course, :section, Ecto.UUID.generate())
     end
   end
