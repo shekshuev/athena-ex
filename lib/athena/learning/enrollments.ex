@@ -86,7 +86,7 @@ defmodule Athena.Learning.Enrollments do
            Content.can_edit_course?(user, course) do
         insert_if_types_match(cohort, course, status)
       else
-        {:error, :unauthorized}
+        {:error, :forbidden}
       end
     else
       {:error, :not_found} ->
@@ -213,7 +213,7 @@ defmodule Athena.Learning.Enrollments do
       |> Enrollment.changeset(attrs)
       |> Repo.update()
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -226,7 +226,7 @@ defmodule Athena.Learning.Enrollments do
     if Cohorts.can_manage_cohort_processes?(user, cohort) do
       Repo.delete(enrollment)
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
