@@ -1,8 +1,7 @@
 defmodule AthenaWeb.Plugs.FetchCurrentUserTest do
-  use ExUnit.Case, async: true
+  use AthenaWeb.ConnCase, async: true
 
   import Plug.Conn
-  import Plug.Test
 
   alias AthenaWeb.Plugs.FetchCurrentUser
 
@@ -12,11 +11,11 @@ defmodule AthenaWeb.Plugs.FetchCurrentUserTest do
                      signing_salt: "secret_salt"
                    )
 
-  test "clears :account_id from session when account does not exist" do
+  test "clears :account_id from session when account does not exist", %{conn: conn} do
     non_existent_id = Ecto.UUID.generate()
 
     conn =
-      conn(:get, "/")
+      conn
       |> Plug.Session.call(@session_options)
       |> fetch_session()
       |> put_session(:account_id, non_existent_id)
