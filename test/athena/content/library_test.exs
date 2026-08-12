@@ -162,8 +162,8 @@ defmodule Athena.Content.LibraryTest do
       assert "can't be blank" in errors_on(changeset).title
     end
 
-    test "should return unauthorized if user lacks permission", %{student: student} do
-      assert {:error, :unauthorized} = Library.create_library_block(student, %{"title" => "Hack"})
+    test "should return forbidden if user lacks permission", %{student: student} do
+      assert {:error, :forbidden} = Library.create_library_block(student, %{"title" => "Hack"})
     end
   end
 
@@ -184,13 +184,13 @@ defmodule Athena.Content.LibraryTest do
       assert "can't be blank" in errors_on(changeset).title
     end
 
-    test "should return unauthorized if user tries to update another user's block", %{
+    test "should return forbidden if user tries to update another user's block", %{
       owner1: owner1,
       owner2: owner2
     } do
       block = insert(:library_block, owner_id: owner2.id)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Library.update_library_block(owner1, block, %{"title" => "Hacked"})
     end
   end
@@ -203,13 +203,13 @@ defmodule Athena.Content.LibraryTest do
       assert Repo.get(LibraryBlock, block.id) == nil
     end
 
-    test "should return unauthorized if user lacks permission", %{
+    test "should return forbidden if user lacks permission", %{
       owner1: owner1,
       owner2: owner2
     } do
       block = insert(:library_block, owner_id: owner2.id)
 
-      assert {:error, :unauthorized} = Library.delete_library_block(owner1, block)
+      assert {:error, :forbidden} = Library.delete_library_block(owner1, block)
       assert Repo.get(LibraryBlock, block.id) != nil
     end
 
@@ -493,7 +493,7 @@ defmodule Athena.Content.LibraryTest do
     } do
       Library.share_block(owner, block, collaborator.id, :reader)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Library.update_library_block(collaborator, block, %{"title" => "Hacked"})
 
       Library.share_block(owner, block, collaborator.id, :writer)
@@ -522,11 +522,11 @@ defmodule Athena.Content.LibraryTest do
       assert updated2.is_public == false
     end
 
-    test "toggle_block_public returns unauthorized for non-owner", %{
+    test "toggle_block_public returns forbidden for non-owner", %{
       block: block,
       collaborator: collaborator
     } do
-      assert {:error, :unauthorized} = Library.toggle_block_public(collaborator, block, true)
+      assert {:error, :forbidden} = Library.toggle_block_public(collaborator, block, true)
     end
 
     test "toggle_block_public works for writer role", %{
@@ -584,21 +584,21 @@ defmodule Athena.Content.LibraryTest do
       assert Library.can_edit_block?(collaborator, block) == false
     end
 
-    test "revoke_block_share returns unauthorized for non-owner non-writer", %{
+    test "revoke_block_share returns forbidden for non-owner non-writer", %{
       block: block,
       collaborator: collaborator
     } do
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Library.revoke_block_share(collaborator, block, collaborator.id)
     end
 
-    test "share_block returns unauthorized for non-owner non-writer", %{
+    test "share_block returns forbidden for non-owner non-writer", %{
       block: block,
       collaborator: collaborator
     } do
       third_party = insert(:account)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Library.share_block(collaborator, block, third_party.id, :reader)
     end
   end

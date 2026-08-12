@@ -169,11 +169,11 @@ defmodule Athena.Learning.InstructorsTest do
       assert "can't be blank" in errors_on(changeset).owner_id
     end
 
-    test "returns unauthorized if user lacks create permission" do
+    test "returns forbidden if user lacks create permission" do
       user_no_access = insert(:account, role: insert(:role, permissions: []))
       attrs = %{"title" => "Hacker", "owner_id" => Ecto.UUID.generate()}
 
-      assert {:error, :unauthorized} = Instructors.create_instructor(user_no_access, attrs)
+      assert {:error, :forbidden} = Instructors.create_instructor(user_no_access, attrs)
     end
   end
 
@@ -198,13 +198,13 @@ defmodule Athena.Learning.InstructorsTest do
       assert updated.title == "Updated"
     end
 
-    test "returns unauthorized if instructor tries to update someone else's profile", %{
+    test "returns forbidden if instructor tries to update someone else's profile", %{
       instructor_account: account,
       other_account: other
     } do
       other_instructor = insert(:instructor, owner_id: other.id)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Instructors.update_instructor(account, other_instructor, %{"title" => "Hacked"})
     end
   end
@@ -217,13 +217,13 @@ defmodule Athena.Learning.InstructorsTest do
       assert {:error, :not_found} = Instructors.get_instructor(admin, instructor.id)
     end
 
-    test "returns unauthorized if instructor tries to delete someone else's profile", %{
+    test "returns forbidden if instructor tries to delete someone else's profile", %{
       instructor_account: account,
       other_account: other
     } do
       other_instructor = insert(:instructor, owner_id: other.id)
 
-      assert {:error, :unauthorized} = Instructors.delete_instructor(account, other_instructor)
+      assert {:error, :forbidden} = Instructors.delete_instructor(account, other_instructor)
     end
   end
 end

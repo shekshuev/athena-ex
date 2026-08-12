@@ -229,7 +229,7 @@ defmodule Athena.Learning.Submissions do
     if has_access? do
       system_update_submission(submission, attrs)
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -383,7 +383,7 @@ defmodule Athena.Learning.Submissions do
           {:error, changeset}
       end
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 

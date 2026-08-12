@@ -108,14 +108,14 @@ defmodule Athena.Learning.EnrollmentsTest do
                Enrollments.enroll_cohort(user_no_access, cohort.id, course.id)
     end
 
-    test "returns unauthorized if instructor can teach in cohort but cannot read the course", %{
+    test "returns forbidden if instructor can teach in cohort but cannot read the course", %{
       instructor: inst,
       admin: admin
     } do
       cohort = insert(:cohort, owner_id: inst.id)
       course = insert(:course, owner_id: admin.id)
 
-      assert {:error, :unauthorized} = Enrollments.enroll_cohort(inst, cohort.id, course.id)
+      assert {:error, :forbidden} = Enrollments.enroll_cohort(inst, cohort.id, course.id)
     end
   end
 
@@ -257,12 +257,12 @@ defmodule Athena.Learning.EnrollmentsTest do
       assert updated.status == :dropped
     end
 
-    test "returns unauthorized if user cannot teach in cohort", %{admin: admin, instructor: inst} do
+    test "returns forbidden if user cannot teach in cohort", %{admin: admin, instructor: inst} do
       cohort = insert(:cohort, owner_id: admin.id)
       course = insert(:course, owner_id: admin.id)
       {:ok, enrollment} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Enrollments.update_enrollment(inst, enrollment, %{status: :dropped})
     end
   end
@@ -280,12 +280,12 @@ defmodule Athena.Learning.EnrollmentsTest do
       end
     end
 
-    test "returns unauthorized if user cannot teach in cohort", %{admin: admin, instructor: inst} do
+    test "returns forbidden if user cannot teach in cohort", %{admin: admin, instructor: inst} do
       cohort = insert(:cohort, owner_id: admin.id)
       course = insert(:course, owner_id: admin.id)
       {:ok, enrollment} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
 
-      assert {:error, :unauthorized} = Enrollments.delete_enrollment(inst, enrollment)
+      assert {:error, :forbidden} = Enrollments.delete_enrollment(inst, enrollment)
     end
   end
 

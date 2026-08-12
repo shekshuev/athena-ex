@@ -2,7 +2,7 @@ defmodule Athena.Identity.Roles do
   @moduledoc """
   Internal business logic for the Role entity.
 
-  Handles CRUD operations for roles, updating permissions/policies, 
+  Handles CRUD operations for roles, updating permissions/policies,
   and safely deleting roles while handling foreign key constraints.
   """
 
@@ -18,7 +18,7 @@ defmodule Athena.Identity.Roles do
     if Acl.can?(user, "roles.read") do
       Flop.validate_and_run(Role, params, for: Role)
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -31,7 +31,7 @@ defmodule Athena.Identity.Roles do
     if Acl.can?(user, "roles.read") do
       Repo.all(Role)
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -46,7 +46,7 @@ defmodule Athena.Identity.Roles do
         role -> {:ok, role}
       end
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -71,7 +71,7 @@ defmodule Athena.Identity.Roles do
     if Acl.can?(user, "roles.create") do
       system_create_role(attrs)
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -110,7 +110,7 @@ defmodule Athena.Identity.Roles do
           error
       end
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -128,7 +128,7 @@ defmodule Athena.Identity.Roles do
       |> Repo.transaction()
       |> finalize_delete()
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 

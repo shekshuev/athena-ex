@@ -82,7 +82,7 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponent do
       {:error, msg} when is_binary(msg) ->
         {:noreply, assign(socket, error_msg: msg)}
 
-      {:error, :unauthorized} ->
+      {:error, :forbidden} ->
         {:noreply, assign(socket, error_msg: gettext("Permission denied."))}
     end
   end

@@ -143,7 +143,7 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponent do
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}
 
-      {:error, :unauthorized} ->
+      {:error, :forbidden} ->
         {:noreply,
          socket
          |> put_flash(:error, gettext("You are not authorized to update this profile."))
@@ -165,7 +165,7 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponent do
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}
 
-      {:error, :unauthorized} ->
+      {:error, :forbidden} ->
         {:noreply,
          socket
          |> put_flash(:error, gettext("You are not authorized to create instructors."))

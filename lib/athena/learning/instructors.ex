@@ -91,7 +91,7 @@ defmodule Athena.Learning.Instructors do
       |> Instructor.changeset(attrs)
       |> Repo.insert()
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -106,7 +106,7 @@ defmodule Athena.Learning.Instructors do
       |> Instructor.changeset(attrs)
       |> Repo.update()
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -119,7 +119,7 @@ defmodule Athena.Learning.Instructors do
     if Identity.can?(user, "instructors.delete", instructor) do
       Repo.delete(instructor)
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 

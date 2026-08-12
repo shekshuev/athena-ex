@@ -61,7 +61,7 @@ defmodule Athena.Learning.Cohorts do
   Optionally accepts a list of instructor IDs in `instructor_ids` to assign them immediately.
   """
   @spec create_cohort(map(), map()) ::
-          {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()} | {:error, :unauthorized}
+          {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()} | {:error, :forbidden}
   def create_cohort(user, attrs) do
     if Identity.can?(user, "cohorts.create") do
       %Cohort{owner_id: user.id}
@@ -70,7 +70,7 @@ defmodule Athena.Learning.Cohorts do
       |> put_instructors(attrs["instructor_ids"] || attrs[:instructor_ids])
       |> Repo.insert()
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -80,7 +80,7 @@ defmodule Athena.Learning.Cohorts do
   If `instructor_ids` is provided, it completely replaces the current list of instructors.
   """
   @spec update_cohort(map(), Cohort.t(), map()) ::
-          {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()} | {:error, :unauthorized}
+          {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()} | {:error, :forbidden}
   def update_cohort(user, %Cohort{} = cohort, attrs) do
     if Identity.can?(user, "cohorts.update", cohort) do
       cohort
@@ -89,7 +89,7 @@ defmodule Athena.Learning.Cohorts do
       |> put_instructors(attrs["instructor_ids"] || attrs[:instructor_ids])
       |> Repo.update()
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -102,7 +102,7 @@ defmodule Athena.Learning.Cohorts do
     if Identity.can?(user, "cohorts.delete", cohort) do
       Repo.delete(cohort)
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -229,7 +229,7 @@ defmodule Athena.Learning.Cohorts do
           {:ok, CohortMembership.t()}
           | {:error, Ecto.Changeset.t()}
           | {:error, String.t()}
-          | {:error, :unauthorized}
+          | {:error, :forbidden}
   def add_student_to_cohort(user, cohort_id, account_id) do
     cohort = Repo.get!(Cohort, cohort_id)
 
@@ -241,7 +241,7 @@ defmodule Athena.Learning.Cohorts do
 
   @doc false
   defp check_cohort_manage_rights(user, cohort) do
-    if can_manage_cohort_processes?(user, cohort), do: :ok, else: {:error, :unauthorized}
+    if can_manage_cohort_processes?(user, cohort), do: :ok, else: {:error, :forbidden}
   end
 
   @doc false
@@ -326,7 +326,7 @@ defmodule Athena.Learning.Cohorts do
     if can_manage_cohort_processes?(user, cohort) do
       Repo.delete(membership)
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 

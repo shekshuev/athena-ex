@@ -59,7 +59,7 @@ defmodule Athena.Learning.Schedules do
         conflict_target: [:cohort_id, :resource_id, :resource_type]
       )
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -68,7 +68,7 @@ defmodule Athena.Learning.Schedules do
   Enforces ACL.
   """
   @spec clear_override(map(), map(), map(), atom() | String.t(), String.t()) ::
-          {:ok, {integer(), nil | [term()]}} | {:error, :unauthorized}
+          {:ok, {integer(), nil | [term()]}} | {:error, :forbidden}
   def clear_override(user, cohort, course, resource_type, resource_id) do
     if can_manage_schedule?(user, cohort, course) do
       res_type_str = to_string(resource_type)
@@ -84,7 +84,7 @@ defmodule Athena.Learning.Schedules do
 
       {:ok, result}
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 

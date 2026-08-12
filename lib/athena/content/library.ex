@@ -85,33 +85,33 @@ defmodule Athena.Content.Library do
 
   @doc "Creates a new library block template. Sets owner to current user."
   @spec create_library_block(map(), map()) ::
-          {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+          {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def create_library_block(user, attrs) do
     if Identity.can?(user, "library.update") do
       %LibraryBlock{owner_id: user.id}
       |> LibraryBlock.changeset(attrs)
       |> Repo.insert()
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
   @doc "Updates a library block template. Checks own_only policies."
   @spec update_library_block(map(), LibraryBlock.t(), map()) ::
-          {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+          {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def update_library_block(user, %LibraryBlock{} = block, attrs) do
     if can_edit_block?(user, block) do
       block
       |> LibraryBlock.changeset(attrs)
       |> Repo.update()
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
   @doc "Deletes a library block template. Checks own_only policies."
   @spec delete_library_block(map(), LibraryBlock.t()) ::
-          {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+          {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def delete_library_block(user, %LibraryBlock{} = block) do
     if can_edit_block?(user, block) do
       block
@@ -126,7 +126,7 @@ defmodule Athena.Content.Library do
       )
       |> Repo.delete()
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -232,7 +232,7 @@ defmodule Athena.Content.Library do
         {:error, changeset} -> {:error, changeset}
       end
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -248,7 +248,7 @@ defmodule Athena.Content.Library do
 
       {:ok, :revoked}
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -261,7 +261,7 @@ defmodule Athena.Content.Library do
       |> Ecto.Changeset.change(%{is_public: is_public})
       |> Repo.update()
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
