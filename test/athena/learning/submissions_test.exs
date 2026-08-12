@@ -313,10 +313,10 @@ defmodule Athena.Learning.SubmissionsTest do
       assert updated.feedback == "Good job!"
     end
 
-    test "update_submission/3 returns unauthorized if user lacks permission", %{student: student} do
+    test "update_submission/3 returns forbidden if user lacks permission", %{student: student} do
       submission = insert(:submission)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Submissions.update_submission(student, submission, %{"score" => 100})
     end
   end
@@ -354,7 +354,7 @@ defmodule Athena.Learning.SubmissionsTest do
       assert updated.score == 100
     end
 
-    test "returns unauthorized if instructor does NOT own the course", %{
+    test "returns forbidden if instructor does NOT own the course", %{
       instructor: instructor,
       student: student
     } do
@@ -365,7 +365,7 @@ defmodule Athena.Learning.SubmissionsTest do
 
       submission = insert(:submission, account_id: student.id, block_id: block.id, score: 0)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Submissions.update_submission(instructor, submission, %{"score" => 100})
     end
   end
@@ -643,13 +643,13 @@ defmodule Athena.Learning.SubmissionsTest do
       refute block.id in Athena.Learning.Progress.completed_block_ids(student.id, section.id)
     end
 
-    test "returns unauthorized if user lacks permission", %{
+    test "returns forbidden if user lacks permission", %{
       student: student,
       block: block
     } do
       submission = insert(:submission, account_id: student.id, block_id: block.id)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Submissions.delete_submission_with_rollback(student, submission)
     end
   end
@@ -685,7 +685,7 @@ defmodule Athena.Learning.SubmissionsTest do
                Submissions.delete_submission_with_rollback(instructor, submission)
     end
 
-    test "returns unauthorized if instructor does NOT own the course", %{
+    test "returns forbidden if instructor does NOT own the course", %{
       instructor: instructor,
       student: student
     } do
@@ -696,7 +696,7 @@ defmodule Athena.Learning.SubmissionsTest do
 
       submission = insert(:submission, account_id: student.id, block_id: block.id)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Submissions.delete_submission_with_rollback(instructor, submission)
     end
   end
