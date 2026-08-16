@@ -69,7 +69,7 @@ defmodule Athena.Identity.ProfilesTest do
       assert updated.first_name == "AdminChanged"
     end
 
-    test "should return unauthorized if a user tries to update another user's profile without permission",
+    test "should return forbidden if a user tries to update another user's profile without permission",
          %{
            student: student,
            other_student: other_student
@@ -77,7 +77,7 @@ defmodule Athena.Identity.ProfilesTest do
       profile = insert(:profile, owner: student, first_name: "OldName")
       attrs = %{"first_name" => "Hacked"}
 
-      assert {:error, :unauthorized} = Profiles.update_profile(other_student, profile, attrs)
+      assert {:error, :forbidden} = Profiles.update_profile(other_student, profile, attrs)
     end
   end
 end

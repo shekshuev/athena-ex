@@ -173,9 +173,9 @@ defmodule Athena.Learning.CohortsTest do
       assert "can't be blank" in errors_on(changeset).name
     end
 
-    test "returns unauthorized if user lacks permissions" do
+    test "returns forbidden if user lacks permissions" do
       user_no_access = insert(:account, role: insert(:role, permissions: []))
-      assert {:error, :unauthorized} = Cohorts.create_cohort(user_no_access, %{"name" => "Test"})
+      assert {:error, :forbidden} = Cohorts.create_cohort(user_no_access, %{"name" => "Test"})
     end
 
     test "ignores owner_id injected via attrs (security check)", %{
@@ -218,13 +218,13 @@ defmodule Athena.Learning.CohortsTest do
       assert hd(updated.instructors).id == inst2.id
     end
 
-    test "returns unauthorized if instructor tries to update someone else's cohort", %{
+    test "returns forbidden if instructor tries to update someone else's cohort", %{
       admin: admin,
       inst1_account: inst_account
     } do
       cohort = insert(:cohort, name: "Admin's Cohort", owner_id: admin.id)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Cohorts.update_cohort(inst_account, cohort, %{"name" => "Hacked"})
     end
   end
@@ -237,13 +237,13 @@ defmodule Athena.Learning.CohortsTest do
       assert {:error, :not_found} = Cohorts.get_cohort(admin, cohort.id)
     end
 
-    test "returns unauthorized if instructor tries to delete someone else's cohort", %{
+    test "returns forbidden if instructor tries to delete someone else's cohort", %{
       admin: admin,
       inst1_account: inst_account
     } do
       cohort = insert(:cohort, owner_id: admin.id)
 
-      assert {:error, :unauthorized} = Cohorts.delete_cohort(inst_account, cohort)
+      assert {:error, :forbidden} = Cohorts.delete_cohort(inst_account, cohort)
     end
   end
 

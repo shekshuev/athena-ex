@@ -181,15 +181,15 @@ defmodule Athena.Content.BlocksTest do
       attrs = %{"type" => "text"}
 
       assert {:error, changeset} = Blocks.create_block(admin, attrs)
-      assert changeset == :unauthorized
+      assert changeset == :forbidden
     end
 
-    test "returns unauthorized if user lacks edit rights on course", %{
+    test "returns forbidden if user lacks edit rights on course", %{
       student: student,
       section: s
     } do
       attrs = %{"type" => "text", "section_id" => s.id}
-      assert {:error, :unauthorized} = Blocks.create_block(student, attrs)
+      assert {:error, :forbidden} = Blocks.create_block(student, attrs)
     end
   end
 
@@ -210,9 +210,9 @@ defmodule Athena.Content.BlocksTest do
       assert "can't be blank" in errors_on(changeset).type
     end
 
-    test "returns unauthorized if user lacks edit rights", %{student: student, section: s} do
+    test "returns forbidden if user lacks edit rights", %{student: student, section: s} do
       block = insert(:block, section: s)
-      assert {:error, :unauthorized} = Blocks.update_block(student, block, %{"type" => "code"})
+      assert {:error, :forbidden} = Blocks.update_block(student, block, %{"type" => "code"})
     end
 
     test "prevents IDOR: user cannot move block to or from unpermitted sections", %{
@@ -226,10 +226,10 @@ defmodule Athena.Content.BlocksTest do
       c2 = insert(:course, owner_id: other.id)
       s2 = insert(:section, course: c2)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Blocks.update_block(instructor, b1, %{"section_id" => s2.id})
 
-      assert {:error, :unauthorized} = Blocks.update_block(other, b1, %{"section_id" => s2.id})
+      assert {:error, :forbidden} = Blocks.update_block(other, b1, %{"section_id" => s2.id})
     end
   end
 
@@ -259,9 +259,9 @@ defmodule Athena.Content.BlocksTest do
       assert updated.order == 3024
     end
 
-    test "returns unauthorized if user lacks edit rights", %{student: student, section: s} do
+    test "returns forbidden if user lacks edit rights", %{student: student, section: s} do
       b1 = insert(:block, section: s)
-      assert {:error, :unauthorized} = Blocks.reorder_block(student, b1, 1)
+      assert {:error, :forbidden} = Blocks.reorder_block(student, b1, 1)
     end
   end
 
@@ -273,9 +273,9 @@ defmodule Athena.Content.BlocksTest do
       assert Repo.get(Block, block.id) == nil
     end
 
-    test "returns unauthorized if user lacks edit rights", %{student: student, section: s} do
+    test "returns forbidden if user lacks edit rights", %{student: student, section: s} do
       block = insert(:block, section: s)
-      assert {:error, :unauthorized} = Blocks.delete_block(student, block)
+      assert {:error, :forbidden} = Blocks.delete_block(student, block)
     end
   end
 
@@ -293,8 +293,8 @@ defmodule Athena.Content.BlocksTest do
       assert is_binary(meta.url)
     end
 
-    test "returns unauthorized if user lacks edit rights", %{student: student, course: c} do
-      assert {:error, :unauthorized} = Blocks.prepare_media_upload(student, c.id, "test.mp4")
+    test "returns forbidden if user lacks edit rights", %{student: student, course: c} do
+      assert {:error, :forbidden} = Blocks.prepare_media_upload(student, c.id, "test.mp4")
     end
   end
 
@@ -326,12 +326,12 @@ defmodule Athena.Content.BlocksTest do
       assert updated_block.content["poster_url"] == "http://img.com"
     end
 
-    test "returns unauthorized if user lacks edit rights", %{student: student, section: s} do
+    test "returns forbidden if user lacks edit rights", %{student: student, section: s} do
       block = insert(:block, section: s)
       meta = %{bucket: "b", key: "k", url_for_saved_entry: "url"}
       file_info = %{name: "n", type: "t", size: 10}
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Blocks.attach_media_to_block(student, block, meta, file_info)
     end
   end
@@ -407,7 +407,7 @@ defmodule Athena.Content.BlocksTest do
         "section_id" => section.id
       }
 
-      assert {:error, :unauthorized} = Blocks.create_block(instructor, attrs)
+      assert {:error, :forbidden} = Blocks.create_block(instructor, attrs)
     end
 
     test "writer via CourseShare can update block", %{
@@ -436,7 +436,7 @@ defmodule Athena.Content.BlocksTest do
 
       block = insert(:block, section: section)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Blocks.update_block(instructor, block, %{"content" => %{"text" => "Hacked"}})
     end
 
@@ -490,7 +490,7 @@ defmodule Athena.Content.BlocksTest do
       assert {:ok, _share} =
                Athena.Content.share_course(admin, course, instructor.id, :reader)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Blocks.prepare_media_upload(instructor, course.id, "test.mp4")
     end
 
@@ -560,11 +560,11 @@ defmodule Athena.Content.BlocksTest do
       assert is_binary(meta.url)
     end
 
-    test "returns unauthorized if user lacks edit rights and context is course_material", %{
+    test "returns forbidden if user lacks edit rights and context is course_material", %{
       student: student,
       course: c
     } do
-      assert {:error, :unauthorized} = Blocks.prepare_media_upload(student, c.id, "test.mp4")
+      assert {:error, :forbidden} = Blocks.prepare_media_upload(student, c.id, "test.mp4")
     end
 
     test "allows student to get presigned url if context is submission", %{

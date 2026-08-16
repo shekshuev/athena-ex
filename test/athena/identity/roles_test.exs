@@ -35,9 +35,9 @@ defmodule Athena.Identity.RolesTest do
       assert length(roles) == 4
     end
 
-    test "should return unauthorized if user lacks roles.read", %{student: student} do
-      assert {:error, :unauthorized} = Roles.list_roles(student, %{})
-      assert {:error, :unauthorized} = Roles.list_all_roles(student)
+    test "should return forbidden if user lacks roles.read", %{student: student} do
+      assert {:error, :forbidden} = Roles.list_roles(student, %{})
+      assert {:error, :forbidden} = Roles.list_all_roles(student)
     end
   end
 
@@ -60,9 +60,9 @@ defmodule Athena.Identity.RolesTest do
       assert {:error, :not_found} = Roles.get_role_by_name("non_existent")
     end
 
-    test "should return unauthorized if user lacks roles.read", %{student: student} do
+    test "should return forbidden if user lacks roles.read", %{student: student} do
       role = insert(:role)
-      assert {:error, :unauthorized} = Roles.get_role(student, role.id)
+      assert {:error, :forbidden} = Roles.get_role(student, role.id)
     end
   end
 
@@ -84,9 +84,9 @@ defmodule Athena.Identity.RolesTest do
       assert "has already been taken" in errors_on(changeset).name
     end
 
-    test "should return unauthorized if user lacks roles.create", %{student: student} do
+    test "should return forbidden if user lacks roles.create", %{student: student} do
       attrs = %{name: "HackerRole", permissions: ["admin"]}
-      assert {:error, :unauthorized} = Roles.create_role(student, attrs)
+      assert {:error, :forbidden} = Roles.create_role(student, attrs)
     end
   end
 
@@ -129,10 +129,10 @@ defmodule Athena.Identity.RolesTest do
       assert cached_other.id == other_account.id
     end
 
-    test "should return unauthorized if user lacks roles.update", %{student: student} do
+    test "should return forbidden if user lacks roles.update", %{student: student} do
       role = insert(:role)
       attrs = %{name: "Pwned Role"}
-      assert {:error, :unauthorized} = Roles.update_role(student, role, attrs)
+      assert {:error, :forbidden} = Roles.update_role(student, role, attrs)
     end
   end
 
@@ -153,9 +153,9 @@ defmodule Athena.Identity.RolesTest do
       assert {:ok, _} = Roles.get_role(admin, role_in_use.id)
     end
 
-    test "should return unauthorized if user lacks roles.delete", %{student: student} do
+    test "should return forbidden if user lacks roles.delete", %{student: student} do
       role = insert(:role)
-      assert {:error, :unauthorized} = Roles.delete_role(student, role)
+      assert {:error, :forbidden} = Roles.delete_role(student, role)
     end
   end
 end

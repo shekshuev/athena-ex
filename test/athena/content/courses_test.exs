@@ -168,8 +168,8 @@ defmodule Athena.Content.CoursesTest do
       assert "has already been taken" in errors_on(changeset).title
     end
 
-    test "returns unauthorized if user lacks create permission", %{student: student} do
-      assert {:error, :unauthorized} =
+    test "returns forbidden if user lacks create permission", %{student: student} do
+      assert {:error, :forbidden} =
                Courses.create_course(student, %{"title" => "Hacked Course"})
     end
   end
@@ -198,13 +198,13 @@ defmodule Athena.Content.CoursesTest do
       assert updated.title == "My Updated Course"
     end
 
-    test "returns unauthorized if instructor tries to update someone else's course", %{
+    test "returns forbidden if instructor tries to update someone else's course", %{
       instructor: instructor,
       other_instructor: other
     } do
       course = insert(:course, owner_id: other.id)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Courses.update_course(instructor, course, %{"title" => "Hacked"})
     end
   end
@@ -225,12 +225,12 @@ defmodule Athena.Content.CoursesTest do
       assert deleted.deleted_at != nil
     end
 
-    test "returns unauthorized if instructor tries to delete someone else's course", %{
+    test "returns forbidden if instructor tries to delete someone else's course", %{
       instructor: instructor,
       other_instructor: other
     } do
       course = insert(:course, owner_id: other.id)
-      assert {:error, :unauthorized} = Courses.soft_delete_course(instructor, course)
+      assert {:error, :forbidden} = Courses.soft_delete_course(instructor, course)
     end
   end
 
@@ -365,7 +365,7 @@ defmodule Athena.Content.CoursesTest do
     } do
       Courses.share_course(owner, course, collaborator.id, :reader)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Courses.update_course(collaborator, course, %{"title" => "Hacked"})
 
       Courses.share_course(owner, course, collaborator.id, :writer)
@@ -386,7 +386,7 @@ defmodule Athena.Content.CoursesTest do
 
       assert Courses.list_course_shares(course) == []
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Courses.update_course(collaborator, course, %{"title" => "Hacked"})
     end
 
@@ -427,11 +427,11 @@ defmodule Athena.Content.CoursesTest do
       Courses.share_course(owner, course, collaborator.id, :writer)
       third_guy = insert(:account)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Courses.share_course(collaborator, course, third_guy.id, :reader)
 
-      assert {:error, :unauthorized} = Courses.revoke_course_share(collaborator, course, owner.id)
-      assert {:error, :unauthorized} = Courses.toggle_course_public(collaborator, course, true)
+      assert {:error, :forbidden} = Courses.revoke_course_share(collaborator, course, owner.id)
+      assert {:error, :forbidden} = Courses.toggle_course_public(collaborator, course, true)
     end
 
     test "list_courses excludes soft-deleted courses even if they were shared", %{
@@ -480,12 +480,12 @@ defmodule Athena.Content.CoursesTest do
                Courses.pin_library_block(owner, course.id, library_block.id)
     end
 
-    test "pin_library_block/3 returns unauthorized if user lacks write access to course", %{
+    test "pin_library_block/3 returns forbidden if user lacks write access to course", %{
       hacker: hacker,
       course: course,
       library_block: library_block
     } do
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Courses.pin_library_block(hacker, course.id, library_block.id)
     end
 
@@ -500,7 +500,7 @@ defmodule Athena.Content.CoursesTest do
       assert Courses.list_course_workspace_blocks(owner, course.id) == []
     end
 
-    test "unpin_library_block/3 returns unauthorized if user lacks write access", %{
+    test "unpin_library_block/3 returns forbidden if user lacks write access", %{
       owner: owner,
       hacker: hacker,
       course: course,
@@ -508,7 +508,7 @@ defmodule Athena.Content.CoursesTest do
     } do
       Courses.pin_library_block(owner, course.id, library_block.id)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Courses.unpin_library_block(hacker, course.id, library_block.id)
     end
 

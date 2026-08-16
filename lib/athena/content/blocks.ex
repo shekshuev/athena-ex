@@ -81,7 +81,7 @@ defmodule Athena.Content.Blocks do
   by finding the maximum order in the section and adding 1024.
   """
   @spec create_block(map(), map()) ::
-          {:ok, Block.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+          {:ok, Block.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def create_block(user, attrs) do
     section_id = Map.get(attrs, "section_id") || Map.get(attrs, :section_id)
 
@@ -111,7 +111,7 @@ defmodule Athena.Content.Blocks do
       |> Block.changeset(merged_attrs)
       |> Repo.insert()
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -119,7 +119,7 @@ defmodule Athena.Content.Blocks do
   Updates an existing block's content or type.
   """
   @spec update_block(map(), Block.t(), map()) ::
-          {:ok, Block.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+          {:ok, Block.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def update_block(user, %Block{} = block, attrs) do
     new_section_id = Map.get(attrs, "section_id") || Map.get(attrs, :section_id, block.section_id)
 
@@ -132,7 +132,7 @@ defmodule Athena.Content.Blocks do
       |> Block.changeset(attrs)
       |> Repo.update()
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -141,7 +141,7 @@ defmodule Athena.Content.Blocks do
   Calculates the gap-based order automatically.
   """
   @spec reorder_block(map(), Block.t(), integer()) ::
-          {:ok, Block.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+          {:ok, Block.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def reorder_block(user, %Block{} = block, new_index) do
     if can_edit_section?(user, block.section_id) do
       blocks =
@@ -161,7 +161,7 @@ defmodule Athena.Content.Blocks do
       |> Ecto.Changeset.change(%{order: new_order})
       |> Repo.update()
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -176,12 +176,12 @@ defmodule Athena.Content.Blocks do
   Media cleanup is handled asynchronously by Oban (Athena.Workers.MediaCleanup).
   """
   @spec delete_block(map(), Block.t()) ::
-          {:ok, Block.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+          {:ok, Block.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def delete_block(user, %Block{} = block) do
     if can_edit_section?(user, block.section_id) do
       Repo.delete(block)
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -226,7 +226,7 @@ defmodule Athena.Content.Blocks do
           {:error, reason}
       end
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -262,7 +262,7 @@ defmodule Athena.Content.Blocks do
           {:error, failed_value}
       end
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 

@@ -61,7 +61,7 @@ defmodule Athena.Identity.Accounts do
           {:error, failed_operation, changeset}
       end
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
@@ -96,7 +96,7 @@ defmodule Athena.Identity.Accounts do
           {:error, failed_operation, changeset}
       end
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 

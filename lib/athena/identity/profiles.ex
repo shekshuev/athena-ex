@@ -2,7 +2,7 @@ defmodule Athena.Identity.Profiles do
   @moduledoc """
   Internal business logic for the Profile entity.
 
-  Manages creation and updates of user profiles, ensuring 1-to-1 
+  Manages creation and updates of user profiles, ensuring 1-to-1
   relationship constraints and emitting domain events via Oban outbox.
   """
 
@@ -52,7 +52,7 @@ defmodule Athena.Identity.Profiles do
         {:error, :profile, changeset, _} -> {:error, changeset}
       end
     else
-      {:error, :unauthorized}
+      {:error, :forbidden}
     end
   end
 
