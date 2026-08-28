@@ -17,8 +17,8 @@ defmodule Athena.Content.Course do
 
   @derive {
     Flop.Schema,
-    filterable: [:title, :status, :owner_id],
-    sortable: [:title, :status, :inserted_at],
+    filterable: [:title, :status, :owner_id, :code],
+    sortable: [:title, :status, :code, :inserted_at],
     default_limit: 10,
     default_order: %{
       order_by: [:inserted_at],
@@ -34,6 +34,7 @@ defmodule Athena.Content.Course do
     field :deleted_at, :utc_datetime
     field :type, Ecto.Enum, values: [:standard, :competition], default: :standard
     field :is_public, :boolean, default: false
+    field :code, :string
 
     has_many :sections, Section
     has_many :shares, Athena.Content.CourseShare, on_delete: :delete_all
@@ -50,9 +51,45 @@ defmodule Athena.Content.Course do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(course, attrs) do
     course
-    |> cast(attrs, [:title, :description, :status, :type, :owner_id, :deleted_at, :is_public])
+    |> cast(attrs, [
+      :title,
+      :description,
+      :status,
+      :type,
+      :owner_id,
+      :deleted_at,
+      :is_public,
+      :code
+    ])
     |> validate_required([:title, :status, :type, :owner_id])
     |> validate_length(:title, min: 3, max: 255)
     |> unique_constraint(:title, name: :courses_title_index)
+    |> validate_code()
+  end
+
+  defp validate_code(changeset) do
+    code = get_field(changeset, :code)
+
+    case code do
+      nil ->
+        changeset
+
+      "" ->
+        put_change(changeset, :code, nil)
+
+      value ->
+        if Regex.match?(~r/^[a-zA-Z0-9_\-\.\/+]+$/, value) and byte_size(value) <= 50 do
+          changeset
+          |> unique_constraint(:code, name: :courses_code_index)
+        else
+          put_change(changeset, :code, nil)
+
+          add_error(
+            changeset,
+            :code,
+            "must contain only letters, digits, hyphens, underscores, dots, slashes, or plus signs (max 50 characters)"
+          )
+        end
+    end
   end
 end

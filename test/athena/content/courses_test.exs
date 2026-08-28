@@ -540,4 +540,100 @@ defmodule Athena.Content.CoursesTest do
       assert {:error, :not_found} = Courses.list_course_workspace_blocks(hacker, course.id)
     end
   end
+
+  describe "Course Code Field" do
+    test "creates a course with a valid code", %{admin: admin} do
+      attrs = %{"title" => "Database Systems", "code" => "DB-2026"}
+
+      assert {:ok, %Course{} = course} = Courses.create_course(admin, attrs)
+      assert course.code == "DB-2026"
+    end
+
+    test "creates a course without a code (nil by default)", %{admin: admin} do
+      attrs = %{"title" => "Mathematics"}
+
+      assert {:ok, %Course{} = course} = Courses.create_course(admin, attrs)
+      assert is_nil(course.code)
+    end
+
+    test "empty code string is converted to nil", %{admin: admin} do
+      attrs = %{"title" => "Physics", "code" => ""}
+
+      assert {:ok, %Course{} = course} = Courses.create_course(admin, attrs)
+      assert is_nil(course.code)
+    end
+
+    test "validates code format - allows alphanumeric, hyphens, underscores, dots, slashes, plus",
+         %{
+           admin: admin
+         } do
+      valid_codes = ["DB-2026", "MA-09.05.01-2025", "CS_W2026", "DB+Advanced", "AI/ML"]
+
+      Enum.each(valid_codes, fn code ->
+        attrs = %{"title" => "Test Course #{code}", "code" => code}
+        assert {:ok, course} = Courses.create_course(admin, attrs)
+        assert course.code == code
+
+        # Clean up
+        Courses.soft_delete_course(admin, course)
+      end)
+    end
+
+    test "rejects code with invalid characters", %{admin: admin} do
+      invalid_codes = ["DB 2026", "DB@2026", "DB&2026"]
+
+      Enum.each(invalid_codes, fn code ->
+        attrs = %{"title" => "Test Course #{code}", "code" => code}
+        assert {:error, changeset} = Courses.create_course(admin, attrs)
+
+        assert errors_on(changeset).code == [
+                 "must contain only letters, digits, hyphens, underscores, dots, slashes, or plus signs (max 50 characters)"
+               ]
+      end)
+    end
+
+    test "rejects code longer than 50 characters", %{admin: admin} do
+      long_code = String.duplicate("A", 51)
+      attrs = %{"title" => "Long Code Course", "code" => long_code}
+
+      assert {:error, changeset} = Courses.create_course(admin, attrs)
+
+      assert errors_on(changeset).code == [
+               "must contain only letters, digits, hyphens, underscores, dots, slashes, or plus signs (max 50 characters)"
+             ]
+    end
+
+    test "enforces unique code constraint", %{admin: admin} do
+      attrs = %{"title" => "First Course", "code" => "UNIQUE-001"}
+
+      assert {:ok, _course1} = Courses.create_course(admin, attrs)
+
+      assert {:error, changeset} =
+               Courses.create_course(admin, %{"title" => "Second Course", "code" => "UNIQUE-001"})
+
+      assert "has already been taken" in errors_on(changeset).code
+    end
+
+    test "allows duplicate nil codes", %{admin: admin} do
+      attrs1 = %{"title" => "Course Without Code 1"}
+      attrs2 = %{"title" => "Course Without Code 2"}
+
+      assert {:ok, _course1} = Courses.create_course(admin, attrs1)
+      assert {:ok, _course2} = Courses.create_course(admin, attrs2)
+    end
+
+    test "updates course code", %{admin: admin} do
+      course = insert(:course, title: "Original Title")
+
+      assert {:ok, updated} = Courses.update_course(admin, course, %{"code" => "UPDATED-2026"})
+      assert updated.code == "UPDATED-2026"
+    end
+
+    test "clears course code when set to empty", %{admin: admin} do
+      course = insert(:course, title: "Original Title", code: "OLD-CODE")
+
+      assert {:ok, updated} = Courses.update_course(admin, course, %{"code" => ""})
+      assert is_nil(updated.code)
+    end
+  end
 end

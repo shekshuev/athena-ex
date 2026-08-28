@@ -125,6 +125,14 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
           />
 
           <.input
+            field={@form[:code]}
+            type="text"
+            label={gettext("Course Code")}
+            placeholder={gettext("e.g. DB-2026, MA-09.05.01-2025-Весна")}
+            required={false}
+          />
+
+          <.input
             field={@form[:description]}
             type="textarea"
             label={gettext("Description")}

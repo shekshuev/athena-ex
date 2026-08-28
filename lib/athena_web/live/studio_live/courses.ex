@@ -339,6 +339,11 @@ defmodule AthenaWeb.StudioLive.Courses do
             <.access_badges info={course_badges(course, @current_user)} />
           </div>
         </:col>
+        <:col :let={{_id, course}} label={gettext("Code")} sort="code">
+          <span class="text-sm font-mono text-base-content/70">
+            {if course.code, do: course.code, else: "-"}
+          </span>
+        </:col>
         <:col :let={{_id, course}} label={gettext("Status")} sort="status">
           <.status_badge status={course.status} />
         </:col>
