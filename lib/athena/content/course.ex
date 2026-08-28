@@ -51,7 +51,16 @@ defmodule Athena.Content.Course do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(course, attrs) do
     course
-    |> cast(attrs, [:title, :description, :status, :type, :owner_id, :deleted_at, :is_public, :code])
+    |> cast(attrs, [
+      :title,
+      :description,
+      :status,
+      :type,
+      :owner_id,
+      :deleted_at,
+      :is_public,
+      :code
+    ])
     |> validate_required([:title, :status, :type, :owner_id])
     |> validate_length(:title, min: 3, max: 255)
     |> unique_constraint(:title, name: :courses_title_index)
@@ -74,7 +83,12 @@ defmodule Athena.Content.Course do
           |> unique_constraint(:code, name: :courses_code_index)
         else
           put_change(changeset, :code, nil)
-          add_error(changeset, :code, "must contain only letters, digits, hyphens, underscores, dots, slashes, or plus signs (max 50 characters)")
+
+          add_error(
+            changeset,
+            :code,
+            "must contain only letters, digits, hyphens, underscores, dots, slashes, or plus signs (max 50 characters)"
+          )
         end
     end
   end

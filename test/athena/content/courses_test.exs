@@ -563,9 +563,10 @@ defmodule Athena.Content.CoursesTest do
       assert is_nil(course.code)
     end
 
-    test "validates code format - allows alphanumeric, hyphens, underscores, dots, slashes, plus", %{
-      admin: admin
-    } do
+    test "validates code format - allows alphanumeric, hyphens, underscores, dots, slashes, plus",
+         %{
+           admin: admin
+         } do
       valid_codes = ["DB-2026", "MA-09.05.01-2025", "CS_W2026", "DB+Advanced", "AI/ML"]
 
       Enum.each(valid_codes, fn code ->
@@ -584,7 +585,10 @@ defmodule Athena.Content.CoursesTest do
       Enum.each(invalid_codes, fn code ->
         attrs = %{"title" => "Test Course #{code}", "code" => code}
         assert {:error, changeset} = Courses.create_course(admin, attrs)
-        assert errors_on(changeset).code == ["must contain only letters, digits, hyphens, underscores, dots, slashes, or plus signs (max 50 characters)"]
+
+        assert errors_on(changeset).code == [
+                 "must contain only letters, digits, hyphens, underscores, dots, slashes, or plus signs (max 50 characters)"
+               ]
       end)
     end
 
@@ -593,7 +597,10 @@ defmodule Athena.Content.CoursesTest do
       attrs = %{"title" => "Long Code Course", "code" => long_code}
 
       assert {:error, changeset} = Courses.create_course(admin, attrs)
-      assert errors_on(changeset).code == ["must contain only letters, digits, hyphens, underscores, dots, slashes, or plus signs (max 50 characters)"]
+
+      assert errors_on(changeset).code == [
+               "must contain only letters, digits, hyphens, underscores, dots, slashes, or plus signs (max 50 characters)"
+             ]
     end
 
     test "enforces unique code constraint", %{admin: admin} do
