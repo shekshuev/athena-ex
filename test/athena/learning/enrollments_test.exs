@@ -119,6 +119,80 @@ defmodule Athena.Learning.EnrollmentsTest do
     end
   end
 
+  describe "enroll_account/4" do
+    test "creates an active enrollment by default", %{admin: admin} do
+      student = insert(:account)
+      course = insert(:course, owner_id: admin.id)
+
+      assert {:ok, %Enrollment{} = enrollment} =
+               Enrollments.enroll_account(admin, student.id, course.id)
+
+      assert enrollment.account_id == student.id
+      assert enrollment.course_id == course.id
+      assert enrollment.status == :active
+    end
+
+    test "allows specifying a different status", %{admin: admin} do
+      student = insert(:account)
+      course = insert(:course, owner_id: admin.id)
+
+      assert {:ok, %Enrollment{} = enrollment} =
+               Enrollments.enroll_account(admin, student.id, course.id, :completed)
+
+      assert enrollment.status == :completed
+    end
+
+    test "enforces unique constraint per account and course", %{admin: admin} do
+      student = insert(:account)
+      course = insert(:course, owner_id: admin.id)
+
+      assert {:ok, _} = Enrollments.enroll_account(admin, student.id, course.id)
+      assert {:error, changeset} = Enrollments.enroll_account(admin, student.id, course.id)
+      assert "has already been taken" in errors_on(changeset).course_id
+    end
+
+    test "rejects enrollment into a Competition course", %{admin: admin} do
+      student = insert(:account)
+      competition_course = insert(:course, type: :competition, owner_id: admin.id)
+
+      assert {:error, error_msg} =
+               Enrollments.enroll_account(admin, student.id, competition_course.id)
+
+      assert error_msg == "Cannot individually enroll a student into a Competition course."
+    end
+
+    test "rejects enrollment if the student already has access via a cohort", %{admin: admin} do
+      student = insert(:account)
+      cohort = insert(:cohort, name: "Cohort A", owner_id: admin.id)
+      course = insert(:course, owner_id: admin.id)
+
+      Learning.add_student_to_cohort(admin, cohort.id, student.id)
+      {:ok, _} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
+
+      assert {:error, error_msg} = Enrollments.enroll_account(admin, student.id, course.id)
+      assert error_msg =~ "Cohort A"
+    end
+
+    test "ignores dropped cohort enrollments when checking overlap", %{admin: admin} do
+      student = insert(:account)
+      cohort = insert(:cohort, owner_id: admin.id)
+      course = insert(:course, owner_id: admin.id)
+
+      Learning.add_student_to_cohort(admin, cohort.id, student.id)
+      {:ok, enrollment} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
+      {:ok, _} = Enrollments.update_enrollment(admin, enrollment, %{status: :dropped})
+
+      assert {:ok, %Enrollment{}} = Enrollments.enroll_account(admin, student.id, course.id)
+    end
+
+    test "returns forbidden if user cannot edit the course", %{admin: admin, instructor: inst} do
+      student = insert(:account)
+      course = insert(:course, owner_id: admin.id)
+
+      assert {:error, :forbidden} = Enrollments.enroll_account(inst, student.id, course.id)
+    end
+  end
+
   describe "list_cohort_enrollments/3 (With ACL)" do
     test "admin sees all enrollments", %{admin: admin} do
       cohort = insert(:cohort, owner_id: admin.id)
@@ -265,6 +339,29 @@ defmodule Athena.Learning.EnrollmentsTest do
       assert {:error, :forbidden} =
                Enrollments.update_enrollment(inst, enrollment, %{status: :dropped})
     end
+
+    test "updates an individual (account-based) enrollment status", %{admin: admin} do
+      student = insert(:account)
+      course = insert(:course, owner_id: admin.id)
+      {:ok, enrollment} = Enrollments.enroll_account(admin, student.id, course.id)
+
+      assert {:ok, updated} =
+               Enrollments.update_enrollment(admin, enrollment, %{status: :dropped})
+
+      assert updated.status == :dropped
+    end
+
+    test "returns forbidden for an individual enrollment if user cannot edit the course", %{
+      admin: admin,
+      instructor: inst
+    } do
+      student = insert(:account)
+      course = insert(:course, owner_id: admin.id)
+      {:ok, enrollment} = Enrollments.enroll_account(admin, student.id, course.id)
+
+      assert {:error, :forbidden} =
+               Enrollments.update_enrollment(inst, enrollment, %{status: :dropped})
+    end
   end
 
   describe "delete_enrollment/2" do
@@ -286,6 +383,18 @@ defmodule Athena.Learning.EnrollmentsTest do
       {:ok, enrollment} = Enrollments.enroll_cohort(admin, cohort.id, course.id)
 
       assert {:error, :forbidden} = Enrollments.delete_enrollment(inst, enrollment)
+    end
+
+    test "deletes an individual (account-based) enrollment record", %{admin: admin} do
+      student = insert(:account)
+      course = insert(:course, owner_id: admin.id)
+      {:ok, enrollment} = Enrollments.enroll_account(admin, student.id, course.id)
+
+      assert {:ok, _deleted} = Enrollments.delete_enrollment(admin, enrollment)
+
+      assert_raise Ecto.NoResultsError, fn ->
+        Enrollments.get_enrollment!(admin, enrollment.id)
+      end
     end
   end
 

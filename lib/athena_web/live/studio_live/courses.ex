@@ -7,7 +7,12 @@ defmodule AthenaWeb.StudioLive.Courses do
   alias Athena.Content
   alias Athena.Content.Course
   alias Athena.Identity
-  alias AthenaWeb.StudioLive.{CourseFormComponent, CourseShareComponent}
+
+  alias AthenaWeb.StudioLive.{
+    CourseFormComponent,
+    CourseShareComponent,
+    CourseEnrollmentComponent
+  }
 
   on_mount {AthenaWeb.Hooks.Permission, "courses.read"}
 
@@ -22,6 +27,7 @@ defmodule AthenaWeb.StudioLive.Courses do
      socket
      |> assign(course_to_delete: nil)
      |> assign(course_to_share: nil)
+     |> assign(course_to_enroll: nil)
      |> stream(:courses, [])}
   end
 
@@ -149,6 +155,25 @@ defmodule AthenaWeb.StudioLive.Courses do
 
   def handle_event("cancel_share", _, socket) do
     {:noreply, assign(socket, course_to_share: nil)}
+  end
+
+  def handle_event("enroll_click", %{"id" => id}, socket) do
+    case Content.get_course(socket.assigns.current_user, id) do
+      {:ok, course} ->
+        if course.owner_id == socket.assigns.current_user.id or
+             Identity.can?(socket.assigns.current_user, "courses.update", course) do
+          {:noreply, assign(socket, course_to_enroll: course)}
+        else
+          {:noreply, socket |> put_flash(:error, gettext("Only the owner can enroll students."))}
+        end
+
+      _ ->
+        {:noreply, socket |> put_flash(:error, gettext("Cannot access this course."))}
+    end
+  end
+
+  def handle_event("cancel_enroll", _, socket) do
+    {:noreply, assign(socket, course_to_enroll: nil)}
   end
 
   @impl true
@@ -399,6 +424,17 @@ defmodule AthenaWeb.StudioLive.Courses do
             <.button
               :if={can_edit}
               type="button"
+              phx-click="enroll_click"
+              phx-value-id={course.id}
+              class="btn btn-ghost btn-xs btn-square"
+              title={gettext("Enroll Students")}
+            >
+              <.icon name="hero-user-plus" class="size-4" />
+            </.button>
+
+            <.button
+              :if={can_edit}
+              type="button"
               phx-click="delete_click"
               phx-value-id={course.id}
               class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
@@ -457,6 +493,25 @@ defmodule AthenaWeb.StudioLive.Courses do
           module={CourseShareComponent}
           id={"share-#{@course_to_share.id}"}
           course={@course_to_share}
+          current_user={@current_user}
+        />
+      </.modal>
+
+      <.modal
+        id="enroll-course-modal"
+        show={@course_to_enroll != nil}
+        title={
+          gettext("Enroll Students: %{title}",
+            title: if(@course_to_enroll, do: @course_to_enroll.title, else: "")
+          )
+        }
+        on_cancel={JS.push("cancel_enroll")}
+      >
+        <.live_component
+          :if={@course_to_enroll}
+          module={CourseEnrollmentComponent}
+          id={"enroll-#{@course_to_enroll.id}"}
+          course={@course_to_enroll}
           current_user={@current_user}
         />
       </.modal>

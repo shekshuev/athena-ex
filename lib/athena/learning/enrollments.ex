@@ -203,12 +203,69 @@ defmodule Athena.Learning.Enrollments do
   end
 
   @doc """
+  Enrolls a single student account into a course, independent of any cohort.
+  """
+  def enroll_account(user, account_id, course_id, status \\ :active) do
+    with {:ok, course} <- Content.get_course(course_id) do
+      if Content.can_edit_course?(user, course) do
+        insert_account_if_type_matches(account_id, course, status)
+      else
+        {:error, :forbidden}
+      end
+    else
+      {:error, :not_found} ->
+        {:error, gettext("Course not found or access denied.")}
+    end
+  end
+
+  @doc false
+  defp insert_account_if_type_matches(account_id, course, status) do
+    if course.type != :standard do
+      {:error, gettext("Cannot individually enroll a student into a Competition course.")}
+    else
+      case check_account_overlap(account_id, course.id) do
+        nil ->
+          %Enrollment{}
+          |> Enrollment.changeset(%{account_id: account_id, course_id: course.id, status: status})
+          |> Repo.insert()
+
+        cohort ->
+          {:error,
+           dgettext(
+             "errors",
+             "Cannot enroll: the student already has access to this course via the group \"%{name}\".",
+             name: cohort.name
+           )}
+      end
+    end
+  end
+
+  @doc false
+  defp check_account_overlap(account_id, course_id) do
+    cohort_ids_query =
+      from(cm in CohortMembership,
+        where: cm.account_id == ^account_id,
+        select: cm.cohort_id
+      )
+
+    from(e in Enrollment,
+      join: c in Cohort,
+      on: c.id == e.cohort_id,
+      where:
+        e.course_id == ^course_id and
+          e.status != :dropped and
+          e.cohort_id in subquery(cohort_ids_query),
+      select: c,
+      limit: 1
+    )
+    |> Repo.one()
+  end
+
+  @doc """
   Updates an enrollment's attributes.
   """
   def update_enrollment(user, %Enrollment{} = enrollment, attrs) do
-    cohort = Repo.get(Cohort, enrollment.cohort_id)
-
-    if Cohorts.can_manage_cohort_processes?(user, cohort) do
+    if can_manage_enrollment?(user, enrollment) do
       enrollment
       |> Enrollment.changeset(attrs)
       |> Repo.update()
@@ -221,13 +278,35 @@ defmodule Athena.Learning.Enrollments do
   Revokes access completely by permanently deleting the enrollment record.
   """
   def delete_enrollment(user, %Enrollment{} = enrollment) do
-    cohort = Repo.get(Cohort, enrollment.cohort_id)
-
-    if Cohorts.can_manage_cohort_processes?(user, cohort) do
+    if can_manage_enrollment?(user, enrollment) do
       Repo.delete(enrollment)
     else
       {:error, :forbidden}
     end
+  end
+
+  @doc false
+  defp can_manage_enrollment?(user, %Enrollment{cohort_id: cohort_id})
+       when not is_nil(cohort_id) do
+    cohort = Repo.get(Cohort, cohort_id)
+    Cohorts.can_manage_cohort_processes?(user, cohort)
+  end
+
+  defp can_manage_enrollment?(user, %Enrollment{course_id: course_id}) do
+    case Content.get_course(course_id) do
+      {:ok, course} -> Content.can_edit_course?(user, course)
+      _ -> false
+    end
+  end
+
+  @doc """
+  Lists individual (non-cohort) enrollments for a course.
+  """
+  def list_account_enrollments(course_id) do
+    Enrollment
+    |> where([e], e.course_id == ^course_id and not is_nil(e.account_id))
+    |> Repo.all()
+    |> enrich_enrollments()
   end
 
   @doc """
