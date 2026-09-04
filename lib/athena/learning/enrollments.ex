@@ -206,13 +206,14 @@ defmodule Athena.Learning.Enrollments do
   Enrolls a single student account into a course, independent of any cohort.
   """
   def enroll_account(user, account_id, course_id, status \\ :active) do
-    with {:ok, course} <- Content.get_course(course_id) do
-      if Content.can_edit_course?(user, course) do
-        insert_account_if_type_matches(account_id, course, status)
-      else
-        {:error, :forbidden}
-      end
-    else
+    case Content.get_course(user, course_id) do
+      {:ok, course} ->
+        if Content.can_edit_course?(user, course) do
+          insert_account_if_type_matches(account_id, course, status)
+        else
+          {:error, :forbidden}
+        end
+
       {:error, :not_found} ->
         {:error, gettext("Course not found or access denied.")}
     end
@@ -293,7 +294,7 @@ defmodule Athena.Learning.Enrollments do
   end
 
   defp can_manage_enrollment?(user, %Enrollment{course_id: course_id}) do
-    case Content.get_course(course_id) do
+    case Content.get_course(user, course_id) do
       {:ok, course} -> Content.can_edit_course?(user, course)
       _ -> false
     end
@@ -302,11 +303,21 @@ defmodule Athena.Learning.Enrollments do
   @doc """
   Lists individual (non-cohort) enrollments for a course.
   """
-  def list_account_enrollments(course_id) do
-    Enrollment
-    |> where([e], e.course_id == ^course_id and not is_nil(e.account_id))
-    |> Repo.all()
-    |> enrich_enrollments()
+  def list_account_enrollments(user, course_id) do
+    case Content.get_course(user, course_id) do
+      {:ok, course} ->
+        if Content.can_edit_course?(user, course) do
+          Enrollment
+          |> where([e], e.course_id == ^course_id and not is_nil(e.account_id))
+          |> Repo.all()
+          |> enrich_enrollments()
+        else
+          []
+        end
+
+      _ ->
+        []
+    end
   end
 
   @doc """

@@ -164,7 +164,8 @@ defmodule AthenaWeb.StudioLive.Courses do
              Identity.can?(socket.assigns.current_user, "courses.update", course) do
           {:noreply, assign(socket, course_to_enroll: course)}
         else
-          {:noreply, socket |> put_flash(:error, gettext("Only the owner can enroll students."))}
+          {:noreply,
+           socket |> put_flash(:error, gettext("You do not have permission to enroll students."))}
         end
 
       _ ->

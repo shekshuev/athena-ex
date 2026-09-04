@@ -238,3 +238,8 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "is pinned to a course and cannot be deleted"
 msgstr ""
+
+#: lib/athena/learning/enrollments.ex:235
+#, elixir-autogen, elixir-format
+msgid "Cannot enroll: the student already has access to this course via the group \"%{name}\"."
+msgstr ""

@@ -23,8 +23,8 @@ defmodule AthenaWeb.StudioLive.CourseEnrollmentComponent do
 
   defp load_enrollments(socket, course) do
     enrollments =
-      course.id
-      |> Learning.list_account_enrollments()
+      socket.assigns.current_user
+      |> Learning.list_account_enrollments(course.id)
       |> Enum.reject(&(&1.status == :dropped))
       |> Enum.sort_by(&(&1.account && &1.account.login))
 

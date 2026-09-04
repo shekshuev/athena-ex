@@ -185,11 +185,12 @@ defmodule Athena.Learning.EnrollmentsTest do
       assert {:ok, %Enrollment{}} = Enrollments.enroll_account(admin, student.id, course.id)
     end
 
-    test "returns forbidden if user cannot edit the course", %{admin: admin, instructor: inst} do
+    test "returns error if user cannot read the course", %{admin: admin, instructor: inst} do
       student = insert(:account)
       course = insert(:course, owner_id: admin.id)
 
-      assert {:error, :forbidden} = Enrollments.enroll_account(inst, student.id, course.id)
+      assert {:error, "Course not found or access denied."} =
+               Enrollments.enroll_account(inst, student.id, course.id)
     end
   end
 
