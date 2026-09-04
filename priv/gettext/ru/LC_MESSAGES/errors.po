@@ -234,3 +234,8 @@ msgstr "Невозможно зачислить: следующие студен
 #, elixir-autogen, elixir-format
 msgid "is pinned to a course and cannot be deleted"
 msgstr "прикреплен к курсу и не может быть удален"
+
+#: lib/athena/learning/enrollments.ex:235
+#, elixir-autogen, elixir-format
+msgid "Cannot enroll: the student already has access to this course via the group \"%{name}\"."
+msgstr "Зачисление невозможно - данный пользователь имеет право доступа через группу \"%{name}\"."
