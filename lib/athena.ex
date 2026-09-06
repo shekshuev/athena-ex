@@ -44,6 +44,8 @@ defmodule Athena do
       Messaging.Conversation,
       Messaging.ConversationParticipant,
       Messaging.Message,
-      Messaging.MessageMention
+      Messaging.MessageMention,
+      Engagement,
+      Engagement.Event
     ]
 end

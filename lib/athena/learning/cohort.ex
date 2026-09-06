@@ -29,6 +29,7 @@ defmodule Athena.Learning.Cohort do
     field :type, Ecto.Enum, values: [:academic, :team], default: :academic
     field :instructor_ids, {:array, :binary_id}, virtual: true
     field :owner_id, :binary_id
+    field :nudges_enabled, :boolean, default: false
 
     has_many :memberships, CohortMembership
 
@@ -42,7 +43,7 @@ defmodule Athena.Learning.Cohort do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(cohort, attrs) do
     cohort
-    |> cast(attrs, [:name, :description, :instructor_ids, :type])
+    |> cast(attrs, [:name, :description, :instructor_ids, :type, :nudges_enabled])
     |> validate_required([:name, :type, :owner_id])
   end
 end
