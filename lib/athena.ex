@@ -35,6 +35,8 @@ defmodule Athena do
       Learning.CohortInstructor,
       Learning.Submission,
       Learning.SubmissionContent,
-      Execution
+      Execution,
+      Engagement,
+      Engagement.Event
     ]
 end
