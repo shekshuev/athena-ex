@@ -75,4 +75,42 @@ defmodule Athena.Engagement.Events do
     |> where([e], e.block_id in ^block_ids and e.cohort_id == ^cohort_id)
     |> Repo.all()
   end
+
+  @doc """
+  Pairs `viewport_enter`/`viewport_exit` events (already fetched, e.g. via
+  `list_events_for_scope/2`) into per-session dwell seconds. Shared by
+  `Athena.Engagement.BlockStats` (which needs it for a single bootstrap
+  query) and `Athena.Engagement.Metrics` (which needs the exact same
+  definition of "dwell" for its aggregate metrics) - dwell time is derived
+  exactly once, in one place.
+  """
+  @spec pair_viewport_dwells([Event.t()]) :: [
+          {session_id :: binary(), account_id :: binary(), dwell_seconds :: non_neg_integer()}
+        ]
+  def pair_viewport_dwells(events) do
+    events
+    |> Enum.filter(&(&1.event_type in [:viewport_enter, :viewport_exit]))
+    |> Enum.group_by(& &1.session_id)
+    |> Enum.flat_map(fn {session_id, session_events} ->
+      account_id = session_events |> List.first() |> Map.get(:account_id)
+
+      session_events
+      |> Enum.sort_by(& &1.occurred_at, DateTime)
+      |> pair_enter_exit([])
+      |> Enum.map(&{session_id, account_id, &1})
+    end)
+  end
+
+  defp pair_enter_exit(
+         [
+           %{event_type: :viewport_enter, occurred_at: enter_at}
+           | [%{event_type: :viewport_exit, occurred_at: exit_at} | rest]
+         ],
+         acc
+       ) do
+    pair_enter_exit(rest, [max(DateTime.diff(exit_at, enter_at, :second), 0) | acc])
+  end
+
+  defp pair_enter_exit([_ | rest], acc), do: pair_enter_exit(rest, acc)
+  defp pair_enter_exit([], acc), do: Enum.reverse(acc)
 end

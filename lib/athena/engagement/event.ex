@@ -101,6 +101,15 @@ defmodule Athena.Engagement.Event do
 
   @type t :: %__MODULE__{}
 
+  @doc """
+  The full catalog of valid `event_type` values (see the annotated list above
+  for what each one means). Used to safely translate an untrusted client
+  event-type string into the corresponding atom without risking
+  `String.to_existing_atom/1` on arbitrary input.
+  """
+  @spec event_types() :: [atom()]
+  def event_types, do: @event_types
+
   @doc false
   def changeset(event, attrs) do
     event

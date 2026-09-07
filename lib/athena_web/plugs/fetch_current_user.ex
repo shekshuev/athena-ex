@@ -14,7 +14,7 @@ defmodule AthenaWeb.Plugs.FetchCurrentUser do
         assign(conn, :current_user, nil)
 
       user_id ->
-        case Identity.get_account(user_id) do
+        case Identity.get_account(user_id, preload: [:role]) do
           {:ok, account} ->
             assign(conn, :current_user, account)
 

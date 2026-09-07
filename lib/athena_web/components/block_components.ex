@@ -143,6 +143,9 @@ defmodule AthenaWeb.BlockComponents do
     ~H"""
     <%= if @block.content["url"] do %>
       <video
+        id={"video-#{@mode}-#{@block.id}"}
+        phx-hook="VideoTracker"
+        data-block-id={@block.id}
         src={@block.content["url"]}
         poster={@block.content["poster_url"]}
         controls={@block.content["controls"] not in [false, "false"]}

@@ -42,6 +42,33 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
 
       assert html =~ "Access"
       assert html =~ "/teaching/cohorts/#{cohort.id}/access/#{course.id}"
+
+      refute html =~ "/teaching/cohorts/#{cohort.id}/engagement/#{course.id}"
+    end
+
+    test "shows the Engagement link once the teacher has engagement.read", %{conn: conn} do
+      role =
+        insert(:role,
+          permissions: [
+            "cohorts.read",
+            "cohorts.update",
+            "courses.read",
+            "courses.update",
+            "engagement.read"
+          ]
+        )
+
+      teacher = insert(:account, role: role)
+      conn = init_test_session(conn, %{"account_id" => teacher.id})
+
+      cohort = insert(:cohort, owner_id: teacher.id)
+      course = insert(:course, title: "React Native", owner_id: teacher.id)
+      {:ok, _enrollment} = Learning.enroll_cohort(teacher, cohort.id, course.id)
+
+      {:ok, _lv, html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}")
+
+      assert html =~ "Engagement"
+      assert html =~ "/teaching/cohorts/#{cohort.id}/engagement/#{course.id}"
     end
   end
 

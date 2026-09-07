@@ -92,6 +92,7 @@ config :athena, Athena.Engagement,
   default_expected_seconds: nil,
   default_fast_ratio_threshold: 0.4,
   histogram_buckets: 10,
+  histogram_max_seconds: 1200,
   min_sample_size_for_percentile: 15,
   block_stats_idle_timeout_minutes: 30
 

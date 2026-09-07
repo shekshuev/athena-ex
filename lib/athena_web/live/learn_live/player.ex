@@ -13,6 +13,8 @@ defmodule AthenaWeb.LearnLive.Player do
   use AthenaWeb, :live_view
 
   alias Athena.Content
+  alias Athena.Content.Policy
+  alias Athena.Engagement
   alias Athena.Execution
   alias Athena.Learning
   import AthenaWeb.BlockComponents
@@ -52,7 +54,9 @@ defmodule AthenaWeb.LearnLive.Player do
           overrides: overrides,
           cohort_id: cohort_id,
           team_id: team_id,
-          block_counts: block_counts
+          block_counts: block_counts,
+          engagement_session_id: Ecto.UUID.generate(),
+          nudges_enabled: !!(cohort && cohort.nudges_enabled)
         }
 
         setup_player_state(socket, course, section_id, linear_lessons, accessible_ids, ctx)
@@ -118,6 +122,10 @@ defmodule AthenaWeb.LearnLive.Player do
       socket
       |> assign(:page_title, section.title)
       |> assign(:course, course)
+      |> assign(:engagement_session_id, ctx.engagement_session_id)
+      |> assign(:nudges_enabled, ctx.nudges_enabled)
+      |> assign(:engagement_pending_enters, %{})
+      |> assign(:nudged_block_ids, MapSet.new())
       |> assign(:cohort_id, ctx.cohort_id)
       |> assign(:team_id, ctx.team_id)
       |> assign(:tree, tree)
@@ -441,6 +449,27 @@ defmodule AthenaWeb.LearnLive.Player do
     handle_event("save_draft", params, socket)
   end
 
+  def handle_event("engagement_batch", %{"events" => events}, socket) do
+    section_id = socket.assigns.section.id
+    user = socket.assigns.current_user
+
+    normalized =
+      events
+      |> Enum.map(&normalize_engagement_event(&1, section_id))
+      |> Enum.reject(&is_nil/1)
+
+    Engagement.record_events(
+      user.id,
+      socket.assigns.cohort_id,
+      socket.assigns.engagement_session_id,
+      normalized
+    )
+
+    socket = Enum.reduce(normalized, socket, &maybe_nudge/2)
+
+    {:noreply, socket}
+  end
+
   def handle_event("save_draft", _params, socket) do
     {:noreply, socket}
   end
@@ -468,6 +497,115 @@ defmodule AthenaWeb.LearnLive.Player do
       ) do
     shift_matching_answer(socket, block_id, pair_id, 1)
   end
+
+  # Tracks this student's own pending viewport_enter timestamps (a simple
+  # per-session map - not to be confused with `Athena.Engagement.BlockStats`,
+  # which pairs enter/exit across the whole cohort for the aggregate
+  # distribution). On the matching viewport_exit, decides whether the dwell
+  # was fast enough to warrant a nudge.
+  @doc false
+  defp maybe_nudge(%{event_type: :viewport_enter} = event, socket) do
+    pending = Map.put(socket.assigns.engagement_pending_enters, event.block_id, event.occurred_at)
+    assign(socket, :engagement_pending_enters, pending)
+  end
+
+  defp maybe_nudge(%{event_type: :viewport_exit} = event, socket) do
+    {entered_at, pending} = Map.pop(socket.assigns.engagement_pending_enters, event.block_id)
+    socket = assign(socket, :engagement_pending_enters, pending)
+
+    cond do
+      is_nil(entered_at) ->
+        socket
+
+      MapSet.member?(socket.assigns.nudged_block_ids, event.block_id) ->
+        socket
+
+      true ->
+        elapsed = DateTime.diff(event.occurred_at, entered_at, :second)
+        decide_nudge(socket, event.block_id, elapsed)
+    end
+  end
+
+  defp maybe_nudge(_event, socket), do: socket
+
+  @doc false
+  defp decide_nudge(socket, block_id, elapsed_seconds) do
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
+    if block do
+      resolved_rule = Policy.resolve_engagement_rule(block, socket.assigns.section)
+
+      case Engagement.evaluate_nudge(
+             socket.assigns.cohort_id,
+             block_id,
+             resolved_rule,
+             elapsed_seconds,
+             socket.assigns.nudges_enabled
+           ) do
+        :nudge -> nudge_student(socket, block_id)
+        :ok -> socket
+      end
+    else
+      socket
+    end
+  end
+
+  @doc false
+  defp nudge_student(socket, block_id) do
+    Engagement.record_events(
+      socket.assigns.current_user.id,
+      socket.assigns.cohort_id,
+      socket.assigns.engagement_session_id,
+      [
+        %{
+          block_id: block_id,
+          section_id: socket.assigns.section.id,
+          event_type: :nudge_shown,
+          occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
+        }
+      ]
+    )
+
+    socket
+    |> assign(:nudged_block_ids, MapSet.put(socket.assigns.nudged_block_ids, block_id))
+    |> put_flash(
+      :info,
+      gettext("You went through that pretty fast - want to go back and double-check?")
+    )
+  end
+
+  @doc false
+  defp normalize_engagement_event(event, section_id) do
+    with block_id when is_binary(block_id) <- event["block_id"],
+         {:ok, event_type} <- parse_engagement_event_type(event["event_type"]),
+         {:ok, occurred_at, _offset} <- parse_occurred_at(event["occurred_at"]) do
+      %{
+        block_id: block_id,
+        section_id: section_id,
+        event_type: event_type,
+        payload: event["payload"] || %{},
+        occurred_at: DateTime.truncate(occurred_at, :second)
+      }
+    else
+      _ -> nil
+    end
+  end
+
+  @doc false
+  defp parse_engagement_event_type(type) when is_binary(type) do
+    Engagement.Event.event_types()
+    |> Enum.find(&(Atom.to_string(&1) == type))
+    |> case do
+      nil -> :error
+      atom -> {:ok, atom}
+    end
+  end
+
+  defp parse_engagement_event_type(_), do: :error
+
+  @doc false
+  defp parse_occurred_at(iso8601) when is_binary(iso8601), do: DateTime.from_iso8601(iso8601)
+  defp parse_occurred_at(_), do: :error
 
   defp do_run_code(socket, nil, _draft), do: {:noreply, socket}
 
@@ -1218,6 +1356,11 @@ defmodule AthenaWeb.LearnLive.Player do
   def render(assigns) do
     ~H"""
     <.page_container size="narrow" class="py-10 pb-32">
+      <div
+        id="engagement-tracker"
+        phx-hook="EngagementTracker"
+        data-session-id={@engagement_session_id}
+      >
       <div class="flex items-center justify-between mb-12 border-b border-base-200 pb-6">
         <a
           href={"/learn/courses/#{@course.id}"}
@@ -1288,6 +1431,8 @@ defmodule AthenaWeb.LearnLive.Player do
 
           <div
             id={"block-wrapper-#{block.id}"}
+            data-block-id={block.id}
+            data-block-type={block.type}
             class="animate-in slide-in-from-bottom-4 fade-in duration-500 fill-mode-both"
           >
             <%= case block.type do %>
@@ -1476,6 +1621,7 @@ defmodule AthenaWeb.LearnLive.Player do
           current_file_count={@current_file_count_for_upload}
         />
       <% end %>
+      </div>
     </.page_container>
     """
   end

@@ -17,7 +17,7 @@ defmodule Athena.Engagement do
     without ever issuing a query per incoming event.
   """
 
-  alias Athena.Engagement.Events
+  alias Athena.Engagement.{Events, BlockStats, Metrics}
 
   @doc """
   Records one batch of raw events reported by a single Player session, then
@@ -40,6 +40,65 @@ defmodule Athena.Engagement do
 
   defdelegate get_session_timeline(account_id, session_id), to: Events
   defdelegate list_events_for_scope(block_ids, cohort_id \\ nil), to: Events
+
+  defdelegate get_metrics(scope), to: Metrics
+  defdelegate funnel(block_id, cohort_id \\ nil), to: Metrics
+  defdelegate correlate(measurements_a, measurements_b), to: Metrics
+  defdelegate time_series(block_id, cohort_id, metric), to: Metrics
+  defdelegate export_wide_table(course_id, cohort_ids), to: Metrics
+
+  @nudge_percentile_floor 10.0
+
+  @doc """
+  Decides whether a student should be nudged for having dwelled on a block
+  for `elapsed_seconds` - called from the Player right after a
+  `viewport_exit` is recorded, using data already loaded by the caller
+  (`resolved_rule` from `Athena.Content.Policy.resolve_engagement_rule/2`,
+  `nudges_enabled` from the student's `Cohort`), so this never itself issues
+  a database query.
+
+  Two-tier decision, matching the "Методы анализа" section of the plan:
+  once a block/cohort pair has accumulated at least
+  `min_sample_size_for_percentile` dwell samples (config), the decision is
+  relative to the cohort's own distribution (below the 10th percentile -
+  read comparable to a "guessed" pace, not a difficulty-invariant fixed
+  number). Below that sample size there isn't yet a meaningful distribution
+  to compare against, so it falls back to the block's configured absolute
+  floor (`expected_seconds * fast_ratio_threshold`) if one is set; with
+  neither enough data nor a configured floor, it does not nudge - guessing
+  blindly would be worse than staying silent.
+  """
+  @spec evaluate_nudge(binary() | nil, binary(), map(), number(), boolean()) :: :nudge | :ok
+  def evaluate_nudge(_cohort_id, _block_id, _resolved_rule, _elapsed_seconds, false), do: :ok
+
+  def evaluate_nudge(_cohort_id, _block_id, %{nudge_enabled: false}, _elapsed_seconds, true),
+    do: :ok
+
+  def evaluate_nudge(cohort_id, block_id, resolved_rule, elapsed_seconds, true) do
+    min_sample_size = Keyword.get(engagement_config(), :min_sample_size_for_percentile, 15)
+    snapshot = BlockStats.snapshot(cohort_id, block_id)
+
+    cond do
+      snapshot.n >= min_sample_size ->
+        case BlockStats.percentile_rank(cohort_id, block_id, elapsed_seconds) do
+          percentile when is_number(percentile) and percentile <= @nudge_percentile_floor ->
+            :nudge
+
+          _ ->
+            :ok
+        end
+
+      is_number(resolved_rule[:expected_seconds]) and
+          is_number(resolved_rule[:fast_ratio_threshold]) ->
+        floor = resolved_rule.expected_seconds * resolved_rule.fast_ratio_threshold
+        if elapsed_seconds < floor, do: :nudge, else: :ok
+
+      true ->
+        :ok
+    end
+  end
+
+  defp engagement_config, do: Application.get_env(:athena, Athena.Engagement, [])
 
   @doc false
   defp notify_engagement_subscribers(row) do

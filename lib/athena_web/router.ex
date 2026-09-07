@@ -36,6 +36,12 @@ defmodule AthenaWeb.Router do
     get "/*path", MediaController, :download
   end
 
+  scope "/teaching", AthenaWeb do
+    pipe_through :browser
+
+    get "/cohorts/:id/engagement/:course_id/export.csv", EngagementExportController, :download
+  end
+
   live_session :public,
     layout: {AthenaWeb.Layouts, :app},
     on_mount: [{AthenaWeb.Hooks.Auth, :default}] do
@@ -123,6 +129,7 @@ defmodule AthenaWeb.Router do
         live "/cohorts/:id/enroll_course", CohortDetails, :enroll_course
         live "/cohorts/:id/edit", Cohorts, :edit
         live "/cohorts/:id/access/:course_id", CohortAccess, :index
+        live "/cohorts/:id/engagement/:course_id", CohortEngagement, :index
 
         live "/instructors", Instructors, :index
         live "/instructors/new", Instructors, :new

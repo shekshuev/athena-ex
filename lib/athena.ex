@@ -25,6 +25,7 @@ defmodule Athena do
       Content.Section,
       Content.Course,
       Content.CodeChallenge,
+      Content.Policy,
       Media,
       Media.Config,
       Learning,

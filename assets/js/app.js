@@ -47,6 +47,7 @@ import "tippy.js/dist/tippy.css";
 import ImageResize from "tiptap-extension-resize-image";
 import topbar from "../vendor/topbar";
 import { Dialogue, DialogueLine, insertDialogue } from "./tiptap/dialogue";
+import { EngagementHooks, engagementTrackingActive } from "./engagement_hooks";
 
 const lowlight = createLowlight(common);
 
@@ -98,6 +99,8 @@ const csrfToken = document
   .getAttribute("content");
 
 const Hooks = {};
+
+Object.assign(Hooks, EngagementHooks);
 
 Hooks.TippyTooltip = {
   mounted() {
@@ -224,12 +227,44 @@ Hooks.CodeEditor = {
       }
     });
     this.observer.observe(document.documentElement, { attributes: true });
+
+    // Engagement: only the student-facing answer editor (`code-input-<block
+    // id>`) matters for the "did they paste it or write it" metric - the
+    // Builder's setup/solution SQL editors use a different input-id pattern
+    // and are intentionally not matched here.
+    const answerBlockId = (this.el.dataset.inputId || "").match(
+      /^code-input-(.+)$/,
+    )?.[1];
+
+    if (!isReadOnly && answerBlockId) {
+      this.handlePaste = (event) => {
+        if (!engagementTrackingActive()) return;
+        const text = event.clipboardData?.getData("text/plain") || "";
+        if (!text) return;
+
+        const totalChars = this.editor.state.doc.length + text.length;
+        this.pushEvent("engagement_batch", {
+          events: [
+            {
+              block_id: answerBlockId,
+              event_type: "paste_detected",
+              payload: { pasted_chars: text.length, total_chars: totalChars },
+              occurred_at: new Date().toISOString(),
+            },
+          ],
+        });
+      };
+      this.editor.dom.addEventListener("paste", this.handlePaste);
+    }
   },
 
   destroyed() {
     if (this.editor) this.editor.destroy();
     window.removeEventListener("phx:set-theme", this.applyCmTheme);
     if (this.observer) this.observer.disconnect();
+    if (this.handlePaste && this.editor) {
+      this.editor.dom.removeEventListener("paste", this.handlePaste);
+    }
   },
 };
 
@@ -253,41 +288,6 @@ Hooks.Sortable = {
   },
   destroyed() {
     if (this.sortable) this.sortable.destroy();
-  },
-};
-
-Hooks.AntiCheat = {
-  mounted() {
-    this.lastTriggered = 0;
-
-    this.triggerCheat = (reason) => {
-      const now = Date.now();
-      if (now - this.lastTriggered < 2000) return;
-
-      this.lastTriggered = now;
-      this.pushEvent("cheat_detected", { reason: reason });
-    };
-
-    this.handleBlur = () => {
-      this.triggerCheat("window_blur");
-    };
-
-    this.handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        this.triggerCheat("tab_hidden");
-      }
-    };
-
-    window.addEventListener("blur", this.handleBlur);
-    document.addEventListener("visibilitychange", this.handleVisibilityChange);
-  },
-
-  destroyed() {
-    window.removeEventListener("blur", this.handleBlur);
-    document.removeEventListener(
-      "visibilitychange",
-      this.handleVisibilityChange,
-    );
   },
 };
 
@@ -587,6 +587,32 @@ Hooks.TiptapEditor = {
               });
             });
             return true;
+          }
+
+          // Engagement: only the student open-answer field
+          // (`open-answer-<block id>`) matters for the "did they paste it or
+          // write it" metric - the general text-block authoring editor uses
+          // this same hook with no input-id and is intentionally skipped.
+          const openAnswerInputId = hook.el.dataset.inputId || "";
+          if (
+            !isReadOnly &&
+            openAnswerInputId.startsWith("open-answer-") &&
+            engagementTrackingActive()
+          ) {
+            const text = clipboardData.getData("text/plain") || "";
+            if (text) {
+              const totalChars = hook.editor.getText().length + text.length;
+              hook.pushEvent("engagement_batch", {
+                events: [
+                  {
+                    block_id: blockId,
+                    event_type: "paste_detected",
+                    payload: { pasted_chars: text.length, total_chars: totalChars },
+                    occurred_at: new Date().toISOString(),
+                  },
+                ],
+              });
+            }
           }
 
           return false;
