@@ -84,6 +84,22 @@ defmodule Athena.Engagement.BlockStats do
     GenServer.call(pid, {:percentile_rank, seconds})
   end
 
+  @doc """
+  The raw bucketed dwell-time histogram `percentile_rank/3` already computes
+  against, exposed for the dashboard's "why did the algorithm nudge this
+  student" chart - a teacher can see the exact distribution and cutoff line
+  the nudge decision reasons against, instead of taking it on faith.
+  """
+  @spec histogram(binary() | nil, binary()) :: %{
+          buckets: %{non_neg_integer() => non_neg_integer()},
+          bucket_width: float(),
+          n: non_neg_integer()
+        }
+  def histogram(cohort_id, block_id) do
+    {:ok, pid} = get_or_start(cohort_id, block_id)
+    GenServer.call(pid, :histogram)
+  end
+
   @doc false
   def child_spec({cohort_id, block_id}) do
     %{
@@ -127,6 +143,10 @@ defmodule Athena.Engagement.BlockStats do
 
   def handle_call({:percentile_rank, seconds}, _from, state) do
     {:reply, percentile_rank_for(state, seconds), state}
+  end
+
+  def handle_call(:histogram, _from, state) do
+    {:reply, %{buckets: state.buckets, bucket_width: state.bucket_width, n: state.n}, state}
   end
 
   @impl true

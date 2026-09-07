@@ -110,6 +110,79 @@ defmodule Athena.Engagement.BlockStatsTest do
     end
   end
 
+  describe "histogram/2" do
+    test "a dwell lands in the bucket matching its own seconds, bucket_width and n populated", %{
+      cohort: cohort,
+      block: block
+    } do
+      account = insert(:account)
+      write_dwell(account.id, cohort.id, block, Ecto.UUID.generate(), 0, 60)
+
+      histogram = BlockStats.histogram(cohort.id, block.id)
+
+      assert histogram.n == 1
+      assert_in_delta histogram.bucket_width, 1200 / 10, 0.001
+      assert histogram.buckets == %{0 => 1}
+    end
+
+    test "returns an empty buckets map and n: 0 with no data at all", %{
+      cohort: cohort,
+      block: block
+    } do
+      histogram = BlockStats.histogram(cohort.id, block.id)
+
+      assert histogram.n == 0
+      assert histogram.buckets == %{}
+    end
+
+    test "dwells far apart in duration land in different buckets, tallied separately", %{
+      cohort: cohort,
+      block: block
+    } do
+      account = insert(:account)
+      # Default bucket_width is 1200/10 = 120s - 60s lands in bucket 0,
+      # 200s lands in bucket 1.
+      write_dwell(account.id, cohort.id, block, Ecto.UUID.generate(), 0, 60)
+      write_dwell(account.id, cohort.id, block, Ecto.UUID.generate(), 0, 200)
+
+      histogram = BlockStats.histogram(cohort.id, block.id)
+
+      assert histogram.n == 2
+      assert histogram.buckets == %{0 => 1, 1 => 1}
+    end
+
+    test "reflects dwells recorded live via PubSub, not just the bootstrap read", %{
+      cohort: cohort,
+      block: block
+    } do
+      {:ok, _pid} = BlockStats.get_or_start(cohort.id, block.id)
+      account = insert(:account)
+      session_id = Ecto.UUID.generate()
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      Engagement.record_events(account.id, cohort.id, session_id, [
+        %{
+          block_id: block.id,
+          section_id: block.section_id,
+          event_type: :viewport_enter,
+          occurred_at: now
+        },
+        %{
+          block_id: block.id,
+          section_id: block.section_id,
+          event_type: :viewport_exit,
+          occurred_at: DateTime.add(now, 45, :second)
+        }
+      ])
+
+      wait_until(fn -> BlockStats.histogram(cohort.id, block.id).n == 1 end)
+
+      histogram = BlockStats.histogram(cohort.id, block.id)
+      assert histogram.n == 1
+      assert histogram.buckets == %{0 => 1}
+    end
+  end
+
   describe "idle timeout" do
     test "stops after being idle, and is transparently recreated on next use", %{
       cohort: cohort,

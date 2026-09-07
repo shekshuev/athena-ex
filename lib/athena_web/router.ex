@@ -130,6 +130,7 @@ defmodule AthenaWeb.Router do
         live "/cohorts/:id/edit", Cohorts, :edit
         live "/cohorts/:id/access/:course_id", CohortAccess, :index
         live "/cohorts/:id/engagement/:course_id", CohortEngagement, :index
+        live "/courses/:course_id/engagement/compare", CourseEngagementCompare, :index
 
         live "/instructors", Instructors, :index
         live "/instructors/new", Instructors, :new

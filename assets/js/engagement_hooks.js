@@ -11,6 +11,9 @@ const FLUSH_INTERVAL_MS = 10_000;
 const MAX_QUEUE_SIZE = 25;
 const SCROLL_THRESHOLDS = [0, 0.25, 0.5, 0.75, 1];
 const SCROLL_MILESTONES = [25, 50, 75, 100];
+// Purely a client-side heuristic for "has the student stepped away", not a
+// business threshold - deliberately not configurable server-side.
+const IDLE_THRESHOLD_MS = 2 * 60 * 1000;
 
 const TRACKER_ROOT_ID = "engagement-tracker";
 
@@ -63,8 +66,14 @@ EngagementHooks.EngagementTracker = {
           if (entry.isIntersecting) {
             if (!this.intersecting.get(blockId)) {
               this.intersecting.set(blockId, true);
+              // Captured before currentBlockId is overwritten below, so a
+              // navigation graph can be reconstructed later purely from
+              // this field - no window functions needed over the raw
+              // events (see Athena.Engagement.Metrics for how "backtrack"
+              // already does exactly that with block order + occurred_at).
+              const fromBlockId = this.currentBlockId;
               this.currentBlockId = blockId;
-              this.enqueue(blockId, "viewport_enter");
+              this.enqueue(blockId, "viewport_enter", { from_block_id: fromBlockId });
             }
 
             if (node.dataset.blockType === "text") {
@@ -98,12 +107,48 @@ EngagementHooks.EngagementTracker = {
     };
     this.observeBlocks();
 
+    this.tabHiddenAt = null;
+
     this.handleVisibilityChange = () => {
-      const eventType =
-        document.visibilityState === "hidden" ? "tab_hidden" : "tab_visible";
-      this.enqueue(this.currentBlockId, eventType);
+      if (document.visibilityState === "hidden") {
+        this.tabHiddenAt = Date.now();
+        this.enqueue(this.currentBlockId, "tab_hidden");
+      } else {
+        const durationMs = this.tabHiddenAt != null ? Date.now() - this.tabHiddenAt : null;
+        this.tabHiddenAt = null;
+        this.enqueue(this.currentBlockId, "tab_visible", { duration_ms: durationMs });
+      }
     };
     document.addEventListener("visibilitychange", this.handleVisibilityChange);
+
+    // Idle detection - distinct from tab_hidden: the tab can stay focused
+    // and in view while the student has simply stepped away, which
+    // tab_hidden alone would never catch. Any mouse/keyboard/scroll
+    // activity resets the clock; going quiet for IDLE_THRESHOLD_MS starts
+    // an idle window, closed out (with its measured duration) on the next
+    // sign of activity.
+    this.idleStartedAt = null;
+    this.idleTimer = null;
+
+    this.resetIdleTimer = () => {
+      if (this.idleStartedAt != null) {
+        const durationMs = Date.now() - this.idleStartedAt;
+        this.enqueue(this.currentBlockId, "idle_end", { duration_ms: durationMs });
+        this.idleStartedAt = null;
+      }
+
+      clearTimeout(this.idleTimer);
+      this.idleTimer = setTimeout(() => {
+        this.idleStartedAt = Date.now();
+        this.enqueue(this.currentBlockId, "idle_start");
+      }, IDLE_THRESHOLD_MS);
+    };
+
+    this.idleActivityEvents = ["mousemove", "keydown", "scroll", "click"];
+    for (const eventName of this.idleActivityEvents) {
+      window.addEventListener(eventName, this.resetIdleTimer, { passive: true });
+    }
+    this.resetIdleTimer();
 
     this.handleBeforeUnload = () => this.flush();
     window.addEventListener("beforeunload", this.handleBeforeUnload);
@@ -115,10 +160,14 @@ EngagementHooks.EngagementTracker = {
 
   destroyed() {
     clearInterval(this.flushTimer);
+    clearTimeout(this.idleTimer);
     this.flush();
     if (this.observer) this.observer.disconnect();
     document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     window.removeEventListener("beforeunload", this.handleBeforeUnload);
+    for (const eventName of this.idleActivityEvents || []) {
+      window.removeEventListener(eventName, this.resetIdleTimer);
+    }
   },
 };
 
@@ -146,7 +195,7 @@ EngagementHooks.VideoTracker = {
     this.onPlay = () => push("video_play", { at_sec: this.el.currentTime });
     this.onPause = () => push("video_pause", { at_sec: this.el.currentTime });
     this.onRateChange = () => push("video_rate_change", { rate: this.el.playbackRate });
-    this.onEnded = () => push("video_ended", {});
+    this.onEnded = () => push("video_ended", { duration: this.el.duration });
 
     this.onSeeking = () => {
       push("video_seek", { from_sec: this.lastTime, to_sec: this.el.currentTime });

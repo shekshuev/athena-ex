@@ -43,6 +43,23 @@ defmodule Athena.Engagement.Event do
     # answer type is an open text field.
     :paste_detected,
 
+    # `code` blocks only. `code_run_attempt` is recorded server-side the
+    # moment the student clicks "Run" (before the result is known);
+    # `code_run_result` follows later - asynchronously, once the Oban-backed
+    # execution worker finishes - with `payload: {outcome}` set to the
+    # resulting `Athena.Learning.Submission.status` (e.g. "accepted",
+    # "wrong_answer", "compilation_error", "time_limit_exceeded"). Together
+    # they let a debug cycle ("wrote -> ran -> failed -> fixed -> ran again")
+    # be told apart from "pasted and submitted with no attempt to run it",
+    # and (via the gap between consecutive `code_run_attempt` timestamps)
+    # from a rapid, non-thinking "panic debugging" burst. Deliberately not
+    # generalized to every block type - `Athena.Learning.Submission` stays
+    # the source of truth for grading; this only mirrors a coarse outcome
+    # category into the same session timeline as everything else, so a
+    # replay doesn't need to cross-reference two tables by timestamp.
+    :code_run_attempt,
+    :code_run_result,
+
     # Native `<video>` element controls. `video` blocks only.
     # `video_seek`'s payload carries `{from_sec, to_sec}` - direction
     # (forward = skip/skim, backward = rewatch/confusion) is derived from
@@ -61,6 +78,13 @@ defmodule Athena.Engagement.Event do
     :answer_selected,
     :answer_changed,
 
+    # The student's first meaningful interaction with a block after
+    # `viewport_enter` - the first keystroke in a `code` editor, or (fired
+    # together with `answer_selected`) the first quiz answer saved. Paired
+    # with the block's own `viewport_enter`, this gives Time To First Action
+    # (TTFA) - did they dive in right away, or sit on the block first.
+    :first_interaction,
+
     # Click on an `attachment` block's file link. `attachment` only - this is
     # the block type's primary engagement signal, since a downloaded file has
     # no on-page dwell time once it leaves the page.
@@ -74,7 +98,19 @@ defmodule Athena.Engagement.Event do
     # shown an auto-nudge banner for a block. Lets nudge frequency itself be
     # analyzed over time and stops the same block from re-nudging within one
     # session. Attached to whichever block the nudge fired on.
-    :nudge_shown
+    :nudge_shown,
+
+    # No mouse/keyboard/scroll activity for a client-side idle threshold
+    # (`idle_start`), and the resumption of activity afterwards (`idle_end`,
+    # payload carries `{duration_ms}`). Applies to whatever block is current
+    # when idle begins. This is *not* the same signal as `tab_hidden` - the
+    # tab can stay focused and in view while the student has simply stepped
+    # away (bathroom, coffee), which `tab_hidden` alone would miss entirely.
+    # `Athena.Engagement.Events.pair_viewport_dwells/1` subtracts idle
+    # windows from raw dwell time so "away from keyboard" is never counted
+    # as "reading" or "stuck".
+    :idle_start,
+    :idle_end
   ]
 
   @derive {

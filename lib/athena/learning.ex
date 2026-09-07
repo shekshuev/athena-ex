@@ -33,6 +33,7 @@ defmodule Athena.Learning do
   defdelegate list_cohorts(user, params \\ %{}), to: Cohorts
   defdelegate get_cohort(user, id), to: Cohorts
   defdelegate get_cohorts_map(ids), to: Cohorts
+  defdelegate list_cohorts_for_course(user, course_id), to: Cohorts
   defdelegate create_cohort(user, attrs), to: Cohorts
   defdelegate update_cohort(user, cohort, attrs), to: Cohorts
   defdelegate delete_cohort(user, cohort), to: Cohorts

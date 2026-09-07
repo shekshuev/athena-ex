@@ -47,6 +47,7 @@ import "tippy.js/dist/tippy.css";
 import ImageResize from "tiptap-extension-resize-image";
 import topbar from "../vendor/topbar";
 import { Dialogue, DialogueLine, insertDialogue } from "./tiptap/dialogue";
+import { ChartsHooks } from "./charts_hooks";
 import { EngagementHooks, engagementTrackingActive } from "./engagement_hooks";
 
 const lowlight = createLowlight(common);
@@ -101,6 +102,7 @@ const csrfToken = document
 const Hooks = {};
 
 Object.assign(Hooks, EngagementHooks);
+Object.assign(Hooks, ChartsHooks);
 
 Hooks.TippyTooltip = {
   mounted() {
@@ -127,6 +129,15 @@ Hooks.CodeEditor = {
   mounted() {
     const isReadOnly = this.el.dataset.readonly === "true";
     const language = this.el.dataset.language;
+
+    // Engagement: only the student-facing answer editor (`code-input-<block
+    // id>`) matters for paste-ratio/TTFA - the Builder's setup/solution SQL
+    // editors use a different input-id pattern and are intentionally not
+    // matched here.
+    const answerBlockId = (this.el.dataset.inputId || "").match(
+      /^code-input-(.+)$/,
+    )?.[1];
+    let firstInteractionSent = false;
 
     let langExtension = python();
     switch (language) {
@@ -198,6 +209,19 @@ Hooks.CodeEditor = {
               hiddenInput.dispatchEvent(new Event("input", { bubbles: true }));
             }
           }
+
+          if (!firstInteractionSent && answerBlockId && engagementTrackingActive()) {
+            firstInteractionSent = true;
+            this.pushEvent("engagement_batch", {
+              events: [
+                {
+                  block_id: answerBlockId,
+                  event_type: "first_interaction",
+                  occurred_at: new Date().toISOString(),
+                },
+              ],
+            });
+          }
         }
       }),
     ];
@@ -227,14 +251,6 @@ Hooks.CodeEditor = {
       }
     });
     this.observer.observe(document.documentElement, { attributes: true });
-
-    // Engagement: only the student-facing answer editor (`code-input-<block
-    // id>`) matters for the "did they paste it or write it" metric - the
-    // Builder's setup/solution SQL editors use a different input-id pattern
-    // and are intentionally not matched here.
-    const answerBlockId = (this.el.dataset.inputId || "").match(
-      /^code-input-(.+)$/,
-    )?.[1];
 
     if (!isReadOnly && answerBlockId) {
       this.handlePaste = (event) => {

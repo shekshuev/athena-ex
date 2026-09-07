@@ -46,8 +46,27 @@ defmodule Athena.Engagement do
   defdelegate correlate(measurements_a, measurements_b), to: Metrics
   defdelegate time_series(block_id, cohort_id, metric), to: Metrics
   defdelegate export_wide_table(course_id, cohort_ids), to: Metrics
+  defdelegate flag_concerns(metrics), to: Metrics
+  defdelegate student_radar(cohort_id, course_id, opts \\ []), to: Metrics
+  defdelegate cohort_flag_profile(cohort_id, course_id, opts \\ []), to: Metrics
+  defdelegate radar_axes(), to: Metrics
+  defdelegate section_flag_totals(cohort_id, course_id, opts \\ []), to: Metrics
+  defdelegate activity_heatmap(cohort_id, course_id, opts \\ []), to: Metrics
+  defdelegate course_funnel(cohort_id, course_id, opts \\ []), to: Metrics
+  defdelegate active_students_trend(cohort_id, course_id, opts \\ []), to: Metrics
+  defdelegate nudge_correction_rate(cohort_id, course_id, opts \\ []), to: Metrics
+  defdelegate histogram(cohort_id, block_id), to: BlockStats
 
   @nudge_percentile_floor 10.0
+
+  @doc """
+  The percentile-rank cutoff `evaluate_nudge/5` nudges below (once a
+  block/cohort pair has enough samples) - exposed so a chart can draw the
+  exact line the algorithm itself decides against, instead of a teacher
+  having to take the threshold on faith.
+  """
+  @spec nudge_percentile_floor() :: float()
+  def nudge_percentile_floor, do: @nudge_percentile_floor
 
   @doc """
   Decides whether a student should be nudged for having dwelled on a block
@@ -57,7 +76,7 @@ defmodule Athena.Engagement do
   `nudges_enabled` from the student's `Cohort`), so this never itself issues
   a database query.
 
-  Two-tier decision, matching the "Методы анализа" section of the plan:
+  Two-tier decision, matching the "analysis methods" section of the plan:
   once a block/cohort pair has accumulated at least
   `min_sample_size_for_percentile` dwell samples (config), the decision is
   relative to the cohort's own distribution (below the 10th percentile -

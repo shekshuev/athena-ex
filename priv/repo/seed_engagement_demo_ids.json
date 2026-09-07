@@ -1,0 +1,34 @@
+{
+  "cohorts": {
+    "control": {
+      "cohort_id": "f7ef114f-ff8a-43be-886c-299be74c7eed",
+      "student_account_ids": [
+        "89ffce0f-0862-482d-b09a-01b03f1c10e9",
+        "9c7de1df-82e5-48f1-b9b2-ee196d37ca1f",
+        "25eec55e-1bc6-46b7-91e9-4cebd2999a7a",
+        "a775cefd-f0e3-4a5c-a330-1429ecc7658a",
+        "470ba77a-d663-4b8a-b52a-e128a183a465",
+        "6f027afc-68be-40bc-bed5-ceff22448c02",
+        "ed8733b3-8b27-4b00-affe-6c97098da3f4",
+        "671b089e-898a-4adb-92c9-edfa191b8db2",
+        "eba08223-9b87-4a5e-bbbb-d9b6fa589042"
+      ]
+    },
+    "experimental": {
+      "cohort_id": "5fca1a9e-20bb-4784-b8c7-b15ffef7bc74",
+      "student_account_ids": [
+        "77933298-bc11-4279-9882-e30c1005c33b",
+        "b5cf31bc-2b43-4927-be34-8a1c2f42e7bd",
+        "9757de12-8e7c-4997-b89b-224a923f4a29",
+        "7e814a18-c62e-4ff7-9c9b-352417adcfd7",
+        "7d36291c-6023-43e3-bd19-ffc5fddf3220",
+        "2096bc94-3fcc-4b84-8e60-cc8f48a0fbb3",
+        "168b9ad5-f19e-4648-a8dc-1aef071617a3",
+        "122edca3-9a0d-4415-9787-8fe467c40aa6",
+        "a9e445f8-5997-438d-b45f-38f64947da15"
+      ]
+    }
+  },
+  "course_id": "28114feb-26a6-43f1-aa62-a35f1a35b826",
+  "teacher_account_id": "c1293ada-afb3-41b1-b1cb-a9305a4e537e"
+}

@@ -57,60 +57,134 @@ defmodule Athena.Engagement.Events do
   end
 
   @doc """
-  Raw events for a scope (block ids, optionally a cohort) - used only for the
-  bootstrap query inside `Athena.Engagement.BlockStats`, not exposed as part
-  of the public dashboard API.
-  """
-  @spec list_events_for_scope([binary()], binary() | nil) :: [Event.t()]
-  def list_events_for_scope(block_ids, cohort_id \\ nil)
+  Raw events for a scope (block ids, optionally a cohort, optionally a
+  `since` lower bound on `occurred_at`) - used both for the bootstrap query
+  inside `Athena.Engagement.BlockStats` and by `Athena.Engagement.Metrics`.
 
-  def list_events_for_scope(block_ids, nil) do
+  `since` exists for `Metrics.student_radar/3`: indices need to reflect
+  *recent* behavior (e.g. the last 7 days), not a lifetime total, so a
+  student's numbers can actually be seen to change after a teacher steps
+  in - a permanently cumulative score would never show that. Omitting it
+  (the default) preserves the exact prior behavior for every existing
+  caller.
+  """
+  @spec list_events_for_scope([binary()], binary() | nil, DateTime.t() | nil) :: [Event.t()]
+  def list_events_for_scope(block_ids, cohort_id \\ nil, since \\ nil) do
     Event
     |> where([e], e.block_id in ^block_ids)
+    |> maybe_filter_cohort(cohort_id)
+    |> maybe_filter_since(since)
     |> Repo.all()
   end
 
-  def list_events_for_scope(block_ids, cohort_id) do
-    Event
-    |> where([e], e.block_id in ^block_ids and e.cohort_id == ^cohort_id)
-    |> Repo.all()
-  end
+  defp maybe_filter_cohort(query, nil), do: query
+  defp maybe_filter_cohort(query, cohort_id), do: where(query, [e], e.cohort_id == ^cohort_id)
+
+  defp maybe_filter_since(query, nil), do: query
+  defp maybe_filter_since(query, since), do: where(query, [e], e.occurred_at >= ^since)
 
   @doc """
   Pairs `viewport_enter`/`viewport_exit` events (already fetched, e.g. via
-  `list_events_for_scope/2`) into per-session dwell seconds. Shared by
+  `list_events_for_scope/2`) into per-session dwell seconds, with any
+  overlapping `idle_start`/`idle_end` windows subtracted first. Shared by
   `Athena.Engagement.BlockStats` (which needs it for a single bootstrap
   query) and `Athena.Engagement.Metrics` (which needs the exact same
   definition of "dwell" for its aggregate metrics) - dwell time is derived
   exactly once, in one place.
+
+  Idle subtraction matters because a tab can stay focused and in view (no
+  `tab_hidden`) while the student has simply stepped away - without this, a
+  15-minute bathroom break would be indistinguishable from 15 minutes of
+  genuine difficulty (`:slow_dwell`), which would make the whole signal
+  worthless to a teacher acting on it. Both `events` callers already pass in
+  events pre-filtered to one block, so idle windows here are implicitly
+  scoped to that same block - no extra filtering needed.
   """
   @spec pair_viewport_dwells([Event.t()]) :: [
           {session_id :: binary(), account_id :: binary(), dwell_seconds :: non_neg_integer()}
         ]
   def pair_viewport_dwells(events) do
     events
-    |> Enum.filter(&(&1.event_type in [:viewport_enter, :viewport_exit]))
     |> Enum.group_by(& &1.session_id)
     |> Enum.flat_map(fn {session_id, session_events} ->
-      account_id = session_events |> List.first() |> Map.get(:account_id)
+      sorted = Enum.sort_by(session_events, & &1.occurred_at, DateTime)
+      account_id = sorted |> List.first() |> Map.get(:account_id)
+      idle_windows = windows_for(sorted, :idle_start, :idle_end)
 
-      session_events
-      |> Enum.sort_by(& &1.occurred_at, DateTime)
-      |> pair_enter_exit([])
-      |> Enum.map(&{session_id, account_id, &1})
+      sorted
+      |> windows_for(:viewport_enter, :viewport_exit)
+      |> Enum.map(fn {enter_at, exit_at} ->
+        raw_seconds = DateTime.diff(exit_at, enter_at, :second)
+        idle_seconds = idle_overlap_seconds(idle_windows, enter_at, exit_at)
+        {session_id, account_id, max(raw_seconds - idle_seconds, 0)}
+      end)
     end)
   end
 
-  defp pair_enter_exit(
-         [
-           %{event_type: :viewport_enter, occurred_at: enter_at}
-           | [%{event_type: :viewport_exit, occurred_at: exit_at} | rest]
-         ],
-         acc
-       ) do
-    pair_enter_exit(rest, [max(DateTime.diff(exit_at, enter_at, :second), 0) | acc])
+  @doc """
+  Raw (not idle-adjusted) `viewport_enter`/`viewport_exit` window lengths, in
+  seconds, across all sessions - the denominator `Athena.Engagement.Metrics`
+  needs for `offtask_ratio` (how much of the *wall-clock* time nominally
+  spent on a block was actually spent tabbed away). Deliberately not
+  idle-adjusted like `pair_viewport_dwells/1`: idle time (tab focused, no
+  activity) and off-task time (tab not focused at all) are two different
+  categories of "not engaged" - subtracting one while measuring the other
+  would double-count in a confusing way.
+  """
+  @spec raw_viewport_window_seconds([Event.t()]) :: [non_neg_integer()]
+  def raw_viewport_window_seconds(events) do
+    events
+    |> Enum.group_by(& &1.session_id)
+    |> Enum.flat_map(fn {_session_id, session_events} ->
+      session_events
+      |> Enum.sort_by(& &1.occurred_at, DateTime)
+      |> windows_for(:viewport_enter, :viewport_exit)
+      |> Enum.map(fn {enter_at, exit_at} -> max(DateTime.diff(exit_at, enter_at, :second), 0) end)
+    end)
   end
 
-  defp pair_enter_exit([_ | rest], acc), do: pair_enter_exit(rest, acc)
-  defp pair_enter_exit([], acc), do: Enum.reverse(acc)
+  # Generic "pair a start-type event with the very next end-type event"
+  # extractor - used for both viewport enter/exit and idle start/end, since
+  # both are the same shape (an unlabelled interval bounded by two event
+  # types in one session's chronological stream).
+  defp windows_for(sorted_events, start_type, end_type) do
+    sorted_events
+    |> Enum.filter(&(&1.event_type in [start_type, end_type]))
+    |> pair_windows(start_type, end_type, [])
+  end
+
+  defp pair_windows(
+         [
+           %{event_type: start_type, occurred_at: start_at}
+           | [%{event_type: end_type, occurred_at: end_at} | rest]
+         ],
+         start_type,
+         end_type,
+         acc
+       ) do
+    pair_windows(rest, start_type, end_type, [{start_at, end_at} | acc])
+  end
+
+  defp pair_windows([_ | rest], start_type, end_type, acc),
+    do: pair_windows(rest, start_type, end_type, acc)
+
+  defp pair_windows([], _start_type, _end_type, acc), do: Enum.reverse(acc)
+
+  # Sum of how much each idle window overlaps the [window_start, window_end]
+  # dwell interval, clipping at the interval's own edges - an idle period
+  # that started before the block was entered, or that hadn't ended by the
+  # time the student left, still only counts for the part that actually
+  # falls inside this particular dwell window.
+  defp idle_overlap_seconds(idle_windows, window_start, window_end) do
+    idle_windows
+    |> Enum.map(fn {idle_start, idle_end} ->
+      overlap_start = later_of(idle_start, window_start)
+      overlap_end = earlier_of(idle_end, window_end)
+      max(DateTime.diff(overlap_end, overlap_start, :second), 0)
+    end)
+    |> Enum.sum()
+  end
+
+  defp later_of(a, b), do: if(DateTime.compare(a, b) == :gt, do: a, else: b)
+  defp earlier_of(a, b), do: if(DateTime.compare(a, b) == :lt, do: a, else: b)
 end

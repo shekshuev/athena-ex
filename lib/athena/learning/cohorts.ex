@@ -57,6 +57,33 @@ defmodule Athena.Learning.Cohorts do
   end
 
   @doc """
+  The cohorts enrolled in a course - for the cross-cohort comparison
+  screen's cohort picker. A cohort-level enrollment is one `Enrollment` row
+  with both `course_id` and `cohort_id` set (as opposed to an individual
+  student enrollment, which has `cohort_id: nil`), so this is exactly the
+  set of cohorts an enrollment join into `course_id` produces, filtered
+  through the same `scope_cohort_reads/2` ACL `list_cohorts/2`/`get_cohort/2`
+  already apply - a teacher only sees cohorts they're otherwise allowed to
+  read.
+  """
+  @spec list_cohorts_for_course(map(), binary()) :: [Cohort.t()]
+  def list_cohorts_for_course(user, course_id) do
+    cohort_ids_query =
+      from e in Enrollment,
+        where: e.course_id == ^course_id and not is_nil(e.cohort_id),
+        select: e.cohort_id,
+        distinct: true
+
+    Cohort
+    |> where([c], c.id in subquery(cohort_ids_query))
+    |> order_by([c], asc: c.name)
+    |> scope_cohort_reads(user)
+    |> Repo.all()
+    |> Repo.preload(:instructors)
+    |> enrich_cohorts()
+  end
+
+  @doc """
   Creates a new cohort.
 
   Optionally accepts a list of instructor IDs in `instructor_ids` to assign them immediately.
