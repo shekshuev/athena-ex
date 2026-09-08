@@ -127,6 +127,20 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         content: %{"question_type" => "open", "body" => %{"text" => "Write an essay"}}
       )
 
+      insert(:block,
+        section: s1,
+        type: :quiz_question,
+        order: 50,
+        content: %{
+          "question_type" => "matching",
+          "body" => %{"text" => "Match the terms"},
+          "pairs" => [
+            %{"id" => "p1", "left" => "Alpha", "right" => "One"},
+            %{"id" => "p2", "left" => "Beta", "right" => "Two"}
+          ]
+        }
+      )
+
       {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
       assert html =~ "Type your answer..."
@@ -135,6 +149,8 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       assert html =~ "type=\"checkbox\""
       assert html =~ "Check Option A"
       assert html =~ "<textarea"
+      assert html =~ "<select"
+      assert html =~ ~s(name="answer[p1]")
     end
   end
 
@@ -408,6 +424,71 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> render_submit()
 
       assert html =~ "Locked"
+      refute html =~ "Submit Answer"
+    end
+
+    test "submits matching quiz correctly, locks form", %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+      pair1_id = Ecto.UUID.generate()
+      pair2_id = Ecto.UUID.generate()
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "matching",
+            "pairs" => [
+              %{"id" => pair1_id, "left" => "Alpha", "right" => "One"},
+              %{"id" => pair2_id, "left" => "Beta", "right" => "Two"}
+            ]
+          }
+        )
+
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ ~s(name="answer[#{pair1_id}]")
+      assert html =~ ~s(name="answer[#{pair2_id}]")
+
+      html =
+        lv
+        |> form("#quiz-form-#{block.id}", %{
+          "answer" => %{pair1_id => pair1_id, pair2_id => pair2_id}
+        })
+        |> render_submit()
+
+      assert html =~ "Locked"
+      refute html =~ "Submit Answer"
+    end
+
+    test "submits matching quiz incorrectly, allows retry", %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+      pair1_id = Ecto.UUID.generate()
+      pair2_id = Ecto.UUID.generate()
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "matching",
+            "pairs" => [
+              %{"id" => pair1_id, "left" => "Alpha", "right" => "One"},
+              %{"id" => pair2_id, "left" => "Beta", "right" => "Two"}
+            ]
+          }
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      html =
+        lv
+        |> form("#quiz-form-#{block.id}", %{
+          "answer" => %{pair1_id => pair2_id, pair2_id => pair1_id}
+        })
+        |> render_submit()
+
+      assert html =~ "Retry Answer"
       refute html =~ "Submit Answer"
     end
 
@@ -1586,6 +1667,49 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       assert draft != nil
       assert draft.content["selected_choices"] == [opt1_id, opt2_id]
+    end
+
+    test "saves partial draft for matching quiz and restores it on reload", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+      pair1_id = Ecto.UUID.generate()
+      pair2_id = Ecto.UUID.generate()
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "matching",
+            "pairs" => [
+              %{"id" => pair1_id, "left" => "Alpha", "right" => "One"},
+              %{"id" => pair2_id, "left" => "Beta", "right" => "Two"}
+            ]
+          }
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      lv
+      |> form("#quiz-form-#{block.id}", %{"answer" => %{pair1_id => pair1_id}})
+      |> render_change()
+
+      draft =
+        Athena.Repo.get_by(Athena.Learning.Submission,
+          block_id: block.id,
+          account_id: user.id,
+          status: :draft
+        )
+
+      assert draft != nil
+      assert draft.content["matches"][pair1_id] == pair1_id
+
+      {:ok, _lv2, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ ~s(value="#{pair1_id}" selected)
     end
   end
 end

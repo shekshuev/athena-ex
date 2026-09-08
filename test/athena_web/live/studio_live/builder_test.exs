@@ -428,6 +428,212 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert opt["explanation"] == "New expl"
     end
 
+    test "add_quiz_pair adds an empty pair to a matching block", %{
+      conn: conn,
+      course: course,
+      section: section,
+      admin: admin
+    } do
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "quiz_question",
+          "section_id" => section.id,
+          "content" => %{
+            "question_type" => "matching",
+            "body" => %{},
+            "pairs" => [
+              %{"id" => "p1", "left" => "A", "right" => "1"},
+              %{"id" => "p2", "left" => "B", "right" => "2"}
+            ]
+          }
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']") |> render_click()
+
+      render_hook(lv, "add_quiz_pair", %{"id" => block.id})
+
+      blocks = Content.list_blocks_by_section(section.id)
+      updated_block = Enum.find(blocks, &(&1.id == block.id))
+      pairs = updated_block.content["pairs"]
+
+      assert length(pairs) == 3
+      new_pair = List.last(pairs)
+      assert is_binary(new_pair["id"])
+      assert new_pair["left"] == %{"type" => "doc", "content" => [%{"type" => "paragraph"}]}
+      assert new_pair["right"] == %{"type" => "doc", "content" => [%{"type" => "paragraph"}]}
+    end
+
+    test "remove_quiz_pair removes the pair by id", %{
+      conn: conn,
+      course: course,
+      section: section,
+      admin: admin
+    } do
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "quiz_question",
+          "section_id" => section.id,
+          "content" => %{
+            "question_type" => "matching",
+            "body" => %{},
+            "pairs" => [
+              %{"id" => "p1", "left" => "A", "right" => "1"},
+              %{"id" => "p2", "left" => "B", "right" => "2"},
+              %{"id" => "p3", "left" => "C", "right" => "3"}
+            ]
+          }
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']") |> render_click()
+
+      render_hook(lv, "remove_quiz_pair", %{"id" => block.id, "pair_id" => "p1"})
+
+      blocks = Content.list_blocks_by_section(section.id)
+      updated_block = Enum.find(blocks, &(&1.id == block.id))
+      pairs = updated_block.content["pairs"]
+
+      assert length(pairs) == 2
+      refute Enum.any?(pairs, &(&1["id"] == "p1"))
+    end
+
+    test "remove_quiz_pair rejects removal that would drop below the 2-pair minimum", %{
+      conn: conn,
+      course: course,
+      section: section,
+      admin: admin
+    } do
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "quiz_question",
+          "section_id" => section.id,
+          "content" => %{
+            "question_type" => "matching",
+            "body" => %{},
+            "pairs" => [
+              %{"id" => "p1", "left" => "A", "right" => "1"},
+              %{"id" => "p2", "left" => "B", "right" => "2"}
+            ]
+          }
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']") |> render_click()
+
+      render_hook(lv, "remove_quiz_pair", %{"id" => block.id, "pair_id" => "p1"})
+
+      blocks = Content.list_blocks_by_section(section.id)
+      updated_block = Enum.find(blocks, &(&1.id == block.id))
+
+      assert length(updated_block.content["pairs"]) == 2
+    end
+
+    test "update_quiz_content merges decoded pairs into block content", %{
+      conn: conn,
+      course: course,
+      section: section,
+      admin: admin
+    } do
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "quiz_question",
+          "section_id" => section.id,
+          "content" => %{
+            "question_type" => "matching",
+            "body" => %{},
+            "pairs" => [
+              %{"id" => "p1", "left" => "A", "right" => "1"},
+              %{"id" => "p2", "left" => "B", "right" => "2"}
+            ]
+          }
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']") |> render_click()
+
+      render_change(lv, "update_quiz_content", %{
+        "block_id" => block.id,
+        "pairs" => %{
+          "0" => %{"id" => "p1", "left" => "Updated left", "right" => "Updated right"},
+          "1" => %{"id" => "p2", "left" => "B", "right" => "2"}
+        }
+      })
+
+      blocks = Content.list_blocks_by_section(section.id)
+      updated_block = Enum.find(blocks, &(&1.id == block.id))
+      pair = hd(updated_block.content["pairs"])
+
+      assert pair["id"] == "p1"
+
+      assert pair["left"] == %{
+               "type" => "doc",
+               "content" => [
+                 %{
+                   "type" => "paragraph",
+                   "content" => [%{"type" => "text", "text" => "Updated left"}]
+                 }
+               ]
+             }
+    end
+
+    test "switching question_type to matching seeds two empty pairs", %{
+      conn: conn,
+      course: course,
+      section: section,
+      admin: admin
+    } do
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "quiz_question",
+          "section_id" => section.id,
+          "content" => %{"question_type" => "open", "body" => %{}}
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']") |> render_click()
+
+      lv
+      |> form("#block-inspector-form-#{block.id}", %{
+        "block" => %{
+          "id" => block.id,
+          "content" => %{"question_type" => "matching"}
+        }
+      })
+      |> render_change()
+
+      blocks = Content.list_blocks_by_section(section.id)
+      updated_block = Enum.find(blocks, &(&1.id == block.id))
+
+      assert updated_block.content["question_type"] == "matching"
+      assert length(updated_block.content["pairs"]) == 2
+    end
+
     test "updates quiz block answer_type via inspector form", %{
       conn: conn,
       course: course,

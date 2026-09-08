@@ -720,6 +720,9 @@ defmodule AthenaWeb.LearnLive.Player do
   defp build_submission_for_type("multiple", _answer_type, answer),
     do: %{"type" => "quiz_question", "selected_choices" => List.wrap(answer)}
 
+  defp build_submission_for_type("matching", _answer_type, answer),
+    do: %{"type" => "quiz_question", "matches" => answer || %{}}
+
   defp build_submission_for_type(_q_type, _answer_type, _answer), do: %{"type" => "quiz_question"}
 
   @doc false
@@ -1073,6 +1076,10 @@ defmodule AthenaWeb.LearnLive.Player do
     end
   end
 
+  defp build_quiz_draft_content("matching", params, _answer_type) do
+    %{"type" => :quiz_question, "matches" => params["answer"] || %{}}
+  end
+
   defp build_quiz_draft_content(_question_type, params, _answer_type) do
     answer = params["answer"]
 
@@ -1197,6 +1204,7 @@ defmodule AthenaWeb.LearnLive.Player do
                     answers={@submissions}
                     draft={Map.get(@drafts || %{}, block.id)}
                     attempts_count={attempts}
+                    user_id={@current_user.id}
                   />
 
                   <div

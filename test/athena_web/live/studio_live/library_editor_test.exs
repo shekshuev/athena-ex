@@ -169,6 +169,21 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       assert final_block.content["slots"] == []
     end
 
+    test "question type select includes the matching option", %{conn: conn, admin: admin} do
+      block =
+        insert(:library_block,
+          type: :quiz_question,
+          content: %{"question_type" => "open", "body" => %{}},
+          owner_id: admin.id
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      html = render(lv)
+      assert html =~ "Matching Pairs"
+      assert html =~ ~s(value="matching")
+    end
+
     test "updates advanced settings for code block", %{conn: conn, admin: admin} do
       block = insert(:library_block, type: :code, owner_id: admin.id)
 
@@ -285,6 +300,98 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
 
       {:ok, updated_block} = Content.get_library_block(block.id)
       assert updated_block.content["correct_answer"] == "flag{test123}"
+    end
+
+    test "adds and removes matching pairs", %{conn: conn, admin: admin} do
+      block =
+        insert(:library_block,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "matching",
+            "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+            "pairs" => [
+              %{"id" => "p1", "left" => "A", "right" => "1"},
+              %{"id" => "p2", "left" => "B", "right" => "2"}
+            ]
+          },
+          owner_id: admin.id
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      render_hook(lv, "add_quiz_pair", %{})
+
+      {:ok, updated_block} = Content.get_library_block(block.id)
+      assert length(updated_block.content["pairs"]) == 3
+
+      render_hook(lv, "remove_quiz_pair", %{"pair_id" => "p1"})
+
+      {:ok, final_block} = Content.get_library_block(block.id)
+      assert length(final_block.content["pairs"]) == 2
+      refute Enum.any?(final_block.content["pairs"], &(&1["id"] == "p1"))
+    end
+
+    test "rejects removing a matching pair below the 2-pair minimum", %{conn: conn, admin: admin} do
+      block =
+        insert(:library_block,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "matching",
+            "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+            "pairs" => [
+              %{"id" => "p1", "left" => "A", "right" => "1"},
+              %{"id" => "p2", "left" => "B", "right" => "2"}
+            ]
+          },
+          owner_id: admin.id
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      render_hook(lv, "remove_quiz_pair", %{"pair_id" => "p1"})
+
+      {:ok, updated_block} = Content.get_library_block(block.id)
+      assert length(updated_block.content["pairs"]) == 2
+    end
+
+    test "updates matching pairs via update_quiz_content", %{conn: conn, admin: admin} do
+      block =
+        insert(:library_block,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "matching",
+            "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+            "pairs" => [
+              %{"id" => "p1", "left" => "A", "right" => "1"},
+              %{"id" => "p2", "left" => "B", "right" => "2"}
+            ]
+          },
+          owner_id: admin.id
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      render_hook(lv, "update_quiz_content", %{
+        "pairs" => %{
+          "0" => %{"id" => "p1", "left" => "Updated left", "right" => "Updated right"},
+          "1" => %{"id" => "p2", "left" => "B", "right" => "2"}
+        }
+      })
+
+      {:ok, updated_block} = Content.get_library_block(block.id)
+      pair = hd(updated_block.content["pairs"])
+
+      assert pair["id"] == "p1"
+
+      assert pair["left"] == %{
+               "type" => "doc",
+               "content" => [
+                 %{
+                   "type" => "paragraph",
+                   "content" => [%{"type" => "text", "text" => "Updated left"}]
+                 }
+               ]
+             }
     end
   end
 

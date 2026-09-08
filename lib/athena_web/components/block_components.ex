@@ -24,6 +24,7 @@ defmodule AthenaWeb.BlockComponents do
   attr :pending_file_urls, :map, default: %{}
   attr :draft, :map, default: nil
   attr :hide_submit, :boolean, default: false
+  attr :user_id, :string, default: nil
 
   def content_block(assigns) do
     ~H"""
@@ -55,6 +56,7 @@ defmodule AthenaWeb.BlockComponents do
             submission={@submission}
             attempts_count={@attempts_count}
             draft={@draft}
+            user_id={@user_id}
           />
         <% type when type in [:quiz_exam, :ticket_exam] -> %>
           <.render_any_exam
@@ -415,6 +417,7 @@ defmodule AthenaWeb.BlockComponents do
 
     assigns =
       assigns
+      |> assign_new(:user_id, fn -> nil end)
       |> assign(:q_type, q_type)
       |> assign(:options, opts)
       |> assign(:answer, extract_quiz_answer(assigns, q_type))
@@ -451,6 +454,7 @@ defmodule AthenaWeb.BlockComponents do
           answer={@answer}
           submission={@submission}
           draft={@draft}
+          user_id={@user_id}
         />
       </div>
     </div>
@@ -499,6 +503,19 @@ defmodule AthenaWeb.BlockComponents do
     end
   end
 
+  defp extract_from_submission(submission, "matching", _answer_type) do
+    content =
+      if is_struct(submission) do
+        if is_struct(submission.content),
+          do: Map.from_struct(submission.content),
+          else: submission.content || %{}
+      else
+        Map.get(submission, :content) || Map.get(submission, "content") || %{}
+      end
+
+    Map.get(content, "matches") || Map.get(content, :matches)
+  end
+
   defp extract_from_submission(submission, _q_type, _answer_type) do
     content =
       if is_struct(submission) do
@@ -522,6 +539,10 @@ defmodule AthenaWeb.BlockComponents do
     else
       draft["text_answer"] || draft[:text_answer]
     end
+  end
+
+  defp extract_from_draft(draft, "matching", _answer_type) do
+    draft["matches"] || draft[:matches]
   end
 
   defp extract_from_draft(draft, _q_type, _answer_type) do
@@ -571,6 +592,13 @@ defmodule AthenaWeb.BlockComponents do
   end
 
   defp render_quiz_inputs(%{q_type: q_type} = assigns) when q_type in ["single", "multiple"] do
+    assigns =
+      assign(
+        assigns,
+        :options,
+        shuffled_by_seed(assigns.options, assigns.block.id, assigns[:user_id], & &1["id"])
+      )
+
     ~H"""
     <div class="space-y-3">
       <%= for opt <- @options do %>
@@ -635,6 +663,94 @@ defmodule AthenaWeb.BlockComponents do
     </div>
     """
   end
+
+  defp render_quiz_inputs(%{q_type: "matching"} = assigns) do
+    pairs = assigns.block.content["pairs"] || []
+    student_matches = assigns.answer || %{}
+
+    right_options =
+      shuffled_by_seed(pairs, assigns.block.id, assigns[:user_id], & &1["id"])
+
+    assigns =
+      assigns
+      |> assign(:pairs, pairs)
+      |> assign(:right_options, right_options)
+      |> assign(:student_matches, student_matches)
+
+    ~H"""
+    <div class="space-y-3">
+      <%= for pair <- @pairs do %>
+        <% selected = Map.get(@student_matches, pair["id"]) %>
+        <% is_correct = selected == pair["id"] %>
+
+        <div class={[
+          "flex items-center gap-4 p-4 rounded-sm border transition-all",
+          @mode == :play && "bg-base-100 border-base-200",
+          @mode == :review && selected != nil && is_correct && "bg-success/10 border-success/30",
+          @mode == :review && selected != nil && not is_correct && "bg-error/10 border-error/30",
+          @mode == :review && selected == nil && "bg-base-100 border-base-300 opacity-60",
+          @mode in [:edit, :preview] && "bg-base-100 border-base-200 opacity-60"
+        ]}>
+          <div class="flex-1 min-w-0">
+            <div
+              id={"tiptap-pair-left-#{@block.id}-#{pair["id"]}-#{if @mode != :edit, do: :erlang.phash2(pair["left"]), else: "static"}"}
+              phx-hook="TiptapEditor"
+              data-id={@block.id}
+              data-readonly="true"
+              phx-update="ignore"
+              data-content={
+                if is_map(pair["left"]),
+                  do: Jason.encode!(pair["left"]),
+                  else: Jason.encode!(wrap_text_in_paragraph(pair["left"]))
+              }
+              class="prose prose-base max-w-none text-base-content pointer-events-none [&_p]:my-0"
+            >
+            </div>
+          </div>
+
+          <.icon name="hero-arrow-right" class="size-4 text-base-content/40 shrink-0" />
+
+          <select
+            name={"answer[#{pair["id"]}]"}
+            class="select select-bordered flex-1 min-w-0 disabled:opacity-70 disabled:text-base-content"
+            disabled={@mode != :play}
+            phx-change={if @mode == :play, do: "save_draft", else: nil}
+            phx-value-block_id={@block.id}
+          >
+            <option value="" selected={selected == nil}>{gettext("Select a match...")}</option>
+            <%= for opt <- @right_options do %>
+              <option value={opt["id"]} selected={selected == opt["id"]}>
+                {tiptap_plain_text(opt["right"])}
+              </option>
+            <% end %>
+          </select>
+
+          <%= if @mode == :review && not is_correct do %>
+            <div class="text-sm text-success shrink-0">
+              {gettext("Correct:")} {tiptap_plain_text(pair["right"])}
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  @doc false
+  defp shuffled_by_seed(items, block_id, user_id, id_fn) do
+    Enum.sort_by(items, fn item -> :erlang.phash2({block_id, user_id, id_fn.(item)}) end)
+  end
+
+  @doc false
+  defp tiptap_plain_text(nil), do: ""
+  defp tiptap_plain_text(text) when is_binary(text), do: text
+
+  defp tiptap_plain_text(%{"content" => content}) when is_list(content) do
+    content |> Enum.map(&tiptap_plain_text/1) |> Enum.join(" ") |> String.trim()
+  end
+
+  defp tiptap_plain_text(%{"text" => text}) when is_binary(text), do: text
+  defp tiptap_plain_text(_), do: ""
 
   @doc false
   defp fetch_open_answer_content(answer, draft, "rich_text"),
@@ -1121,6 +1237,114 @@ defmodule AthenaWeb.BlockComponents do
                 <div class="text-sm text-base-content/50 italic bg-base-200/50 p-4 rounded-sm border border-dashed border-base-300">
                   {gettext("Student will see a text area to write their open answer.")}
                 </div>
+              <% "matching" -> %>
+                <div class="space-y-3">
+                  <%= for {pair, index} <- Enum.with_index(@block.content["pairs"] || []) do %>
+                    <div class="flex items-start gap-3 group relative">
+                      <input type="hidden" name={"pairs[#{index}][id]"} value={pair["id"]} />
+
+                      <div class="flex-1 bg-base-100/50 p-2 rounded-sm border border-base-200/50 focus-within:border-2 focus-within:border-primary space-y-2">
+                        <label class="label">
+                          <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                            {gettext("Left")}
+                          </span>
+                        </label>
+                        <div
+                          class="editor-wrapper group/tiptap relative outline-none w-full"
+                          tabindex="-1"
+                        >
+                          <.tiptap_toolbar mode={:edit} />
+                          <input
+                            type="hidden"
+                            id={"pair-left-#{@block.id}-#{pair["id"]}"}
+                            name={"pairs[#{index}][left]"}
+                            value={
+                              if is_map(pair["left"]),
+                                do: Jason.encode!(pair["left"]),
+                                else: Jason.encode!(wrap_text_in_paragraph(pair["left"]))
+                            }
+                          />
+                          <div
+                            id={"tiptap-pair-left-editor-#{@block.id}-#{pair["id"]}"}
+                            phx-hook="TiptapEditor"
+                            data-id={@block.id}
+                            data-input-id={"pair-left-#{@block.id}-#{pair["id"]}"}
+                            data-readonly="false"
+                            phx-update="ignore"
+                            data-content={
+                              if is_map(pair["left"]),
+                                do: Jason.encode!(pair["left"]),
+                                else: Jason.encode!(wrap_text_in_paragraph(pair["left"]))
+                            }
+                            class="prose prose-sm max-w-none text-base-content/80 leading-relaxed min-h-10 px-3 py-2 bg-base-100 rounded-sm cursor-text [&_p]:my-1"
+                          >
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="flex-1 bg-base-100/50 p-2 rounded-sm border border-base-200/50 focus-within:border-2 focus-within:border-primary space-y-2">
+                        <label class="label">
+                          <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                            {gettext("Right (match)")}
+                          </span>
+                        </label>
+                        <div
+                          class="editor-wrapper group/tiptap relative outline-none w-full"
+                          tabindex="-1"
+                        >
+                          <.tiptap_toolbar mode={:edit} />
+                          <input
+                            type="hidden"
+                            id={"pair-right-#{@block.id}-#{pair["id"]}"}
+                            name={"pairs[#{index}][right]"}
+                            value={
+                              if is_map(pair["right"]),
+                                do: Jason.encode!(pair["right"]),
+                                else: Jason.encode!(wrap_text_in_paragraph(pair["right"]))
+                            }
+                          />
+                          <div
+                            id={"tiptap-pair-right-editor-#{@block.id}-#{pair["id"]}"}
+                            phx-hook="TiptapEditor"
+                            data-id={@block.id}
+                            data-input-id={"pair-right-#{@block.id}-#{pair["id"]}"}
+                            data-readonly="false"
+                            phx-update="ignore"
+                            data-content={
+                              if is_map(pair["right"]),
+                                do: Jason.encode!(pair["right"]),
+                                else: Jason.encode!(wrap_text_in_paragraph(pair["right"]))
+                            }
+                            class="prose prose-sm max-w-none text-base-content/80 leading-relaxed min-h-10 px-3 py-2 bg-base-100 rounded-sm cursor-text [&_p]:my-1"
+                          >
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="pt-2 opacity-0 group-hover:opacity-100">
+                        <button
+                          type="button"
+                          phx-click="remove_quiz_pair"
+                          phx-value-id={@block.id}
+                          phx-value-pair_id={pair["id"]}
+                          phx-target={@target}
+                          class="btn btn-ghost btn-sm btn-square text-error"
+                        >
+                          <.icon name="hero-x-mark" class="size-5" />
+                        </button>
+                      </div>
+                    </div>
+                  <% end %>
+                </div>
+                <button
+                  type="button"
+                  phx-click="add_quiz_pair"
+                  phx-value-id={@block.id}
+                  phx-target={@target}
+                  class="btn btn-ghost btn-sm mt-4 text-primary font-bold"
+                >
+                  <.icon name="hero-plus" class="size-4 mr-1" /> {gettext("Add Pair")}
+                </button>
               <% _ -> %>
             <% end %>
           </form>

@@ -173,5 +173,15 @@ defmodule Athena.Learning.Evaluator do
 
   defp calculate_score(%QuizQuestion{question_type: :open}, _), do: {nil, :needs_review}
 
+  defp calculate_score(%QuizQuestion{question_type: :matching} = q, a) do
+    pairs = q.pairs || []
+    matches = Map.get(a, "matches") || Map.get(a, :matches) || %{}
+
+    all_correct? =
+      pairs != [] and Enum.all?(pairs, fn pair -> Map.get(matches, pair.id) == pair.id end)
+
+    if all_correct?, do: {100, :graded}, else: {0, :graded}
+  end
+
   defp calculate_score(_q, _a), do: {0, :graded}
 end

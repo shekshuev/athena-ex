@@ -183,4 +183,77 @@ defmodule AthenaWeb.LearnLive.TicketExamTest do
       assert html =~ ~r/phx-value-index="1"[^>]*bg-primary text-primary-content/
     end
   end
+
+  describe "Matching question in ticket exam" do
+    test "saves matching answer via child submission and grades it correctly", %{
+      conn: conn,
+      course: course,
+      section: section,
+      user: user
+    } do
+      pair1_id = Ecto.UUID.generate()
+      pair2_id = Ecto.UUID.generate()
+      q_id = Ecto.UUID.generate()
+
+      questions = [
+        %{
+          "id" => q_id,
+          "type" => "quiz_question",
+          "content" => %{
+            "question_type" => "matching",
+            "body" => %{"text" => "Match the terms"},
+            "pairs" => [
+              %{"id" => pair1_id, "left" => "Alpha", "right" => "One"},
+              %{"id" => pair2_id, "left" => "Beta", "right" => "Two"}
+            ]
+          }
+        }
+      ]
+
+      block =
+        insert(:block, section: section, type: :ticket_exam, content: %{"slots" => [%{}]})
+
+      sub =
+        insert(:submission,
+          account_id: user.id,
+          block_id: block.id,
+          status: :pending,
+          expires_at:
+            DateTime.utc_now() |> DateTime.add(3600, :second) |> DateTime.truncate(:second),
+          content: %{
+            "type" => "ticket_exam",
+            "started_at" => DateTime.utc_now(),
+            "questions" => questions
+          }
+        )
+
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/ticket/#{block.id}")
+
+      assert html =~ ~s(name="answer[#{pair1_id}]")
+
+      lv
+      |> form("#ticket-quiz-#{q_id}", %{"answer" => %{pair1_id => pair1_id, pair2_id => pair2_id}})
+      |> render_change()
+
+      child_sub =
+        Athena.Repo.get_by!(Athena.Learning.Submission,
+          parent_submission_id: sub.id,
+          block_id: q_id,
+          account_id: user.id
+        )
+
+      assert child_sub.content["matches"] == %{pair1_id => pair1_id, pair2_id => pair2_id}
+
+      lv
+      |> form("#ticket-quiz-#{q_id}", %{"answer" => %{pair1_id => pair1_id, pair2_id => pair2_id}})
+      |> render_submit()
+
+      res =
+        Athena.Learning.Evaluator.evaluate_sync(
+          Athena.Repo.get!(Athena.Learning.Submission, sub.id)
+        )
+
+      assert res.score == 100
+    end
+  end
 end

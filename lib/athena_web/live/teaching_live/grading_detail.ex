@@ -433,6 +433,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                   mode={:review}
                   submission={child_sub}
                   hide_submit={true}
+                  user_id={if child_sub, do: child_sub.account_id, else: @submission.account_id}
                 />
                 <div class="mt-4">
                   <div class="text-xs font-bold uppercase tracking-wider mb-3">
@@ -481,6 +482,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                 mode={:review}
                 submission={@submission}
                 hide_submit={true}
+                user_id={@submission.account_id}
               />
             </div>
           <% end %>

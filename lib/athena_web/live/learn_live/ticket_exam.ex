@@ -606,6 +606,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
                         mode={:play}
                         submission={Map.get(@child_submissions, @current_question.id)}
                         pending_file_urls={@pending_file_urls}
+                        user_id={@current_user.id}
                       />
                     </form>
                   <% :code -> %>
@@ -795,6 +796,13 @@ defmodule AthenaWeb.LearnLive.TicketExam do
          answer
        ) do
     %{"type" => :quiz_question, "selected_choices" => List.wrap(answer)}
+  end
+
+  defp normalize_answer(
+         %{type: :quiz_question, content: %{"question_type" => "matching"}},
+         answer
+       ) do
+    %{"type" => :quiz_question, "matches" => answer || %{}}
   end
 
   defp normalize_answer(%{type: :quiz_question, content: %{"question_type" => _other}}, answer) do

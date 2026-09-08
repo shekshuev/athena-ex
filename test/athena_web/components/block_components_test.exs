@@ -542,6 +542,84 @@ defmodule AthenaWeb.BlockComponentsTest do
     end
   end
 
+  describe "content_block/1 per-student answer shuffling" do
+    setup do
+      opts = [
+        %{"id" => "o1", "text" => "A"},
+        %{"id" => "o2", "text" => "B"},
+        %{"id" => "o3", "text" => "C"}
+      ]
+
+      block =
+        insert(:block,
+          type: :quiz_question,
+          content: %{"question_type" => "multiple", "body" => %{}, "options" => opts}
+        )
+
+      %{block: block, opts: opts}
+    end
+
+    defp rendered_option_order(html) do
+      Regex.scan(~r/value="(o\d)"/, html) |> Enum.map(&Enum.at(&1, 1))
+    end
+
+    test "renders options in the order predicted by the shuffle seed for a given user", %{
+      block: block,
+      opts: opts
+    } do
+      expected_order =
+        Enum.sort_by(opts, fn opt -> :erlang.phash2({block.id, "user-a", opt["id"]}) end)
+        |> Enum.map(& &1["id"])
+
+      assigns = %{block: block, user_id: "user-a"}
+
+      html =
+        rendered_to_string(~H"<.content_block block={@block} mode={:play} user_id={@user_id} />")
+
+      assert rendered_option_order(html) == expected_order
+    end
+
+    test "option order is stable across renders for the same block and user", %{block: block} do
+      assigns = %{block: block, user_id: "user-a"}
+
+      html1 =
+        rendered_to_string(~H"<.content_block block={@block} mode={:play} user_id={@user_id} />")
+
+      html2 =
+        rendered_to_string(~H"<.content_block block={@block} mode={:play} user_id={@user_id} />")
+
+      assert rendered_option_order(html1) == rendered_option_order(html2)
+    end
+
+    test "option order can differ between students for the same block", %{block: block} do
+      assigns = %{block: block, user_id: "user-a"}
+
+      html_a =
+        rendered_to_string(~H"<.content_block block={@block} mode={:play} user_id={@user_id} />")
+
+      assigns = %{block: block, user_id: "user-b"}
+
+      html_b =
+        rendered_to_string(~H"<.content_block block={@block} mode={:play} user_id={@user_id} />")
+
+      refute rendered_option_order(html_a) == rendered_option_order(html_b)
+    end
+
+    test "renders a deterministic order even when no user_id is given (editor context)", %{
+      block: block,
+      opts: opts
+    } do
+      expected_order =
+        Enum.sort_by(opts, fn opt -> :erlang.phash2({block.id, nil, opt["id"]}) end)
+        |> Enum.map(& &1["id"])
+
+      assigns = %{block: block}
+      html = rendered_to_string(~H"<.content_block block={@block} mode={:edit} />")
+
+      assert rendered_option_order(html) == expected_order
+    end
+  end
+
   describe "content_block/1 :quiz_question (open / essay)" do
     setup do
       block =
@@ -1084,6 +1162,84 @@ defmodule AthenaWeb.BlockComponentsTest do
     end
   end
 
+  describe "content_block/1 :quiz_question (matching)" do
+    setup do
+      block =
+        insert(:block,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "matching",
+            "body" => %{"text" => "Match the terms"},
+            "pairs" => [
+              %{"id" => "p1", "left" => "Alpha", "right" => "One"},
+              %{"id" => "p2", "left" => "Beta", "right" => "Two"}
+            ]
+          }
+        )
+
+      %{block: block}
+    end
+
+    test "renders left/right editors in :edit mode", %{block: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:edit} active={true} />
+        """)
+
+      assert html =~ "Match the terms"
+      assert html =~ "tiptap-pair-left-#{block.id}-p1"
+      assert html =~ "tiptap-pair-left-#{block.id}-p2"
+      assert html =~ "<select"
+      assert html =~ " disabled"
+    end
+
+    test "renders active selects with saved answer in :play mode", %{block: block} do
+      assigns = %{block: block, answers: %{block.id => %{"p1" => "p1"}}}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} answers={@answers} />
+        """)
+
+      assert html =~ "<select"
+      assert html =~ ~s(name="answer[p1]")
+      assert html =~ ~s(name="answer[p2]")
+      assert html =~ ~s(value="p1" selected)
+      refute html =~ ~r/ disabled(?!:)/
+      assert html =~ "One"
+      assert html =~ "Two"
+    end
+
+    test "highlights correct and incorrect rows in :review mode", %{block: block} do
+      sub = %{score: 50, content: %{"matches" => %{"p1" => "p1", "p2" => "p1"}}}
+      assigns = %{block: block, submission: sub}
+
+      html =
+        rendered_to_string(
+          ~H"<.content_block block={@block} mode={:review} submission={@submission} />"
+        )
+
+      assert html =~ " disabled"
+      assert html =~ "bg-success/10"
+      assert html =~ "bg-error/10"
+      assert html =~ "Correct:"
+    end
+
+    test "renders disabled selects in :preview mode", %{block: block} do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:preview} />
+        """)
+
+      assert html =~ "<select"
+      assert html =~ " disabled"
+    end
+  end
+
   describe "content_block/1 :quiz_exam" do
     setup do
       block =
@@ -1433,6 +1589,56 @@ defmodule AthenaWeb.BlockComponentsTest do
       assert html =~ ~s(value="opt1" checked)
       assert html =~ ~s(value="opt2" checked)
       refute html =~ ~s(value="opt3" checked)
+    end
+
+    test "quiz_question (matching) renders draft matches when no submission or answers present" do
+      block =
+        insert(:block,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "matching",
+            "pairs" => [
+              %{"id" => "p1", "left" => "Alpha", "right" => "One"},
+              %{"id" => "p2", "left" => "Beta", "right" => "Two"}
+            ]
+          }
+        )
+
+      draft = %{"type" => :quiz_question, "matches" => %{"p1" => "p1"}}
+      assigns = %{block: block, draft: draft}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} draft={@draft} />
+        """)
+
+      assert html =~ ~s(value="p1" selected)
+    end
+
+    test "quiz_question (matching) prioritizes submission over draft" do
+      block =
+        insert(:block,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "matching",
+            "pairs" => [
+              %{"id" => "p1", "left" => "Alpha", "right" => "One"},
+              %{"id" => "p2", "left" => "Beta", "right" => "Two"}
+            ]
+          }
+        )
+
+      draft = %{"type" => :quiz_question, "matches" => %{"p1" => "p2"}}
+      submission = %{content: %{"matches" => %{"p1" => "p1"}}}
+      assigns = %{block: block, draft: draft, submission: submission}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:review} submission={@submission} draft={@draft} />
+        """)
+
+      assert html =~ "bg-success/10"
+      refute html =~ "bg-error/10"
     end
 
     test "quiz_question prioritizes submission over draft" do
