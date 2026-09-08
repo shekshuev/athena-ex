@@ -4786,3 +4786,303 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "is incorrect"
 msgstr ""
+
+
+#: lib/athena_web/live/dashboard_live/index.ex:17
+#, elixir-autogen, elixir-format
+msgid "Dashboard Overview"
+msgstr ""
+
+#: lib/athena_web/live/dashboard_live/index.ex:19
+#, elixir-autogen, elixir-format
+msgid "Welcome to your personal learning space. We are working on adding insightful widgets and analytics here."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_details.ex:259
+#, elixir-autogen, elixir-format
+msgid "Access Settings"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:435
+#, elixir-autogen, elixir-format
+msgid "Active students"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:396
+#, elixir-autogen, elixir-format
+msgid "Activity heatmap"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:129
+#, elixir-autogen, elixir-format
+msgid "Allow nudges in this section?"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:738
+#, elixir-autogen, elixir-format
+msgid "Allow nudges on this block?"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:306
+#, elixir-autogen, elixir-format
+msgid "Avg dwell (s)"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:98
+#, elixir-autogen, elixir-format
+msgid "Back to Cohorts"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:363
+#, elixir-autogen, elixir-format
+msgid "Charts period"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:243
+#, elixir-autogen, elixir-format
+msgid "Compare Cohorts"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:40
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:103
+#, elixir-autogen, elixir-format
+msgid "Compare cohorts: %{course}"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:461
+#, elixir-autogen, elixir-format
+msgid "Content issue"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:235
+#, elixir-autogen, elixir-format
+msgid "Course Radar"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:409
+#, elixir-autogen, elixir-format
+msgid "Course funnel"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:45
+#, elixir-autogen, elixir-format
+msgid "Course not found."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:100
+#, elixir-autogen, elixir-format
+msgid "Default for every block in this section, unless a block overrides it. Leave blank to inherit the application default."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:133
+#: lib/athena_web/live/studio_live/inspector_component.ex:742
+#, elixir-autogen, elixir-format
+msgid "Disabled"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:344
+#, elixir-autogen, elixir-format
+msgid "Dwell distribution"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:132
+#: lib/athena_web/live/studio_live/inspector_component.ex:741
+#, elixir-autogen, elixir-format
+msgid "Enabled"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_details.ex:272
+#, elixir-autogen, elixir-format
+msgid "Engagement"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_details.ex:269
+#, elixir-autogen, elixir-format
+msgid "Engagement Metrics"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:97
+#: lib/athena_web/live/studio_live/inspector_component.ex:706
+#, elixir-autogen, elixir-format
+msgid "Engagement Tracking"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:74
+#, elixir-autogen, elixir-format
+msgid "Engagement: %{course}"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:109
+#: lib/athena_web/live/studio_live/inspector_component.ex:718
+#, elixir-autogen, elixir-format
+msgid "Expected time to complete (seconds)"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:281
+#, elixir-autogen, elixir-format
+msgid "Export CSV"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:118
+#: lib/athena_web/live/studio_live/inspector_component.ex:727
+#, elixir-autogen, elixir-format
+msgid "Fast-completion threshold (0-1)"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:383
+#, elixir-autogen, elixir-format
+msgid "Flags per section"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:229
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:487
+#, elixir-autogen, elixir-format
+msgid "Group Radar"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:371
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:492
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:109
+#, elixir-autogen, elixir-format
+msgid "Last 30 days"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:368
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:491
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:108
+#, elixir-autogen, elixir-format
+msgid "Last 7 days"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:709
+#, elixir-autogen, elixir-format
+msgid "Leave blank to inherit from the section, or ultimately the application default."
+msgstr ""
+
+#: lib/athena_web/live/learn_live/player.ex:755
+#, elixir-autogen, elixir-format
+msgid "Looks like you pasted a ready-made answer - are you sure you understand it?"
+msgstr ""
+
+#: lib/athena_web/live/learn_live/player.ex:752
+#, elixir-autogen, elixir-format
+msgid "Looks like you scrolled past without reading much - want to go back?"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:561
+#, elixir-autogen, elixir-format
+msgid "Needs attention"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:600
+#, elixir-autogen, elixir-format
+msgid "No activity recorded yet."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:133
+#, elixir-autogen, elixir-format
+msgid "No cohorts are enrolled in this course yet."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:335
+#, elixir-autogen, elixir-format
+msgid "No data yet."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:537
+#, elixir-autogen, elixir-format
+msgid "No students in this cohort yet."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:422
+#, elixir-autogen, elixir-format
+msgid "Nudge correction rate"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:315
+#, elixir-autogen, elixir-format
+msgid "Nudges shown"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:563
+#, elixir-autogen, elixir-format
+msgid "On track"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:309
+#, elixir-autogen, elixir-format
+msgid "Sample size"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:518
+#, elixir-autogen, elixir-format
+msgid "Slacking index"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:500
+#, elixir-autogen, elixir-format
+msgid "Slacking vs. struggling"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:562
+#, elixir-autogen, elixir-format
+msgid "Struggling"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:519
+#, elixir-autogen, elixir-format
+msgid "Struggling index"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:347
+#, elixir-autogen, elixir-format
+msgid "The bottom %{percent}% (red) is the cutoff the nudge algorithm reads against."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:325
+#, elixir-autogen, elixir-format
+msgid "Value"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:468
+#, elixir-autogen, elixir-format
+msgid "View metrics"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:324
+#, elixir-autogen, elixir-format
+msgid "Week"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:298
+#, elixir-autogen, elixir-format
+msgid "Weekly trend"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:746
+#, elixir-autogen, elixir-format
+msgid "When a cohort has nudges enabled, students who complete this block suspiciously fast see a gentle reminder to double-check."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:265
+#, elixir-autogen, elixir-format
+msgid "Whole cohort"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:374
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:493
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:110
+#, elixir-autogen, elixir-format
+msgid "Whole course"
+msgstr ""
+
+#: lib/athena_web/live/learn_live/player.ex:758
+#, elixir-autogen, elixir-format
+msgid "You skipped through most of that video - sure you got it all?"
+msgstr ""
+
+#: lib/athena_web/live/learn_live/player.ex:761
+#, elixir-autogen, elixir-format
+msgid "You went through that pretty fast - want to go back and double-check?"
+msgstr ""
+

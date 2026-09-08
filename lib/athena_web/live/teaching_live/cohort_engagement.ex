@@ -377,7 +377,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
                 </form>
               </div>
 
-              <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
+              <div class="space-y-4 mb-4">
                 <div class="bg-base-100 border border-base-200 rounded-sm p-4">
                   <h3 class="text-sm font-black uppercase tracking-widest text-base-content/50 mb-3">
                     {gettext("Flags per section")}
@@ -386,7 +386,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
                     id="section-flag-stacked-bar"
                     phx-hook="EngagementChart"
                     data-config={Jason.encode!(@section_chart_config)}
-                    class="max-h-72"
+                    class="max-h-56"
                   >
                   </canvas>
                 </div>
@@ -399,7 +399,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
                     id="activity-heatmap"
                     phx-hook="EngagementChart"
                     data-config={Jason.encode!(@heatmap_config)}
-                    class="max-h-72"
+                    class="max-h-56"
                   >
                   </canvas>
                 </div>
@@ -412,7 +412,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
                     id="course-funnel-chart"
                     phx-hook="EngagementChart"
                     data-config={Jason.encode!(@funnel_chart_config)}
-                    class="max-h-72"
+                    class="max-h-56"
                   >
                   </canvas>
                 </div>
@@ -425,23 +425,23 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
                     id="nudge-correction-rate-chart"
                     phx-hook="EngagementChart"
                     data-config={Jason.encode!(@correction_rate_chart_config)}
-                    class="max-h-72"
+                    class="max-h-56"
                   >
                   </canvas>
                 </div>
-              </div>
 
-              <div class="bg-base-100 border border-base-200 rounded-sm p-4 mb-4">
-                <h3 class="text-sm font-black uppercase tracking-widest text-base-content/50 mb-3">
-                  {gettext("Active students")}
-                </h3>
-                <canvas
-                  id="active-students-trend"
-                  phx-hook="EngagementChart"
-                  data-config={Jason.encode!(@trend_chart_config)}
-                  class="max-h-56"
-                >
-                </canvas>
+                <div class="bg-base-100 border border-base-200 rounded-sm p-4">
+                  <h3 class="text-sm font-black uppercase tracking-widest text-base-content/50 mb-3">
+                    {gettext("Active students")}
+                  </h3>
+                  <canvas
+                    id="active-students-trend"
+                    phx-hook="EngagementChart"
+                    data-config={Jason.encode!(@trend_chart_config)}
+                    class="max-h-56"
+                  >
+                  </canvas>
+                </div>
               </div>
 
               <div class="space-y-4">

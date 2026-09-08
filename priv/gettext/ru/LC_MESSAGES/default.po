@@ -1010,12 +1010,12 @@ msgstr "Редактировать настройки"
 msgid "Edit Template"
 msgstr "Редактировать шаблон"
 
-#: lib/athena_web/live/studio_live/course_enrollment_component.ex:145
-#: lib/athena_web/live/studio_live/inspector_component.ex:101
-#: lib/athena_web/live/studio_live/inspector_component.ex:661
+#: lib/athena_web/live/studio_live/course_enrollment_component.ex:129
+#: lib/athena_web/live/studio_live/inspector_component.ex:150
+#: lib/athena_web/live/studio_live/inspector_component.ex:765
 #, elixir-autogen, elixir-format
 msgid "Enrolled Students"
-msgstr "Зачисленные пользователи"
+msgstr "Зачисленные обучающиеся"
 
 #: lib/athena_web/live/learn_live/index.ex:104
 #, elixir-autogen, elixir-format
@@ -1035,7 +1035,7 @@ msgstr "Не удалось удалить секцию"
 #: lib/athena_web/live/teaching_live/membership_form_component.ex:101
 #, elixir-autogen, elixir-format
 msgid "Failed to add student."
-msgstr "Не удалось удалить аккаунт"
+msgstr "Не удалось добавить обучающегося."
 
 #: lib/athena_web/live/teaching_live/enrollment_form_component.ex:95
 #, elixir-autogen, elixir-format
@@ -1400,11 +1400,11 @@ msgstr "Требовать сдачу задания"
 msgid "Save Template"
 msgstr "Сохранить шаблон"
 
-#: lib/athena_web/live/studio_live/builder.ex:1895
-#: lib/athena_web/live/studio_live/inspector_component.ex:701
+#: lib/athena_web/live/studio_live/builder.ex:1832
+#: lib/athena_web/live/studio_live/inspector_component.ex:805
 #, elixir-autogen, elixir-format
 msgid "Save to Library"
-msgstr "В библиотеку"
+msgstr "Сохранить в библиотеку"
 
 #: lib/athena_web/live/studio_live/builder.ex:1397
 #, elixir-autogen, elixir-format
@@ -2912,11 +2912,11 @@ msgstr "Ваш доступ к этому шаблону был отозван."
 msgid "Your browser is out of date. Athena LMS may not display correctly. Please update your browser for the best experience."
 msgstr "Ваш браузер устарел. Athena LMS может отображаться некорректно. Пожалуйста, обновите браузер для лучшей работы."
 
-#: lib/athena_web/live/studio_live/canvas_component.ex:211
+#: lib/athena_web/live/studio_live/canvas_component.ex:206
 #: lib/athena_web/live/teaching_live/grading.ex:342
 #, elixir-autogen, elixir-format
 msgid "Assignment"
-msgstr "Решение"
+msgstr "Задание"
 
 #: lib/athena_web/live/teaching_live/grading.ex:314
 #, elixir-autogen, elixir-format
@@ -3428,7 +3428,7 @@ msgstr "Вы можете загрузить еще %{count} файлов."
 #: lib/athena_web/live/studio_live/structure_sidebar_component.ex:52
 #, elixir-autogen, elixir-format
 msgid "Add Section"
-msgstr "Секция"
+msgstr "Добавить раздел"
 
 #: lib/athena_web/live/studio_live/structure_sidebar_component.ex:95
 #, elixir-autogen, elixir-format
@@ -3630,15 +3630,15 @@ msgstr "Сессия проверки знаний неактивна или у�
 msgid "Assessment session submitted successfully!"
 msgstr "Проверка знаний успешно завершена!"
 
-#: lib/athena_web/live/studio_live/builder.ex:626
+#: lib/athena_web/live/studio_live/builder.ex:592
 #, elixir-autogen, elixir-format
 msgid "Failed to create assessment session block"
-msgstr "Не удалось создать блок для загрузки файлов"
+msgstr "Не удалось создать блок сессии проверки знаний"
 
-#: lib/athena_web/live/learn_live/player.ex:603
+#: lib/athena_web/live/learn_live/player.ex:941
 #, elixir-autogen, elixir-format
 msgid "Failed to start the assessment session."
-msgstr "Не удалось поделиться шаблоном."
+msgstr "Не удалось начать сессию проверки знаний."
 
 #: lib/athena_web/live/learn_live/exam.ex:727
 #, elixir-autogen, elixir-format
@@ -3713,10 +3713,10 @@ msgstr "Завершить проверку знаний?"
 msgid "Tags"
 msgstr "Теги"
 
-#: lib/athena_web/live/studio_live/library_editor.ex:870
+#: lib/athena_web/live/studio_live/library_editor.ex:820
 #, elixir-autogen, elixir-format
 msgid "Template"
-msgstr "Название шаблона"
+msgstr "Шаблон"
 
 #: lib/athena_web/components/block_components.ex:937
 #: lib/athena_web/live/learn_live/ticket_exam.ex:540
@@ -3803,7 +3803,7 @@ msgstr "Запуск кода... Пожалуйста, подождите"
 #: lib/athena_web/live/teaching_live/grading_detail.ex:190
 #, elixir-autogen, elixir-format
 msgid "Student submission is empty."
-msgstr "Ответ готов"
+msgstr "Ответ обучающегося пуст."
 
 #: lib/athena_web/live/teaching_live/grading_detail.ex:329
 #, elixir-autogen, elixir-format
@@ -3835,10 +3835,10 @@ msgstr "Начинаем..."
 msgid "Back to Builder"
 msgstr "Назад в конструктор"
 
-#: lib/athena_web/live/studio_live/library_editor.ex:825
+#: lib/athena_web/live/studio_live/library_editor.ex:780
 #, elixir-autogen, elixir-format
 msgid "Back to Library"
-msgstr "В библиотеку"
+msgstr "Назад в библиотеку"
 
 #: lib/athena_web/live/studio_live/library.ex:101
 #, elixir-autogen, elixir-format
@@ -3927,10 +3927,10 @@ msgstr "Поиск блоков..."
 msgid "Manage Course Library"
 msgstr "Управлять библиотекой курса"
 
-#: lib/athena_web/live/studio_live/builder.ex:1874
+#: lib/athena_web/live/studio_live/builder.ex:1811
 #, elixir-autogen, elixir-format
 msgid "This course library is empty. Pin templates from the main library first."
-msgstr "Библиотека курса пуста."
+msgstr "Библиотека курса пуста. Сначала закрепите шаблоны из основной библиотеки."
 
 #: lib/athena_web/components/block_components.ex:1503
 #, elixir-autogen, elixir-format
@@ -3967,10 +3967,10 @@ msgstr "Пусто"
 msgid "Enroll"
 msgstr "Зачисление"
 
-#: lib/athena_web/live/studio_live/courses.ex:419
+#: lib/athena_web/live/studio_live/courses.ex:431
 #, elixir-autogen, elixir-format
 msgid "Enroll Students"
-msgstr "Зачислить пользователей"
+msgstr "Зачислить обучающихся"
 
 #: lib/athena_web/live/studio_live/courses.ex:497
 #, elixir-autogen, elixir-format
@@ -4051,20 +4051,20 @@ msgstr "Проверка состояния не пройдена"
 msgid "State Verification Passed"
 msgstr "Проверка состояния пройдена"
 
-#: lib/athena_web/live/studio_live/course_enrollment_component.ex:61
+#: lib/athena_web/live/studio_live/course_enrollment_component.ex:60
 #, elixir-autogen, elixir-format
 msgid "Student enrolled successfully."
-msgstr "Пользователь успешно зачислен."
+msgstr "Обучающийся успешно зачислен."
 
-#: lib/athena_web/live/studio_live/course_enrollment_component.ex:70
+#: lib/athena_web/live/studio_live/course_enrollment_component.ex:69
 #, elixir-autogen, elixir-format
 msgid "This student is already enrolled."
-msgstr "Этот обучающийся уже состоит в потоке."
+msgstr "Этот обучающийся уже зачислен."
 
-#: lib/athena_web/components/block_components.ex:2128
+#: lib/athena_web/components/block_components.ex:2121
 #, elixir-autogen, elixir-format
 msgid "Time Limit Exceeded"
-msgstr "Превышен лимит времени"
+msgstr "Превышено время выполнения"
 
 #: lib/athena_web/live/studio_live/builder.ex:1039
 #: lib/athena_web/live/studio_live/library_editor.ex:625
@@ -4076,7 +4076,7 @@ msgstr "Ошибка валидации: %{err}"
 #: lib/athena_web/live/studio_live/courses.ex:168
 #, elixir-autogen, elixir-format
 msgid "You do not have permission to enroll students."
-msgstr "У вас нет прав на зачисление пользователей."
+msgstr "У вас нет прав на зачисление обучающихся."
 
 #: lib/athena_web/components/block_components.ex:2196
 #, elixir-autogen, elixir-format
@@ -4788,3 +4788,303 @@ msgstr "Вы пока не записаны ни на один курс."
 #, elixir-autogen, elixir-format
 msgid "is incorrect"
 msgstr "неверен"
+
+
+#: lib/athena_web/live/dashboard_live/index.ex:17
+#, elixir-autogen, elixir-format
+msgid "Dashboard Overview"
+msgstr "Дашборд"
+
+#: lib/athena_web/live/dashboard_live/index.ex:19
+#, elixir-autogen, elixir-format
+msgid "Welcome to your personal learning space. We are working on adding insightful widgets and analytics here."
+msgstr "Добро пожаловать в твое личное пространство для обучения. Скоро тут появятся крутые виджеты и аналитика."
+
+#: lib/athena_web/live/teaching_live/cohort_details.ex:259
+#, elixir-autogen, elixir-format
+msgid "Access Settings"
+msgstr "Настройки доступа"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:435
+#, elixir-autogen, elixir-format
+msgid "Active students"
+msgstr "Активные обучающиеся"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:396
+#, elixir-autogen, elixir-format
+msgid "Activity heatmap"
+msgstr "Тепловая карта активности"
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:129
+#, elixir-autogen, elixir-format
+msgid "Allow nudges in this section?"
+msgstr "Разрешить подсказки в этом разделе?"
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:738
+#, elixir-autogen, elixir-format
+msgid "Allow nudges on this block?"
+msgstr "Разрешить подсказки в этом блоке?"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:306
+#, elixir-autogen, elixir-format
+msgid "Avg dwell (s)"
+msgstr "Ср. время (сек)"
+
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:98
+#, elixir-autogen, elixir-format
+msgid "Back to Cohorts"
+msgstr "Назад к потокам"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:363
+#, elixir-autogen, elixir-format
+msgid "Charts period"
+msgstr "Период графиков"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:243
+#, elixir-autogen, elixir-format
+msgid "Compare Cohorts"
+msgstr "Сравнить потоки"
+
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:40
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:103
+#, elixir-autogen, elixir-format
+msgid "Compare cohorts: %{course}"
+msgstr "Сравнение потоков: %{course}"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:461
+#, elixir-autogen, elixir-format
+msgid "Content issue"
+msgstr "Проблема с материалом"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:235
+#, elixir-autogen, elixir-format
+msgid "Course Radar"
+msgstr "Радар курса"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:409
+#, elixir-autogen, elixir-format
+msgid "Course funnel"
+msgstr "Воронка курса"
+
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:45
+#, elixir-autogen, elixir-format
+msgid "Course not found."
+msgstr "Курс не найден."
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:100
+#, elixir-autogen, elixir-format
+msgid "Default for every block in this section, unless a block overrides it. Leave blank to inherit the application default."
+msgstr "Значение по умолчанию для всех блоков этого раздела, если блок его не переопределяет. Оставьте пустым, чтобы использовать значение по умолчанию для всего приложения."
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:133
+#: lib/athena_web/live/studio_live/inspector_component.ex:742
+#, elixir-autogen, elixir-format
+msgid "Disabled"
+msgstr "Отключено"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:344
+#, elixir-autogen, elixir-format
+msgid "Dwell distribution"
+msgstr "Распределение времени"
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:132
+#: lib/athena_web/live/studio_live/inspector_component.ex:741
+#, elixir-autogen, elixir-format
+msgid "Enabled"
+msgstr "Включено"
+
+#: lib/athena_web/live/teaching_live/cohort_details.ex:272
+#, elixir-autogen, elixir-format
+msgid "Engagement"
+msgstr "Вовлечённость"
+
+#: lib/athena_web/live/teaching_live/cohort_details.ex:269
+#, elixir-autogen, elixir-format
+msgid "Engagement Metrics"
+msgstr "Метрики вовлечённости"
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:97
+#: lib/athena_web/live/studio_live/inspector_component.ex:706
+#, elixir-autogen, elixir-format
+msgid "Engagement Tracking"
+msgstr "Отслеживание вовлечённости"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:74
+#, elixir-autogen, elixir-format
+msgid "Engagement: %{course}"
+msgstr "Вовлечённость: %{course}"
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:109
+#: lib/athena_web/live/studio_live/inspector_component.ex:718
+#, elixir-autogen, elixir-format
+msgid "Expected time to complete (seconds)"
+msgstr "Ожидаемое время выполнения (в секундах)"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:281
+#, elixir-autogen, elixir-format
+msgid "Export CSV"
+msgstr "Экспорт CSV"
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:118
+#: lib/athena_web/live/studio_live/inspector_component.ex:727
+#, elixir-autogen, elixir-format
+msgid "Fast-completion threshold (0-1)"
+msgstr "Порог быстрого прохождения (0–1)"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:383
+#, elixir-autogen, elixir-format
+msgid "Flags per section"
+msgstr "Флаги по разделам"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:229
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:487
+#, elixir-autogen, elixir-format
+msgid "Group Radar"
+msgstr "Радар группы"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:371
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:492
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:109
+#, elixir-autogen, elixir-format
+msgid "Last 30 days"
+msgstr "Последние 30 дней"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:368
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:491
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:108
+#, elixir-autogen, elixir-format
+msgid "Last 7 days"
+msgstr "Последние 7 дней"
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:709
+#, elixir-autogen, elixir-format
+msgid "Leave blank to inherit from the section, or ultimately the application default."
+msgstr "Оставьте пустым, чтобы унаследовать значение раздела или, в конечном счёте, значение по умолчанию для приложения."
+
+#: lib/athena_web/live/learn_live/player.ex:755
+#, elixir-autogen, elixir-format
+msgid "Looks like you pasted a ready-made answer - are you sure you understand it?"
+msgstr "Похоже, вы вставили готовый ответ — уверены, что разобрались в нём?"
+
+#: lib/athena_web/live/learn_live/player.ex:752
+#, elixir-autogen, elixir-format
+msgid "Looks like you scrolled past without reading much - want to go back?"
+msgstr "Похоже, вы промотали, толком не читая, — хотите вернуться?"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:561
+#, elixir-autogen, elixir-format
+msgid "Needs attention"
+msgstr "Требует внимания"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:600
+#, elixir-autogen, elixir-format
+msgid "No activity recorded yet."
+msgstr "Активность пока не зафиксирована."
+
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:133
+#, elixir-autogen, elixir-format
+msgid "No cohorts are enrolled in this course yet."
+msgstr "На этот курс пока не зачислен ни один поток."
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:335
+#, elixir-autogen, elixir-format
+msgid "No data yet."
+msgstr "Данных пока нет."
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:537
+#, elixir-autogen, elixir-format
+msgid "No students in this cohort yet."
+msgstr "В этом потоке пока нет обучающихся."
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:422
+#, elixir-autogen, elixir-format
+msgid "Nudge correction rate"
+msgstr "Эффективность подсказки"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:315
+#, elixir-autogen, elixir-format
+msgid "Nudges shown"
+msgstr "Показано подсказок"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:563
+#, elixir-autogen, elixir-format
+msgid "On track"
+msgstr "Без замечаний"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:309
+#, elixir-autogen, elixir-format
+msgid "Sample size"
+msgstr "Размер выборки"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:518
+#, elixir-autogen, elixir-format
+msgid "Slacking index"
+msgstr "Индекс халтуры"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:500
+#, elixir-autogen, elixir-format
+msgid "Slacking vs. struggling"
+msgstr "Халтура и затыки"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:562
+#, elixir-autogen, elixir-format
+msgid "Struggling"
+msgstr "Испытывает трудности"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:519
+#, elixir-autogen, elixir-format
+msgid "Struggling index"
+msgstr "Индекс затыков"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:347
+#, elixir-autogen, elixir-format
+msgid "The bottom %{percent}% (red) is the cutoff the nudge algorithm reads against."
+msgstr "Нижние %{percent}% (красным) — порог, от которого отталкивается алгоритм подсказок."
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:325
+#, elixir-autogen, elixir-format
+msgid "Value"
+msgstr "Значение"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:468
+#, elixir-autogen, elixir-format
+msgid "View metrics"
+msgstr "Показать метрики"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:324
+#, elixir-autogen, elixir-format
+msgid "Week"
+msgstr "Неделя"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:298
+#, elixir-autogen, elixir-format
+msgid "Weekly trend"
+msgstr "Недельный тренд"
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:746
+#, elixir-autogen, elixir-format
+msgid "When a cohort has nudges enabled, students who complete this block suspiciously fast see a gentle reminder to double-check."
+msgstr "Если в потоке включены подсказки, обучающиеся, подозрительно быстро проходящие этот блок, увидят мягкое напоминание перепроверить себя."
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:265
+#, elixir-autogen, elixir-format
+msgid "Whole cohort"
+msgstr "Весь поток"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:374
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:493
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:110
+#, elixir-autogen, elixir-format
+msgid "Whole course"
+msgstr "Весь курс"
+
+#: lib/athena_web/live/learn_live/player.ex:758
+#, elixir-autogen, elixir-format
+msgid "You skipped through most of that video - sure you got it all?"
+msgstr "Вы промотали большую часть видео — уверены, что ничего не упустили?"
+
+#: lib/athena_web/live/learn_live/player.ex:761
+#, elixir-autogen, elixir-format
+msgid "You went through that pretty fast - want to go back and double-check?"
+msgstr "Вы прошли это довольно быстро — хотите вернуться и перепроверить?"
+

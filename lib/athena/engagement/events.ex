@@ -18,7 +18,7 @@ defmodule Athena.Engagement.Events do
   on the hot path.
   """
   @spec record_events(binary(), binary() | nil, binary(), [map()]) ::
-          {:ok, {non_neg_integer(), nil}} | {:error, :empty}
+          {:ok, {non_neg_integer(), [map()]}} | {:error, :empty}
   def record_events(_account_id, _cohort_id, _session_id, []), do: {:error, :empty}
 
   def record_events(account_id, cohort_id, session_id, events) when is_list(events) do

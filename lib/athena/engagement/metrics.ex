@@ -57,15 +57,17 @@ defmodule Athena.Engagement.Metrics do
   end
 
   def get_metrics(%{resource_type: :section, resource_id: section_id} = scope) do
-    with {:ok, section} <- Content.get_section(section_id) do
-      section_blocks =
-        section_id |> Content.list_blocks_by_section(:all) |> Enum.sort_by(& &1.order)
+    case Content.get_section(section_id) do
+      {:ok, section} ->
+        section_blocks =
+          section_id |> Content.list_blocks_by_section(:all) |> Enum.sort_by(& &1.order)
 
-      Map.new(section_blocks, fn block ->
-        {block.id, compute_block_metrics(block, section, section_blocks, scope)}
-      end)
-    else
-      _ -> %{}
+        Map.new(section_blocks, fn block ->
+          {block.id, compute_block_metrics(block, section, section_blocks, scope)}
+        end)
+
+      _ ->
+        %{}
     end
   end
 
@@ -264,16 +266,16 @@ defmodule Athena.Engagement.Metrics do
     else
       counts =
         for block <- blocks, account_id <- students, reduce: %{} do
-          acc ->
-            flags = student_block_flags(block, cohort_id, account_id, since)
-
-            Enum.reduce(flags.flags, acc, fn flag, acc2 ->
-              Map.update(acc2, flag, 1, &(&1 + 1))
-            end)
+          acc -> tally_block_account_flags(block, cohort_id, account_id, since, acc)
         end
 
       Map.new(@radar_axes, fn axis -> {axis, Map.get(counts, axis, 0) / total_observations} end)
     end
+  end
+
+  defp tally_block_account_flags(block, cohort_id, account_id, since, acc) do
+    flags = student_block_flags(block, cohort_id, account_id, since)
+    Enum.reduce(flags.flags, acc, fn flag, acc2 -> Map.update(acc2, flag, 1, &(&1 + 1)) end)
   end
 
   @doc """
@@ -611,20 +613,7 @@ defmodule Athena.Engagement.Metrics do
   defp compute_block_metrics(block, section, section_blocks, scope) do
     events = fetch_events(block.id, scope)
     resolved_rule = Policy.resolve_engagement_rule(block, section)
-
-    type_metrics =
-      case block.type do
-        :text -> text_metrics(events)
-        :video -> video_metrics(events)
-        :quiz_question -> quiz_question_metrics(events)
-        :quiz_exam -> exam_metrics(events)
-        :ticket_exam -> exam_metrics(events)
-        :code -> code_metrics(events)
-        :attachment -> attachment_metrics(events)
-        :image -> image_metrics(events)
-        :file_assignment -> %{}
-      end
-
+    type_metrics = type_metrics_for(block.type, events)
     shared = shared_metrics(events, resolved_rule)
     backtrack = backtrack_count(block, section_blocks, events_for_scope(section_blocks, scope))
 
@@ -634,6 +623,19 @@ defmodule Athena.Engagement.Metrics do
     |> Map.put(:backtrack_rate, rate(backtrack, shared.students_observed))
     |> Map.put(:hesitation_rate, hesitating_students_rate(events, shared.students_observed))
   end
+
+  # One function clause per block type (rather than a `case`) keeps each
+  # branch's complexity trivial - a `case` with this many arms in one
+  # function body is exactly what trips Credo's cyclomatic-complexity check.
+  defp type_metrics_for(:text, events), do: text_metrics(events)
+  defp type_metrics_for(:video, events), do: video_metrics(events)
+  defp type_metrics_for(:quiz_question, events), do: quiz_question_metrics(events)
+  defp type_metrics_for(:quiz_exam, events), do: exam_metrics(events)
+  defp type_metrics_for(:ticket_exam, events), do: exam_metrics(events)
+  defp type_metrics_for(:code, events), do: code_metrics(events)
+  defp type_metrics_for(:attachment, events), do: attachment_metrics(events)
+  defp type_metrics_for(:image, events), do: image_metrics(events)
+  defp type_metrics_for(:file_assignment, _events), do: %{}
 
   @doc """
   Classifies an already-computed metrics map (from `get_metrics/1`) into
@@ -887,15 +889,19 @@ defmodule Athena.Engagement.Metrics do
     # is not the same thing as "did we backtrack". Only an explicit `:halt`
     # means "yes"; anything else (including running out of events while
     # `seen_later?` happens to be `true`) must resolve to `false`.
-    case Enum.reduce_while(sorted_events, false, fn event, seen_later? ->
-           cond do
-             event.block_id == target_block_id and seen_later? -> {:halt, :backtracked}
-             Map.get(order_by_id, event.block_id, target_order) > target_order -> {:cont, true}
-             true -> {:cont, seen_later?}
-           end
-         end) do
+    reduction = &backtrack_reduction(&1, &2, target_block_id, target_order, order_by_id)
+
+    case Enum.reduce_while(sorted_events, false, reduction) do
       :backtracked -> true
       _ -> false
+    end
+  end
+
+  defp backtrack_reduction(event, seen_later?, target_block_id, target_order, order_by_id) do
+    cond do
+      event.block_id == target_block_id and seen_later? -> {:halt, :backtracked}
+      Map.get(order_by_id, event.block_id, target_order) > target_order -> {:cont, true}
+      true -> {:cont, seen_later?}
     end
   end
 
