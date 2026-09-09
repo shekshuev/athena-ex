@@ -592,17 +592,20 @@ defmodule AthenaWeb.BlockComponentsTest do
     end
 
     test "option order can differ between students for the same block", %{block: block} do
-      assigns = %{block: block, user_id: "user-a"}
+      orders =
+        for i <- 1..10 do
+          assigns = %{block: block, user_id: "user-#{i}"}
 
-      html_a =
-        rendered_to_string(~H"<.content_block block={@block} mode={:play} user_id={@user_id} />")
+          rendered_to_string(
+            ~H"<.content_block block={@block} mode={:play} user_id={@user_id} />"
+          )
+          |> rendered_option_order()
+        end
 
-      assigns = %{block: block, user_id: "user-b"}
-
-      html_b =
-        rendered_to_string(~H"<.content_block block={@block} mode={:play} user_id={@user_id} />")
-
-      refute rendered_option_order(html_a) == rendered_option_order(html_b)
+      # With 10 different students and only 6 possible permutations of 3 options, at
+      # least two distinct orders should show up — a single shared order for everyone
+      # would mean the per-student seed isn't actually affecting the shuffle.
+      assert orders |> Enum.uniq() |> length() > 1
     end
 
     test "renders a deterministic order even when no user_id is given (editor context)", %{
@@ -1180,7 +1183,7 @@ defmodule AthenaWeb.BlockComponentsTest do
       %{block: block}
     end
 
-    test "renders left/right editors in :edit mode", %{block: block} do
+    test "renders left/right editors in :edit mode without drag handles", %{block: block} do
       assigns = %{block: block}
 
       html =
@@ -1191,30 +1194,58 @@ defmodule AthenaWeb.BlockComponentsTest do
       assert html =~ "Match the terms"
       assert html =~ "tiptap-pair-left-#{block.id}-p1"
       assert html =~ "tiptap-pair-left-#{block.id}-p2"
-      assert html =~ "<select"
-      assert html =~ " disabled"
+      assert html =~ "tiptap-pair-right-#{block.id}-p1"
+      assert html =~ "tiptap-pair-right-#{block.id}-p2"
+      refute html =~ "<select"
+      refute html =~ "drag-handle"
+      refute html =~ "phx-hook=\"Sortable\""
+      refute html =~ "move_matching_answer_up"
+      refute html =~ "move_matching_answer_down"
     end
 
-    test "renders active selects with saved answer in :play mode", %{block: block} do
-      assigns = %{block: block, answers: %{block.id => %{"p1" => "p1"}}}
+    test "renders a draggable right column with grip handles and move arrows in :play mode", %{
+      block: block
+    } do
+      assigns = %{block: block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} />
+        """)
+
+      assert html =~ "id=\"matching-right-#{block.id}\""
+      assert html =~ "phx-hook=\"Sortable\""
+      assert html =~ ~s(data-event-name="reorder_matching_answer")
+      assert html =~ ~s(data-block-id="#{block.id}")
+      assert html =~ "drag-handle"
+      assert html =~ ~s(data-id="p1")
+      assert html =~ ~s(data-id="p2")
+      assert html =~ "One"
+      assert html =~ "Two"
+
+      assert html =~ ~s(phx-click="move_matching_answer_up")
+      assert html =~ ~s(phx-click="move_matching_answer_down")
+      assert html =~ ~s(phx-value-block_id="#{block.id}")
+      assert html =~ "-right-8"
+    end
+
+    test "restores the saved answer order in :play mode", %{block: block} do
+      assigns = %{block: block, answers: %{block.id => ["p2", "p1"]}}
 
       html =
         rendered_to_string(~H"""
         <.content_block block={@block} mode={:play} answers={@answers} />
         """)
 
-      assert html =~ "<select"
-      assert html =~ ~s(name="answer[p1]")
-      assert html =~ ~s(name="answer[p2]")
-      assert html =~ ~s(value="p1" selected)
-      refute html =~ ~r/ disabled(?!:)/
-      assert html =~ "One"
-      assert html =~ "Two"
+      p1_pos = :binary.match(html, ~s(data-id="p1"))
+      p2_pos = :binary.match(html, ~s(data-id="p2"))
+
+      assert p2_pos < p1_pos
     end
 
     test "highlights the whole block red when the answer is wrong, without revealing the correct answer",
          %{block: block} do
-      sub = %{score: 0, content: %{"matches" => %{"p1" => "p1", "p2" => "p1"}}}
+      sub = %{score: 0, content: %{"matches" => ["p2", "p1"]}}
       assigns = %{block: block, submission: sub}
 
       html =
@@ -1222,14 +1253,13 @@ defmodule AthenaWeb.BlockComponentsTest do
           ~H"<.content_block block={@block} mode={:review} submission={@submission} />"
         )
 
-      assert html =~ " disabled"
       assert html =~ "bg-error/10"
       refute html =~ "bg-success/10"
       refute html =~ "Correct:"
     end
 
     test "highlights the whole block green when every pair is matched correctly", %{block: block} do
-      sub = %{score: 100, content: %{"matches" => %{"p1" => "p1", "p2" => "p2"}}}
+      sub = %{score: 100, content: %{"matches" => ["p1", "p2"]}}
       assigns = %{block: block, submission: sub}
 
       html =
@@ -1237,13 +1267,12 @@ defmodule AthenaWeb.BlockComponentsTest do
           ~H"<.content_block block={@block} mode={:review} submission={@submission} />"
         )
 
-      assert html =~ " disabled"
       assert html =~ "bg-success/10"
       refute html =~ "bg-error/10"
       refute html =~ "Correct:"
     end
 
-    test "renders disabled selects in :preview mode", %{block: block} do
+    test "renders a non-draggable right column in :preview mode", %{block: block} do
       assigns = %{block: block}
 
       html =
@@ -1251,8 +1280,11 @@ defmodule AthenaWeb.BlockComponentsTest do
         <.content_block block={@block} mode={:preview} />
         """)
 
-      assert html =~ "<select"
-      assert html =~ " disabled"
+      refute html =~ "<select"
+      refute html =~ "drag-handle"
+      refute html =~ "phx-hook=\"Sortable\""
+      refute html =~ "move_matching_answer_up"
+      refute html =~ "move_matching_answer_down"
     end
   end
 
@@ -1620,7 +1652,7 @@ defmodule AthenaWeb.BlockComponentsTest do
           }
         )
 
-      draft = %{"type" => :quiz_question, "matches" => %{"p1" => "p1"}}
+      draft = %{"type" => :quiz_question, "matches" => ["p2", "p1"]}
       assigns = %{block: block, draft: draft}
 
       html =
@@ -1628,7 +1660,10 @@ defmodule AthenaWeb.BlockComponentsTest do
         <.content_block block={@block} mode={:play} draft={@draft} />
         """)
 
-      assert html =~ ~s(value="p1" selected)
+      p1_pos = :binary.match(html, ~s(data-id="p1"))
+      p2_pos = :binary.match(html, ~s(data-id="p2"))
+
+      assert p2_pos < p1_pos
     end
 
     test "quiz_question (matching) prioritizes submission over draft" do
@@ -1644,8 +1679,8 @@ defmodule AthenaWeb.BlockComponentsTest do
           }
         )
 
-      draft = %{"type" => :quiz_question, "matches" => %{"p1" => "p2"}}
-      submission = %{content: %{"matches" => %{"p1" => "p1", "p2" => "p2"}}}
+      draft = %{"type" => :quiz_question, "matches" => ["p2", "p1"]}
+      submission = %{content: %{"matches" => ["p1", "p2"]}}
       assigns = %{block: block, draft: draft, submission: submission}
 
       html =

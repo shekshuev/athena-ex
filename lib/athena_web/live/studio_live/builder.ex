@@ -715,65 +715,33 @@ defmodule AthenaWeb.StudioLive.Builder do
   end
 
   def handle_event("add_quiz_pair", %{"id" => block_id}, socket) do
-    if can_edit?(socket) do
-      course = socket.assigns.course
-      block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+    with true <- can_edit?(socket),
+         block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == block_id)) do
+      content_map = normalize_content(block.content || %{})
+      pairs = parse_raw_list(Map.get(content_map, "pairs", []))
 
-      if block do
-        content_map = normalize_content(block.content || %{})
-        pairs = parse_raw_list(Map.get(content_map, "pairs", []))
+      new_pair = %{
+        "id" => Ecto.UUID.generate(),
+        "left" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+        "right" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]}
+      }
 
-        new_pair = %{
-          "id" => Ecto.UUID.generate(),
-          "left" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
-          "right" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]}
-        }
-
-        new_content = Map.put(content_map, "pairs", pairs ++ [new_pair])
-
-        case Content.update_block(socket.assigns.current_user, block, %{"content" => new_content}) do
-          {:ok, updated_block} ->
-            Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
-
-            {:noreply,
-             assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
-
-          {:error, _changeset} ->
-            {:noreply, socket}
-        end
-      else
-        {:noreply, socket}
-      end
+      new_content = Map.put(content_map, "pairs", pairs ++ [new_pair])
+      apply_quiz_pair_update(socket, block, new_content)
     else
-      {:noreply, socket}
+      _ -> {:noreply, socket}
     end
   end
 
   def handle_event("remove_quiz_pair", %{"id" => block_id, "pair_id" => pair_id}, socket) do
-    if can_edit?(socket) do
-      course = socket.assigns.course
-      block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
-
-      if block do
-        content_map = normalize_content(block.content || %{})
-        pairs = Map.get(content_map, "pairs", []) |> Enum.reject(&(&1["id"] == pair_id))
-        new_content = Map.put(content_map, "pairs", pairs)
-
-        case Content.update_block(socket.assigns.current_user, block, %{"content" => new_content}) do
-          {:ok, updated_block} ->
-            Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
-
-            {:noreply,
-             assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
-
-          {:error, _changeset} ->
-            {:noreply, socket}
-        end
-      else
-        {:noreply, socket}
-      end
+    with true <- can_edit?(socket),
+         block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == block_id)) do
+      content_map = normalize_content(block.content || %{})
+      pairs = Map.get(content_map, "pairs", []) |> Enum.reject(&(&1["id"] == pair_id))
+      new_content = Map.put(content_map, "pairs", pairs)
+      apply_quiz_pair_update(socket, block, new_content)
     else
-      {:noreply, socket}
+      _ -> {:noreply, socket}
     end
   end
 
@@ -2021,6 +1989,22 @@ defmodule AthenaWeb.StudioLive.Builder do
 
       %{v | "is_correct" => is_correct, "text" => text_map}
     end)
+  end
+
+  defp apply_quiz_pair_update(socket, block, new_content) do
+    case Content.update_block(socket.assigns.current_user, block, %{"content" => new_content}) do
+      {:ok, updated_block} ->
+        Phoenix.PubSub.broadcast(
+          Athena.PubSub,
+          "builder:#{socket.assigns.course.id}",
+          :refresh_tree
+        )
+
+        {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+
+      {:error, _changeset} ->
+        {:noreply, socket}
+    end
   end
 
   defp parse_quiz_pairs(pairs) do

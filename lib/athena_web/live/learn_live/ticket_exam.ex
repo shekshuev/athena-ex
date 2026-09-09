@@ -128,6 +128,25 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   end
 
   def handle_event(
+        "reorder_matching_answer",
+        %{"old_index" => old_index, "new_index" => new_index},
+        socket
+      ) do
+    q = socket.assigns.current_question
+    current_order = current_exam_matching_order(socket, q)
+    new_order = move_item(current_order, old_index, new_index)
+    process_exam_answer(%{"answer" => new_order}, socket)
+  end
+
+  def handle_event("move_matching_answer_up", %{"id" => pair_id}, socket) do
+    shift_exam_matching_answer(socket, pair_id, -1)
+  end
+
+  def handle_event("move_matching_answer_down", %{"id" => pair_id}, socket) do
+    shift_exam_matching_answer(socket, pair_id, 1)
+  end
+
+  def handle_event(
         "request_media_upload",
         %{"block_id" => block_id, "media_type" => "file_assignment"},
         socket
@@ -741,7 +760,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
 
       {:ok, socket} ->
         q = socket.assigns.current_question
-        answer = Map.get(params, "answer")
+        answer = resolve_exam_answer(socket, q, Map.get(params, "answer"))
         answer_content = normalize_answer(q, answer)
 
         case Learning.save_question_submission(
@@ -802,7 +821,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
          %{type: :quiz_question, content: %{"question_type" => "matching"}},
          answer
        ) do
-    %{"type" => :quiz_question, "matches" => answer || %{}}
+    %{"type" => :quiz_question, "matches" => answer || []}
   end
 
   defp normalize_answer(%{type: :quiz_question, content: %{"question_type" => _other}}, answer) do
@@ -827,6 +846,55 @@ defmodule AthenaWeb.LearnLive.TicketExam do
 
   defp normalize_answer(_block, answer) do
     %{"type" => :generic, "text_answer" => answer || ""}
+  end
+
+  @doc false
+  defp resolve_exam_answer(socket, %{content: %{"question_type" => "matching"}} = q, nil) do
+    current_exam_matching_order(socket, q)
+  end
+
+  defp resolve_exam_answer(_socket, _q, answer), do: answer
+
+  @doc false
+  defp current_exam_matching_order(socket, q) do
+    pairs = q.content["pairs"] || []
+    existing_sub = Map.get(socket.assigns.child_submissions, q.id)
+    existing_matches = existing_sub && existing_sub.content["matches"]
+
+    case existing_matches do
+      list when is_list(list) and list != [] ->
+        list
+
+      _ ->
+        initial_matching_order(pairs, q.id, socket.assigns.current_user.id)
+    end
+  end
+
+  @doc false
+  defp move_item(list, old_index, new_index) do
+    {item, rest} = List.pop_at(list, old_index)
+    List.insert_at(rest, new_index, item)
+  end
+
+  @doc false
+  defp shift_exam_matching_answer(socket, pair_id, delta) do
+    q = socket.assigns.current_question
+    current_order = current_exam_matching_order(socket, q)
+
+    case Enum.find_index(current_order, &(&1 == pair_id)) do
+      nil ->
+        {:noreply, socket}
+
+      old_index ->
+        new_index = (old_index + delta) |> max(0) |> min(length(current_order) - 1)
+
+        if new_index == old_index do
+          {:noreply, socket}
+        else
+          new_order = move_item(current_order, old_index, new_index)
+          process_exam_answer(%{"answer" => new_order}, socket)
+        end
+    end
   end
 
   defp update_question(socket, index) do

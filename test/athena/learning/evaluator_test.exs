@@ -179,28 +179,28 @@ defmodule Athena.Learning.EvaluatorTest do
         insert(:submission,
           account_id: account.id,
           block_id: block.id,
-          content: %{"matches" => %{pair1_id => pair1_id, pair2_id => pair2_id}}
+          content: %{"matches" => [pair1_id, pair2_id]}
         )
 
       sub_wrong =
         insert(:submission,
           account_id: account.id,
           block_id: block.id,
-          content: %{"matches" => %{pair1_id => pair2_id, pair2_id => pair1_id}}
+          content: %{"matches" => [pair2_id, pair1_id]}
         )
 
       sub_partial =
         insert(:submission,
           account_id: account.id,
           block_id: block.id,
-          content: %{"matches" => %{pair1_id => pair1_id}}
+          content: %{"matches" => [pair1_id]}
         )
 
       sub_empty =
         insert(:submission,
           account_id: account.id,
           block_id: block.id,
-          content: %{"matches" => %{}}
+          content: %{"matches" => []}
         )
 
       sub_missing =
@@ -493,7 +493,7 @@ defmodule Athena.Learning.EvaluatorTest do
         block_id: q2_id,
         parent_submission_id: parent_sub.id,
         status: :pending,
-        content: %{"matches" => %{pair1_id => pair1_id, pair2_id => pair2_id}}
+        content: %{"matches" => [pair1_id, pair2_id]}
       )
 
       res = Evaluator.evaluate_sync(parent_sub)

@@ -205,11 +205,13 @@ defmodule AthenaWeb.LearnLive.ExamTest do
 
       {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/exam/#{block.id}")
 
-      assert html =~ ~s(name="answer[#{pair1_id}]")
+      assert html =~ "drag-handle"
+      assert html =~ ~s(data-id="#{pair1_id}")
 
-      lv
-      |> form("#exam-quiz-#{q_id}", %{"answer" => %{pair1_id => pair1_id, pair2_id => pair2_id}})
-      |> render_change()
+      # With exactly 2 pairs, the initial shuffle is guaranteed to start in the wrong
+      # order (see initial_matching_order/3's anti-trivial-solve swap) — one drag
+      # brings it to the correct order.
+      render_hook(lv, "reorder_matching_answer", %{"old_index" => 0, "new_index" => 1})
 
       child_sub =
         Athena.Repo.get_by!(Athena.Learning.Submission,
@@ -218,10 +220,10 @@ defmodule AthenaWeb.LearnLive.ExamTest do
           account_id: user.id
         )
 
-      assert child_sub.content["matches"] == %{pair1_id => pair1_id, pair2_id => pair2_id}
+      assert child_sub.content["matches"] == [pair1_id, pair2_id]
 
       lv
-      |> form("#exam-quiz-#{q_id}", %{"answer" => %{pair1_id => pair1_id, pair2_id => pair2_id}})
+      |> form("#exam-quiz-#{q_id}", %{})
       |> render_submit()
 
       res =
