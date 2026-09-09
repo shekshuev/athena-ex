@@ -1212,8 +1212,24 @@ defmodule AthenaWeb.BlockComponentsTest do
       assert html =~ "Two"
     end
 
-    test "highlights correct and incorrect rows in :review mode", %{block: block} do
-      sub = %{score: 50, content: %{"matches" => %{"p1" => "p1", "p2" => "p1"}}}
+    test "highlights the whole block red when the answer is wrong, without revealing the correct answer",
+         %{block: block} do
+      sub = %{score: 0, content: %{"matches" => %{"p1" => "p1", "p2" => "p1"}}}
+      assigns = %{block: block, submission: sub}
+
+      html =
+        rendered_to_string(
+          ~H"<.content_block block={@block} mode={:review} submission={@submission} />"
+        )
+
+      assert html =~ " disabled"
+      assert html =~ "bg-error/10"
+      refute html =~ "bg-success/10"
+      refute html =~ "Correct:"
+    end
+
+    test "highlights the whole block green when every pair is matched correctly", %{block: block} do
+      sub = %{score: 100, content: %{"matches" => %{"p1" => "p1", "p2" => "p2"}}}
       assigns = %{block: block, submission: sub}
 
       html =
@@ -1223,8 +1239,8 @@ defmodule AthenaWeb.BlockComponentsTest do
 
       assert html =~ " disabled"
       assert html =~ "bg-success/10"
-      assert html =~ "bg-error/10"
-      assert html =~ "Correct:"
+      refute html =~ "bg-error/10"
+      refute html =~ "Correct:"
     end
 
     test "renders disabled selects in :preview mode", %{block: block} do
@@ -1629,7 +1645,7 @@ defmodule AthenaWeb.BlockComponentsTest do
         )
 
       draft = %{"type" => :quiz_question, "matches" => %{"p1" => "p2"}}
-      submission = %{content: %{"matches" => %{"p1" => "p1"}}}
+      submission = %{content: %{"matches" => %{"p1" => "p1", "p2" => "p2"}}}
       assigns = %{block: block, draft: draft, submission: submission}
 
       html =

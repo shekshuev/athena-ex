@@ -1711,5 +1711,43 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       assert html =~ ~s(value="#{pair1_id}" selected)
     end
+
+    test "matching draft keeps earlier answered pairs when a later select changes independently",
+         %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+      pair1_id = Ecto.UUID.generate()
+      pair2_id = Ecto.UUID.generate()
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "matching",
+            "pairs" => [
+              %{"id" => pair1_id, "left" => "Alpha", "right" => "One"},
+              %{"id" => pair2_id, "left" => "Beta", "right" => "Two"}
+            ]
+          }
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      lv
+      |> element(~s(select[name="answer[#{pair1_id}]"]))
+      |> render_change(%{"answer" => %{pair1_id => pair1_id}, "block_id" => block.id})
+
+      lv
+      |> element(~s(select[name="answer[#{pair2_id}]"]))
+      |> render_change(%{"answer" => %{pair2_id => pair2_id}, "block_id" => block.id})
+
+      draft =
+        Athena.Repo.get_by(Athena.Learning.Submission,
+          block_id: block.id,
+          status: :draft
+        )
+
+      assert draft.content["matches"] == %{pair1_id => pair1_id, pair2_id => pair2_id}
+    end
   end
 end

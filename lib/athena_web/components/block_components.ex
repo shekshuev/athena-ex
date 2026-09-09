@@ -671,25 +671,30 @@ defmodule AthenaWeb.BlockComponents do
     right_options =
       shuffled_by_seed(pairs, assigns.block.id, assigns[:user_id], & &1["id"])
 
+    all_correct? =
+      pairs != [] and
+        Enum.all?(pairs, fn pair -> Map.get(student_matches, pair["id"]) == pair["id"] end)
+
     assigns =
       assigns
       |> assign(:pairs, pairs)
       |> assign(:right_options, right_options)
       |> assign(:student_matches, student_matches)
+      |> assign(:all_correct?, all_correct?)
 
     ~H"""
-    <div class="space-y-3">
+    <div class={[
+      "space-y-3 rounded-sm p-3 border transition-all",
+      @mode == :review && @all_correct? && "bg-success/10 border-success/30",
+      @mode == :review && not @all_correct? && "bg-error/10 border-error/30",
+      @mode != :review && "border-transparent"
+    ]}>
       <%= for pair <- @pairs do %>
         <% selected = Map.get(@student_matches, pair["id"]) %>
-        <% is_correct = selected == pair["id"] %>
 
         <div class={[
-          "flex items-center gap-4 p-4 rounded-sm border transition-all",
-          @mode == :play && "bg-base-100 border-base-200",
-          @mode == :review && selected != nil && is_correct && "bg-success/10 border-success/30",
-          @mode == :review && selected != nil && not is_correct && "bg-error/10 border-error/30",
-          @mode == :review && selected == nil && "bg-base-100 border-base-300 opacity-60",
-          @mode in [:edit, :preview] && "bg-base-100 border-base-200 opacity-60"
+          "flex items-center gap-4 p-4 rounded-sm bg-base-100 border border-base-200",
+          @mode in [:edit, :preview] && "opacity-60"
         ]}>
           <div class="flex-1 min-w-0">
             <div
@@ -724,12 +729,6 @@ defmodule AthenaWeb.BlockComponents do
               </option>
             <% end %>
           </select>
-
-          <%= if @mode == :review && not is_correct do %>
-            <div class="text-sm text-success shrink-0">
-              {gettext("Correct:")} {tiptap_plain_text(pair["right"])}
-            </div>
-          <% end %>
         </div>
       <% end %>
     </div>

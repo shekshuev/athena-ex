@@ -421,8 +421,9 @@ defmodule AthenaWeb.LearnLive.Player do
     user = socket.assigns.current_user
     team_id = socket.assigns.team_id
     block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+    existing_draft = Map.get(socket.assigns.drafts || %{}, block_id) || %{}
 
-    content = build_draft_content(block, params)
+    content = build_draft_content(block, params, existing_draft)
 
     case Learning.save_draft(user, block_id, content, team_id) do
       {:ok, _submission} ->
@@ -1041,11 +1042,17 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp build_draft_content(block, params) do
+  defp build_draft_content(block, params, existing_draft) do
     case block.type do
       :quiz_question ->
         answer_type = block.content["answer_type"] || "plain_text"
-        build_quiz_draft_content(block.content["question_type"], params, answer_type)
+
+        build_quiz_draft_content(
+          block.content["question_type"],
+          params,
+          answer_type,
+          existing_draft
+        )
 
       :code ->
         code = get_in(params, ["answer", "code"]) || ""
@@ -1060,7 +1067,7 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp build_quiz_draft_content(question_type, params, answer_type)
+  defp build_quiz_draft_content(question_type, params, answer_type, _existing_draft)
        when question_type in ["open", "exact_match"] do
     content = params["answer"] || ""
 
@@ -1076,11 +1083,14 @@ defmodule AthenaWeb.LearnLive.Player do
     end
   end
 
-  defp build_quiz_draft_content("matching", params, _answer_type) do
-    %{"type" => :quiz_question, "matches" => params["answer"] || %{}}
+  defp build_quiz_draft_content("matching", params, _answer_type, existing_draft) do
+    existing_matches = existing_draft["matches"] || existing_draft[:matches] || %{}
+    new_matches = params["answer"] || %{}
+
+    %{"type" => :quiz_question, "matches" => Map.merge(existing_matches, new_matches)}
   end
 
-  defp build_quiz_draft_content(_question_type, params, _answer_type) do
+  defp build_quiz_draft_content(_question_type, params, _answer_type, _existing_draft) do
     answer = params["answer"]
 
     selected =
