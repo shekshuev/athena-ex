@@ -158,14 +158,14 @@ The GitHub Actions pipeline (`.github/workflows/ci.yml`) handles:
 
 Triggered on PRs and pushes to `main` and `develop`.
 
-Docker images are built and pushed to GHCR on version tags (`v*`) via `.github/workflows/release.yml`:
+Docker images are built and pushed to GHCR on version tags (`v*`) via `.github/workflows/release.yml`. Each of the 4 variants is built, validated, and pushed **separately** on both `ubuntu-22.04` and `ubuntu-24.04` GitHub-hosted runners (real kernels, not just a base-image swap — isolate runs `--privileged` and shares the host kernel, so its cgroup v2/seccomp behavior isn't guaranteed portable across kernel versions). This produces two tags per variant, `-u22` and `-u24`; pick the one matching your deployment host's actual Ubuntu version:
 
-- **Web/Core:** `ghcr.io/shekshuev/athena-ex-web:latest`
-- **Runner (SQL, no isolate):** `ghcr.io/shekshuev/athena-ex-runner-db:latest`
-- **Runner (compiled languages, isolate + g++):** `ghcr.io/shekshuev/athena-ex-runner-compiled:latest`
-- **Runner (scripting languages, isolate + python3):** `ghcr.io/shekshuev/athena-ex-runner-script:latest`
+- **Web/Core:** `ghcr.io/shekshuev/athena-ex-web:latest-u22` / `:latest-u24`
+- **Runner (SQL, no isolate):** `ghcr.io/shekshuev/athena-ex-runner-db:latest-u22` / `:latest-u24`
+- **Runner (compiled languages, isolate + g++):** `ghcr.io/shekshuev/athena-ex-runner-compiled:latest-u22` / `:latest-u24`
+- **Runner (scripting languages, isolate + python3):** `ghcr.io/shekshuev/athena-ex-runner-script:latest-u22` / `:latest-u24`
 
-Each variant is built and, for the two isolate-based runner images, smoke-tested `--privileged` on both `ubuntu-22.04` and `ubuntu-24.04` GitHub-hosted runners (real kernels, since isolate shares the host kernel) before being published. Docker is the only supported deployment target — there is no standalone/bare-metal release artifact.
+A failed smoke test on one Ubuntu version only blocks that version's tag, not the other. Docker is the only supported deployment target — there is no standalone/bare-metal release artifact.
 
 ## Code Runner Note
 
@@ -197,12 +197,14 @@ setting can't silently boot the wrong thing.
 
 ### Images
 
+Every image is published as two tags, `latest-u22` and `latest-u24` (also versioned as `vX.Y.Z-u22`/`-u24`) — pick the one matching your host's actual Ubuntu version. `docker-compose.prod.yml` picks this via the `IMAGE_OS` variable in `.env` (`u22` or `u24`, defaults to `u24`).
+
 | Image | Mix release | What it runs |
 |-------|-------------|---------------|
-| `ghcr.io/shekshuev/athena-ex-web:latest` | `web` | LiveView UI, HTTP endpoints, Oban, background tasks. Unprivileged. |
-| `ghcr.io/shekshuev/athena-ex-runner-db:latest` | `runner_db` | SQL challenges (ephemeral Postgres roles/DBs, no isolate). Unprivileged. |
-| `ghcr.io/shekshuev/athena-ex-runner-compiled:latest` | `runner_compiled` | C++ challenges via isolate + g++. Requires `privileged: true`. |
-| `ghcr.io/shekshuev/athena-ex-runner-script:latest` | `runner_script` | Python challenges via isolate + python3. Requires `privileged: true`. |
+| `ghcr.io/shekshuev/athena-ex-web` | `web` | LiveView UI, HTTP endpoints, Oban, background tasks. Unprivileged. |
+| `ghcr.io/shekshuev/athena-ex-runner-db` | `runner_db` | SQL challenges (ephemeral Postgres roles/DBs, no isolate). Unprivileged. |
+| `ghcr.io/shekshuev/athena-ex-runner-compiled` | `runner_compiled` | C++ challenges via isolate + g++. Requires `privileged: true`. |
+| `ghcr.io/shekshuev/athena-ex-runner-script` | `runner_script` | Python challenges via isolate + python3. Requires `privileged: true`. |
 
 Combined ("all-in-one") mode only exists when running from source without a
 built release — i.e. local development (`iex -S mix phx.server`) and the test

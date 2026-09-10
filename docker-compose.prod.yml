@@ -1,8 +1,13 @@
 version: "3.8"
 
+# Images are published per Ubuntu version isolate was built and smoke-tested
+# on (see .github/workflows/release.yml) — set IMAGE_OS in .env to "u22" or
+# "u24" to match the Ubuntu version this host actually runs (defaults to
+# u24). This matters because isolate runs --privileged and shares the host
+# kernel, so its behavior isn't guaranteed portable across kernel versions.
 services:
   athena_web:
-    image: ghcr.io/shekshuev/athena-ex-web:latest
+    image: ghcr.io/shekshuev/athena-ex-web:latest-${IMAGE_OS:-u24}
     container_name: athena_web
     restart: always
     network_mode: "host"
@@ -19,7 +24,7 @@ services:
   # SQL challenges never touch isolate — pure Postgres role/DB sandboxing,
   # so this image has no isolate and no compilers at all.
   athena_runner_db:
-    image: ghcr.io/shekshuev/athena-ex-runner-db:latest
+    image: ghcr.io/shekshuev/athena-ex-runner-db:latest-${IMAGE_OS:-u24}
     container_name: athena_runner_db
     restart: always
     network_mode: "host"
@@ -33,7 +38,7 @@ services:
       - athena_runner_pg
 
   athena_runner_compiled:
-    image: ghcr.io/shekshuev/athena-ex-runner-compiled:latest
+    image: ghcr.io/shekshuev/athena-ex-runner-compiled:latest-${IMAGE_OS:-u24}
     container_name: athena_runner_compiled
     privileged: true
     restart: always
@@ -46,7 +51,7 @@ services:
       - RELEASE_COOKIE=${RELEASE_COOKIE}
 
   athena_runner_script:
-    image: ghcr.io/shekshuev/athena-ex-runner-script:latest
+    image: ghcr.io/shekshuev/athena-ex-runner-script:latest-${IMAGE_OS:-u24}
     container_name: athena_runner_script
     privileged: true
     restart: always

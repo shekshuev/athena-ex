@@ -7,7 +7,7 @@ on:
 
 jobs:
   docker:
-    name: Build and validate (${{ matrix.variant }} / ${{ matrix.os }})
+    name: Build, validate, and push (${{ matrix.variant }} / ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -35,15 +35,27 @@ jobs:
             runner-compiled) file=Dockerfile.runner-compiled; suffix=-runner-compiled; isolate=true ;;
             runner-script) file=Dockerfile.runner-script; suffix=-runner-script; isolate=true ;;
           esac
+          case "${{ matrix.os }}" in
+            ubuntu-22.04) os_tag=u22 ;;
+            ubuntu-24.04) os_tag=u24 ;;
+          esac
           echo "file=$file" >> "$GITHUB_OUTPUT"
           echo "suffix=$suffix" >> "$GITHUB_OUTPUT"
           echo "isolate=$isolate" >> "$GITHUB_OUTPUT"
+          echo "os_tag=$os_tag" >> "$GITHUB_OUTPUT"
 
+      # Each os leg publishes its own tags (-u22 / -u24). The two images are
+      # not guaranteed identical — isolate is validated against the real
+      # kernel it was built on (see the smoke test below), and glibc/kernel
+      # behavior can differ between Ubuntu versions — so pin the image tag
+      # that matches your actual deployment target's Ubuntu version.
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}${{ steps.variant.outputs.suffix }}
+          flavor: |
+            suffix=-${{ steps.variant.outputs.os_tag }}
           tags: |
             type=ref,event=tag
             type=raw,value=latest
@@ -87,21 +99,18 @@ jobs:
               isolate --cleanup --cg -b 0
             '
 
-      # Image content is identical regardless of which kernel it was
-      # validated on (Docker fully containerizes the userspace) — only the
-      # smoke test above differs per kernel — so we only need to publish one
-      # copy. Push after the ubuntu-24.04 leg's own smoke test (if any) has
-      # already passed; the ubuntu-22.04 leg is validation-only.
+      # Each leg publishes its own os-suffixed tags, only after its own
+      # smoke test (for isolate variants) has passed on that leg's real
+      # kernel — a failure on either Ubuntu version blocks only that
+      # version's tag, not both.
       - name: Log in to the Container registry
-        if: matrix.os == 'ubuntu-24.04'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push image (${{ matrix.variant }})
-        if: matrix.os == 'ubuntu-24.04'
+      - name: Push image (${{ matrix.variant }} / ${{ matrix.os }})
         uses: docker/build-push-action@v5
         with:
           context: .
