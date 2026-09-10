@@ -247,6 +247,8 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "General Explanation"
       assert html =~ "Think hard!"
       refute html =~ "Case Sensitive"
+      assert html =~ "Matching Pairs"
+      assert html =~ ~s(value="matching")
     end
 
     test "renders case_sensitive checkbox when quiz type is exact_match", %{block: base_block} do

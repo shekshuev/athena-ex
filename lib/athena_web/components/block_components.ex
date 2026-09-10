@@ -24,6 +24,7 @@ defmodule AthenaWeb.BlockComponents do
   attr :pending_file_urls, :map, default: %{}
   attr :draft, :map, default: nil
   attr :hide_submit, :boolean, default: false
+  attr :user_id, :string, default: nil
 
   def content_block(assigns) do
     ~H"""
@@ -55,6 +56,7 @@ defmodule AthenaWeb.BlockComponents do
             submission={@submission}
             attempts_count={@attempts_count}
             draft={@draft}
+            user_id={@user_id}
           />
         <% type when type in [:quiz_exam, :ticket_exam] -> %>
           <.render_any_exam
@@ -415,6 +417,7 @@ defmodule AthenaWeb.BlockComponents do
 
     assigns =
       assigns
+      |> assign_new(:user_id, fn -> nil end)
       |> assign(:q_type, q_type)
       |> assign(:options, opts)
       |> assign(:answer, extract_quiz_answer(assigns, q_type))
@@ -451,6 +454,7 @@ defmodule AthenaWeb.BlockComponents do
           answer={@answer}
           submission={@submission}
           draft={@draft}
+          user_id={@user_id}
         />
       </div>
     </div>
@@ -499,6 +503,19 @@ defmodule AthenaWeb.BlockComponents do
     end
   end
 
+  defp extract_from_submission(submission, "matching", _answer_type) do
+    content =
+      if is_struct(submission) do
+        if is_struct(submission.content),
+          do: Map.from_struct(submission.content),
+          else: submission.content || %{}
+      else
+        Map.get(submission, :content) || Map.get(submission, "content") || %{}
+      end
+
+    Map.get(content, "matches") || Map.get(content, :matches)
+  end
+
   defp extract_from_submission(submission, _q_type, _answer_type) do
     content =
       if is_struct(submission) do
@@ -522,6 +539,10 @@ defmodule AthenaWeb.BlockComponents do
     else
       draft["text_answer"] || draft[:text_answer]
     end
+  end
+
+  defp extract_from_draft(draft, "matching", _answer_type) do
+    draft["matches"] || draft[:matches]
   end
 
   defp extract_from_draft(draft, _q_type, _answer_type) do
@@ -571,6 +592,13 @@ defmodule AthenaWeb.BlockComponents do
   end
 
   defp render_quiz_inputs(%{q_type: q_type} = assigns) when q_type in ["single", "multiple"] do
+    assigns =
+      assign(
+        assigns,
+        :options,
+        shuffled_by_seed(assigns.options, assigns.block.id, assigns[:user_id], & &1["id"])
+      )
+
     ~H"""
     <div class="space-y-3">
       <%= for opt <- @options do %>
@@ -634,6 +662,159 @@ defmodule AthenaWeb.BlockComponents do
       <% end %>
     </div>
     """
+  end
+
+  defp render_quiz_inputs(%{q_type: "matching"} = assigns) do
+    pairs = assigns.block.content["pairs"] || []
+    pair_ids = Enum.map(pairs, & &1["id"])
+    pairs_by_id = Map.new(pairs, &{&1["id"], &1})
+
+    initial_order = initial_matching_order(pairs, assigns.block.id, assigns[:user_id])
+
+    current_order =
+      case assigns.answer do
+        list when is_list(list) and length(list) == length(pair_ids) ->
+          if Enum.sort(list) == Enum.sort(pair_ids), do: list, else: initial_order
+
+        _ ->
+          initial_order
+      end
+
+    all_correct? = pairs != [] and current_order == pair_ids
+
+    assigns =
+      assigns
+      |> assign(:pairs, pairs)
+      |> assign(:current_order, current_order)
+      |> assign(:pairs_by_id, pairs_by_id)
+      |> assign(:all_correct?, all_correct?)
+
+    ~H"""
+    <div class={[
+      "rounded-sm p-3 border transition-all",
+      @mode == :review && @all_correct? && "bg-success/10 border-success/30",
+      @mode == :review && not @all_correct? && "bg-error/10 border-error/30",
+      @mode != :review && "border-transparent"
+    ]}>
+      <div style={"display:grid;grid-template-columns:1fr 1fr;column-gap:1rem;grid-template-rows:repeat(#{max(length(@pairs), 1)}, auto);row-gap:0.75rem;"}>
+        <div style="grid-column:1;grid-row:1 / -1;display:grid;grid-template-rows:subgrid;row-gap:0.75rem;">
+          <%= for pair <- @pairs do %>
+            <div class={[
+              "flex items-center gap-3 p-4 rounded-sm bg-base-100 border border-base-200",
+              @mode in [:edit, :preview] && "opacity-60"
+            ]}>
+              <div class="flex-1 min-w-0">
+                <div
+                  id={"tiptap-pair-left-#{@block.id}-#{pair["id"]}-#{if @mode != :edit, do: :erlang.phash2(pair["left"]), else: "static"}"}
+                  phx-hook="TiptapEditor"
+                  data-id={@block.id}
+                  data-readonly="true"
+                  phx-update="ignore"
+                  data-content={
+                    if is_map(pair["left"]),
+                      do: Jason.encode!(pair["left"]),
+                      else: Jason.encode!(wrap_text_in_paragraph(pair["left"]))
+                  }
+                  class="prose prose-base max-w-none text-base-content pointer-events-none [&_p]:my-0"
+                >
+                </div>
+              </div>
+            </div>
+          <% end %>
+        </div>
+
+        <div
+          id={"matching-right-#{@block.id}"}
+          phx-hook={if @mode == :play, do: "Sortable"}
+          data-event-name="reorder_matching_answer"
+          data-block-id={@block.id}
+          style="grid-column:2;grid-row:1 / -1;display:grid;grid-template-rows:subgrid;row-gap:0.75rem;"
+        >
+          <%= for pair_id <- @current_order do %>
+            <% pair = @pairs_by_id[pair_id] %>
+            <div
+              id={"matching-right-item-#{@block.id}-#{pair_id}"}
+              data-id={pair_id}
+              class={[
+                "relative group flex items-center gap-3 p-4 rounded-sm bg-base-100 border border-base-200",
+                @mode in [:edit, :preview] && "opacity-60"
+              ]}
+            >
+              <div
+                :if={@mode == :play}
+                class="absolute -right-8 top-2 flex flex-col items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity sm:flex z-20"
+              >
+                <.button
+                  type="button"
+                  phx-click="move_matching_answer_up"
+                  phx-value-block_id={@block.id}
+                  phx-value-id={pair_id}
+                  class="min-h-7 h-7 w-7 flex items-center justify-center bg-base-100 border border-base-300 shadow-xs hover:text-primary hover:border-primary transition-colors cursor-pointer rounded-sm text-base-content/50"
+                  title={gettext("Move Up")}
+                >
+                  <.icon name="hero-chevron-up" class="size-4" />
+                </.button>
+                <div
+                  class="cursor-grab drag-handle min-h-7 h-7 w-7 flex items-center justify-center bg-base-100 border border-base-300 shadow-xs hover:text-primary hover:border-primary transition-colors rounded-sm text-base-content/50"
+                  title={gettext("Drag to Reorder")}
+                >
+                  <.icon name="hero-bars-3" class="size-4" />
+                </div>
+                <.button
+                  type="button"
+                  phx-click="move_matching_answer_down"
+                  phx-value-block_id={@block.id}
+                  phx-value-id={pair_id}
+                  class="min-h-7 h-7 w-7 flex items-center justify-center bg-base-100 border border-base-300 shadow-xs hover:text-primary hover:border-primary transition-colors cursor-pointer rounded-sm text-base-content/50"
+                  title={gettext("Move Down")}
+                >
+                  <.icon name="hero-chevron-down" class="size-4" />
+                </.button>
+              </div>
+
+              <div class="flex-1 min-w-0">
+                <div
+                  id={"tiptap-pair-right-#{@block.id}-#{pair_id}-#{if @mode != :edit, do: :erlang.phash2(pair["right"]), else: "static"}"}
+                  phx-hook="TiptapEditor"
+                  data-id={@block.id}
+                  data-readonly="true"
+                  phx-update="ignore"
+                  data-content={
+                    if is_map(pair["right"]),
+                      do: Jason.encode!(pair["right"]),
+                      else: Jason.encode!(wrap_text_in_paragraph(pair["right"]))
+                  }
+                  class="prose prose-base max-w-none text-base-content pointer-events-none [&_p]:my-0"
+                >
+                </div>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  @doc false
+  defp shuffled_by_seed(items, block_id, user_id, id_fn) do
+    Enum.sort_by(items, fn item -> :erlang.phash2({block_id, user_id, id_fn.(item)}) end)
+  end
+
+  @doc """
+  Computes the initial (pre-drag) display order of a matching question's right column
+  for a given student, deterministic per `{block_id, user_id}` so it's stable across
+  re-renders. If the shuffle happens to land on the fully-correct order, swaps the first
+  two items so the question can't be "solved" by leaving it untouched.
+  """
+  def initial_matching_order(pairs, block_id, user_id) do
+    correct_order = Enum.map(pairs, & &1["id"])
+    shuffled = shuffled_by_seed(pairs, block_id, user_id, & &1["id"]) |> Enum.map(& &1["id"])
+
+    case shuffled do
+      [a, b | rest] when shuffled == correct_order -> [b, a | rest]
+      _ -> shuffled
+    end
   end
 
   @doc false
@@ -1121,6 +1302,114 @@ defmodule AthenaWeb.BlockComponents do
                 <div class="text-sm text-base-content/50 italic bg-base-200/50 p-4 rounded-sm border border-dashed border-base-300">
                   {gettext("Student will see a text area to write their open answer.")}
                 </div>
+              <% "matching" -> %>
+                <div class="space-y-3">
+                  <%= for {pair, index} <- Enum.with_index(@block.content["pairs"] || []) do %>
+                    <div class="flex items-start gap-3 group relative">
+                      <input type="hidden" name={"pairs[#{index}][id]"} value={pair["id"]} />
+
+                      <div class="flex-1 bg-base-100/50 p-2 rounded-sm border border-base-200/50 focus-within:border-2 focus-within:border-primary space-y-2">
+                        <label class="label">
+                          <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                            {gettext("Left")}
+                          </span>
+                        </label>
+                        <div
+                          class="editor-wrapper group/tiptap relative outline-none w-full"
+                          tabindex="-1"
+                        >
+                          <.tiptap_toolbar mode={:edit} />
+                          <input
+                            type="hidden"
+                            id={"pair-left-#{@block.id}-#{pair["id"]}"}
+                            name={"pairs[#{index}][left]"}
+                            value={
+                              if is_map(pair["left"]),
+                                do: Jason.encode!(pair["left"]),
+                                else: Jason.encode!(wrap_text_in_paragraph(pair["left"]))
+                            }
+                          />
+                          <div
+                            id={"tiptap-pair-left-editor-#{@block.id}-#{pair["id"]}"}
+                            phx-hook="TiptapEditor"
+                            data-id={@block.id}
+                            data-input-id={"pair-left-#{@block.id}-#{pair["id"]}"}
+                            data-readonly="false"
+                            phx-update="ignore"
+                            data-content={
+                              if is_map(pair["left"]),
+                                do: Jason.encode!(pair["left"]),
+                                else: Jason.encode!(wrap_text_in_paragraph(pair["left"]))
+                            }
+                            class="prose prose-sm max-w-none text-base-content/80 leading-relaxed min-h-10 px-3 py-2 bg-base-100 rounded-sm cursor-text [&_p]:my-1"
+                          >
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="flex-1 bg-base-100/50 p-2 rounded-sm border border-base-200/50 focus-within:border-2 focus-within:border-primary space-y-2">
+                        <label class="label">
+                          <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                            {gettext("Right (match)")}
+                          </span>
+                        </label>
+                        <div
+                          class="editor-wrapper group/tiptap relative outline-none w-full"
+                          tabindex="-1"
+                        >
+                          <.tiptap_toolbar mode={:edit} />
+                          <input
+                            type="hidden"
+                            id={"pair-right-#{@block.id}-#{pair["id"]}"}
+                            name={"pairs[#{index}][right]"}
+                            value={
+                              if is_map(pair["right"]),
+                                do: Jason.encode!(pair["right"]),
+                                else: Jason.encode!(wrap_text_in_paragraph(pair["right"]))
+                            }
+                          />
+                          <div
+                            id={"tiptap-pair-right-editor-#{@block.id}-#{pair["id"]}"}
+                            phx-hook="TiptapEditor"
+                            data-id={@block.id}
+                            data-input-id={"pair-right-#{@block.id}-#{pair["id"]}"}
+                            data-readonly="false"
+                            phx-update="ignore"
+                            data-content={
+                              if is_map(pair["right"]),
+                                do: Jason.encode!(pair["right"]),
+                                else: Jason.encode!(wrap_text_in_paragraph(pair["right"]))
+                            }
+                            class="prose prose-sm max-w-none text-base-content/80 leading-relaxed min-h-10 px-3 py-2 bg-base-100 rounded-sm cursor-text [&_p]:my-1"
+                          >
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="pt-2 opacity-0 group-hover:opacity-100">
+                        <button
+                          type="button"
+                          phx-click="remove_quiz_pair"
+                          phx-value-id={@block.id}
+                          phx-value-pair_id={pair["id"]}
+                          phx-target={@target}
+                          class="btn btn-ghost btn-sm btn-square text-error"
+                        >
+                          <.icon name="hero-x-mark" class="size-5" />
+                        </button>
+                      </div>
+                    </div>
+                  <% end %>
+                </div>
+                <button
+                  type="button"
+                  phx-click="add_quiz_pair"
+                  phx-value-id={@block.id}
+                  phx-target={@target}
+                  class="btn btn-ghost btn-sm mt-4 text-primary font-bold"
+                >
+                  <.icon name="hero-plus" class="size-4 mr-1" /> {gettext("Add Pair")}
+                </button>
               <% _ -> %>
             <% end %>
           </form>

@@ -242,6 +242,7 @@ Hooks.Sortable = {
       ghostClass: "bg-base-200",
       onEnd: (evt) => {
         this.pushEvent(eventName, {
+          ...this.el.dataset,
           id: evt.item.dataset.id,
           new_index: evt.newIndex,
           old_index: evt.oldIndex,

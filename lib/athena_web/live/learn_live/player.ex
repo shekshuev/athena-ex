@@ -421,8 +421,9 @@ defmodule AthenaWeb.LearnLive.Player do
     user = socket.assigns.current_user
     team_id = socket.assigns.team_id
     block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+    existing_draft = Map.get(socket.assigns.drafts || %{}, block_id) || %{}
 
-    content = build_draft_content(block, params)
+    content = build_draft_content(block, params, existing_draft)
 
     case Learning.save_draft(user, block_id, content, team_id) do
       {:ok, _submission} ->
@@ -441,6 +442,30 @@ defmodule AthenaWeb.LearnLive.Player do
 
   def handle_event("save_draft", _params, socket) do
     {:noreply, socket}
+  end
+
+  def handle_event(
+        "reorder_matching_answer",
+        %{"blockId" => block_id, "old_index" => old_index, "new_index" => new_index},
+        socket
+      ) do
+    move_matching_answer_to_index(socket, block_id, old_index, new_index)
+  end
+
+  def handle_event(
+        "move_matching_answer_up",
+        %{"block_id" => block_id, "id" => pair_id},
+        socket
+      ) do
+    shift_matching_answer(socket, block_id, pair_id, -1)
+  end
+
+  def handle_event(
+        "move_matching_answer_down",
+        %{"block_id" => block_id, "id" => pair_id},
+        socket
+      ) do
+    shift_matching_answer(socket, block_id, pair_id, 1)
   end
 
   defp do_run_code(socket, nil, _draft), do: {:noreply, socket}
@@ -610,6 +635,8 @@ defmodule AthenaWeb.LearnLive.Player do
 
   @doc false
   defp handle_quiz_submission(socket, block, answer) do
+    answer = resolve_quiz_answer(socket, block, answer)
+
     sub_attrs = %{
       "account_id" => socket.assigns.current_user.id,
       "block_id" => block.id,
@@ -649,6 +676,90 @@ defmodule AthenaWeb.LearnLive.Player do
           |> Enum.map_join(", ", fn {msg, _} -> msg end)
 
         {:noreply, put_flash(socket, :error, error_msg)}
+    end
+  end
+
+  @doc false
+  defp resolve_quiz_answer(socket, %{content: %{"question_type" => "matching"}} = block, _answer) do
+    current_matching_order(socket, block)
+  end
+
+  defp resolve_quiz_answer(_socket, _block, answer), do: answer
+
+  @doc false
+  defp current_matching_order(socket, block) do
+    pairs = block.content["pairs"] || []
+    draft = Map.get(socket.assigns.drafts || %{}, block.id) || %{}
+
+    case draft["matches"] do
+      list when is_list(list) and list != [] ->
+        list
+
+      _ ->
+        initial_matching_order(pairs, block.id, socket.assigns.current_user.id)
+    end
+  end
+
+  @doc false
+  defp move_item(list, old_index, new_index) do
+    {item, rest} = List.pop_at(list, old_index)
+    List.insert_at(rest, new_index, item)
+  end
+
+  @doc false
+  defp move_matching_answer_to_index(socket, block_id, old_index, new_index) do
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
+    if block do
+      current_order = current_matching_order(socket, block)
+      new_order = move_item(current_order, old_index, new_index)
+      persist_matching_draft(socket, block_id, new_order)
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @doc false
+  defp shift_matching_answer(socket, block_id, pair_id, delta) do
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
+    if block do
+      current_order = current_matching_order(socket, block)
+      old_index = Enum.find_index(current_order, &(&1 == pair_id))
+      apply_matching_shift(socket, block_id, current_order, old_index, delta)
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @doc false
+  defp apply_matching_shift(socket, _block_id, _current_order, nil, _delta),
+    do: {:noreply, socket}
+
+  defp apply_matching_shift(socket, block_id, current_order, old_index, delta) do
+    new_index = (old_index + delta) |> max(0) |> min(length(current_order) - 1)
+
+    if new_index == old_index do
+      {:noreply, socket}
+    else
+      new_order = move_item(current_order, old_index, new_index)
+      persist_matching_draft(socket, block_id, new_order)
+    end
+  end
+
+  @doc false
+  defp persist_matching_draft(socket, block_id, new_order) do
+    user = socket.assigns.current_user
+    team_id = socket.assigns.team_id
+    content = %{"type" => :quiz_question, "matches" => new_order}
+
+    case Learning.save_draft(user, block_id, content, team_id) do
+      {:ok, _submission} ->
+        new_drafts = Map.put(socket.assigns.drafts || %{}, block_id, content)
+        {:noreply, assign(socket, :drafts, new_drafts)}
+
+      {:error, _changeset} ->
+        {:noreply, socket}
     end
   end
 
@@ -719,6 +830,9 @@ defmodule AthenaWeb.LearnLive.Player do
 
   defp build_submission_for_type("multiple", _answer_type, answer),
     do: %{"type" => "quiz_question", "selected_choices" => List.wrap(answer)}
+
+  defp build_submission_for_type("matching", _answer_type, answer),
+    do: %{"type" => "quiz_question", "matches" => answer || []}
 
   defp build_submission_for_type(_q_type, _answer_type, _answer), do: %{"type" => "quiz_question"}
 
@@ -1038,11 +1152,17 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp build_draft_content(block, params) do
+  defp build_draft_content(block, params, existing_draft) do
     case block.type do
       :quiz_question ->
         answer_type = block.content["answer_type"] || "plain_text"
-        build_quiz_draft_content(block.content["question_type"], params, answer_type)
+
+        build_quiz_draft_content(
+          block.content["question_type"],
+          params,
+          answer_type,
+          existing_draft
+        )
 
       :code ->
         code = get_in(params, ["answer", "code"]) || ""
@@ -1057,7 +1177,7 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp build_quiz_draft_content(question_type, params, answer_type)
+  defp build_quiz_draft_content(question_type, params, answer_type, _existing_draft)
        when question_type in ["open", "exact_match"] do
     content = params["answer"] || ""
 
@@ -1073,7 +1193,7 @@ defmodule AthenaWeb.LearnLive.Player do
     end
   end
 
-  defp build_quiz_draft_content(_question_type, params, _answer_type) do
+  defp build_quiz_draft_content(_question_type, params, _answer_type, _existing_draft) do
     answer = params["answer"]
 
     selected =
@@ -1197,6 +1317,7 @@ defmodule AthenaWeb.LearnLive.Player do
                     answers={@submissions}
                     draft={Map.get(@drafts || %{}, block.id)}
                     attempts_count={attempts}
+                    user_id={@current_user.id}
                   />
 
                   <div

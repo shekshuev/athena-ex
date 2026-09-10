@@ -127,6 +127,20 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         content: %{"question_type" => "open", "body" => %{"text" => "Write an essay"}}
       )
 
+      insert(:block,
+        section: s1,
+        type: :quiz_question,
+        order: 50,
+        content: %{
+          "question_type" => "matching",
+          "body" => %{"text" => "Match the terms"},
+          "pairs" => [
+            %{"id" => "p1", "left" => "Alpha", "right" => "One"},
+            %{"id" => "p2", "left" => "Beta", "right" => "Two"}
+          ]
+        }
+      )
+
       {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
       assert html =~ "Type your answer..."
@@ -135,6 +149,8 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       assert html =~ "type=\"checkbox\""
       assert html =~ "Check Option A"
       assert html =~ "<textarea"
+      assert html =~ "drag-handle"
+      assert html =~ ~s(data-id="p1")
     end
   end
 
@@ -408,6 +424,78 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> render_submit()
 
       assert html =~ "Locked"
+      refute html =~ "Submit Answer"
+    end
+
+    test "submits matching quiz correctly, locks form", %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+      pair1_id = Ecto.UUID.generate()
+      pair2_id = Ecto.UUID.generate()
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "matching",
+            "pairs" => [
+              %{"id" => pair1_id, "left" => "Alpha", "right" => "One"},
+              %{"id" => pair2_id, "left" => "Beta", "right" => "Two"}
+            ]
+          }
+        )
+
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ "drag-handle"
+      assert html =~ ~s(data-id="#{pair1_id}")
+
+      # With exactly 2 pairs, the initial shuffle is guaranteed to start in the wrong
+      # order (see initial_matching_order/3's anti-trivial-solve swap) — drag the first
+      # card down one slot to arrive at the correct order before submitting.
+      render_hook(lv, "reorder_matching_answer", %{
+        "blockId" => block.id,
+        "old_index" => 0,
+        "new_index" => 1
+      })
+
+      html =
+        lv
+        |> form("#quiz-form-#{block.id}", %{})
+        |> render_submit()
+
+      assert html =~ "Locked"
+      refute html =~ "Submit Answer"
+    end
+
+    test "submits matching quiz incorrectly, allows retry", %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+      pair1_id = Ecto.UUID.generate()
+      pair2_id = Ecto.UUID.generate()
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "matching",
+            "pairs" => [
+              %{"id" => pair1_id, "left" => "Alpha", "right" => "One"},
+              %{"id" => pair2_id, "left" => "Beta", "right" => "Two"}
+            ]
+          }
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      # With exactly 2 pairs, the initial shuffle is guaranteed to start in the wrong
+      # order — submitting untouched should register as incorrect.
+      html =
+        lv
+        |> form("#quiz-form-#{block.id}", %{})
+        |> render_submit()
+
+      assert html =~ "Retry Answer"
       refute html =~ "Submit Answer"
     end
 
@@ -1586,6 +1674,215 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       assert draft != nil
       assert draft.content["selected_choices"] == [opt1_id, opt2_id]
+    end
+
+    test "saves partial draft for matching quiz and restores it on reload", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+      pair1_id = Ecto.UUID.generate()
+      pair2_id = Ecto.UUID.generate()
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "matching",
+            "pairs" => [
+              %{"id" => pair1_id, "left" => "Alpha", "right" => "One"},
+              %{"id" => pair2_id, "left" => "Beta", "right" => "Two"}
+            ]
+          }
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      render_hook(lv, "reorder_matching_answer", %{
+        "blockId" => block.id,
+        "old_index" => 0,
+        "new_index" => 1
+      })
+
+      draft =
+        Athena.Repo.get_by(Athena.Learning.Submission,
+          block_id: block.id,
+          account_id: user.id,
+          status: :draft
+        )
+
+      assert draft != nil
+      assert draft.content["matches"] == [pair1_id, pair2_id]
+
+      {:ok, _lv2, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      p1_pos = :binary.match(html, ~s(data-id="#{pair1_id}"))
+      p2_pos = :binary.match(html, ~s(data-id="#{pair2_id}"))
+
+      assert p1_pos < p2_pos
+    end
+
+    test "matching draft reflects sequential drag reorders based on the latest persisted state",
+         %{conn: conn, course: course, user: user} do
+      s1 = insert(:section, course: course)
+      pair1_id = Ecto.UUID.generate()
+      pair2_id = Ecto.UUID.generate()
+      pair3_id = Ecto.UUID.generate()
+
+      raw_pairs = [
+        %{"id" => pair1_id, "left" => "Alpha", "right" => "One"},
+        %{"id" => pair2_id, "left" => "Beta", "right" => "Two"},
+        %{"id" => pair3_id, "left" => "Gamma", "right" => "Three"}
+      ]
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :quiz_question,
+          content: %{"question_type" => "matching", "pairs" => raw_pairs}
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      initial_order =
+        AthenaWeb.BlockComponents.initial_matching_order(raw_pairs, block.id, user.id)
+
+      # Move the first card to the last position, then move the (new) first card to the
+      # middle — each event must be resolved against the *result* of the previous one,
+      # not just re-applied blindly to the original initial order.
+      render_hook(lv, "reorder_matching_answer", %{
+        "blockId" => block.id,
+        "old_index" => 0,
+        "new_index" => 2
+      })
+
+      after_first_move = List.delete_at(initial_order, 0) ++ [Enum.at(initial_order, 0)]
+
+      render_hook(lv, "reorder_matching_answer", %{
+        "blockId" => block.id,
+        "old_index" => 0,
+        "new_index" => 1
+      })
+
+      expected =
+        after_first_move
+        |> List.delete_at(0)
+        |> List.insert_at(1, Enum.at(after_first_move, 0))
+
+      draft =
+        Athena.Repo.get_by(Athena.Learning.Submission,
+          block_id: block.id,
+          status: :draft
+        )
+
+      assert draft.content["matches"] == expected
+    end
+
+    test "move_matching_answer_up/down click controls reorder like a drag would", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+      pair1_id = Ecto.UUID.generate()
+      pair2_id = Ecto.UUID.generate()
+      pair3_id = Ecto.UUID.generate()
+
+      raw_pairs = [
+        %{"id" => pair1_id, "left" => "Alpha", "right" => "One"},
+        %{"id" => pair2_id, "left" => "Beta", "right" => "Two"},
+        %{"id" => pair3_id, "left" => "Gamma", "right" => "Three"}
+      ]
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :quiz_question,
+          content: %{"question_type" => "matching", "pairs" => raw_pairs}
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      initial_order =
+        AthenaWeb.BlockComponents.initial_matching_order(raw_pairs, block.id, user.id)
+
+      last_pair_id = List.last(initial_order)
+
+      render_click(lv, "move_matching_answer_up", %{"block_id" => block.id, "id" => last_pair_id})
+
+      expected =
+        initial_order
+        |> List.delete_at(length(initial_order) - 1)
+        |> List.insert_at(length(initial_order) - 2, last_pair_id)
+
+      draft =
+        Athena.Repo.get_by(Athena.Learning.Submission,
+          block_id: block.id,
+          status: :draft
+        )
+
+      assert draft.content["matches"] == expected
+
+      first_pair_id = List.first(expected)
+
+      render_click(lv, "move_matching_answer_down", %{
+        "block_id" => block.id,
+        "id" => first_pair_id
+      })
+
+      expected_after_down =
+        expected
+        |> List.delete_at(0)
+        |> List.insert_at(1, first_pair_id)
+
+      final_draft =
+        Athena.Repo.get_by(Athena.Learning.Submission,
+          block_id: block.id,
+          status: :draft
+        )
+
+      assert final_draft.content["matches"] == expected_after_down
+    end
+
+    test "move_matching_answer_up/down is a no-op at the boundaries", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+      pair1_id = Ecto.UUID.generate()
+      pair2_id = Ecto.UUID.generate()
+
+      raw_pairs = [
+        %{"id" => pair1_id, "left" => "Alpha", "right" => "One"},
+        %{"id" => pair2_id, "left" => "Beta", "right" => "Two"}
+      ]
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :quiz_question,
+          content: %{"question_type" => "matching", "pairs" => raw_pairs}
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      initial_order =
+        AthenaWeb.BlockComponents.initial_matching_order(raw_pairs, block.id, user.id)
+
+      first_pair_id = List.first(initial_order)
+      last_pair_id = List.last(initial_order)
+
+      render_click(lv, "move_matching_answer_up", %{"block_id" => block.id, "id" => first_pair_id})
+
+      render_click(lv, "move_matching_answer_down", %{
+        "block_id" => block.id,
+        "id" => last_pair_id
+      })
+
+      refute Athena.Repo.get_by(Athena.Learning.Submission, block_id: block.id, status: :draft)
     end
   end
 end

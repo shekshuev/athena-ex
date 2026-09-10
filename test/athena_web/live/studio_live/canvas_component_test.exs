@@ -287,6 +287,37 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       assert html =~ "Student will see a text area to write their open answer."
     end
 
+    test "renders matching quiz editor WHEN ACTIVE" do
+      quiz_block = %Block{
+        id: "block-quiz-matching",
+        type: :quiz_question,
+        content: %{
+          "question_type" => "matching",
+          "pairs" => [
+            %{"id" => "p1", "left" => "Alpha", "right" => "One"},
+            %{"id" => "p2", "left" => "Beta", "right" => "Two"}
+          ]
+        }
+      }
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [quiz_block],
+          active_block_id: "block-quiz-matching",
+          breadcrumbs: [],
+          mode: :edit
+        )
+
+      assert html =~ "Answer Editor"
+      assert html =~ "tiptap-pair-left-editor-block-quiz-matching-p1"
+      assert html =~ "tiptap-pair-right-editor-block-quiz-matching-p1"
+      assert html =~ "tiptap-pair-left-editor-block-quiz-matching-p2"
+      assert html =~ "tiptap-pair-right-editor-block-quiz-matching-p2"
+      assert html =~ "Add Pair"
+      assert html =~ "remove_quiz_pair"
+    end
+
     test "renders sandbox configuration panel with tests and solution WHEN ACTIVE" do
       code_block = %Block{
         id: "block-code-1",

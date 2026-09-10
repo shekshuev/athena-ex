@@ -227,7 +227,8 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                   {gettext("Exact Match (CTF / Text)"), "exact_match"},
                   {gettext("Single Choice (Radio)"), "single"},
                   {gettext("Multiple Choice (Checkbox)"), "multiple"},
-                  {gettext("Open Question (Essay)"), "open"}
+                  {gettext("Open Question (Essay)"), "open"},
+                  {gettext("Matching Pairs"), "matching"}
                 ]}
               />
 

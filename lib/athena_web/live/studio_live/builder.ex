@@ -714,6 +714,37 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
+  def handle_event("add_quiz_pair", %{"id" => block_id}, socket) do
+    with true <- can_edit?(socket),
+         block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == block_id)) do
+      content_map = normalize_content(block.content || %{})
+      pairs = parse_raw_list(Map.get(content_map, "pairs", []))
+
+      new_pair = %{
+        "id" => Ecto.UUID.generate(),
+        "left" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+        "right" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]}
+      }
+
+      new_content = Map.put(content_map, "pairs", pairs ++ [new_pair])
+      apply_quiz_pair_update(socket, block, new_content)
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("remove_quiz_pair", %{"id" => block_id, "pair_id" => pair_id}, socket) do
+    with true <- can_edit?(socket),
+         block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == block_id)) do
+      content_map = normalize_content(block.content || %{})
+      pairs = Map.get(content_map, "pairs", []) |> Enum.reject(&(&1["id"] == pair_id))
+      new_content = Map.put(content_map, "pairs", pairs)
+      apply_quiz_pair_update(socket, block, new_content)
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
   def handle_event("add_ticket_slot", %{"id" => block_id}, socket) do
     if can_edit?(socket) do
       course = socket.assigns.course
@@ -800,6 +831,13 @@ defmodule AthenaWeb.StudioLive.Builder do
       content_map =
         if opts = params["options"] do
           Map.put(content_map, "options", parse_quiz_options(opts, params["correct_option_id"]))
+        else
+          content_map
+        end
+
+      content_map =
+        if pairs = params["pairs"] do
+          Map.put(content_map, "pairs", parse_quiz_pairs(pairs))
         else
           content_map
         end
@@ -1953,9 +1991,53 @@ defmodule AthenaWeb.StudioLive.Builder do
     end)
   end
 
+  defp apply_quiz_pair_update(socket, block, new_content) do
+    case Content.update_block(socket.assigns.current_user, block, %{"content" => new_content}) do
+      {:ok, updated_block} ->
+        Phoenix.PubSub.broadcast(
+          Athena.PubSub,
+          "builder:#{socket.assigns.course.id}",
+          :refresh_tree
+        )
+
+        {:noreply, assign(socket, blocks: replace_block(socket.assigns.blocks, updated_block))}
+
+      {:error, _changeset} ->
+        {:noreply, socket}
+    end
+  end
+
+  defp parse_quiz_pairs(pairs) do
+    pairs
+    |> Enum.sort_by(fn {k, _} -> String.to_integer(k) end)
+    |> Enum.map(fn {_, v} ->
+      %{
+        "id" => v["id"],
+        "left" => decode_pair_text(v["left"]),
+        "right" => decode_pair_text(v["right"])
+      }
+    end)
+  end
+
+  defp decode_pair_text(text) do
+    case Jason.decode(text) do
+      {:ok, decoded} ->
+        decoded
+
+      _ ->
+        %{
+          "type" => "doc",
+          "content" => [
+            %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => text}]}
+          ]
+        }
+    end
+  end
+
   defp apply_quiz_meta_overrides(original_content, overrides) do
     overrides
     |> apply_exact_match_default(original_content)
+    |> apply_matching_default(original_content)
     |> apply_single_choice_fix(original_content)
     |> apply_case_sensitive_fix()
   end
@@ -1963,6 +2045,25 @@ defmodule AthenaWeb.StudioLive.Builder do
   defp apply_exact_match_default(overrides, original) do
     if overrides["question_type"] == "exact_match" and original["correct_answer"] in [nil, ""] do
       Map.put(overrides, "correct_answer", "flag{...}")
+    else
+      overrides
+    end
+  end
+
+  defp apply_matching_default(overrides, original) do
+    if overrides["question_type"] == "matching" and length(original["pairs"] || []) < 2 do
+      Map.put(overrides, "pairs", [
+        %{
+          "id" => Ecto.UUID.generate(),
+          "left" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+          "right" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]}
+        },
+        %{
+          "id" => Ecto.UUID.generate(),
+          "left" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+          "right" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]}
+        }
+      ])
     else
       overrides
     end

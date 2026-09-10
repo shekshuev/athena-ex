@@ -157,6 +157,65 @@ defmodule Athena.Learning.EvaluatorTest do
       assert Evaluator.evaluate_sync(sub_partial).score == 0
       assert Evaluator.evaluate_sync(sub_correct).score == 100
     end
+
+    test "grades matching question all-or-nothing", %{account: account, section: section} do
+      pair1_id = Ecto.UUID.generate()
+      pair2_id = Ecto.UUID.generate()
+
+      block =
+        insert(:block,
+          section: section,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "matching",
+            "pairs" => [
+              %{"id" => pair1_id, "left" => "A", "right" => "1"},
+              %{"id" => pair2_id, "left" => "B", "right" => "2"}
+            ]
+          }
+        )
+
+      sub_correct =
+        insert(:submission,
+          account_id: account.id,
+          block_id: block.id,
+          content: %{"matches" => [pair1_id, pair2_id]}
+        )
+
+      sub_wrong =
+        insert(:submission,
+          account_id: account.id,
+          block_id: block.id,
+          content: %{"matches" => [pair2_id, pair1_id]}
+        )
+
+      sub_partial =
+        insert(:submission,
+          account_id: account.id,
+          block_id: block.id,
+          content: %{"matches" => [pair1_id]}
+        )
+
+      sub_empty =
+        insert(:submission,
+          account_id: account.id,
+          block_id: block.id,
+          content: %{"matches" => []}
+        )
+
+      sub_missing =
+        insert(:submission,
+          account_id: account.id,
+          block_id: block.id,
+          content: %{}
+        )
+
+      assert Evaluator.evaluate_sync(sub_correct).score == 100
+      assert Evaluator.evaluate_sync(sub_wrong).score == 0
+      assert Evaluator.evaluate_sync(sub_partial).score == 0
+      assert Evaluator.evaluate_sync(sub_empty).score == 0
+      assert Evaluator.evaluate_sync(sub_missing).score == 0
+    end
   end
 
   describe "evaluate_sync/1 for quiz_exam and ticket_exam" do
@@ -382,6 +441,63 @@ defmodule Athena.Learning.EvaluatorTest do
 
       res = Evaluator.evaluate_sync(parent_sub)
       assert res.score == 50
+      assert res.status == :graded
+    end
+
+    test "grades exam containing a matching question", %{account: account, block: block} do
+      q1_id = Ecto.UUID.generate()
+      q2_id = Ecto.UUID.generate()
+      pair1_id = Ecto.UUID.generate()
+      pair2_id = Ecto.UUID.generate()
+
+      questions = [
+        %{
+          "id" => q1_id,
+          "type" => "quiz_question",
+          "content" => %{"question_type" => "exact_match", "correct_answer" => "flag"}
+        },
+        %{
+          "id" => q2_id,
+          "type" => "quiz_question",
+          "content" => %{
+            "question_type" => "matching",
+            "pairs" => [
+              %{"id" => pair1_id, "left" => "A", "right" => "1"},
+              %{"id" => pair2_id, "left" => "B", "right" => "2"}
+            ]
+          }
+        }
+      ]
+
+      parent_sub =
+        insert(:submission,
+          account_id: account.id,
+          block_id: block.id,
+          status: :pending,
+          content: %{
+            "type" => "quiz_exam",
+            "questions" => questions
+          }
+        )
+
+      insert(:submission,
+        account_id: account.id,
+        block_id: q1_id,
+        parent_submission_id: parent_sub.id,
+        status: :pending,
+        content: %{"text_answer" => "flag"}
+      )
+
+      insert(:submission,
+        account_id: account.id,
+        block_id: q2_id,
+        parent_submission_id: parent_sub.id,
+        status: :pending,
+        content: %{"matches" => [pair1_id, pair2_id]}
+      )
+
+      res = Evaluator.evaluate_sync(parent_sub)
+      assert res.score == 100
       assert res.status == :graded
     end
   end

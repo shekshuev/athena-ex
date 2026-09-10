@@ -160,4 +160,78 @@ defmodule AthenaWeb.LearnLive.ExamTest do
       assert html =~ ~r/phx-value-index="1"[^>]*bg-primary text-primary-content/
     end
   end
+
+  describe "Matching question in exam" do
+    test "saves matching answer via child submission and grades it correctly", %{
+      conn: conn,
+      course: course,
+      section: section,
+      user: user
+    } do
+      pair1_id = Ecto.UUID.generate()
+      pair2_id = Ecto.UUID.generate()
+      q_id = Ecto.UUID.generate()
+
+      questions = [
+        %{
+          "id" => q_id,
+          "type" => "quiz_question",
+          "content" => %{
+            "question_type" => "matching",
+            "body" => %{"text" => "Match the terms"},
+            "pairs" => [
+              %{"id" => pair1_id, "left" => "Alpha", "right" => "One"},
+              %{"id" => pair2_id, "left" => "Beta", "right" => "Two"}
+            ]
+          }
+        }
+      ]
+
+      block = insert(:block, section: section, type: :quiz_exam, content: %{"count" => 1})
+
+      sub =
+        insert(:submission,
+          account_id: user.id,
+          block_id: block.id,
+          status: :pending,
+          expires_at:
+            DateTime.utc_now() |> DateTime.add(3600, :second) |> DateTime.truncate(:second),
+          content: %{
+            "type" => "quiz_exam",
+            "started_at" => DateTime.utc_now(),
+            "questions" => questions
+          }
+        )
+
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/exam/#{block.id}")
+
+      assert html =~ "drag-handle"
+      assert html =~ ~s(data-id="#{pair1_id}")
+
+      # With exactly 2 pairs, the initial shuffle is guaranteed to start in the wrong
+      # order (see initial_matching_order/3's anti-trivial-solve swap) — one drag
+      # brings it to the correct order.
+      render_hook(lv, "reorder_matching_answer", %{"old_index" => 0, "new_index" => 1})
+
+      child_sub =
+        Athena.Repo.get_by!(Athena.Learning.Submission,
+          parent_submission_id: sub.id,
+          block_id: q_id,
+          account_id: user.id
+        )
+
+      assert child_sub.content["matches"] == [pair1_id, pair2_id]
+
+      lv
+      |> form("#exam-quiz-#{q_id}", %{})
+      |> render_submit()
+
+      res =
+        Athena.Learning.Evaluator.evaluate_sync(
+          Athena.Repo.get!(Athena.Learning.Submission, sub.id)
+        )
+
+      assert res.score == 100
+    end
+  end
 end
