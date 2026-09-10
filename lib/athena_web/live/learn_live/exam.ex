@@ -28,6 +28,7 @@ defmodule AthenaWeb.LearnLive.Exam do
              course_id,
              user.id,
              block_id,
+             block.type,
              team_id,
              time_limit_sec,
              block.content

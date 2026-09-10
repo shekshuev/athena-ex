@@ -6,6 +6,8 @@ defmodule Athena.Content.QuizExam do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias Athena.Content.QuizSlot
+
   @derive Jason.Encoder
   @primary_key false
   embedded_schema do
@@ -16,6 +18,8 @@ defmodule Athena.Content.QuizExam do
     field :mandatory_tags, {:array, :string}, default: []
     field :include_tags, {:array, :string}, default: []
     field :exclude_tags, {:array, :string}, default: []
+
+    embeds_many :slots, QuizSlot, on_replace: :delete
   end
 
   def changeset(schema, attrs) do
@@ -28,6 +32,7 @@ defmodule Athena.Content.QuizExam do
       :include_tags,
       :exclude_tags
     ])
+    |> cast_embed(:slots, with: &QuizSlot.changeset/2)
     |> validate_required([:count, :allowed_blur_attempts])
     |> validate_number(:count, greater_than: 0, less_than_or_equal_to: 100)
     |> validate_number(:time_limit, greater_than: 0)

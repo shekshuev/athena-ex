@@ -169,6 +169,58 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       assert final_block.content["slots"] == []
     end
 
+    test "updates advanced settings for quiz_exam with slots parsing", %{
+      conn: conn,
+      admin: admin
+    } do
+      block = insert(:library_block, type: :quiz_exam, owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      render_hook(lv, "update_meta", %{
+        "library_block" => %{
+          "content" => %{
+            "time_limit" => "45",
+            "slots" => %{
+              "0" => %{"id" => "s1", "tags_string" => "elixir, hard", "count" => "3"},
+              "1" => %{"id" => "s2", "tags_string" => "  easy  ", "count" => "2"}
+            }
+          }
+        },
+        "tags_string" => ""
+      })
+
+      {:ok, updated_block} = Content.get_library_block(block.id)
+      assert updated_block.content["time_limit"] == 45
+
+      slots = updated_block.content["slots"]
+      assert length(slots) == 2
+      assert Enum.at(slots, 0)["id"] == "s1"
+      assert Enum.at(slots, 0)["tags"] == ["elixir", "hard"]
+      assert Enum.at(slots, 0)["count"] == 3
+      assert Enum.at(slots, 1)["id"] == "s2"
+      assert Enum.at(slots, 1)["tags"] == ["easy"]
+      assert Enum.at(slots, 1)["count"] == 2
+    end
+
+    test "adds and removes quiz_exam slots via event", %{conn: conn, admin: admin} do
+      block =
+        insert(:library_block, type: :quiz_exam, content: %{"slots" => []}, owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      render_hook(lv, "add_quiz_slot", %{})
+
+      {:ok, block_after_add} = Content.get_library_block(block.id)
+      assert length(block_after_add.content["slots"]) == 1
+      slot_id = hd(block_after_add.content["slots"])["id"]
+
+      render_hook(lv, "remove_quiz_slot", %{"slot_id" => slot_id})
+
+      {:ok, final_block} = Content.get_library_block(block.id)
+      assert final_block.content["slots"] == []
+    end
+
     test "question type select includes the matching option", %{conn: conn, admin: admin} do
       block =
         insert(:library_block,

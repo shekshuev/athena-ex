@@ -118,6 +118,7 @@ defmodule Athena.Learning do
         course_id,
         account_id,
         exam_block_id,
+        block_type,
         cohort_id,
         time_limit_sec,
         exam_config
@@ -126,6 +127,7 @@ defmodule Athena.Learning do
       course_id,
       account_id,
       exam_block_id,
+      block_type,
       cohort_id,
       time_limit_sec,
       exam_config

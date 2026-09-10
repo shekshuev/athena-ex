@@ -461,6 +461,103 @@ defmodule Athena.Content.LibraryTest do
       assert length(results) == 1
       assert hd(results).type == :file_assignment
     end
+
+    test "with empty slots list falls back to the legacy tag-rule algorithm", %{course: course} do
+      params = %{
+        "count" => 2,
+        "slots" => [],
+        "mandatory_tags" => ["elixir"],
+        "include_tags" => [],
+        "exclude_tags" => []
+      }
+
+      results = Library.generate_exam_questions(course.id, params)
+      assert length(results) == 2
+      assert Enum.all?(results, fn b -> b.type == :quiz_question end)
+    end
+
+    test "with a single slot picks `count` questions matching its tags", %{course: course} do
+      params = %{
+        "slots" => [
+          %{"id" => "s1", "tags" => ["elixir"], "count" => 3}
+        ]
+      }
+
+      results = Library.generate_exam_questions(course.id, params)
+      assert length(results) == 3
+
+      texts = Enum.map(results, & &1.content["body"]["text"])
+      assert Enum.all?(texts, &(&1 in ["Q1", "Q2", "Q4"]))
+    end
+
+    test "with multiple slots requires ALL of a slot's tags to match (AND semantics)", %{
+      course: course
+    } do
+      params = %{
+        "slots" => [
+          %{"id" => "s1", "tags" => ["elixir", "hard"], "count" => 5}
+        ]
+      }
+
+      results = Library.generate_exam_questions(course.id, params)
+      assert length(results) == 1
+      assert hd(results).content["body"]["text"] == "Q1"
+    end
+
+    test "with multiple slots draws questions independently per slot", %{course: course} do
+      params = %{
+        "slots" => [
+          %{"id" => "s1", "tags" => ["hard"], "count" => 1},
+          %{"id" => "s2", "tags" => ["easy"], "count" => 1}
+        ]
+      }
+
+      results = Library.generate_exam_questions(course.id, params)
+      assert length(results) == 2
+
+      texts = Enum.map(results, & &1.content["body"]["text"])
+      assert "Q1" in texts
+      assert Enum.any?(texts, &(&1 in ["Q2", "Q3"]))
+    end
+
+    test "with slots does not select the same question for two different slots", %{
+      course: course
+    } do
+      params = %{
+        "slots" => [
+          %{"id" => "s1", "tags" => ["python"], "count" => 1},
+          %{"id" => "s2", "tags" => ["python"], "count" => 1}
+        ]
+      }
+
+      results = Library.generate_exam_questions(course.id, params)
+      assert length(results) == 1
+      assert hd(results).content["body"]["text"] == "Q5"
+    end
+
+    test "with slots gracefully returns fewer questions when a slot has insufficient candidates",
+         %{course: course} do
+      params = %{
+        "slots" => [
+          %{"id" => "s1", "tags" => ["theory"], "count" => 5}
+        ]
+      }
+
+      results = Library.generate_exam_questions(course.id, params)
+      assert length(results) == 1
+      assert hd(results).content["body"]["text"] == "Q4"
+    end
+
+    test "with slots defaults a slot's count to 1 when not specified", %{course: course} do
+      params = %{
+        "slots" => [
+          %{"id" => "s1", "tags" => ["python"]}
+        ]
+      }
+
+      results = Library.generate_exam_questions(course.id, params)
+      assert length(results) == 1
+    end
   end
 
   describe "Sharing and Roles Logic" do

@@ -283,14 +283,6 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
               <div class="flex flex-col gap-3">
                 <.input
                   type="number"
-                  name="block[content][count]"
-                  value={@block.content["count"] || 10}
-                  label={gettext("Questions Count")}
-                  min="1"
-                  max="100"
-                />
-                <.input
-                  type="number"
                   name="block[content][time_limit]"
                   value={@block.content["time_limit"]}
                   label={gettext("Time Limit (sec)")}
@@ -299,34 +291,112 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                 />
               </div>
 
-              <div class="divider my-2"></div>
-              <div class="text-xs text-base-content/50 italic mb-2">
-                {gettext("Enter tags separated by commas (e.g. elixir, hard, math)")}
+              <div class="flex items-center justify-between mb-2 mt-6">
+                <label class="label p-0">
+                  <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                    {gettext("Question Slots")}
+                  </span>
+                </label>
+                <button
+                  type="button"
+                  phx-click="add_quiz_slot"
+                  phx-value-id={@block.id}
+                  class="btn btn-xs btn-ghost text-primary"
+                >
+                  <.icon name="hero-plus" class="size-3 mr-1" /> {gettext("Add Slot")}
+                </button>
               </div>
 
-              <.input
-                type="text"
-                name="tags_include"
-                value={Enum.join(@block.content["include_tags"] || [], ", ")}
-                label={gettext("Include Tags (Random pool)")}
-                placeholder="advanced, tricky"
-              />
+              <div class="space-y-3">
+                <% quiz_slots = @block.content["slots"] || [] %>
+                <%= for {slot, index} <- Enum.with_index(quiz_slots) do %>
+                  <div class="flex items-center gap-2">
+                    <input
+                      type="hidden"
+                      name={"block[content][slots][#{index}][id]"}
+                      value={slot["id"]}
+                    />
+                    <div class="w-20">
+                      <.input
+                        type="number"
+                        name={"block[content][slots][#{index}][count]"}
+                        value={slot["count"] || 1}
+                        min="1"
+                        phx-debounce="500"
+                      />
+                    </div>
+                    <div class="flex-1">
+                      <.input
+                        type="text"
+                        name={"block[content][slots][#{index}][tags_string]"}
+                        value={Enum.join(slot["tags"] || [], ", ")}
+                        placeholder={gettext("e.g. elixir, hard")}
+                        phx-debounce="500"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      phx-click="remove_quiz_slot"
+                      phx-value-block_id={@block.id}
+                      phx-value-slot_id={slot["id"]}
+                      class="btn btn-ghost btn-sm btn-square text-error"
+                      title={gettext("Remove Slot")}
+                    >
+                      <.icon name="hero-x-mark" class="size-4" />
+                    </button>
+                  </div>
+                <% end %>
+                <div :if={quiz_slots == []} class="text-sm italic opacity-50 pb-2">
+                  {gettext(
+                    "No slots added. Add slots to specify how many questions to pick per tag group."
+                  )}
+                </div>
+              </div>
 
-              <.input
-                type="text"
-                name="tags_mandatory"
-                value={Enum.join(@block.content["mandatory_tags"] || [], ", ")}
-                label={gettext("Mandatory Tags (Must include)")}
-                placeholder="elixir, basic"
-              />
+              <div class="collapse collapse-arrow bg-base-200/50 mt-6">
+                <input type="checkbox" />
+                <div class="collapse-title text-xs font-semibold text-base-content/50 uppercase tracking-wider p-3 min-h-0">
+                  {gettext("Legacy Tag Rules (used only when no slots are defined)")}
+                </div>
+                <div class="collapse-content space-y-3">
+                  <.input
+                    type="number"
+                    name="block[content][count]"
+                    value={@block.content["count"] || 10}
+                    label={gettext("Questions Count")}
+                    min="1"
+                    max="100"
+                  />
 
-              <.input
-                type="text"
-                name="tags_exclude"
-                value={Enum.join(@block.content["exclude_tags"] || [], ", ")}
-                label={gettext("Exclude Tags (Do not use)")}
-                placeholder="draft, deprecated"
-              />
+                  <div class="text-xs text-base-content/50 italic mb-2">
+                    {gettext("Enter tags separated by commas (e.g. elixir, hard, math)")}
+                  </div>
+
+                  <.input
+                    type="text"
+                    name="tags_include"
+                    value={Enum.join(@block.content["include_tags"] || [], ", ")}
+                    label={gettext("Include Tags (Random pool)")}
+                    placeholder="advanced, tricky"
+                  />
+
+                  <.input
+                    type="text"
+                    name="tags_mandatory"
+                    value={Enum.join(@block.content["mandatory_tags"] || [], ", ")}
+                    label={gettext("Mandatory Tags (Must include)")}
+                    placeholder="elixir, basic"
+                  />
+
+                  <.input
+                    type="text"
+                    name="tags_exclude"
+                    value={Enum.join(@block.content["exclude_tags"] || [], ", ")}
+                    label={gettext("Exclude Tags (Do not use)")}
+                    placeholder="draft, deprecated"
+                  />
+                </div>
+              </div>
             </div>
             <div class="divider my-4"></div>
           <% end %>

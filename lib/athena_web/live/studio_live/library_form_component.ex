@@ -135,6 +135,7 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
     Map.put_new(params, "content", %{
       "count" => 10,
       "time_limit" => nil,
+      "slots" => [],
       "mandatory_tags" => [],
       "include_tags" => [],
       "exclude_tags" => []

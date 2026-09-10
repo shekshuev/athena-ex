@@ -1251,6 +1251,7 @@ defmodule Athena.Learning.SubmissionsTest do
           course.id,
           account.id,
           exam_block.id,
+          exam_block.type,
           nil,
           3600,
           %{}
@@ -1260,10 +1261,10 @@ defmodule Athena.Learning.SubmissionsTest do
       assert result_sub.status == :time_limit_exceeded
     end
 
-    test "get_or_create_exam_attempt uses ticket logic when exam config has slots", %{
-      account: account,
-      exam_block: exam_block
+    test "get_or_create_exam_attempt uses ticket logic for a ticket_exam block with slots", %{
+      account: account
     } do
+      ticket_block = insert(:block, type: "ticket_exam")
       course = insert(:course)
       lb1 = insert(:library_block, type: :quiz_question, tags: ["tag1"])
       lb2 = insert(:library_block, type: :quiz_question, tags: ["tag2"])
@@ -1283,7 +1284,8 @@ defmodule Athena.Learning.SubmissionsTest do
         Submissions.get_or_create_exam_attempt(
           course.id,
           account.id,
-          exam_block.id,
+          ticket_block.id,
+          ticket_block.type,
           nil,
           3600,
           exam_config
@@ -1298,6 +1300,45 @@ defmodule Athena.Learning.SubmissionsTest do
 
       assert lb1.id in original_ids_in_questions
       assert lb2.id in original_ids_in_questions
+    end
+
+    test "get_or_create_exam_attempt uses quiz slot logic for a quiz_exam block with slots", %{
+      account: account,
+      exam_block: exam_block
+    } do
+      course = insert(:course)
+      lb1 = insert(:library_block, type: :quiz_question, tags: ["tag1"])
+      lb2 = insert(:library_block, type: :quiz_question, tags: ["tag2"])
+
+      insert(:course_library_block, course: course, library_block: lb1)
+      insert(:course_library_block, course: course, library_block: lb2)
+
+      exam_config = %{
+        "time_limit" => 60,
+        "slots" => [
+          %{"id" => "slot1", "tags" => ["tag1"], "count" => 1},
+          %{"id" => "slot2", "tags" => ["tag2"], "count" => 1}
+        ]
+      }
+
+      {:ok, submission} =
+        Submissions.get_or_create_exam_attempt(
+          course.id,
+          account.id,
+          exam_block.id,
+          exam_block.type,
+          nil,
+          3600,
+          exam_config
+        )
+
+      assert submission.content["type"] == "quiz_exam"
+      assert length(submission.content["questions"]) == 2
+
+      refute Enum.any?(
+               submission.content["questions"],
+               &Map.has_key?(&1.content, "original_block_id")
+             )
     end
   end
 end

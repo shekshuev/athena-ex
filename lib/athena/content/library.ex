@@ -141,12 +141,28 @@ defmodule Athena.Content.Library do
   end
 
   @doc """
-  Generates a snapshot of questions for a quiz_exam based on tag rules.
-  Uses PostgreSQL array intersection operator (&&) for massive performance.
+  Generates a snapshot of questions for a quiz_exam.
+
+  Dispatches to slot-based generation (each slot picks `count` random questions
+  matching its `tags`) when `exam_config["slots"]` is a non-empty list, otherwise
+  falls back to the legacy tag-rule algorithm (`mandatory_tags`/`include_tags`/
+  `exclude_tags`) for backward compatibility with existing quiz_exam blocks.
   RESTRICTED to the course workspace pool.
   """
   @spec generate_exam_questions(String.t(), map() | nil) :: [Block.t()]
   def generate_exam_questions(course_id, exam_config) when is_map(exam_config) do
+    case Map.get(exam_config, "slots", []) do
+      slots when is_list(slots) and slots != [] ->
+        generate_exam_questions_from_slots(course_id, slots)
+
+      _ ->
+        generate_exam_questions_legacy(course_id, exam_config)
+    end
+  end
+
+  def generate_exam_questions(_, _), do: []
+
+  defp generate_exam_questions_legacy(course_id, exam_config) do
     count = Map.get(exam_config, "count", 10)
     mandatory_tags = Map.get(exam_config, "mandatory_tags", [])
     include_tags = Map.get(exam_config, "include_tags", [])
@@ -166,7 +182,40 @@ defmodule Athena.Content.Library do
 
     (mandatory_blocks ++ random_blocks)
     |> Enum.shuffle()
-    |> Enum.map(fn lib_block ->
+    |> build_exam_blocks()
+  end
+
+  @doc false
+  defp generate_exam_questions_from_slots(course_id, slots) do
+    candidates = fetch_candidates_for_slots(course_id, slots)
+
+    {selected_blocks, _selected_ids} =
+      Enum.reduce(slots, {[], []}, fn slot, {acc_blocks, acc_ids} ->
+        pick_blocks_for_quiz_slot(slot, candidates, acc_blocks, acc_ids)
+      end)
+
+    selected_blocks
+    |> Enum.shuffle()
+    |> build_exam_blocks()
+  end
+
+  @doc false
+  defp pick_blocks_for_quiz_slot(slot, candidates, acc_blocks, acc_ids) do
+    slot_tags = Map.get(slot, "tags", [])
+    count = Map.get(slot, "count", 1)
+
+    chosen =
+      candidates
+      |> Enum.filter(&(&1.id not in acc_ids and tags_match?(&1.tags, slot_tags)))
+      |> Enum.shuffle()
+      |> Enum.take(count)
+
+    {acc_blocks ++ chosen, acc_ids ++ Enum.map(chosen, & &1.id)}
+  end
+
+  @doc false
+  defp build_exam_blocks(lib_blocks) do
+    Enum.map(lib_blocks, fn lib_block ->
       %Block{
         id: Ecto.UUID.generate(),
         type: lib_block.type,
@@ -176,8 +225,6 @@ defmodule Athena.Content.Library do
       }
     end)
   end
-
-  def generate_exam_questions(_, _), do: []
 
   defp fetch_exam_blocks(course_id, tags, exclude_tags, limit, exclude_ids \\ [])
 

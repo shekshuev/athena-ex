@@ -726,6 +726,81 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert updated_block.content["include_tags"] == ["random", "tricky"]
       assert updated_block.content["exclude_tags"] == ["draft"]
     end
+
+    test "adds a new quiz_exam block defaulting to the slot-based algorithm", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("button[phx-click='add_quiz_exam_block']") |> render_click()
+
+      [block] = Content.list_blocks_by_section(section.id)
+      assert block.type == :quiz_exam
+      assert block.content["slots"] == []
+    end
+
+    test "adds and removes quiz exam slots and parses slot tags/count", %{
+      conn: conn,
+      course: course,
+      section: section,
+      admin: admin
+    } do
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "quiz_exam",
+          "section_id" => section.id,
+          "content" => %{"slots" => []}
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']") |> render_click()
+
+      lv
+      |> element("button[phx-click='add_quiz_slot'][phx-value-id='#{block.id}']")
+      |> render_click()
+
+      [updated_block] = Content.list_blocks_by_section(section.id)
+      [slot] = updated_block.content["slots"]
+      slot_id = slot["id"]
+
+      lv
+      |> form("#block-inspector-form-#{block.id}", %{
+        "block" => %{
+          "id" => block.id,
+          "content" => %{
+            "slots" => %{
+              "0" => %{"id" => slot_id, "tags_string" => "elixir, hard", "count" => "3"}
+            }
+          }
+        }
+      })
+      |> render_change()
+
+      [updated_block] = Content.list_blocks_by_section(section.id)
+      [slot] = updated_block.content["slots"]
+      assert slot["tags"] == ["elixir", "hard"]
+      assert slot["count"] == 3
+
+      lv
+      |> element(
+        "button[phx-click='remove_quiz_slot'][phx-value-block_id='#{block.id}'][phx-value-slot_id='#{slot_id}']"
+      )
+      |> render_click()
+
+      [updated_block] = Content.list_blocks_by_section(section.id)
+      assert updated_block.content["slots"] == []
+    end
   end
 
   describe "Modals & Navigation" do
