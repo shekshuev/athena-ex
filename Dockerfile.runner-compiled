@@ -46,12 +46,15 @@ FROM ${RUNNER_IMAGE} AS final
 
 # The compiled-family runner executes C++ submissions inside isolate. It
 # needs a compiler for student code (g++) plus the toolchain to build
-# isolate itself (gcc/make/libcap-dev/pkg-config/libseccomp-dev/
-# libsystemd-dev) — no python3, that's the script family's job.
+# isolate itself (gcc/libc6-dev/make/libcap-dev/pkg-config/libseccomp-dev/
+# libsystemd-dev) — no python3, that's the script family's job. libc6-dev is
+# spelled out explicitly: it's only a Recommends of the `gcc` package, so
+# --no-install-recommends won't pull it in on its own and gcc can't compile
+# anything (missing stdint.h etc.) without it.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libstdc++6 openssl libncurses6 locales ca-certificates \
     g++ \
-    git make gcc libcap-dev pkg-config libseccomp-dev libsystemd-dev \
+    git make gcc libc6-dev libcap-dev pkg-config libseccomp-dev libsystemd-dev \
   && rm -rf /var/lib/apt/lists/*
 
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
