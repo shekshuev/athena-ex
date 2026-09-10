@@ -337,6 +337,37 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "Remove Slot"
     end
 
+    test "renders quiz exam question slots and legacy tag rules", %{block: base_block} do
+      block = %{
+        base_block
+        | type: :quiz_exam,
+          content: %{
+            "time_limit" => 45,
+            "slots" => [
+              %{"id" => "slot1", "tags" => ["elixir", "hard"], "count" => 3}
+            ],
+            "mandatory_tags" => ["legacy"]
+          }
+      }
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block
+        )
+
+      assert html =~ ~s(name="block[content][time_limit]")
+      assert html =~ "45"
+      assert html =~ ~s(name="block[content][slots][0][tags_string]")
+      assert html =~ "elixir, hard"
+      assert html =~ ~s(name="block[content][slots][0][count]")
+      assert html =~ "Add Slot"
+      assert html =~ "Remove Slot"
+      assert html =~ "Legacy Tag Rules"
+      assert html =~ "legacy"
+    end
+
     test "renders correct progression rules for quiz exam blocks", %{block: base_block} do
       block = %{
         base_block

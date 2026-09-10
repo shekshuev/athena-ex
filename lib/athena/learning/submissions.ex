@@ -631,19 +631,21 @@ defmodule Athena.Learning.Submissions do
 
   @doc """
   Gets an active exam attempt, or creates a new one with a fixed set of questions.
-  Intelligently routes to either `quiz_exam` or `ticket_exam` generator logic.
+  Routes to either `quiz_exam` or `ticket_exam` generator logic based on `block_type`
+  (both may carry a `"slots"` config, so the block's own type is the source of truth).
   """
   def get_or_create_exam_attempt(
         course_id,
         account_id,
         exam_block_id,
+        block_type,
         cohort_id,
         time_limit_sec,
         exam_config
       ) do
     case get_active_exam_submission(account_id, exam_block_id) do
       nil ->
-        is_ticket = Map.has_key?(exam_config, "slots")
+        is_ticket = block_type == :ticket_exam
 
         questions =
           if is_ticket do

@@ -291,6 +291,41 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     end
   end
 
+  def handle_event("add_quiz_slot", _, socket) do
+    case can_edit?(socket) do
+      true ->
+        block = socket.assigns.block
+        content_map = normalize_content(block.content || %{})
+        slots = parse_raw_list(Map.get(content_map, "slots", []))
+
+        new_slot = %{
+          "id" => Ecto.UUID.generate(),
+          "tags" => [],
+          "count" => 1
+        }
+
+        new_content = Map.put(content_map, "slots", slots ++ [new_slot])
+        update_and_assign(socket, block, %{"content" => new_content})
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("remove_quiz_slot", %{"slot_id" => slot_id}, socket) do
+    case can_edit?(socket) do
+      true ->
+        block = socket.assigns.block
+        content_map = normalize_content(block.content || %{})
+        slots = Map.get(content_map, "slots", []) |> Enum.reject(&(&1["id"] == slot_id))
+
+        update_and_assign(socket, block, %{"content" => Map.put(content_map, "slots", slots)})
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
   def handle_event("update_quiz_content", params, socket) do
     case can_edit?(socket) do
       true ->
@@ -898,44 +933,111 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                     <% end %>
 
                     <%= if @block.type == :quiz_exam do %>
-                      <div class="grid grid-cols-2 gap-4">
-                        <.input
-                          type="number"
-                          name="library_block[content][count]"
-                          value={@block.content["count"] || 10}
-                          label={gettext("Questions")}
-                          min="1"
-                        />
-                        <.input
-                          type="number"
-                          name="library_block[content][time_limit]"
-                          value={@block.content["time_limit"]}
-                          label={gettext("Time (Min)")}
-                          placeholder="Opt"
-                          min="1"
-                        />
+                      <.input
+                        type="number"
+                        name="library_block[content][time_limit]"
+                        value={@block.content["time_limit"]}
+                        label={gettext("Time (Min)")}
+                        placeholder="Opt"
+                        min="1"
+                      />
+
+                      <div class="flex items-center justify-between mb-2 mt-6">
+                        <label class="label p-0">
+                          <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                            {gettext("Question Slots")}
+                          </span>
+                        </label>
+                        <button
+                          type="button"
+                          phx-click="add_quiz_slot"
+                          class="btn btn-xs btn-ghost text-primary"
+                        >
+                          <.icon name="hero-plus" class="size-3 mr-1" /> {gettext("Add Slot")}
+                        </button>
                       </div>
-                      <.input
-                        type="text"
-                        name="tags_mandatory"
-                        value={Enum.join(@block.content["mandatory_tags"] || [], ", ")}
-                        label={gettext("Mandatory Tags")}
-                        phx-debounce="500"
-                      />
-                      <.input
-                        type="text"
-                        name="tags_include"
-                        value={Enum.join(@block.content["include_tags"] || [], ", ")}
-                        label={gettext("Include Pool")}
-                        phx-debounce="500"
-                      />
-                      <.input
-                        type="text"
-                        name="tags_exclude"
-                        value={Enum.join(@block.content["exclude_tags"] || [], ", ")}
-                        label={gettext("Exclude Pool")}
-                        phx-debounce="500"
-                      />
+
+                      <div class="space-y-3">
+                        <% quiz_slots = @block.content["slots"] || [] %>
+                        <%= for {slot, index} <- Enum.with_index(quiz_slots) do %>
+                          <div class="flex items-center gap-2">
+                            <input
+                              type="hidden"
+                              name={"library_block[content][slots][#{index}][id]"}
+                              value={slot["id"]}
+                            />
+                            <div class="w-20">
+                              <.input
+                                type="number"
+                                name={"library_block[content][slots][#{index}][count]"}
+                                value={slot["count"] || 1}
+                                min="1"
+                                phx-debounce="500"
+                              />
+                            </div>
+                            <div class="flex-1">
+                              <.input
+                                type="text"
+                                name={"library_block[content][slots][#{index}][tags_string]"}
+                                value={Enum.join(slot["tags"] || [], ", ")}
+                                placeholder={gettext("e.g. elixir, hard")}
+                                phx-debounce="500"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              phx-click="remove_quiz_slot"
+                              phx-value-slot_id={slot["id"]}
+                              class="btn btn-ghost btn-sm btn-square text-error"
+                              title={gettext("Remove Slot")}
+                            >
+                              <.icon name="hero-x-mark" class="size-4" />
+                            </button>
+                          </div>
+                        <% end %>
+                        <div :if={quiz_slots == []} class="text-sm italic opacity-50 pb-2">
+                          {gettext(
+                            "No slots added. Add slots to specify how many questions to pick per tag group."
+                          )}
+                        </div>
+                      </div>
+
+                      <div class="collapse collapse-arrow bg-base-200/50 mt-6">
+                        <input type="checkbox" />
+                        <div class="collapse-title text-xs font-semibold text-base-content/50 uppercase tracking-wider p-3 min-h-0">
+                          {gettext("Legacy Tag Rules (used only when no slots are defined)")}
+                        </div>
+                        <div class="collapse-content space-y-3">
+                          <.input
+                            type="number"
+                            name="library_block[content][count]"
+                            value={@block.content["count"] || 10}
+                            label={gettext("Questions")}
+                            min="1"
+                          />
+                          <.input
+                            type="text"
+                            name="tags_mandatory"
+                            value={Enum.join(@block.content["mandatory_tags"] || [], ", ")}
+                            label={gettext("Mandatory Tags")}
+                            phx-debounce="500"
+                          />
+                          <.input
+                            type="text"
+                            name="tags_include"
+                            value={Enum.join(@block.content["include_tags"] || [], ", ")}
+                            label={gettext("Include Pool")}
+                            phx-debounce="500"
+                          />
+                          <.input
+                            type="text"
+                            name="tags_exclude"
+                            value={Enum.join(@block.content["exclude_tags"] || [], ", ")}
+                            label={gettext("Exclude Pool")}
+                            phx-debounce="500"
+                          />
+                        </div>
+                      </div>
                     <% end %>
 
                     <%= if @block.type == :ticket_exam do %>
@@ -1293,6 +1395,17 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
   defp apply_single_choice_fix(overrides, _), do: overrides
 
   defp apply_exam_meta_overrides(overrides, :quiz_exam, params) do
+    content_params =
+      get_in(params, ["library_block", "content"]) ||
+        get_in(params, ["block", "content"]) ||
+        %{}
+
+    overrides =
+      case Map.fetch(content_params, "slots") do
+        {:ok, raw_slots} -> Map.put(overrides, "slots", parse_raw_slots(raw_slots))
+        :error -> overrides
+      end
+
     overrides
     |> parse_and_put_tags(params, "tags_mandatory", "mandatory_tags")
     |> parse_and_put_tags(params, "tags_include", "include_tags")
@@ -1317,15 +1430,22 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     raw_slots
     |> Enum.sort_by(fn {k, _} -> String.to_integer(k) end)
     |> Enum.map(fn {_, v} ->
-      %{
-        "id" => v["id"],
-        "tags" => parse_tags(v["tags_string"])
-      }
+      %{"id" => v["id"], "tags" => parse_tags(v["tags_string"])}
+      |> maybe_put_slot_count(v["count"])
     end)
   end
 
   defp parse_raw_slots(raw_slots) when is_list(raw_slots), do: raw_slots
   defp parse_raw_slots(_), do: []
+
+  defp maybe_put_slot_count(slot, nil), do: slot
+
+  defp maybe_put_slot_count(slot, count_string) do
+    case Integer.parse(count_string) do
+      {count, _} -> Map.put(slot, "count", count)
+      :error -> slot
+    end
+  end
 
   defp parse_and_put_tags(overrides, params, param_key, content_key) do
     if Map.has_key?(params, param_key),

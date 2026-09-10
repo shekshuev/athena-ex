@@ -580,6 +580,7 @@ defmodule AthenaWeb.LearnLive.Player do
            socket.assigns.course.id,
            user.id,
            block.id,
+           block.type,
            socket.assigns.team_id,
            time_limit_sec,
            block.content

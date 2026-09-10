@@ -30,7 +30,7 @@ msgid "progress"
 msgstr "Прогресс"
 
 msgid "enrollments"
-msgstr "Зачисления (Студенты)"
+msgstr "Зачисления (Пользователи)"
 
 msgid "schedule"
 msgstr "Расписание"

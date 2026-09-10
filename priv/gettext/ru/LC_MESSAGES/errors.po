@@ -227,7 +227,7 @@ msgstr "пожалуйста, введите ответ или выберите 
 #: lib/athena/learning/enrollments.ex:119
 #, elixir-autogen, elixir-format
 msgid "Cannot enroll: the following students already have access to this course: %{logins}"
-msgstr "Невозможно зачислить: следующие студенты уже имеют доступ к этому курсу: %{logins}"
+msgstr "Невозможно зачислить: следующие пользователи уже имеют доступ к этому курсу: %{logins}"
 
 #: lib/athena/content/library.ex:122
 #: lib/athena/content/library_block.ex:63
