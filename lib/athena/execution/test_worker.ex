@@ -10,6 +10,7 @@ defmodule Athena.Execution.TestWorker do
   alias Athena.{Repo, Content}
   alias Athena.Learning
   alias Athena.Learning.Submission
+  alias Athena.Execution
   alias Athena.Execution.{Result, TestResult, Verifier}
 
   @timeout Application.compile_env(:athena, [Athena.Execution.TestWorker, :timeout], 60_000)
@@ -36,13 +37,12 @@ defmodule Athena.Execution.TestWorker do
   end
 
   defp execute_code(code, challenge, box_id) do
-    case :pg.get_members(Athena.PG, :code_runners) do
-      [] ->
-        Logger.error("Runner node is not connected during test worker execution!")
-        build_error_result("Runner node is not connected!")
+    case Execution.pick_runner(challenge.language) do
+      :error ->
+        Logger.error("No runner node connected for language #{challenge.language}!")
+        build_error_result("No runner node is connected for this language!")
 
-      runners ->
-        runner_pid = Enum.random(runners)
+      {:ok, runner_pid} ->
         run_remote_task(runner_pid, code, challenge, box_id)
     end
   end

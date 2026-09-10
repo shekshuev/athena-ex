@@ -12,10 +12,26 @@ defmodule Athena.MixProject do
       deps: deps(),
       compilers: compilers(Mix.env()),
       listeners: [Phoenix.CodeReloader],
+      releases: releases(),
       dialyzer: [
         flags: [:no_opaque],
         plt_add_apps: [:ex_unit, :mix]
       ]
+    ]
+  end
+
+  # Each release is a self-contained deployment artifact. The release name is
+  # exposed to the running node via the RELEASE_NAME env var (set by the
+  # generated bin/<name> script), which config/runtime.exs reads to determine
+  # the node's role and, for runner releases, its language family — this is
+  # the only place that distinction is made; there is no operator-facing role
+  # env var.
+  defp releases do
+    [
+      web: [applications: [athena: :permanent]],
+      runner_db: [applications: [athena: :permanent]],
+      runner_compiled: [applications: [athena: :permanent]],
+      runner_script: [applications: [athena: :permanent]]
     ]
   end
 

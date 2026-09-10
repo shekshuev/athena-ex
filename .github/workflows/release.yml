@@ -7,8 +7,8 @@ on:
 
 jobs:
   docker:
-    name: Build and Push Docker Images
-    runs-on: ubuntu-latest
+    name: Build, validate, and push (${{ matrix.variant }} / ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: read
       packages: write
@@ -16,16 +16,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - variant: "all"
-            file: "./Dockerfile"
-            suffix: ""
-          - variant: "web"
-            file: "./Dockerfile.web"
-            suffix: "-web"
-          - variant: "runner"
-            file: "./Dockerfile.runner"
-            suffix: "-runner"
+        os: [ubuntu-22.04, ubuntu-24.04]
+        variant: [web, runner-db, runner-compiled, runner-script]
 
     steps:
       - name: Checkout repository
@@ -34,6 +26,83 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Resolve variant metadata
+        id: variant
+        run: |
+          case "${{ matrix.variant }}" in
+            web) file=Dockerfile.web; suffix=-web; isolate=false ;;
+            runner-db) file=Dockerfile.runner-db; suffix=-runner-db; isolate=false ;;
+            runner-compiled) file=Dockerfile.runner-compiled; suffix=-runner-compiled; isolate=true ;;
+            runner-script) file=Dockerfile.runner-script; suffix=-runner-script; isolate=true ;;
+          esac
+          case "${{ matrix.os }}" in
+            ubuntu-22.04) os_tag=u22 ;;
+            ubuntu-24.04) os_tag=u24 ;;
+          esac
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+          echo "suffix=$suffix" >> "$GITHUB_OUTPUT"
+          echo "isolate=$isolate" >> "$GITHUB_OUTPUT"
+          echo "os_tag=$os_tag" >> "$GITHUB_OUTPUT"
+
+      # Each os leg publishes its own tags (-u22 / -u24). The two images are
+      # not guaranteed identical — isolate is validated against the real
+      # kernel it was built on (see the smoke test below), and glibc/kernel
+      # behavior can differ between Ubuntu versions — so pin the image tag
+      # that matches your actual deployment target's Ubuntu version.
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}${{ steps.variant.outputs.suffix }}
+          flavor: |
+            suffix=-${{ steps.variant.outputs.os_tag }}
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest
+
+      - name: Build image (${{ matrix.variant }}, not pushed yet)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./${{ steps.variant.outputs.file }}
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            COMMIT_SHA=${{ github.sha }}
+
+      # This is the actual point of building on ubuntu-22.04 and ubuntu-24.04
+      # specifically instead of ubuntu-latest: isolate runs --privileged and
+      # shares the host kernel, so its cgroup v2 / seccomp behavior needs to
+      # be validated against both real kernels before we publish anything.
+      - name: Privileged isolate smoke test (real ${{ matrix.os }} kernel)
+        if: steps.variant.outputs.isolate == 'true'
+        run: |
+          set -e
+          image_tag="$(echo '${{ steps.meta.outputs.tags }}' | head -n1)"
+          docker run --rm --privileged --pid host --cgroupns host \
+            -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+            --entrypoint /bin/sh "$image_tag" -c '
+              set -e
+              mkdir -p /sys/fs/cgroup/isolate /sys/fs/cgroup/init
+              for pid in $(cat /sys/fs/cgroup/cgroup.procs 2>/dev/null); do
+                echo "$pid" > /sys/fs/cgroup/init/cgroup.procs 2>/dev/null || true
+              done
+              echo "+cpu +memory +pids" > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null || true
+              echo "+cpu +memory +pids" > /sys/fs/cgroup/isolate/cgroup.subtree_control 2>/dev/null || true
+              mkdir -p /run/isolate/locks /var/local/lib/isolate
+              echo "/sys/fs/cgroup/isolate" > /run/isolate/cgroup
+              isolate --init --cg -b 0
+              isolate --run --cg -b 0 -- /bin/echo isolate-ok
+              isolate --cleanup --cg -b 0
+            '
+
+      # Each leg publishes its own os-suffixed tags, only after its own
+      # smoke test (for isolate variants) has passed on that leg's real
+      # kernel — a failure on either Ubuntu version blocks only that
+      # version's tag, not both.
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
@@ -41,51 +110,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}${{ matrix.suffix }}
-          tags: |
-            type=ref,event=tag
-            type=raw,value=latest
-
-      - name: Build and push Docker image (${{ matrix.variant }})
+      - name: Push image (${{ matrix.variant }} / ${{ matrix.os }})
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ${{ matrix.file }}
+          file: ./${{ steps.variant.outputs.file }}
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             COMMIT_SHA=${{ github.sha }}
-
-  create_release:
-    name: Create GitHub Release
-    needs: docker
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Pull Docker image
-        run: docker pull ghcr.io/${{ github.repository }}-runner:latest
-
-      - name: Extract Release from Docker
-        run: |
-          docker create --name temp_container ghcr.io/${{ github.repository }}-runner:latest
-          docker cp temp_container:/app/ ./athena_release
-          docker rm temp_container
-          tar -czvf athena-runner-linux-amd64.tar.gz -C ./athena_release .
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          files: |
-            athena-runner-linux-amd64.tar.gz

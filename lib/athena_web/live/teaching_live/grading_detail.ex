@@ -6,7 +6,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
   """
   use AthenaWeb, :live_view
 
-  alias Athena.{Learning, Identity, Content}
+  alias Athena.{Learning, Identity, Content, Execution}
   import AthenaWeb.BlockComponents
 
   on_mount {AthenaWeb.Hooks.Permission, "grading.update"}
@@ -180,7 +180,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
 
     with {:valid?, true} <- {:valid?, not is_nil(block) and not is_nil(sub)},
          {:code?, code} when code != "" <- {:code?, extract_submitted_code(sub)},
-         {:runner?, true} <- {:runner?, code_runner_available?()} do
+         {:runner?, true} <- {:runner?, Execution.runner_available?(block.content["language"])} do
       {:noreply, dispatch_code_execution(socket, block, code)}
     else
       {:valid?, false} ->
@@ -221,32 +221,33 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
   end
 
   @doc false
-  defp code_runner_available?, do: :pg.get_members(Athena.PG, :code_runners) != []
-
-  @doc false
   defp dispatch_code_execution(socket, block, code) do
     challenge =
       Ecto.Changeset.apply_changes(
         Athena.Content.CodeChallenge.changeset(%Athena.Content.CodeChallenge{}, block.content)
       )
 
-    runners = :pg.get_members(Athena.PG, :code_runners)
-    runner_pid = Enum.random(runners)
-    box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
+    case Execution.pick_runner(challenge.language) do
+      :error ->
+        put_flash(socket, :error, gettext("Runner node is not connected!"))
 
-    task =
-      Task.Supervisor.async_nolink(
-        runner_pid,
-        Athena.Execution,
-        :verify,
-        [code, challenge, box_id]
-      )
+      {:ok, runner_pid} ->
+        box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
 
-    running_tests = Map.put(socket.assigns[:running_tests] || %{}, task.ref, block.id)
+        task =
+          Task.Supervisor.async_nolink(
+            runner_pid,
+            Execution,
+            :verify,
+            [code, challenge, box_id]
+          )
 
-    socket
-    |> assign(:running_tests, running_tests)
-    |> put_flash(:info, gettext("Running student's code... Please wait."))
+        running_tests = Map.put(socket.assigns[:running_tests] || %{}, task.ref, block.id)
+
+        socket
+        |> assign(:running_tests, running_tests)
+        |> put_flash(:info, gettext("Running student's code... Please wait."))
+    end
   end
 
   defp update_all_child_grades(socket, child_grades, status) do

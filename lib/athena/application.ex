@@ -10,6 +10,7 @@ defmodule Athena.Application do
   @impl true
   def start(_type, _args) do
     server_role = Application.get_env(:athena, :server_role)
+    runner_family = Application.get_env(:athena, :runner_family)
 
     topologies = Application.get_env(:libcluster, :topologies) || []
 
@@ -18,7 +19,8 @@ defmodule Athena.Application do
     ]
 
     children =
-      cluster_children(topologies) ++ common_children ++ children_for_role(server_role)
+      cluster_children(topologies) ++
+        common_children ++ children_for_role(server_role, runner_family)
 
     opts = [strategy: :one_for_one, name: Athena.Supervisor]
 
@@ -34,23 +36,17 @@ defmodule Athena.Application do
     ]
 
   @doc false
-  defp children_for_role("runner"),
+  defp children_for_role("runner", runner_family),
     do: [
       {Task.Supervisor, name: Athena.Execution.TaskSupervisor},
       Supervisor.child_spec(
-        {Task,
-         fn ->
-           case Process.whereis(Athena.Execution.TaskSupervisor) do
-             nil -> :ok
-             pid -> :pg.join(Athena.PG, :code_runners, pid)
-           end
-         end},
+        {Task, fn -> register_runner_in_pg(runner_families(runner_family)) end},
         id: :register_runner_in_pg,
         restart: :temporary
       )
     ]
 
-  defp children_for_role("default"),
+  defp children_for_role("default", _runner_family),
     do: [
       Athena.Repo,
       {Oban, Application.fetch_env!(:athena, Oban)},
@@ -64,7 +60,19 @@ defmodule Athena.Application do
       AthenaWeb.Endpoint
     ]
 
-  defp children_for_role(_), do: children_for_role("runner") ++ children_for_role("default")
+  defp children_for_role("all", runner_family),
+    do: children_for_role("runner", runner_family) ++ children_for_role("default", runner_family)
+
+  # A combined ("all") node serves every language, since there's only one of it.
+  defp runner_families(nil), do: [:db, :compiled, :script]
+  defp runner_families(family), do: [family]
+
+  defp register_runner_in_pg(families) do
+    case Process.whereis(Athena.Execution.TaskSupervisor) do
+      nil -> :ok
+      pid -> Enum.each(families, &:pg.join(Athena.PG, {:code_runners, &1}, pid))
+    end
+  end
 
   # Tell Phoenix to update the endpoint configuration
   # whenever the application is updated.

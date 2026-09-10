@@ -1,10 +1,10 @@
 #!/bin/bash
 set -e
 
-ROLE="${SERVER_ROLE:-all}"
+: "${RELEASE_NAME:?RELEASE_NAME must be set}"
 
-if [ "$(id -u)" = '0' ] && { [ "$ROLE" = "runner" ] || [ "$ROLE" = "all" ]; }; then
-    echo "Initializing cgroups v2 for isolate (role: $ROLE)..."
+if [ "$(id -u)" = '0' ] && { [ "$RELEASE_NAME" = "runner_compiled" ] || [ "$RELEASE_NAME" = "runner_script" ]; }; then
+    echo "Initializing cgroups v2 for isolate (release: $RELEASE_NAME)..."
     
     mkdir -p /run/isolate/locks /var/local/lib/isolate
     chmod 777 /var/local/lib/isolate
@@ -23,7 +23,7 @@ if [ "$(id -u)" = '0' ] && { [ "$ROLE" = "runner" ] || [ "$ROLE" = "all" ]; }; t
     echo "/sys/fs/cgroup/isolate" > /run/isolate/cgroup
 fi
 
-if [ "$ROLE" != "runner" ]; then
+if [ "$RELEASE_NAME" = "web" ]; then
   if [ -f "/app/bin/migrate" ]; then
     echo "Running migrations..."
     /app/bin/migrate

@@ -1,11 +1,31 @@
 version: "3.8"
 
+# Additional runner instances, built locally, to scale out a specific
+# language family beyond what docker-compose.prod.yml already runs. Requires
+# the external `athena-network` created by docker-compose.prod.yml.
 services:
-  athena_runner:
+  athena_runner_db:
     build:
       context: .
-      dockerfile: Dockerfile.runner
-    container_name: athena_runner_1
+      dockerfile: Dockerfile.runner-db
+    container_name: athena_runner_db_extra
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=runner_db_extra@athena_runner_db_extra
+      - RELEASE_COOKIE=${RELEASE_COOKIE}
+    networks:
+      - athena-network
+    depends_on:
+      - athena_runner_pg
+
+  athena_runner_compiled:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner-compiled
+    container_name: athena_runner_compiled_extra
     restart: always
     privileged: true
     pid: "host"
@@ -15,14 +35,31 @@ services:
     env_file:
       - .env
     environment:
-      - SERVER_ROLE=runner
       - RELEASE_DISTRIBUTION=name
-      - RELEASE_NODE=runner1@athena_runner
+      - RELEASE_NODE=runner_compiled_extra@athena_runner_compiled_extra
       - RELEASE_COOKIE=${RELEASE_COOKIE}
     networks:
       - athena-network
-    depends_on:
-      - athena_runner_pg
+
+  athena_runner_script:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner-script
+    container_name: athena_runner_script_extra
+    restart: always
+    privileged: true
+    pid: "host"
+    cgroup: "host"
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    env_file:
+      - .env
+    environment:
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=runner_script_extra@athena_runner_script_extra
+      - RELEASE_COOKIE=${RELEASE_COOKIE}
+    networks:
+      - athena-network
 
   athena_runner_pg:
     image: postgres:16-alpine
