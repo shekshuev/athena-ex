@@ -1482,12 +1482,11 @@ defmodule AthenaWeb.StudioLive.Builder do
           )
         )
 
-      case :pg.get_members(Athena.PG, :code_runners) do
-        [] ->
+      case Execution.pick_runner(challenge.language) do
+        :error ->
           {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
 
-        runners ->
-          runner_pid = Enum.random(runners)
+        {:ok, runner_pid} ->
           box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
 
           task =

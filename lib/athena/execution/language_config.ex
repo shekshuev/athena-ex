@@ -4,14 +4,17 @@ defmodule Athena.Execution.LanguageConfig do
   Defines execution commands and source file names.
   """
 
-  defstruct [:id, :name, :source_file, :compile_cmd, :run_cmd]
+  defstruct [:id, :name, :source_file, :compile_cmd, :run_cmd, :family]
+
+  @type family :: :db | :compiled | :script
 
   @type t :: %__MODULE__{
           id: integer(),
           name: String.t(),
           source_file: String.t(),
           compile_cmd: String.t() | nil,
-          run_cmd: String.t()
+          run_cmd: String.t(),
+          family: family()
         }
 
   @doc """
@@ -24,7 +27,8 @@ defmodule Athena.Execution.LanguageConfig do
       id: 71,
       name: "Python (3.8.1)",
       source_file: "script.py",
-      run_cmd: "/usr/bin/python3 script.py"
+      run_cmd: "/usr/bin/python3 script.py",
+      family: :script
     }
   end
 
@@ -34,7 +38,8 @@ defmodule Athena.Execution.LanguageConfig do
       name: "C++ (GCC 9.2.0)",
       source_file: "main.cpp",
       compile_cmd: "/usr/bin/g++ -O3 main.cpp -o out",
-      run_cmd: "./out"
+      run_cmd: "./out",
+      family: :compiled
     }
   end
 
@@ -43,7 +48,8 @@ defmodule Athena.Execution.LanguageConfig do
       id: 82,
       name: "PostgreSQL (16)",
       source_file: "query.sql",
-      run_cmd: ""
+      run_cmd: "",
+      family: :db
     }
   end
 

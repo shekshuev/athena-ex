@@ -18,10 +18,10 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       _pid -> :ok
     end
 
-    :pg.join(Athena.PG, :code_runners, self())
+    Enum.each([:db, :compiled, :script], &:pg.join(Athena.PG, {:code_runners, &1}, self()))
 
     on_exit(fn ->
-      :pg.leave(Athena.PG, :code_runners, self())
+      Enum.each([:db, :compiled, :script], &:pg.leave(Athena.PG, {:code_runners, &1}, self()))
     end)
 
     %{conn: conn, user: user, course: course}

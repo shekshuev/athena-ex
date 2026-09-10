@@ -2,23 +2,73 @@ version: "3.8"
 
 services:
   athena_web:
-    image: ghcr.io/shekshuev/athena-ex:latest
+    image: ghcr.io/shekshuev/athena-ex-web:latest
     container_name: athena_web
-    privileged: true
-    pid: "host"
-    cgroup: "host"
     restart: always
+    network_mode: "host"
     env_file:
       - .env
     environment:
-      - SERVER_ROLE=all
-    ports:
-      - "${WEB_PORT_EXTERNAL:-80}:4000"
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=web@127.0.0.1
+      - RELEASE_COOKIE=${RELEASE_COOKIE}
     depends_on:
       - postgres
       - minio
-    networks:
-      - athena-network
+
+  # SQL challenges never touch isolate — pure Postgres role/DB sandboxing,
+  # so this image has no isolate and no compilers at all.
+  athena_runner_db:
+    image: ghcr.io/shekshuev/athena-ex-runner-db:latest
+    container_name: athena_runner_db
+    restart: always
+    network_mode: "host"
+    env_file:
+      - .env
+    environment:
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=runner_db@127.0.0.1
+      - RELEASE_COOKIE=${RELEASE_COOKIE}
+    depends_on:
+      - athena_runner_pg
+
+  athena_runner_compiled:
+    image: ghcr.io/shekshuev/athena-ex-runner-compiled:latest
+    container_name: athena_runner_compiled
+    privileged: true
+    restart: always
+    network_mode: "host"
+    env_file:
+      - .env
+    environment:
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=runner_compiled@127.0.0.1
+      - RELEASE_COOKIE=${RELEASE_COOKIE}
+
+  athena_runner_script:
+    image: ghcr.io/shekshuev/athena-ex-runner-script:latest
+    container_name: athena_runner_script
+    privileged: true
+    restart: always
+    network_mode: "host"
+    env_file:
+      - .env
+    environment:
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=runner_script@127.0.0.1
+      - RELEASE_COOKIE=${RELEASE_COOKIE}
+
+  athena_runner_pg:
+    image: postgres:16-alpine
+    container_name: athena_runner_pg_dev
+    restart: "no"
+    network_mode: "host"
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_RUNNER_PASSWORD}
+      - POSTGRES_INITDB_ARGS=--nosync
+    command: postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off -c log_statement=none -p 5433
+    tmpfs:
+      - /var/lib/postgresql/data:size=512m
 
   postgres:
     image: postgres:15-alpine
@@ -30,8 +80,6 @@ services:
       - "${POSTGRES_PORT_EXTERNAL:-5432}:5432"
     volumes:
       - postgres_prod_data:/var/lib/postgresql/data
-    networks:
-      - athena-network
 
   minio:
     image: minio/minio
@@ -45,8 +93,6 @@ services:
     ports:
       - "${MINIO_PORT_EXTERNAL:-9000}:9000"
       - "${MINIO_CONSOLE_PORT_EXTERNAL:-9001}:9001"
-    networks:
-      - athena-network
 
   minio-init:
     image: minio/mc
@@ -54,19 +100,13 @@ services:
       - minio
     env_file:
       - .env
-    networks:
-      - athena-network
     entrypoint: >
       /bin/sh -c "
-      until (/usr/bin/mc alias set myminio http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD); do echo 'Waiting for MinIO...'; sleep 1; done;
+      until (/usr/bin/mc alias set myminio http://127.0.0.1:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD); do echo 'Waiting for MinIO...'; sleep 1; done;
       /usr/bin/mc mb myminio/$$MINIO_BUCKET || true;
       /usr/bin/mc anonymous set public myminio/$$MINIO_BUCKET;
       exit 0;
       "
-
-networks:
-  athena-network:
-    driver: bridge
 
 volumes:
   postgres_prod_data:

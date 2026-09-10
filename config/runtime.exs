@@ -9,16 +9,41 @@ import Config
 
 # ## Using releases
 #
-# If you use `mix release`, you need to explicitly enable the server
-# by passing the PHX_SERVER=true when you start it:
-#
-#     PHX_SERVER=true bin/athena start
-#
-# Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
-# script that automatically sets the env var above.
+# There are four named releases (see `releases/0` in mix.exs): `web`,
+# `runner_db`, `runner_compiled`, `runner_script`. Each produces its own
+# `bin/<name>` script, and Elixir sets RELEASE_NAME to that name at boot —
+# that's what this file uses below to derive the node's role, instead of an
+# operator-facing env var. `rel/overlays/bin/server` sets PHX_SERVER=true and
+# execs `bin/$RELEASE_NAME start`.
 
-server_role = System.get_env("SERVER_ROLE", "all")
+# The node's role is never an operator-facing setting: it's baked into which
+# release was built and deployed. Elixir sets RELEASE_NAME automatically from
+# the release name declared in mix.exs before the node boots. When it's unset
+# (running via `mix phx.server` / `mix test` instead of a built release —
+# i.e. only in :dev and :test), the node runs every role combined.
+{server_role, runner_family} =
+  case System.get_env("RELEASE_NAME") do
+    "web" ->
+      {"default", nil}
+
+    "runner_db" ->
+      {"runner", :db}
+
+    "runner_compiled" ->
+      {"runner", :compiled}
+
+    "runner_script" ->
+      {"runner", :script}
+
+    nil ->
+      {"all", nil}
+
+    other ->
+      raise "unknown RELEASE_NAME=#{other}, expected one of: web, runner_db, runner_compiled, runner_script"
+  end
+
 config :athena, :server_role, server_role
+config :athena, :runner_family, runner_family
 
 config :athena, :default_locale, System.get_env("DEFAULT_LOCALE") || "en"
 
@@ -135,7 +160,7 @@ if config_env() == :prod do
       ]
   end
 
-  if server_role in ["runner", "all"] do
+  if server_role == "runner" do
     runner_db_url =
       System.get_env("RUNNER_DATABASE_URL") ||
         "ecto://postgres:#{System.get_env("POSTGRES_RUNNER_PASSWORD", "runner_secret")}@127.0.0.1:5433/postgres"

@@ -2,4 +2,4 @@
 set -eu
 
 cd -P -- "$(dirname -- "$0")"
-PHX_SERVER=true exec ./athena start
+PHX_SERVER=true exec "./${RELEASE_NAME:?RELEASE_NAME must be set}" start

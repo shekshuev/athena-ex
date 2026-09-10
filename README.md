@@ -9,7 +9,7 @@ Athena is a modular Learning Management System (LMS) built as a unified Elixir m
 - **Dynamic Course Builder:** Drag-and-drop syllabus editor with reusable library blocks, templates, and rich-text WYSIWYG editing powered by Tiptap.
 - **Advanced Progression Engine:** Granular control over student paths with completion rules (button clicks, auto-grading gates) and time-based access locks (Waterline progression).
 - **Interactive Quizzes & Exams:** Single/multiple choice, exact match (CTF flags), open essays with instructor review, and ticket-based slot exams.
-- **Code Execution Sandbox:** Secure code runner backed by [isolate](https://github.com/ioi/isolate) for **Python**, **C++**, and **SQL (PostgreSQL)** with fine-grained time and memory limits, and hidden test cases.
+- **Code Execution Sandbox:** Secure code runner for **Python** and **C++** backed by [isolate](https://github.com/ioi/isolate), plus **SQL (PostgreSQL)** via ephemeral restricted databases — with fine-grained time and memory limits, and hidden test cases.
 - **SQL Challenges:** Ephemeral PostgreSQL sandboxes with query-result and state-verification evaluation modes.
 - **Team & Cohort Management:** Shared team progress, isolated cohort schedules, competition mode with leaderboards, and strict Role-Based Access Control (RBAC) across Students, Instructors, and Admins.
 - **Direct S3 Media Uploads:** Native, presigned URL integration with MinIO/AWS S3 for fast, secure file handling, user quotas, and background cleanup.
@@ -97,19 +97,22 @@ alias Athena.Identity.{Roles, Accounts, Role}
 
 Code challenges require a Linux environment with [isolate](https://github.com/ioi/isolate). **Native execution is not supported on macOS or Windows.**
 
-For local development on macOS/Windows, run the web app locally and start a runner container:
+On Linux, `iex -S mix phx.server` runs everything (web UI + all three language
+runners) combined in one process — nothing to configure, this is the default
+whenever the app isn't running from a built release.
+
+For local development on macOS/Windows, run the web app locally and start
+Linux runner container(s) for the language(s) you need:
 
 ```bash
 # Terminal 1: web (after mix setup)
 iex -S mix phx.server
 
-# Terminal 2: isolated runner node (Linux/Docker)
-docker compose -f docker-compose.dev-runner.yml up
+# Terminal 2: isolated runner node(s) (Linux/Docker) — run one, several, or all:
+docker compose -f docker-compose.dev-runner.yml up athena_runner_script
 ```
 
-The dev runner uses `RELEASE_COOKIE=dev_cookie_12345`. Ensure your web node uses the same cookie when clustering locally.
-
-On Linux, you can also run everything in one process with the default `SERVER_ROLE=all` (no `SERVER_ROLE` env var needed).
+The dev runners use `RELEASE_COOKIE=dev_cookie_12345`. Ensure your web node uses the same cookie when clustering locally.
 
 #### SQL Sandbox (Development)
 
@@ -121,7 +124,7 @@ By default, dev connects to the main Postgres on port 5432. For SQL tasks, point
 export RUNNER_DATABASE_URL=ecto://postgres:postgres@localhost:5433/athena_runner
 ```
 
-In production, configure `POSTGRES_RUNNER_PASSWORD` and port 5433 via `docker-compose.prod.distributed.yml` (`athena_runner_pg` service).
+In production, configure `POSTGRES_RUNNER_PASSWORD` and port 5433 via `docker-compose.prod.yml` (`athena_runner_pg` service).
 
 ## Testing & Code Quality
 
@@ -157,78 +160,75 @@ Triggered on PRs and pushes to `main` and `develop`.
 
 Docker images are built and pushed to GHCR on version tags (`v*`) via `.github/workflows/release.yml`:
 
-- **All-in-One:** `ghcr.io/shekshuev/athena-ex:latest`
-- **Web-Only:** `ghcr.io/shekshuev/athena-ex-web:latest`
-- **Runner-Only:** `ghcr.io/shekshuev/athena-ex-runner:latest`
+- **Web/Core:** `ghcr.io/shekshuev/athena-ex-web:latest`
+- **Runner (SQL, no isolate):** `ghcr.io/shekshuev/athena-ex-runner-db:latest`
+- **Runner (compiled languages, isolate + g++):** `ghcr.io/shekshuev/athena-ex-runner-compiled:latest`
+- **Runner (scripting languages, isolate + python3):** `ghcr.io/shekshuev/athena-ex-runner-script:latest`
 
-A standalone runner tarball (`athena-runner-linux-amd64.tar.gz`) is attached to GitHub Releases.
+Each variant is built and, for the two isolate-based runner images, smoke-tested `--privileged` on both `ubuntu-22.04` and `ubuntu-24.04` GitHub-hosted runners (real kernels, since isolate shares the host kernel) before being published. Docker is the only supported deployment target — there is no standalone/bare-metal release artifact.
 
 ## Code Runner Note
 
-> The code execution feature relies on [isolate](https://github.com/ioi/isolate), which utilizes Linux kernel features (namespaces, rlimits) to provide a secure sandbox for untrusted code execution.
+> SQL challenges never touch isolate — they run in ephemeral, restricted Postgres roles/databases (see `Athena.Execution.SqlRunner`), so the `runner-db` image needs no special privileges.
 >
-> **Inside Docker:** `isolate` uses Linux **cgroups v2** (`--cg`) for accurate memory tracking (RSS), CPU limits, and multi-threading/fork-bomb protection. The release entrypoint (`rel/overlays/bin/entrypoint`) initializes cgroup directories automatically.
+> C++ and Python challenges rely on [isolate](https://github.com/ioi/isolate), which utilizes Linux kernel features (namespaces, rlimits, cgroups) to provide a secure sandbox for untrusted code execution. This is what the `runner-compiled` and `runner-script` images are for.
 >
-> Any container running code execution (`all` or `runner` roles) requires:
+> **Inside Docker:** `isolate` uses Linux **cgroups v2** (`--cg`) for accurate memory tracking (RSS), CPU limits, and multi-threading/fork-bomb protection. The release entrypoint (`rel/overlays/bin/entrypoint`) initializes cgroup directories automatically for the `runner-compiled`/`runner-script` releases.
+>
+> Any container running `runner-compiled` or `runner-script` requires:
 >
 > - `privileged: true`
 > - `pid: "host"`
 > - `cgroup: host`
 > - Volume mount: `/sys/fs/cgroup:/sys/fs/cgroup:rw`
 >
+> Because isolate runs `--privileged` and shares the host kernel, its behavior is validated on real `ubuntu-22.04`/`ubuntu-24.04` kernels in CI before every release (see CI/CD above) — not just built.
+>
 > **On macOS/Windows:** Native execution is not supported — use `docker-compose.dev-runner.yml` or a Linux VM.
 
 ## Deployment
 
-Athena supports single-container monoliths and multi-node distributed setups via the `SERVER_ROLE` environment variable.
+Athena is a set of separate Docker images clustered over **libcluster**
+(Gossip) with a shared `RELEASE_COOKIE`. There is no all-in-one production
+image and no operator-facing "role" setting — which image you run *is* the
+role, baked in at build time via a dedicated Mix release per image. This is
+enforced by construction, not by convention: a misconfigured or missing
+setting can't silently boot the wrong thing.
 
-### Server Roles
+### Images
 
-- **`all` (Monolith / Combined Mode):** Runs both the Phoenix Web UI and the Code Execution Engine in one container. Ideal for small-to-medium deployments or local development. _(Requires `privileged: true` in Docker.)_
-- **`default` (Web Node):** Serves the LiveView UI, HTTP endpoints, Oban, and background tasks. Lightweight, unprivileged container.
-- **`runner` (Execution Node):** Headless worker that executes student submissions inside `isolate`. Horizontally scalable. _(Requires `privileged: true` in Docker.)_
+| Image | Mix release | What it runs |
+|-------|-------------|---------------|
+| `ghcr.io/shekshuev/athena-ex-web:latest` | `web` | LiveView UI, HTTP endpoints, Oban, background tasks. Unprivileged. |
+| `ghcr.io/shekshuev/athena-ex-runner-db:latest` | `runner_db` | SQL challenges (ephemeral Postgres roles/DBs, no isolate). Unprivileged. |
+| `ghcr.io/shekshuev/athena-ex-runner-compiled:latest` | `runner_compiled` | C++ challenges via isolate + g++. Requires `privileged: true`. |
+| `ghcr.io/shekshuev/athena-ex-runner-script:latest` | `runner_script` | Python challenges via isolate + python3. Requires `privileged: true`. |
 
-If no `SERVER_ROLE` is provided, Athena boots in combined `all` mode.
-
-Web and runner nodes form an Erlang cluster via **libcluster** (Gossip) using a shared `RELEASE_COOKIE`.
+Combined ("all-in-one") mode only exists when running from source without a
+built release — i.e. local development (`iex -S mix phx.server`) and the test
+suite. It cannot be reached in production; there's no release that produces it.
 
 ### Production Setup
 
 1. Copy `.env.prod.example` to `.env` and fill in secure values (`SECRET_KEY_BASE`, `DATABASE_URL`, `RELEASE_COOKIE`, MinIO credentials, etc.).
-2. Choose a deployment compose file (see below).
-3. Run `docker compose -f <compose-file> up -d`.
-4. Migrations run automatically on web container startup (via `bin/entrypoint` → `bin/migrate`).
-5. Create the first admin:
+2. Run `docker compose -f docker-compose.prod.yml up -d` (see [Compose Files](#compose-files) for other topologies).
+3. Migrations run automatically on the web container's startup (via `bin/entrypoint` → `bin/migrate`).
+4. Create the first admin:
 
 ```bash
-docker exec athena_web /app/bin/athena eval 'Athena.Release.create_admin("admin", "Admin123!")'
+docker exec athena_web /app/bin/web eval 'Athena.Release.create_admin("admin", "Admin123!")'
 ```
 
 ### Compose Files
 
 | File | Use case |
 |------|----------|
-| `docker-compose.prod.yml` | All-in-one: web + runner + Postgres + MinIO |
-| `docker-compose.prod.distributed.yml` | Separate web and runner nodes with dedicated SQL-runner Postgres |
-| `docker-compose.dev-runner.yml` | Local runner node for development |
-| `docker-compose.runner.yml` | Additional runner instances (requires external `athena-network`) |
+| `docker-compose.prod.yml` | Production: web + all 3 runner images + Postgres + dedicated SQL-runner Postgres + MinIO |
+| `docker-compose.dev-runner.yml` | Local runner node(s) for development on macOS/Windows |
+| `docker-compose.runner.yml` | Additional scalable runner instances (requires external `athena-network`) |
 | `docker-compose.infra.yml` | Local dev infrastructure only |
 
 Refer to these files for the authoritative service definitions rather than copying inline YAML snippets.
-
-### Manual Cluster Startup (Bare Metal / VMs)
-
-1. **Start the Web Node:**
-
-   ```bash
-   SERVER_ROLE=default iex --name web@127.0.0.1 --cookie super_secret -S mix phx.server
-   ```
-
-2. **Start the Runner Node:**
-
-   ```bash
-   SERVER_ROLE=runner iex --name runner1@127.0.0.1 --cookie super_secret -S mix
-   ```
 
 ## Contributing
 

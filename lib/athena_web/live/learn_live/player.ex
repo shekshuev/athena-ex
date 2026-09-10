@@ -13,6 +13,7 @@ defmodule AthenaWeb.LearnLive.Player do
   use AthenaWeb, :live_view
 
   alias Athena.Content
+  alias Athena.Execution
   alias Athena.Learning
   import AthenaWeb.BlockComponents
 
@@ -383,7 +384,7 @@ defmodule AthenaWeb.LearnLive.Player do
     code = get_in(params, ["answer", "code"]) || ""
 
     with block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == block_id)),
-         true <- code_runner_available?() do
+         true <- Execution.runner_available?(block.content["language"]) do
       process_code_submission(socket, block, code)
     else
       nil ->
@@ -477,7 +478,7 @@ defmodule AthenaWeb.LearnLive.Player do
       String.trim(code) == "" ->
         {:noreply, put_flash(socket, :error, gettext("Please write some code first!"))}
 
-      not code_runner_available?() ->
+      not Execution.runner_available?(block.content["language"]) ->
         {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
 
       true ->
@@ -546,9 +547,6 @@ defmodule AthenaWeb.LearnLive.Player do
 
     put_flash(socket, :error, error_msg)
   end
-
-  @doc false
-  defp code_runner_available?, do: :pg.get_members(Athena.PG, :code_runners) != []
 
   @doc false
   defp process_code_submission(socket, block, code) do

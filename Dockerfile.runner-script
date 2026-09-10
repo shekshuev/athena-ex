@@ -40,13 +40,17 @@ RUN mix assets.deploy
 
 COPY config/runtime.exs config/
 COPY rel rel
-RUN mix release
+RUN mix release runner_script
 
 FROM ${RUNNER_IMAGE} AS final
 
+# The script-family runner executes Python submissions inside isolate. It
+# needs the python3 interpreter plus the toolchain to build isolate itself
+# (gcc/make/libcap-dev/pkg-config/libseccomp-dev/libsystemd-dev) — no g++,
+# that's the compiled family's job.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libstdc++6 openssl libncurses6 locales ca-certificates \
-    python3 g++ \
+    python3 \
     git make gcc libcap-dev pkg-config libseccomp-dev libsystemd-dev \
   && rm -rf /var/lib/apt/lists/*
 
@@ -55,7 +59,10 @@ ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 ENV LC_ALL=en_US.UTF-8
 
-RUN git clone https://github.com/ioi/isolate.git /tmp/isolate \
+# Pin isolate to a specific release so the sandbox binary is reproducible
+# across builds instead of floating with upstream's default branch.
+ARG ISOLATE_REF=v2.7
+RUN git clone --branch ${ISOLATE_REF} --depth 1 https://github.com/ioi/isolate.git /tmp/isolate \
   && cd /tmp/isolate \
   && make isolate \
   && make install \
@@ -73,7 +80,10 @@ RUN mkdir -p /run/isolate/locks /var/local/lib/isolate \
 
 WORKDIR "/app"
 ENV MIX_ENV="prod"
+ENV RELEASE_NAME="runner_script"
 
-COPY --from=builder /app/_build/${MIX_ENV}/rel/athena ./
+# Isolate runs privileged and needs root to manage cgroups, so unlike the
+# web/db images this one does not drop to an unprivileged user.
+COPY --from=builder /app/_build/${MIX_ENV}/rel/runner_script ./
 
 CMD ["/app/bin/entrypoint"]

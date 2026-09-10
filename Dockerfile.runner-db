@@ -8,7 +8,7 @@ ARG RUNNER_IMAGE="docker.io/debian:${DEBIAN_VERSION}"
 
 FROM ${BUILDER_IMAGE} AS builder
 
-ARG COMMIT_SHA 
+ARG COMMIT_SHA
 ENV COMMIT_SHA=$COMMIT_SHA
 
 RUN apt-get update \
@@ -46,10 +46,13 @@ RUN mix assets.deploy
 
 COPY config/runtime.exs config/
 COPY rel rel
-RUN mix release web
+RUN mix release runner_db
 
 FROM ${RUNNER_IMAGE} AS final
 
+# The db-family runner executes SQL challenges by creating restricted,
+# ephemeral Postgres roles/databases (see Athena.Execution.SqlRunner) — no
+# isolate and no compilers are needed here at all.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
      libstdc++6 openssl libncurses6 locales ca-certificates \
@@ -66,9 +69,9 @@ WORKDIR "/app"
 RUN chown nobody /app
 
 ENV MIX_ENV="prod"
-ENV RELEASE_NAME="web"
+ENV RELEASE_NAME="runner_db"
 
-COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/web ./
+COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/runner_db ./
 
 USER nobody
 

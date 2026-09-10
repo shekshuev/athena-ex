@@ -2,4 +2,4 @@
 set -eu
 
 cd -P -- "$(dirname -- "$0")"
-exec ./athena eval Athena.Release.migrate
+exec "./${RELEASE_NAME:?RELEASE_NAME must be set}" eval Athena.Release.migrate
