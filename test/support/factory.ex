@@ -26,7 +26,8 @@ defmodule Athena.Factory do
     SubmissionContent,
     CohortSchedule,
     CohortMembership,
-    CohortInstructor
+    CohortInstructor,
+    BlockProgress
   }
 
   def role_factory do
@@ -168,6 +169,33 @@ defmodule Athena.Factory do
       resource_id: Ecto.UUID.generate(),
       unlock_at: nil,
       lock_at: nil
+    }
+  end
+
+  def block_progress_factory do
+    %BlockProgress{
+      account_id: Ecto.UUID.generate(),
+      block_id: Ecto.UUID.generate(),
+      status: :completed
+    }
+  end
+
+  def xp_event_factory do
+    %Athena.Gamification.XpEvent{
+      account_id: Ecto.UUID.generate(),
+      source_type: :block_progress,
+      source_id: Ecto.UUID.generate(),
+      amount: 10
+    }
+  end
+
+  def account_stats_factory do
+    %Athena.Gamification.AccountStats{
+      account_id: Ecto.UUID.generate(),
+      total_xp: 0,
+      current_streak_weeks: 0,
+      longest_streak_weeks: 0,
+      current_combo: 0
     }
   end
 

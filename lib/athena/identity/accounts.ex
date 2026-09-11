@@ -335,6 +335,35 @@ defmodule Athena.Identity.Accounts do
   end
 
   @doc """
+  Updates the caller's own profile (name fields, avatar, etc).
+
+  No ACL check — the caller is always allowed to edit their own profile,
+  regardless of `users.update` permissions (which gate editing *other*
+  accounts via `update_admin_user/4`).
+  """
+  @spec update_own_profile(Account.t(), map()) ::
+          {:ok, Profile.t()} | {:error, Ecto.Changeset.t()}
+  def update_own_profile(%Account{} = account, profile_attrs) do
+    account = Repo.preload(account, :profile)
+
+    case upsert_profile(Repo, account, profile_attrs) do
+      {:ok, profile} ->
+        Cachex.del(:account_cache, account.id)
+
+        Phoenix.PubSub.broadcast(
+          Athena.PubSub,
+          "account_updates:#{account.id}",
+          :account_updated
+        )
+
+        {:ok, profile}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
   Changes the password for a given account, verifying the old password first.
   """
   @spec change_password(Account.t(), String.t(), String.t()) ::

@@ -4,7 +4,7 @@ defmodule Athena.Learning.Progress do
   """
   import Ecto.Query
   alias Athena.{Repo, Content}
-  alias Athena.Learning.BlockProgress
+  alias Athena.Learning.{BlockProgress, CohortMembership}
   alias Athena.Content.Section
 
   @doc """
@@ -20,16 +20,42 @@ defmodule Athena.Learning.Progress do
         {:unsafe_fragment, "(account_id, block_id) WHERE cohort_id IS NULL"}
       end
 
-    %BlockProgress{}
-    |> BlockProgress.changeset(%{
-      account_id: account_id,
-      block_id: block_id,
-      cohort_id: cohort_id,
-      status: :completed
-    })
-    |> Repo.insert(
-      on_conflict: [set: [status: :completed, updated_at: DateTime.utc_now()]],
-      conflict_target: conflict_target
+    result =
+      %BlockProgress{}
+      |> BlockProgress.changeset(%{
+        account_id: account_id,
+        block_id: block_id,
+        cohort_id: cohort_id,
+        status: :completed
+      })
+      |> Repo.insert(
+        on_conflict: [set: [status: :completed, updated_at: DateTime.utc_now()]],
+        conflict_target: conflict_target
+      )
+
+    case result do
+      {:ok, progress} ->
+        broadcast_block_completed(account_id, cohort_id, block_id)
+        {:ok, progress}
+
+      error ->
+        error
+    end
+  end
+
+  @doc false
+  defp broadcast_block_completed(account_id, cohort_id, block_id) do
+    block_type =
+      case Content.get_block(block_id) do
+        {:ok, block} -> block.type
+        _ -> nil
+      end
+
+    Phoenix.PubSub.broadcast(
+      Athena.PubSub,
+      "learning_events",
+      {:block_completed,
+       %{account_id: account_id, cohort_id: cohort_id, block_id: block_id, block_type: block_type}}
     )
   end
 
@@ -77,6 +103,69 @@ defmodule Athena.Learning.Progress do
 
         Repo.all(from q in query, select: q.block_id)
     end
+  end
+
+  @doc """
+  Returns the block/cohort of the account's most recent completion activity
+  (personal or via any cohort they belong to). Used to power "continue
+  learning" dashboard widgets.
+  """
+  @spec last_activity(String.t()) :: BlockProgress.t() | nil
+  def last_activity(account_id) do
+    cohort_ids_query =
+      from cm in CohortMembership, where: cm.account_id == ^account_id, select: cm.cohort_id
+
+    BlockProgress
+    |> where([bp], bp.account_id == ^account_id or bp.cohort_id in subquery(cohort_ids_query))
+    |> order_by([bp], desc: bp.updated_at)
+    |> limit(1)
+    |> Repo.one()
+  end
+
+  @doc """
+  Returns a plain block-completion ratio for a course, scoped to the account
+  or cohort. Counts every block across all sections regardless of visibility
+  or gating rules — a simple, easy-to-reason-about "% done" for dashboards,
+  not the authoritative access/unlock state (see `accessible_section_ids/5`
+  for that).
+  """
+  @spec course_progress(String.t(), String.t(), String.t() | nil) :: %{
+          completed: non_neg_integer(),
+          total: non_neg_integer(),
+          percent: non_neg_integer()
+        }
+  def course_progress(account_id, course_id, cohort_id \\ nil) do
+    block_ids =
+      course_id
+      |> Content.list_linear_lessons()
+      |> Enum.map(& &1.id)
+      |> Content.list_blocks_by_section_ids()
+      |> Enum.map(& &1.id)
+
+    total = length(block_ids)
+    completed = count_completed(account_id, cohort_id, block_ids)
+    percent = if total == 0, do: 0, else: round(completed / total * 100)
+
+    %{completed: completed, total: total, percent: percent}
+  end
+
+  @doc false
+  defp count_completed(_account_id, _cohort_id, []), do: 0
+
+  defp count_completed(account_id, cohort_id, block_ids) do
+    query =
+      if cohort_id do
+        from bp in BlockProgress,
+          where:
+            bp.cohort_id == ^cohort_id and bp.status == :completed and bp.block_id in ^block_ids
+      else
+        from bp in BlockProgress,
+          where:
+            bp.account_id == ^account_id and is_nil(bp.cohort_id) and bp.status == :completed and
+              bp.block_id in ^block_ids
+      end
+
+    Repo.aggregate(query, :count)
   end
 
   @doc """

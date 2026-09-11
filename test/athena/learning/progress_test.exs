@@ -204,4 +204,125 @@ defmodule Athena.Learning.ProgressTest do
       assert s3.id in accessible
     end
   end
+
+  describe "mark_completed/3 broadcasts" do
+    test "broadcasts a :block_completed fact with the resolved block type", %{user: user} do
+      block = insert(:block, type: :code)
+      Phoenix.PubSub.subscribe(Athena.PubSub, "learning_events")
+
+      {:ok, _} = Progress.mark_completed(user.id, block.id)
+
+      assert_receive {:block_completed,
+                      %{
+                        account_id: account_id,
+                        block_id: block_id,
+                        block_type: :code,
+                        cohort_id: nil
+                      }}
+
+      assert account_id == user.id
+      assert block_id == block.id
+    end
+
+    test "includes the cohort_id for team completions", %{user: user, team: team} do
+      block = insert(:block, type: :code)
+      Phoenix.PubSub.subscribe(Athena.PubSub, "learning_events")
+
+      {:ok, _} = Progress.mark_completed(user.id, block.id, team.id)
+
+      assert_receive {:block_completed, %{cohort_id: cohort_id}}
+      assert cohort_id == team.id
+    end
+  end
+
+  describe "last_activity/1" do
+    test "returns nil when the account has no completions", %{user: user} do
+      assert Progress.last_activity(user.id) == nil
+    end
+
+    test "returns the most recently completed block for the account", %{user: user} do
+      older = insert(:block)
+      newer = insert(:block)
+
+      {:ok, older_progress} = Progress.mark_completed(user.id, older.id)
+
+      stale_time = DateTime.add(DateTime.utc_now(), -60, :second) |> DateTime.truncate(:second)
+
+      Repo.update_all(
+        from(bp in BlockProgress, where: bp.id == ^older_progress.id),
+        set: [updated_at: stale_time]
+      )
+
+      {:ok, _} = Progress.mark_completed(user.id, newer.id)
+
+      assert %BlockProgress{block_id: block_id} = Progress.last_activity(user.id)
+      assert block_id == newer.id
+    end
+
+    test "includes completions from any cohort the account belongs to", %{user: user, team: team} do
+      block = insert(:block)
+      insert(:cohort_membership, account_id: user.id, cohort_id: team.id)
+
+      {:ok, _} = Progress.mark_completed(user.id, block.id, team.id)
+
+      assert %BlockProgress{cohort_id: cohort_id} = Progress.last_activity(user.id)
+      assert cohort_id == team.id
+    end
+  end
+
+  describe "course_progress/3" do
+    test "returns zero completion for a course with no activity", %{user: user} do
+      course = insert(:course)
+      section = insert(:section, course: course)
+      insert(:block, section: section)
+      insert(:block, section: section)
+
+      assert Progress.course_progress(user.id, course.id) == %{
+               completed: 0,
+               total: 2,
+               percent: 0
+             }
+    end
+
+    test "computes the completion percentage from marked blocks", %{user: user} do
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block1 = insert(:block, section: section)
+      block2 = insert(:block, section: section)
+
+      {:ok, _} = Progress.mark_completed(user.id, block1.id)
+
+      assert Progress.course_progress(user.id, course.id) == %{
+               completed: 1,
+               total: 2,
+               percent: 50
+             }
+
+      {:ok, _} = Progress.mark_completed(user.id, block2.id)
+
+      assert Progress.course_progress(user.id, course.id).percent == 100
+    end
+
+    test "returns zero total for a course without any blocks", %{user: user} do
+      course = insert(:course)
+
+      assert Progress.course_progress(user.id, course.id) == %{
+               completed: 0,
+               total: 0,
+               percent: 0
+             }
+    end
+
+    test "scopes completion to the given cohort", %{user: user, team: team} do
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section)
+      insert(:cohort_membership, account_id: user.id, cohort_id: team.id)
+
+      {:ok, _} = Progress.mark_completed(user.id, block.id, team.id)
+
+      assert Progress.course_progress(user.id, course.id, team.id).percent == 100
+      assert Progress.course_progress(user.id, course.id).percent == 0
+    end
+  end
 end

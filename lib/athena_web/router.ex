@@ -66,6 +66,7 @@ defmodule AthenaWeb.Router do
     scope "/", AthenaWeb do
       pipe_through :browser
       live "/dashboard", DashboardLive.Index, :index
+      live "/me", AccountLive.Profile, :index
 
       live "/files", FileLive.Index, :index
       live "/community", CommunityLive.Index, :index
@@ -123,6 +124,8 @@ defmodule AthenaWeb.Router do
 
         live "/grading", Grading, :index
         live "/grading/:id", GradingDetail
+
+        live "/sprints", Sprints, :index
       end
 
       scope "/admin", AdminLive do
@@ -134,6 +137,10 @@ defmodule AthenaWeb.Router do
         live "/roles/:id/edit", Roles, :edit
         live "/files", Files, :index
         live "/settings", Settings, :index
+
+        live "/gamification", Gamification, :index
+        live "/gamification/new", Gamification, :new
+        live "/gamification/:id/edit", Gamification, :edit
       end
     end
   end
