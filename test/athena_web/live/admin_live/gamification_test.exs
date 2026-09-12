@@ -6,16 +6,25 @@ defmodule AthenaWeb.AdminLive.GamificationTest do
   alias Athena.Gamification.Badge
 
   setup %{conn: conn} do
-    role = insert(:role, permissions: ["gamification.read", "gamification.update"])
+    role =
+      insert(:role,
+        permissions: [
+          "gamification.read",
+          "gamification.create",
+          "gamification.update",
+          "gamification.delete"
+        ]
+      )
+
     admin = insert(:account, role: role)
     conn = init_test_session(conn, %{"account_id" => admin.id})
     %{conn: conn, admin: admin}
   end
 
   describe "Badges page (Index)" do
-    test "renders the badge list", %{conn: conn} do
+    test "renders the badge list", %{conn: conn, admin: admin} do
       {:ok, badge} =
-        Athena.Gamification.create_badge(%{
+        Athena.Gamification.create_badge(admin, %{
           "key" => "first-hundred",
           "title" => "First Hundred XP",
           "rule" => %{"fact" => "total_xp", "op" => "gte", "value" => 100}
@@ -79,7 +88,9 @@ defmodule AthenaWeb.AdminLive.GamificationTest do
       refute Athena.Repo.get_by(Badge, key: "bad2")
     end
 
-    test "denies badge creation without gamification.update", %{conn: base_conn} do
+    test "denies navigating to the new-badge form without gamification.create", %{
+      conn: base_conn
+    } do
       account =
         insert(:account, role: insert(:role, permissions: ["gamification.read"]))
 
@@ -90,12 +101,32 @@ defmodule AthenaWeb.AdminLive.GamificationTest do
 
       assert html =~ "don&#39;t have permission"
     end
+
+    test "denies a raw 'save' event from an account with only gamification.read, even though the form isn't rendered on the index page",
+         %{conn: base_conn} do
+      account =
+        insert(:account, role: insert(:role, permissions: ["gamification.read"]))
+
+      conn = init_test_session(base_conn, %{"account_id" => account.id})
+
+      # Mount the index page (live_action: :index — no form in the DOM at
+      # all), then drive the "save" event directly, exactly as a modified
+      # client / forged socket frame would, bypassing any UI-level guard.
+      {:ok, lv, _html} = live(conn, ~p"/admin/gamification")
+
+      render_submit(lv, "save", %{
+        "badge" => %{"key" => "forged", "title" => "Forged"},
+        "rule_text" => ~s({"fact": "total_xp", "op": "gte", "value": 1})
+      })
+
+      refute Athena.Repo.get_by(Badge, key: "forged")
+    end
   end
 
   describe "toggling and deleting a badge" do
-    test "toggles a badge active/inactive", %{conn: conn} do
+    test "toggles a badge active/inactive", %{conn: conn, admin: admin} do
       {:ok, badge} =
-        Athena.Gamification.create_badge(%{
+        Athena.Gamification.create_badge(admin, %{
           "key" => "toggle-me",
           "title" => "Toggle Me",
           "rule" => %{"fact" => "total_xp", "op" => "gte", "value" => 1}
@@ -108,9 +139,9 @@ defmodule AthenaWeb.AdminLive.GamificationTest do
       refute Athena.Repo.get!(Badge, badge.id).is_active
     end
 
-    test "deletes a badge", %{conn: conn} do
+    test "deletes a badge", %{conn: conn, admin: admin} do
       {:ok, badge} =
-        Athena.Gamification.create_badge(%{
+        Athena.Gamification.create_badge(admin, %{
           "key" => "delete-me",
           "title" => "Delete Me",
           "rule" => %{"fact" => "total_xp", "op" => "gte", "value" => 1}
@@ -121,6 +152,30 @@ defmodule AthenaWeb.AdminLive.GamificationTest do
       lv |> element("button[phx-value-id='#{badge.id}'][phx-click='delete']") |> render_click()
 
       refute Athena.Repo.get(Badge, badge.id)
+    end
+
+    test "does not delete a badge for an account without gamification.delete", %{
+      conn: base_conn,
+      admin: admin
+    } do
+      {:ok, badge} =
+        Athena.Gamification.create_badge(admin, %{
+          "key" => "keep-me",
+          "title" => "Keep Me",
+          "rule" => %{"fact" => "total_xp", "op" => "gte", "value" => 1}
+        })
+
+      account =
+        insert(:account,
+          role: insert(:role, permissions: ["gamification.read", "gamification.update"])
+        )
+
+      conn = init_test_session(base_conn, %{"account_id" => account.id})
+      {:ok, lv, _html} = live(conn, ~p"/admin/gamification")
+
+      lv |> element("button[phx-value-id='#{badge.id}'][phx-click='delete']") |> render_click()
+
+      assert Athena.Repo.get(Badge, badge.id)
     end
   end
 

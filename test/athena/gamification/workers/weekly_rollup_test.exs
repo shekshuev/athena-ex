@@ -61,7 +61,9 @@ defmodule Athena.Gamification.Workers.WeeklyRollupTest do
       set: [inserted_at: DateTime.new!(week_start, ~T[12:00:00], "Etc/UTC")]
     )
 
-    Athena.Gamification.create_badge(%{
+    admin = insert(:account, role: insert(:role, permissions: ["gamification.create"]))
+
+    Athena.Gamification.create_badge(admin, %{
       "key" => "league-topper",
       "title" => "League Topper",
       "rule" => %{"fact" => "league_top_count", "op" => "gte", "value" => 1}

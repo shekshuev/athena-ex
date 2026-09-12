@@ -11,7 +11,7 @@ defmodule Athena.Identity.Definitions do
   instructors.create instructors.read instructors.update instructors.delete
   cohorts.create cohorts.read cohorts.update cohorts.delete
   settings.read settings.update
-  gamification.read gamification.update
+  gamification.create gamification.read gamification.update gamification.delete
   files.read files.create files.delete
   system.cache
   admin

@@ -7,10 +7,22 @@ defmodule Athena.Gamification.BadgesTest do
 
   @simple_rule %{"fact" => "total_xp", "op" => "gte", "value" => 100}
 
-  describe "create_badge/1" do
-    test "creates a badge with a valid rule" do
+  setup do
+    admin_role =
+      insert(:role,
+        permissions: ["gamification.create", "gamification.update", "gamification.delete"]
+      )
+
+    admin = insert(:account, role: admin_role)
+    powerless = insert(:account, role: insert(:role, permissions: []))
+
+    %{admin: admin, powerless: powerless}
+  end
+
+  describe "create_badge/2" do
+    test "creates a badge with a valid rule", %{admin: admin} do
       assert {:ok, %Badge{} = badge} =
-               Badges.create_badge(%{
+               Badges.create_badge(admin, %{
                  "key" => "first-hundred",
                  "title" => "First Hundred",
                  "rule" => @simple_rule
@@ -20,9 +32,9 @@ defmodule Athena.Gamification.BadgesTest do
       assert badge.scope == :global
     end
 
-    test "rejects a badge with an invalid rule" do
+    test "rejects a badge with an invalid rule", %{admin: admin} do
       assert {:error, changeset} =
-               Badges.create_badge(%{
+               Badges.create_badge(admin, %{
                  "key" => "bad-rule",
                  "title" => "Bad Rule",
                  "rule" => %{"fact" => "not_a_real_fact", "op" => "gte", "value" => 1}
@@ -31,13 +43,46 @@ defmodule Athena.Gamification.BadgesTest do
       refute changeset.valid?
     end
 
-    test "rejects a duplicate key" do
-      Badges.create_badge(%{"key" => "dup", "title" => "A", "rule" => @simple_rule})
+    test "rejects a duplicate key", %{admin: admin} do
+      Badges.create_badge(admin, %{"key" => "dup", "title" => "A", "rule" => @simple_rule})
 
       assert {:error, changeset} =
-               Badges.create_badge(%{"key" => "dup", "title" => "B", "rule" => @simple_rule})
+               Badges.create_badge(admin, %{
+                 "key" => "dup",
+                 "title" => "B",
+                 "rule" => @simple_rule
+               })
 
       refute changeset.valid?
+    end
+
+    test "denies an account without gamification.create", %{powerless: powerless} do
+      assert {:error, :forbidden} =
+               Badges.create_badge(powerless, %{
+                 "key" => "denied",
+                 "title" => "Denied",
+                 "rule" => @simple_rule
+               })
+
+      refute Repo.get_by(Badge, key: "denied")
+    end
+  end
+
+  describe "update_badge/3 and delete_badge/2" do
+    test "denies an account without gamification.update/.delete", %{
+      admin: admin,
+      powerless: powerless
+    } do
+      {:ok, badge} =
+        Badges.create_badge(admin, %{
+          "key" => "guarded",
+          "title" => "Guarded",
+          "rule" => @simple_rule
+        })
+
+      assert {:error, :forbidden} = Badges.update_badge(powerless, badge, %{"is_active" => false})
+      assert {:error, :forbidden} = Badges.delete_badge(powerless, badge)
+      assert Repo.get(Badge, badge.id).is_active
     end
   end
 
@@ -52,12 +97,16 @@ defmodule Athena.Gamification.BadgesTest do
   end
 
   describe "evaluate_for_account/1" do
-    test "awards a badge the account now qualifies for" do
+    test "awards a badge the account now qualifies for", %{admin: admin} do
       account = insert(:account)
       insert(:account_stats, account_id: account.id, total_xp: 150)
 
       {:ok, badge} =
-        Badges.create_badge(%{"key" => "xp-100", "title" => "XP 100", "rule" => @simple_rule})
+        Badges.create_badge(admin, %{
+          "key" => "xp-100",
+          "title" => "XP 100",
+          "rule" => @simple_rule
+        })
 
       Badges.evaluate_for_account(account.id)
 
@@ -66,35 +115,39 @@ defmodule Athena.Gamification.BadgesTest do
       assert hd(awards).badge.id == badge.id
     end
 
-    test "does not award a badge the account doesn't qualify for yet" do
+    test "does not award a badge the account doesn't qualify for yet", %{admin: admin} do
       account = insert(:account)
       insert(:account_stats, account_id: account.id, total_xp: 10)
 
-      Badges.create_badge(%{"key" => "xp-100", "title" => "XP 100", "rule" => @simple_rule})
+      Badges.create_badge(admin, %{"key" => "xp-100", "title" => "XP 100", "rule" => @simple_rule})
 
       Badges.evaluate_for_account(account.id)
 
       assert Badges.list_awards(account.id) == []
     end
 
-    test "ignores inactive badges" do
+    test "ignores inactive badges", %{admin: admin} do
       account = insert(:account)
       insert(:account_stats, account_id: account.id, total_xp: 150)
 
       {:ok, badge} =
-        Badges.create_badge(%{"key" => "xp-100", "title" => "XP 100", "rule" => @simple_rule})
+        Badges.create_badge(admin, %{
+          "key" => "xp-100",
+          "title" => "XP 100",
+          "rule" => @simple_rule
+        })
 
-      Badges.update_badge(badge, %{"is_active" => false})
+      Badges.update_badge(admin, badge, %{"is_active" => false})
       Badges.evaluate_for_account(account.id)
 
       assert Badges.list_awards(account.id) == []
     end
 
-    test "does not re-award an already-earned badge" do
+    test "does not re-award an already-earned badge", %{admin: admin} do
       account = insert(:account)
       insert(:account_stats, account_id: account.id, total_xp: 150)
 
-      Badges.create_badge(%{"key" => "xp-100", "title" => "XP 100", "rule" => @simple_rule})
+      Badges.create_badge(admin, %{"key" => "xp-100", "title" => "XP 100", "rule" => @simple_rule})
 
       Badges.evaluate_for_account(account.id)
       Badges.evaluate_for_account(account.id)
@@ -103,12 +156,16 @@ defmodule Athena.Gamification.BadgesTest do
       assert Repo.aggregate(BadgeAward, :count) == 1
     end
 
-    test "is idempotent even under a direct duplicate insert attempt" do
+    test "is idempotent even under a direct duplicate insert attempt", %{admin: admin} do
       account = insert(:account)
       insert(:account_stats, account_id: account.id, total_xp: 150)
 
       {:ok, badge} =
-        Badges.create_badge(%{"key" => "xp-100", "title" => "XP 100", "rule" => @simple_rule})
+        Badges.create_badge(admin, %{
+          "key" => "xp-100",
+          "title" => "XP 100",
+          "rule" => @simple_rule
+        })
 
       Badges.evaluate_for_account(account.id)
 

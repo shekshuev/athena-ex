@@ -159,9 +159,10 @@ defmodule AthenaWeb.AccountLive.ProfileTest do
 
     test "shows earned badges", %{conn: conn} do
       account = insert(:account)
+      admin = insert(:account, role: insert(:role, permissions: ["gamification.create"]))
 
       {:ok, badge} =
-        Athena.Gamification.create_badge(%{
+        Athena.Gamification.create_badge(admin, %{
           "key" => "first-steps",
           "title" => "First Steps",
           "rule" => %{"fact" => "total_xp", "op" => "gte", "value" => 0}

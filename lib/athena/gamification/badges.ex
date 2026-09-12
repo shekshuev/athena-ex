@@ -4,7 +4,7 @@ defmodule Athena.Gamification.Badges do
   an account based on its current facts.
   """
   import Ecto.Query
-  alias Athena.Repo
+  alias Athena.{Identity, Repo}
   alias Athena.Gamification.{Badge, BadgeAward, RuleEngine}
 
   @spec list_badges() :: [Badge.t()]
@@ -20,22 +20,38 @@ defmodule Athena.Gamification.Badges do
     end
   end
 
-  @spec create_badge(map()) :: {:ok, Badge.t()} | {:error, Ecto.Changeset.t()}
-  def create_badge(attrs) do
-    %Badge{}
-    |> Badge.changeset(attrs)
-    |> Repo.insert()
+  @spec create_badge(map(), map()) ::
+          {:ok, Badge.t()} | {:error, Ecto.Changeset.t() | :forbidden}
+  def create_badge(user, attrs) do
+    if Identity.can?(user, "gamification.create") do
+      %Badge{}
+      |> Badge.changeset(attrs)
+      |> Repo.insert()
+    else
+      {:error, :forbidden}
+    end
   end
 
-  @spec update_badge(Badge.t(), map()) :: {:ok, Badge.t()} | {:error, Ecto.Changeset.t()}
-  def update_badge(%Badge{} = badge, attrs) do
-    badge
-    |> Badge.changeset(attrs)
-    |> Repo.update()
+  @spec update_badge(map(), Badge.t(), map()) ::
+          {:ok, Badge.t()} | {:error, Ecto.Changeset.t() | :forbidden}
+  def update_badge(user, %Badge{} = badge, attrs) do
+    if Identity.can?(user, "gamification.update") do
+      badge
+      |> Badge.changeset(attrs)
+      |> Repo.update()
+    else
+      {:error, :forbidden}
+    end
   end
 
-  @spec delete_badge(Badge.t()) :: {:ok, Badge.t()} | {:error, Ecto.Changeset.t()}
-  def delete_badge(%Badge{} = badge), do: Repo.delete(badge)
+  @spec delete_badge(map(), Badge.t()) :: {:ok, Badge.t()} | {:error, :forbidden}
+  def delete_badge(user, %Badge{} = badge) do
+    if Identity.can?(user, "gamification.delete") do
+      Repo.delete(badge)
+    else
+      {:error, :forbidden}
+    end
+  end
 
   @doc """
   Tests a badge's rule against one account without awarding it — the admin

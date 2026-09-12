@@ -26,9 +26,9 @@ defmodule Athena.Gamification do
 
   defdelegate list_badges(), to: Badges
   defdelegate get_badge(id), to: Badges
-  defdelegate create_badge(attrs), to: Badges
-  defdelegate update_badge(badge, attrs), to: Badges
-  defdelegate delete_badge(badge), to: Badges
+  defdelegate create_badge(user, attrs), to: Badges
+  defdelegate update_badge(user, badge, attrs), to: Badges
+  defdelegate delete_badge(user, badge), to: Badges
   defdelegate test_rule(rule, account_id), to: Badges
   defdelegate list_awards(account_id), to: Badges
 

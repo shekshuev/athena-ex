@@ -33,7 +33,7 @@ defmodule AthenaWeb.AdminLive.Gamification do
   end
 
   defp apply_action(socket, :new, _params) do
-    if can_manage?(socket) do
+    if can_create?(socket) do
       badge = %Badge{rule: %{}}
 
       socket
@@ -47,7 +47,7 @@ defmodule AthenaWeb.AdminLive.Gamification do
   end
 
   defp apply_action(socket, :edit, %{"id" => id}) do
-    if can_manage?(socket) do
+    if can_update?(socket) do
       case Gamification.get_badge(id) do
         {:ok, badge} ->
           socket
@@ -64,7 +64,9 @@ defmodule AthenaWeb.AdminLive.Gamification do
     end
   end
 
-  defp can_manage?(socket), do: Identity.can?(socket.assigns.current_user, "gamification.update")
+  defp can_create?(socket), do: Identity.can?(socket.assigns.current_user, "gamification.create")
+  defp can_update?(socket), do: Identity.can?(socket.assigns.current_user, "gamification.update")
+  defp can_delete?(socket), do: Identity.can?(socket.assigns.current_user, "gamification.delete")
 
   defp deny(socket) do
     socket
@@ -88,25 +90,32 @@ defmodule AthenaWeb.AdminLive.Gamification do
   end
 
   def handle_event("save", %{"badge" => params} = full_params, socket) do
-    case Jason.decode(full_params["rule_text"] || "") do
-      {:ok, rule} ->
-        save_badge(socket, socket.assigns.live_action, Map.put(params, "rule", rule))
+    if save_authorized?(socket) do
+      case Jason.decode(full_params["rule_text"] || "") do
+        {:ok, rule} ->
+          save_badge(socket, socket.assigns.live_action, Map.put(params, "rule", rule))
 
-      {:error, _} ->
-        changeset =
-          socket.assigns.badge
-          |> Badge.changeset(params)
-          |> Ecto.Changeset.add_error(:rule, "is not valid JSON")
-          |> Map.put(:action, :insert)
+        {:error, _} ->
+          changeset =
+            socket.assigns.badge
+            |> Badge.changeset(params)
+            |> Ecto.Changeset.add_error(:rule, "is not valid JSON")
+            |> Map.put(:action, :insert)
 
-        {:noreply, assign(socket, :form, to_form(changeset))}
+          {:noreply, assign(socket, :form, to_form(changeset))}
+      end
+    else
+      {:noreply, deny(socket)}
     end
   end
 
   def handle_event("toggle_active", %{"id" => id}, socket) do
-    with true <- can_manage?(socket),
+    user = socket.assigns.current_user
+
+    with true <- can_update?(socket),
          {:ok, badge} <- Gamification.get_badge(id),
-         {:ok, updated} <- Gamification.update_badge(badge, %{"is_active" => !badge.is_active}) do
+         {:ok, updated} <-
+           Gamification.update_badge(user, badge, %{"is_active" => !badge.is_active}) do
       {:noreply, stream_insert(socket, :badges, updated)}
     else
       _ -> {:noreply, socket}
@@ -114,9 +123,11 @@ defmodule AthenaWeb.AdminLive.Gamification do
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
-    with true <- can_manage?(socket),
+    user = socket.assigns.current_user
+
+    with true <- can_delete?(socket),
          {:ok, badge} <- Gamification.get_badge(id),
-         {:ok, _} <- Gamification.delete_badge(badge) do
+         {:ok, _} <- Gamification.delete_badge(user, badge) do
       {:noreply, stream_delete(socket, :badges, badge)}
     else
       _ -> {:noreply, socket}
@@ -136,6 +147,10 @@ defmodule AthenaWeb.AdminLive.Gamification do
     {:noreply, assign(socket, :test_result, result)}
   end
 
+  defp save_authorized?(%{assigns: %{live_action: :new}} = socket), do: can_create?(socket)
+  defp save_authorized?(%{assigns: %{live_action: :edit}} = socket), do: can_update?(socket)
+  defp save_authorized?(_socket), do: false
+
   defp decode_rule(json) do
     case Jason.decode(json || "") do
       {:ok, rule} -> rule
@@ -144,7 +159,7 @@ defmodule AthenaWeb.AdminLive.Gamification do
   end
 
   defp save_badge(socket, :new, params) do
-    case Gamification.create_badge(params) do
+    case Gamification.create_badge(socket.assigns.current_user, params) do
       {:ok, badge} ->
         {:noreply,
          socket
@@ -158,7 +173,7 @@ defmodule AthenaWeb.AdminLive.Gamification do
   end
 
   defp save_badge(socket, :edit, params) do
-    case Gamification.update_badge(socket.assigns.badge, params) do
+    case Gamification.update_badge(socket.assigns.current_user, socket.assigns.badge, params) do
       {:ok, badge} ->
         {:noreply,
          socket
