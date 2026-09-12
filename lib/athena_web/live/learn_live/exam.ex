@@ -910,11 +910,17 @@ defmodule AthenaWeb.LearnLive.Exam do
     {:ok, pending_sub} =
       Learning.system_update_submission(submission, %{"status" => initial_status})
 
-    if initial_status == "pending" do
-      eval_results = Learning.evaluate_sync(pending_sub)
+    final_sub =
+      if initial_status == "pending" do
+        eval_results = Learning.evaluate_sync(pending_sub)
 
-      {:ok, _} = Learning.system_update_submission(pending_sub, eval_results)
-    end
+        {:ok, graded_sub} = Learning.system_update_submission(pending_sub, eval_results)
+        graded_sub
+      else
+        pending_sub
+      end
+
+    Learning.maybe_complete_from_submission(final_sub)
 
     broadcast_team_progress(socket.assigns.team_id, course_id)
 
