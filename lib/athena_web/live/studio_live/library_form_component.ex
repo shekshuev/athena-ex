@@ -215,10 +215,10 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
           </div>
         </div>
         <div class="shrink-0 p-6 border-t border-base-200 bg-base-100 flex justify-end gap-3">
-          <.link patch={@patch} class="btn btn-ghost">{gettext("Cancel")}</.link>
-          <button type="submit" class="btn btn-primary" phx-disable-with={gettext("Saving...")}>
+          <.button variant="ghost" patch={@patch}>{gettext("Cancel")}</.button>
+          <.button type="submit" variant="primary" phx-disable-with={gettext("Saving...")}>
             {gettext("Save")}
-          </button>
+          </.button>
         </div>
       </.form>
     </div>

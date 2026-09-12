@@ -17,11 +17,13 @@ defmodule AthenaWeb.LearnLive.Index do
     current_user = socket.assigns.current_user
 
     enrollments = Learning.list_student_enrollments(current_user.id)
+    progress_by_enrollment_id = Learning.course_progress_batch(current_user.id, enrollments)
 
     {:ok,
      socket
      |> assign(:page_title, gettext("My Learning"))
-     |> assign(:enrollments, enrollments)}
+     |> assign(:enrollments, enrollments)
+     |> assign(:progress_by_enrollment_id, progress_by_enrollment_id)}
   end
 
   @doc """
@@ -32,7 +34,7 @@ defmodule AthenaWeb.LearnLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="max-w-6xl mx-auto space-y-8">
+    <.page_container size="standard" class="space-y-8">
       <div class="flex flex-col gap-2">
         <h1 class="text-3xl font-display font-black text-base-content tracking-tight">
           {gettext("My Learning")}
@@ -42,35 +44,29 @@ defmodule AthenaWeb.LearnLive.Index do
         </p>
       </div>
 
-      <div
+      <.empty_state
         :if={@enrollments == []}
-        class="text-center py-24 px-6 rounded-3xl mt-8"
-      >
-        <.icon name="hero-book-open" class="size-20 text-base-content/20 mb-6 mx-auto" />
-        <h3 class="text-2xl font-display font-bold text-base-content">{gettext("No courses yet")}</h3>
-        <p class="text-base-content/60 mt-3 max-w-md mx-auto text-lg">
-          {gettext(
+        class="mt-8"
+        icon="hero-book-open"
+        title={gettext("No courses yet")}
+        description={
+          gettext(
             "You are not enrolled in any courses at the moment. Once you join a cohort or unlock a course, it will appear right here."
-          )}
-        </p>
-      </div>
+          )
+        }
+      />
 
       <div :if={@enrollments != []} class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 mt-8">
         <%= for enrollment <- @enrollments do %>
+          <% progress = Map.fetch!(@progress_by_enrollment_id, enrollment.id) %>
           <div class="card bg-base-100 border border-base-200 hover:border-primary/40 transition-all duration-300 overflow-hidden group flex flex-col">
             <div class="h-36 bg-linear-to-br from-base-200 to-base-300 relative overflow-hidden">
               <div class="absolute bottom-4 left-4 z-10">
-                <span class={[
-                  "badge badge-sm font-bold border-0",
-                  if(enrollment.cohort_id,
-                    do: "bg-primary text-primary-content",
-                    else: "bg-accent text-accent-content"
-                  )
-                ]}>
+                <.badge tone={if enrollment.cohort_id, do: "primary", else: "neutral"}>
                   {if enrollment.cohort_id,
                     do: enrollment.cohort.name,
                     else: gettext("Self-paced")}
-                </span>
+                </.badge>
               </div>
             </div>
 
@@ -89,32 +85,34 @@ defmodule AthenaWeb.LearnLive.Index do
                 <div class="flex items-center gap-3">
                   <div
                     class="radial-progress text-primary bg-primary/10 text-[10px] font-bold"
-                    style="--value:0; --size:2.5rem; --thickness: 3px;"
+                    style={"--value:#{progress.percent}; --size:2.5rem; --thickness: 3px;"}
                     role="progressbar"
                   >
-                    0%
+                    {progress.percent}%
                   </div>
                   <span class="text-xs font-bold text-base-content/50 uppercase tracking-widest">
                     {gettext("Progress")}
                   </span>
                 </div>
 
-                <.link
+                <.button
+                  variant="primary"
+                  size="sm"
+                  class="group-hover:pr-3 transition-all"
                   navigate={~p"/learn/courses/#{enrollment.course.id}"}
-                  class="btn btn-primary btn-sm group-hover:pr-3 transition-all"
                 >
                   {gettext("Enter")}
                   <.icon
                     name="hero-arrow-right"
                     class="size-4 opacity-0 -ml-4 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300"
                   />
-                </.link>
+                </.button>
               </div>
             </div>
           </div>
         <% end %>
       </div>
-    </div>
+    </.page_container>
     """
   end
 end

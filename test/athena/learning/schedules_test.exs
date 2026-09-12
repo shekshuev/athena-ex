@@ -306,4 +306,67 @@ defmodule Athena.Learning.SchedulesTest do
                Schedules.clear_override(observer, cohort, course, :section, Ecto.UUID.generate())
     end
   end
+
+  describe "list_upcoming_deadlines/2" do
+    test "returns future lock deadlines for cohorts the account belongs to" do
+      student = insert(:account)
+      cohort = insert(:cohort)
+      insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
+
+      future = DateTime.add(DateTime.utc_now(), 3600, :second) |> DateTime.truncate(:second)
+
+      schedule =
+        insert(:cohort_schedule, cohort_id: cohort.id, lock_at: future, unlock_at: nil)
+
+      assert [result] = Schedules.list_upcoming_deadlines(student.id)
+      assert result.id == schedule.id
+    end
+
+    test "excludes deadlines that already passed" do
+      student = insert(:account)
+      cohort = insert(:cohort)
+      insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
+
+      past = DateTime.add(DateTime.utc_now(), -3600, :second) |> DateTime.truncate(:second)
+      insert(:cohort_schedule, cohort_id: cohort.id, lock_at: past)
+
+      assert Schedules.list_upcoming_deadlines(student.id) == []
+    end
+
+    test "excludes deadlines from cohorts the account does not belong to" do
+      student = insert(:account)
+      other_cohort = insert(:cohort)
+
+      future = DateTime.add(DateTime.utc_now(), 3600, :second) |> DateTime.truncate(:second)
+      insert(:cohort_schedule, cohort_id: other_cohort.id, lock_at: future)
+
+      assert Schedules.list_upcoming_deadlines(student.id) == []
+    end
+
+    test "respects the :limit option and orders by lock_at ascending" do
+      student = insert(:account)
+      cohort = insert(:cohort)
+      insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
+
+      now = DateTime.utc_now()
+
+      soon =
+        insert(:cohort_schedule,
+          cohort_id: cohort.id,
+          lock_at: DateTime.add(now, 1800, :second) |> DateTime.truncate(:second)
+        )
+
+      later =
+        insert(:cohort_schedule,
+          cohort_id: cohort.id,
+          lock_at: DateTime.add(now, 7200, :second) |> DateTime.truncate(:second)
+        )
+
+      assert [first, second] = Schedules.list_upcoming_deadlines(student.id)
+      assert first.id == soon.id
+      assert second.id == later.id
+
+      assert [_one] = Schedules.list_upcoming_deadlines(student.id, limit: 1)
+    end
+  end
 end

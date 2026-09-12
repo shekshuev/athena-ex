@@ -14,6 +14,7 @@ defmodule AthenaWeb.StudioLive.CourseShareComponent do
       |> assign(assigns)
       |> assign(search_form: to_form(%{"query" => ""}))
       |> assign(search_results: [])
+      |> assign(share_to_remove: nil)
       |> load_shares(course)
 
     {:ok, socket}
@@ -99,7 +100,19 @@ defmodule AthenaWeb.StudioLive.CourseShareComponent do
     end
   end
 
-  def handle_event("remove_share", %{"account_id" => account_id}, socket) do
+  def handle_event("remove_share_click", %{"account_id" => account_id}, socket) do
+    {:noreply, assign(socket, :share_to_remove, account_id)}
+  end
+
+  def handle_event("cancel_remove_share", _params, socket) do
+    {:noreply, assign(socket, :share_to_remove, nil)}
+  end
+
+  def handle_event(
+        "confirm_remove_share",
+        _params,
+        %{assigns: %{share_to_remove: account_id}} = socket
+      ) do
     case Content.revoke_course_share(
            socket.assigns.current_user,
            socket.assigns.course,
@@ -109,12 +122,16 @@ defmodule AthenaWeb.StudioLive.CourseShareComponent do
         socket =
           socket
           |> load_shares(socket.assigns.course)
+          |> assign(:share_to_remove, nil)
           |> put_flash(:info, gettext("Access revoked."))
 
         {:noreply, socket}
 
       {:error, _} ->
-        {:noreply, put_flash(socket, :error, gettext("Failed to revoke access."))}
+        {:noreply,
+         socket
+         |> assign(:share_to_remove, nil)
+         |> put_flash(:error, gettext("Failed to revoke access."))}
     end
   end
 
@@ -240,16 +257,16 @@ defmodule AthenaWeb.StudioLive.CourseShareComponent do
               </select>
             </.form>
 
-            <.button
+            <.icon_button
               type="button"
-              class="btn btn-ghost btn-sm btn-square text-error hover:bg-error/10"
-              phx-click="remove_share"
+              size="sm"
+              phx-click="remove_share_click"
               phx-value-account_id={share.account_id}
               phx-target={@myself}
-              title={gettext("Revoke Access")}
-            >
-              <.icon name="hero-x-mark" class="size-4" />
-            </.button>
+              icon="hero-x-mark"
+              label={gettext("Revoke Access")}
+              variant="danger"
+            />
           </div>
         </div>
 
@@ -257,6 +274,16 @@ defmodule AthenaWeb.StudioLive.CourseShareComponent do
           {gettext("This course is currently private.")}
         </p>
       </div>
+
+      <.modal
+        id={"#{@id}-remove-share-modal"}
+        show={@share_to_remove != nil}
+        title={gettext("Revoke this person's access?")}
+        on_cancel={JS.push("cancel_remove_share", target: @myself)}
+        on_confirm={JS.push("confirm_remove_share", target: @myself)}
+        confirm_label={gettext("Revoke")}
+        danger={true}
+      />
     </div>
     """
   end

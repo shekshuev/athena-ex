@@ -358,7 +358,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="max-w-7xl mx-auto pb-20">
+    <.page_container size="wide" class="pb-20">
       <div class="flex items-center gap-4 mb-8 border-b border-base-200 pb-6">
         <.link
           navigate={@return_to}
@@ -405,86 +405,92 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
 
               <div
                 :for={{q_block, index} <- Enum.with_index(@questions)}
-                class="p-6 bg-base-100 border border-base-300 rounded-sm relative group hover:border-primary/30 transition-all"
+                class="card bg-base-100 border border-base-300 rounded-sm relative group hover:border-primary/30 transition-all"
               >
                 <div class="absolute -top-3 -left-3 size-7 bg-base-200 text-base-content/70 font-bold rounded-sm flex items-center justify-center border border-base-300 text-xs group-hover:bg-primary group-hover:text-primary-content group-hover:border-primary transition-colors">
                   {index + 1}
                 </div>
 
-                <div class="flex items-center justify-between mb-6 pb-4 border-b border-base-300">
-                  <h2 class="text-lg font-bold">{gettext("Question Content")}</h2>
-                  <div class="flex items-center gap-2">
-                    <span class="badge badge-sm rounded-sm font-bold bg-base-200 border border-base-300 text-base-content/70 uppercase tracking-widest text-[10px]">
-                      {q_block.content["question_type"] || q_block.type}
-                    </span>
-                    <span
-                      :if={manual_review_required?(q_block)}
-                      class="badge badge-sm rounded-sm font-bold bg-warning/10 text-warning border border-warning/30 uppercase tracking-widest text-[10px]"
-                    >
-                      {gettext("Manual Review")}
-                    </span>
-                  </div>
-                </div>
-
-                <% child_sub = Map.get(@child_submissions, q_block.id) %>
-                <% grade_params = Map.get(@child_grades_params, q_block.id) || %{} %>
-
-                <.content_block
-                  block={q_block}
-                  mode={:review}
-                  submission={child_sub}
-                  hide_submit={true}
-                  user_id={if child_sub, do: child_sub.account_id, else: @submission.account_id}
-                />
-                <div class="mt-4">
-                  <div class="text-xs font-bold uppercase tracking-wider mb-3">
-                    {gettext("Instructor Feedback for this answer")}
-                  </div>
-                  <div class="flex flex-col sm:flex-row gap-4">
-                    <div class="w-full sm:w-24 shrink-0">
-                      <label class="label text-xs font-bold text-base-content/70 pb-1 px-0">
-                        {gettext("Score")}
-                      </label>
-                      <input
-                        type="number"
-                        form="grading-form"
-                        name={"child_grades[#{q_block.id}][score]"}
-                        value={
-                          Map.get(grade_params, "score") || if child_sub, do: child_sub.score, else: 0
-                        }
-                        class="input input-sm w-full"
-                        min="0"
-                        max="100"
-                      />
+                <div class="card-body">
+                  <div class="flex items-center justify-between mb-6 pb-4 border-b border-base-300">
+                    <h2 class="text-lg font-bold">{gettext("Question Content")}</h2>
+                    <div class="flex items-center gap-2">
+                      <.badge tone="neutral" class="rounded-sm uppercase tracking-widest text-[10px]">
+                        {q_block.content["question_type"] || q_block.type}
+                      </.badge>
+                      <.badge
+                        :if={manual_review_required?(q_block)}
+                        tone="warning"
+                        class="rounded-sm uppercase tracking-widest text-[10px]"
+                      >
+                        {gettext("Manual Review")}
+                      </.badge>
                     </div>
-                    <div class="flex-1">
-                      <label class="label text-xs font-bold text-base-content/70 pb-1 px-0">
-                        {gettext("Comment")}
-                      </label>
-                      <textarea
-                        form="grading-form"
-                        name={"child_grades[#{q_block.id}][feedback]"}
-                        class="textarea textarea-sm w-full resize-none"
-                        rows="2"
-                        placeholder={gettext("Specific feedback for this answer...")}
-                      ><%= Map.get(grade_params, "feedback") || (if child_sub, do: child_sub.feedback, else: "") %></textarea>
+                  </div>
+
+                  <% child_sub = Map.get(@child_submissions, q_block.id) %>
+                  <% grade_params = Map.get(@child_grades_params, q_block.id) || %{} %>
+
+                  <.content_block
+                    block={q_block}
+                    mode={:review}
+                    submission={child_sub}
+                    hide_submit={true}
+                    user_id={if child_sub, do: child_sub.account_id, else: @submission.account_id}
+                  />
+                  <div class="mt-4">
+                    <div class="text-xs font-bold uppercase tracking-wider mb-3">
+                      {gettext("Instructor Feedback for this answer")}
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-4">
+                      <div class="w-full sm:w-24 shrink-0">
+                        <label class="label text-xs font-bold text-base-content/70 pb-1 px-0">
+                          {gettext("Score")}
+                        </label>
+                        <input
+                          type="number"
+                          form="grading-form"
+                          name={"child_grades[#{q_block.id}][score]"}
+                          value={
+                            Map.get(grade_params, "score") ||
+                              if child_sub, do: child_sub.score, else: 0
+                          }
+                          class="input input-sm w-full"
+                          min="0"
+                          max="100"
+                        />
+                      </div>
+                      <div class="flex-1">
+                        <label class="label text-xs font-bold text-base-content/70 pb-1 px-0">
+                          {gettext("Comment")}
+                        </label>
+                        <textarea
+                          form="grading-form"
+                          name={"child_grades[#{q_block.id}][feedback]"}
+                          class="textarea textarea-sm w-full resize-none"
+                          rows="2"
+                          placeholder={gettext("Specific feedback for this answer...")}
+                        ><%= Map.get(grade_params, "feedback") || (if child_sub, do: child_sub.feedback, else: "") %></textarea>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
           <% else %>
-            <div class="p-6 bg-base-100 border border-base-300 rounded-sm">
-              <div class="flex items-center justify-between mb-6 pb-4 border-b border-base-300">
-                <h2 class="text-lg font-bold">{gettext("Question Content")}</h2>
+            <div class="card bg-base-100 border border-base-300 rounded-sm">
+              <div class="card-body">
+                <div class="flex items-center justify-between mb-6 pb-4 border-b border-base-300">
+                  <h2 class="text-lg font-bold">{gettext("Question Content")}</h2>
+                </div>
+                <.content_block
+                  block={@block}
+                  mode={:review}
+                  submission={@submission}
+                  hide_submit={true}
+                  user_id={@submission.account_id}
+                />
               </div>
-              <.content_block
-                block={@block}
-                mode={:review}
-                submission={@submission}
-                hide_submit={true}
-                user_id={@submission.account_id}
-              />
             </div>
           <% end %>
         </div>
@@ -499,7 +505,9 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                 {gettext("Evaluation")}
               </div>
             </div>
-            <.status_badge status={@submission.status} />
+            <.badge tone={status_tone(@submission.status)} class="tracking-wide">
+              {Atom.to_string(@submission.status) |> String.replace("_", " ") |> String.capitalize()}
+            </.badge>
           </div>
 
           <div class="p-6 space-y-6">
@@ -615,31 +623,25 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
         on_cancel={JS.push("close_delete_modal")}
         on_confirm={JS.push("confirm_delete_submission")}
       />
-    </div>
+    </.page_container>
     """
   end
 
-  defp status_badge(assigns) do
-    ~H"""
-    <span class={[
-      "badge font-bold border tracking-wide rounded-sm",
-      @status in [:graded, :accepted] && "bg-success/10 text-success border-success/30",
-      @status == :needs_review && "bg-warning/10 text-warning border-warning/30",
-      @status in [:pending, :processing] && "bg-base-200 text-base-content/70 border-base-300",
-      @status in [
-        :rejected,
-        :wrong_answer,
-        :compilation_error,
-        :runtime_error,
-        :time_limit_exceeded,
-        :memory_limit_exceeded,
-        :system_error
-      ] && "bg-error/10 text-error border-error/30"
-    ]}>
-      {Atom.to_string(@status) |> String.replace("_", " ") |> String.capitalize()}
-    </span>
-    """
-  end
+  defp status_tone(status) when status in [:graded, :accepted], do: "success"
+  defp status_tone(:needs_review), do: "warning"
+  defp status_tone(status) when status in [:pending, :processing], do: "neutral"
+
+  defp status_tone(status)
+       when status in [
+              :rejected,
+              :wrong_answer,
+              :compilation_error,
+              :runtime_error,
+              :time_limit_exceeded,
+              :memory_limit_exceeded,
+              :system_error
+            ],
+       do: "error"
 
   @doc false
   defp hydrate_questions(questions) when is_list(questions),

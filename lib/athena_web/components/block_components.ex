@@ -322,7 +322,7 @@ defmodule AthenaWeb.BlockComponents do
               >
                 <%= cond do %>
                   <% @is_processing -> %>
-                    <span class="loading loading-spinner loading-xs"></span> {gettext("Checking...")}
+                    <.spinner class="size-3" /> {gettext("Checking...")}
                   <% @submission != nil and @submission.status != :draft -> %>
                     {gettext("Resubmit")}
                   <% true -> %>

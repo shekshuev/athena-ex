@@ -29,7 +29,7 @@ defmodule AthenaWeb.Hooks.Auth do
         {:cont, assign(socket, :current_user, nil)}
 
       account_id ->
-        case Identity.get_account(account_id, preload: [:role]) do
+        case Identity.get_account(account_id, preload: [:role, :profile]) do
           {:ok, %{status: :active} = account} ->
             maybe_connect_auth_events(socket, account)
 
@@ -70,7 +70,7 @@ defmodule AthenaWeb.Hooks.Auth do
   end
 
   defp reload_user_on_event(event, socket) when event in [:role_updated, :account_updated] do
-    case Identity.get_account(socket.assigns.current_user.id, preload: [:role]) do
+    case Identity.get_account(socket.assigns.current_user.id, preload: [:role, :profile]) do
       {:ok, %{status: :active} = fresh_account} ->
         socket = assign(socket, :current_user, fresh_account)
 

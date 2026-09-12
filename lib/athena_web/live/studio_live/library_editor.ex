@@ -817,7 +817,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     <div class={
       @course_bank_mode && "fixed inset-0 z-50 bg-base-100 overflow-y-auto p-4 pb-20 sm:p-8"
     }>
-      <div class={["max-w-7xl mx-auto", not @course_bank_mode && "pb-20 pt-4"]}>
+      <.page_container size="wide" class={not @course_bank_mode && "pb-20 pt-4"}>
         <div class="flex items-center gap-4 mb-8 border-b border-base-300 pb-6">
           <.link
             navigate={@return_path}
@@ -1288,7 +1288,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
             </div>
           </div>
         </div>
-      </div>
+      </.page_container>
 
       <%= if @show_media_modal and @role in [:owner, :writer] do %>
         <.live_component

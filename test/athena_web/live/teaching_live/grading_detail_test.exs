@@ -320,6 +320,102 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
       assert updated_sub.status == :graded
     end
 
+    test "grading a manually-reviewed gate to a passing score completes the block",
+         %{conn: conn} do
+      student = insert(:account)
+
+      block =
+        insert(:block,
+          type: :file_assignment,
+          completion_rule: %Athena.Content.CompletionRule{type: :pass_auto_grade, min_score: 60}
+        )
+
+      sub =
+        insert(:submission,
+          account_id: student.id,
+          block_id: block.id,
+          score: 0,
+          status: :needs_review
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{sub.id}")
+
+      lv
+      |> form("#grading-form", %{"score" => "75", "feedback" => "Nice work"})
+      |> render_submit(%{"action" => "grade"})
+      |> follow_redirect(conn, ~p"/teaching/grading")
+
+      assert Athena.Repo.get_by(Athena.Learning.BlockProgress,
+               account_id: student.id,
+               block_id: block.id,
+               status: :completed
+             )
+    end
+
+    test "grading an optional (non-gating) quiz question to a perfect score still completes it",
+         %{conn: conn} do
+      student = insert(:account)
+
+      block =
+        insert(:block,
+          type: :quiz_question,
+          content: %{"question_type" => "open"},
+          completion_rule: %Athena.Content.CompletionRule{type: :none}
+        )
+
+      sub =
+        insert(:submission,
+          account_id: student.id,
+          block_id: block.id,
+          score: 0,
+          status: :needs_review
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{sub.id}")
+
+      lv
+      |> form("#grading-form", %{"score" => "100", "feedback" => "Perfect"})
+      |> render_submit(%{"action" => "grade"})
+
+      assert Athena.Repo.get_by(Athena.Learning.BlockProgress,
+               account_id: student.id,
+               block_id: block.id,
+               status: :completed
+             )
+    end
+
+    test "grading an optional quiz question below full marks does not complete it", %{
+      conn: conn
+    } do
+      student = insert(:account)
+
+      block =
+        insert(:block,
+          type: :quiz_question,
+          content: %{"question_type" => "open"},
+          completion_rule: %Athena.Content.CompletionRule{type: :none}
+        )
+
+      sub =
+        insert(:submission,
+          account_id: student.id,
+          block_id: block.id,
+          score: 0,
+          status: :needs_review
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{sub.id}")
+
+      lv
+      |> form("#grading-form", %{"score" => "85", "feedback" => "Good but not perfect"})
+      |> render_submit(%{"action" => "grade"})
+
+      refute Athena.Repo.get_by(Athena.Learning.BlockProgress,
+               account_id: student.id,
+               block_id: block.id
+             )
+    end
+
     test "reject action saves feedback, sets score to 0, status to rejected, and redirects", %{
       conn: conn
     } do

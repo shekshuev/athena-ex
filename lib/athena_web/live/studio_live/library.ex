@@ -325,42 +325,36 @@ defmodule AthenaWeb.StudioLive.Library do
   defp access_badges(assigns) do
     ~H"""
     <div class="flex gap-1 items-center">
-      <span
-        :if={@info.role != :none}
-        class={[
-          "badge badge-xs font-bold uppercase shrink-0",
-          @info.role == :owner && "badge-primary badge-soft",
-          @info.role == :writer && "badge-secondary badge-soft",
-          @info.role == :reader && "badge-accent badge-soft"
-        ]}
-      >
+      <.badge :if={@info.role != :none} tone={role_tone(@info.role)} class="uppercase shrink-0">
         {Atom.to_string(@info.role)}
-      </span>
+      </.badge>
 
-      <span
-        :if={@info.is_public}
-        class="badge badge-xs badge-neutral font-bold uppercase shrink-0"
-      >
+      <.badge :if={@info.is_public} tone="neutral" class="uppercase shrink-0">
         <.icon name="hero-eye" class="size-3 mr-1" />
         {gettext("Public")}
-      </span>
+      </.badge>
 
-      <span
+      <.badge
         :if={!@info.is_public and @info.shares_count > 0 and @info.role == :owner}
-        class="badge badge-xs badge-info badge-soft font-bold shrink-0"
+        tone="info"
+        class="shrink-0"
       >
         <.icon name="hero-users" class="size-3 mr-1" />
         {@info.shares_count}
-      </span>
+      </.badge>
     </div>
     """
   end
 
+  defp role_tone(:owner), do: "primary"
+  defp role_tone(:writer), do: "secondary"
+  defp role_tone(:reader), do: "accent"
+
   defp type_badge(assigns) do
     ~H"""
-    <span class="badge badge-sm font-bold border border-base-200 bg-base-100 text-base-content/70 uppercase tracking-widest text-[10px]">
+    <.badge tone="neutral" class="uppercase tracking-widest text-[10px]">
       {Atom.to_string(@type) |> String.replace("_", " ")}
-    </span>
+    </.badge>
     """
   end
 
@@ -434,7 +428,7 @@ defmodule AthenaWeb.StudioLive.Library do
     <div class={
       @course_library_mode && "fixed inset-0 z-50 bg-base-100 overflow-y-auto p-4 pb-20 sm:p-8"
     }>
-      <div class={@course_library_mode && "max-w-7xl mx-auto"}>
+      <.page_container size="wide">
         <div class="space-y-6">
           <div class="flex justify-between items-center">
             <div class="flex items-center gap-4">
@@ -610,9 +604,9 @@ defmodule AthenaWeb.StudioLive.Library do
 
               <:col :let={{_id, block}} label={gettext("Tags")}>
                 <div class="flex flex-wrap gap-1">
-                  <span :for={tag <- block.tags || []} class="badge badge-xs badge-neutral">
+                  <.badge :for={tag <- block.tags || []} tone="neutral">
                     {tag}
-                  </span>
+                  </.badge>
                   <span :if={(block.tags || []) == []} class="text-xs opacity-40 italic">
                     {gettext("No tags")}
                   </span>
@@ -704,7 +698,7 @@ defmodule AthenaWeb.StudioLive.Library do
             </div>
           </div>
         </div>
-      </div>
+      </.page_container>
 
       <% base_patch =
         if @course_library_mode,

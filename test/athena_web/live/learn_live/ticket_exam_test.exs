@@ -258,4 +258,128 @@ defmodule AthenaWeb.LearnLive.TicketExamTest do
       assert res.score == 100
     end
   end
+
+  describe "Ticket exam completion" do
+    test "finishing a fully auto-graded ticket that passes the gate marks the block completed",
+         %{
+           conn: conn,
+           course: course,
+           section: section,
+           user: user
+         } do
+      block =
+        insert(:block,
+          section: section,
+          type: :ticket_exam,
+          content: %{"slots" => [%{}, %{}]},
+          completion_rule: %Athena.Content.CompletionRule{type: :pass_auto_grade, min_score: 60}
+        )
+
+      questions = [
+        %{
+          "id" => Ecto.UUID.generate(),
+          "type" => "quiz_question",
+          "content" => %{
+            "question_type" => "exact_match",
+            "body" => %{"text" => "What is 2+2?"},
+            "correct_answer" => "4"
+          }
+        },
+        %{
+          "id" => Ecto.UUID.generate(),
+          "type" => "quiz_question",
+          "content" => %{
+            "question_type" => "exact_match",
+            "body" => %{"text" => "What is 3+3?"},
+            "correct_answer" => "6"
+          }
+        }
+      ]
+
+      q1_id = Enum.at(questions, 0)["id"]
+      q2_id = Enum.at(questions, 1)["id"]
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :pending,
+        expires_at:
+          DateTime.utc_now() |> DateTime.add(3600, :second) |> DateTime.truncate(:second),
+        content: %{
+          "type" => "ticket_exam",
+          "started_at" => DateTime.utc_now(),
+          "questions" => questions
+        }
+      )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/ticket/#{block.id}")
+
+      lv |> form("#ticket-quiz-#{q1_id}", %{"answer" => "4"}) |> render_submit()
+      lv |> form("#ticket-quiz-#{q2_id}", %{"answer" => "6"}) |> render_submit()
+
+      lv
+      |> render_click("finish_exam", %{})
+
+      assert Athena.Repo.get_by(Athena.Learning.BlockProgress,
+               account_id: user.id,
+               block_id: block.id,
+               status: :completed
+             )
+    end
+
+    test "finishing a fully auto-graded ticket that fails the gate does not complete the block",
+         %{
+           conn: conn,
+           course: course,
+           section: section,
+           user: user
+         } do
+      block =
+        insert(:block,
+          section: section,
+          type: :ticket_exam,
+          content: %{"slots" => [%{}]},
+          completion_rule: %Athena.Content.CompletionRule{type: :pass_auto_grade, min_score: 60}
+        )
+
+      questions = [
+        %{
+          "id" => Ecto.UUID.generate(),
+          "type" => "quiz_question",
+          "content" => %{
+            "question_type" => "exact_match",
+            "body" => %{"text" => "What is 2+2?"},
+            "correct_answer" => "4"
+          }
+        }
+      ]
+
+      q1_id = Enum.at(questions, 0)["id"]
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :pending,
+        expires_at:
+          DateTime.utc_now() |> DateTime.add(3600, :second) |> DateTime.truncate(:second),
+        content: %{
+          "type" => "ticket_exam",
+          "started_at" => DateTime.utc_now(),
+          "questions" => questions
+        }
+      )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/ticket/#{block.id}")
+
+      lv |> form("#ticket-quiz-#{q1_id}", %{"answer" => "wrong"}) |> render_submit()
+
+      lv
+      |> render_click("finish_exam", %{})
+
+      refute Athena.Repo.get_by(Athena.Learning.BlockProgress,
+               account_id: user.id,
+               block_id: block.id
+             )
+    end
+  end
 end

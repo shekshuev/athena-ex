@@ -858,22 +858,13 @@ defmodule AthenaWeb.LearnLive.Player do
       block.id in socket.assigns.completed_ids ->
         socket
 
-      gate_passed?(block.completion_rule, submission) ->
+      Learning.block_solved?(block, submission) ->
         unlock_next_content(socket, block.id)
 
       true ->
         socket
     end
   end
-
-  @doc false
-  defp gate_passed?(%{type: :submit}, _submission), do: true
-
-  defp gate_passed?(%{type: :pass_auto_grade, min_score: min_score}, submission) do
-    submission.score >= (min_score || 0)
-  end
-
-  defp gate_passed?(_rule, _submission), do: false
 
   @doc false
   defp unlock_next_content(socket, block_id) do
@@ -1007,7 +998,7 @@ defmodule AthenaWeb.LearnLive.Player do
     socket = assign(socket, submissions: submissions)
 
     socket =
-      if gate_passed?(block.completion_rule, submission) do
+      if Learning.block_solved?(block, submission) do
         unlock_next_content(socket, block.id)
       else
         socket
@@ -1226,7 +1217,7 @@ defmodule AthenaWeb.LearnLive.Player do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="max-w-3xl mx-auto py-10 pb-32">
+    <.page_container size="narrow" class="py-10 pb-32">
       <div class="flex items-center justify-between mb-12 border-b border-base-200 pb-6">
         <a
           href={"/learn/courses/#{@course.id}"}
@@ -1485,7 +1476,7 @@ defmodule AthenaWeb.LearnLive.Player do
           current_file_count={@current_file_count_for_upload}
         />
       <% end %>
-    </div>
+    </.page_container>
     """
   end
 

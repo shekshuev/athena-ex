@@ -3,6 +3,7 @@ defmodule AthenaWeb.LearnLive.IndexTest do
   import Phoenix.LiveViewTest
 
   import Athena.Factory
+  alias Athena.Learning.Progress
 
   setup %{conn: conn} do
     student = insert(:account)
@@ -77,6 +78,24 @@ defmodule AthenaWeb.LearnLive.IndexTest do
       assert html =~ "Cyber Squad"
 
       assert html =~ ~s("/learn/courses/#{course.id}")
+    end
+
+    test "shows real progress on a course card instead of a hardcoded 0%", %{
+      conn: conn,
+      student: student
+    } do
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block1 = insert(:block, section: section)
+      insert(:block, section: section)
+
+      insert(:enrollment, account_id: student.id, course_id: course.id)
+      Progress.mark_completed(student.id, block1.id)
+
+      {:ok, _lv, html} = live(conn, ~p"/learn")
+
+      assert html =~ "50%"
+      refute html =~ "--value:0;"
     end
   end
 end

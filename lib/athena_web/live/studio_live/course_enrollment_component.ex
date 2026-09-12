@@ -16,6 +16,7 @@ defmodule AthenaWeb.StudioLive.CourseEnrollmentComponent do
       |> assign(search_form: to_form(%{"query" => ""}))
       |> assign(search_results: [])
       |> assign(error_msg: nil)
+      |> assign(enrollment_to_remove: nil)
       |> load_enrollments(course)
 
     {:ok, socket}
@@ -70,18 +71,33 @@ defmodule AthenaWeb.StudioLive.CourseEnrollmentComponent do
     end
   end
 
-  def handle_event("remove_enrollment", %{"id" => id}, socket) do
+  def handle_event("remove_enrollment_click", %{"id" => id}, socket) do
     enrollment = Enum.find(socket.assigns.enrollments, &(&1.id == id))
+    {:noreply, assign(socket, :enrollment_to_remove, enrollment)}
+  end
 
-    case enrollment && Learning.delete_enrollment(socket.assigns.current_user, enrollment) do
+  def handle_event("cancel_remove_enrollment", _params, socket) do
+    {:noreply, assign(socket, :enrollment_to_remove, nil)}
+  end
+
+  def handle_event(
+        "confirm_remove_enrollment",
+        _params,
+        %{assigns: %{enrollment_to_remove: enrollment}} = socket
+      ) do
+    case Learning.delete_enrollment(socket.assigns.current_user, enrollment) do
       {:ok, _} ->
         {:noreply,
          socket
          |> load_enrollments(socket.assigns.course)
+         |> assign(:enrollment_to_remove, nil)
          |> put_flash(:info, gettext("Access revoked."))}
 
       _ ->
-        {:noreply, put_flash(socket, :error, gettext("Failed to revoke access."))}
+        {:noreply,
+         socket
+         |> assign(:enrollment_to_remove, nil)
+         |> put_flash(:error, gettext("Failed to revoke access."))}
     end
   end
 
@@ -141,17 +157,27 @@ defmodule AthenaWeb.StudioLive.CourseEnrollmentComponent do
           <span class="font-bold">
             {if enrollment.account, do: enrollment.account.login, else: gettext("Unknown")}
           </span>
-          <.button
+          <.icon_button
             type="button"
-            class="btn btn-xs btn-ghost text-error"
-            phx-click="remove_enrollment"
+            phx-click="remove_enrollment_click"
             phx-value-id={enrollment.id}
             phx-target={@myself}
-          >
-            <.icon name="hero-x-mark" class="size-4" />
-          </.button>
+            icon="hero-x-mark"
+            label={gettext("Remove")}
+            variant="danger"
+          />
         </div>
       </div>
+
+      <.modal
+        id={"#{@id}-remove-enrollment-modal"}
+        show={@enrollment_to_remove != nil}
+        title={gettext("Revoke this student's access?")}
+        on_cancel={JS.push("cancel_remove_enrollment", target: @myself)}
+        on_confirm={JS.push("confirm_remove_enrollment", target: @myself)}
+        confirm_label={gettext("Revoke")}
+        danger={true}
+      />
     </div>
     """
   end

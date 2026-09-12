@@ -232,16 +232,17 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
                     <span :if={entry.progress > 0} class="text-sm font-black text-primary">
                       {entry.progress}%
                     </span>
-                    <button
+                    <.icon_button
                       type="button"
                       phx-click="cancel_entry"
                       phx-value-ref={entry.ref}
                       phx-target={@myself}
-                      class="btn btn-ghost btn-sm btn-square min-h-9 h-9 w-9 text-error hover:bg-error/10"
-                      title={gettext("Cancel")}
-                    >
-                      <.icon name="hero-x-mark" class="size-5" />
-                    </button>
+                      icon="hero-x-mark"
+                      label={gettext("Cancel")}
+                      variant="danger"
+                      size="sm"
+                      class="min-h-9 h-9 w-9"
+                    />
                   </div>
 
                   <div
@@ -281,29 +282,30 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
             </div>
 
             <div class="flex flex-col-reverse sm:flex-row justify-end gap-3 mt-8 pt-6 border-t border-base-200">
-              <button type="button" phx-click="cancel_media_upload" class="btn btn-outline">
+              <.button type="button" phx-click="cancel_media_upload">
                 {gettext("Cancel")}
-              </button>
+              </.button>
 
-              <button
+              <.button
                 :if={has_errors}
                 type="button"
+                variant="warning"
                 phx-click="clear_all_entries"
                 phx-target={@myself}
-                class="btn btn-warning btn-outline"
               >
                 <.icon name="hero-arrow-path" class="size-4 mr-1" />
                 {gettext("Clear Selection")}
-              </button>
+              </.button>
 
-              <button
+              <.button
                 type="submit"
-                class="btn btn-primary phx-submit-loading:opacity-70"
+                variant="primary"
+                class="phx-submit-loading:opacity-70"
                 disabled={not has_entries or is_uploading or has_errors}
               >
                 <.icon name="hero-arrow-up-tray" class="size-4 mr-2" />
                 {if is_uploading, do: gettext("Uploading..."), else: gettext("Upload Files")}
-              </button>
+              </.button>
             </div>
           </form>
         </div>

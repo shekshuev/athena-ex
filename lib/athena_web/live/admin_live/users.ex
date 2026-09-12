@@ -168,7 +168,7 @@ defmodule AthenaWeb.AdminLive.Users do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
+    <.page_container size="wide" class="space-y-6">
       <div class="flex justify-between items-center">
         <div>
           <h1 class="text-2xl font-display font-bold text-base-content">{gettext("Users")}</h1>
@@ -178,8 +178,8 @@ defmodule AthenaWeb.AdminLive.Users do
           <.button
             :if={Identity.can?(@current_user, "system.cache")}
             type="button"
+            variant="warning"
             phx-click="clear_cache"
-            class="btn btn-outline btn-warning"
           >
             <.icon name="hero-arrow-path" class="size-5" />
             {gettext("Clear Cache")}
@@ -227,7 +227,9 @@ defmodule AthenaWeb.AdminLive.Users do
           {if acc.profile, do: Profile.full_name(acc.profile), else: "—"}
         </:col>
         <:col :let={{_id, acc}} label={gettext("Status")} sort="status">
-          <.status_badge status={acc.status} />
+          <.badge tone={account_status_tone(acc.status)}>
+            {Atom.to_string(acc.status) |> String.replace("_", " ") |> String.capitalize()}
+          </.badge>
         </:col>
         <:col :let={{_id, acc}} label={gettext("Role")}>
           <div class="badge badge-outline">{acc.role.name}</div>
@@ -237,25 +239,31 @@ defmodule AthenaWeb.AdminLive.Users do
         </:col>
         <:action :let={{_id, acc}}>
           <div class="flex justify-end gap-2">
-            <.button
+            <.icon_button
               :if={Identity.can?(@current_user, "users.update")}
               patch={~p"/admin/users/#{acc.id}/edit?#{build_query_params(assigns, %{})}"}
-              class="btn btn-ghost btn-xs btn-square"
-            >
-              <.icon name="hero-pencil-square" class="size-4" />
-            </.button>
-            <.button
+              icon="hero-pencil-square"
+              label={gettext("Edit")}
+            />
+            <.icon_button
               :if={Identity.can?(@current_user, "users.delete")}
               type="button"
               phx-click="delete_click"
               phx-value-id={acc.id}
-              class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
-            >
-              <.icon name="hero-trash" class="size-4" />
-            </.button>
+              icon="hero-trash"
+              label={gettext("Delete")}
+              variant="danger"
+            />
           </div>
         </:action>
       </.table>
+
+      <.empty_state
+        :if={@meta.total_count == 0}
+        icon="hero-users"
+        title={gettext("No users yet")}
+        description={gettext("Create one to get started.")}
+      />
 
       <div class="flex justify-end">
         <.pagination meta={@meta} path_fn={path_fn} />
@@ -292,22 +300,13 @@ defmodule AthenaWeb.AdminLive.Users do
         on_cancel={JS.push("cancel_delete")}
         on_confirm={JS.push("confirm_delete")}
       />
-    </div>
+    </.page_container>
     """
   end
 
-  defp status_badge(assigns) do
-    ~H"""
-    <span class={[
-      "badge badge-sm font-bold",
-      @status == :active && "badge-success badge-soft",
-      @status == :blocked && "badge-error badge-soft",
-      @status == :temporary_blocked && "badge-warning badge-soft"
-    ]}>
-      {Atom.to_string(@status) |> String.replace("_", " ") |> String.capitalize()}
-    </span>
-    """
-  end
+  defp account_status_tone(:active), do: "success"
+  defp account_status_tone(:blocked), do: "error"
+  defp account_status_tone(:temporary_blocked), do: "warning"
 
   @doc false
   defp build_query_params(assigns, overrides) do

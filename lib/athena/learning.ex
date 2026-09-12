@@ -25,6 +25,7 @@ defmodule Athena.Learning do
   defdelegate list_instructors(user, params \\ %{}), to: Instructors
   defdelegate search_instructors(user, search_query, limit \\ 10), to: Instructors
   defdelegate get_instructor(user, id), to: Instructors
+  defdelegate get_instructor_by_account(account_id), to: Instructors
   defdelegate create_instructor(user, attrs), to: Instructors
   defdelegate update_instructor(user, instructor, attrs), to: Instructors
   defdelegate delete_instructor(user, instructor), to: Instructors
@@ -64,8 +65,24 @@ defmodule Athena.Learning do
 
   def update_submission(user, submission, attrs) do
     Submissions.update_submission(user, submission, attrs)
+    |> check_completion()
     |> notify_submission_subscribers()
   end
+
+  # Grading (this is the ACL-gated, teacher-facing update — as opposed to
+  # system_update_submission/2, which also serves ~15 unrelated internal
+  # transitions like :processing/:pending and test-code runs) may be the
+  # first time a block's real, human-reviewed score exists. Recheck
+  # completion here so blocks that need manual review — file_assignment
+  # gates, or an exam a teacher grades by hand — actually complete once
+  # they're graded, instead of only ever being checked once, synchronously,
+  # back when the submission was first created and had no score yet.
+  defp check_completion({:ok, submission} = result) do
+    Progress.maybe_complete_from_submission(submission)
+    result
+  end
+
+  defp check_completion(result), do: result
 
   def system_update_submission(submission, attrs) do
     Submissions.system_update_submission(submission, attrs)
@@ -137,6 +154,12 @@ defmodule Athena.Learning do
 
   defdelegate mark_completed(account_id, block_id, cohort_id \\ nil), to: Progress
   defdelegate completed_block_ids(account_id, section_id, cohort_id \\ nil), to: Progress
+  defdelegate last_activity(account_id), to: Progress
+  defdelegate course_progress(account_id, course_id, cohort_id \\ nil), to: Progress
+  defdelegate course_progress_batch(account_id, enrollments), to: Progress
+  defdelegate team_id_for_enrollment(enrollment), to: Progress
+  defdelegate block_solved?(block, submission), to: Progress
+  defdelegate maybe_complete_from_submission(submission), to: Progress
 
   defdelegate accessible_section_ids(
                 user,
@@ -151,6 +174,7 @@ defmodule Athena.Learning do
 
   defdelegate get_student_overrides(account_id, course_id, cohort_id), to: Schedules
   defdelegate list_cohort_course_overrides(cohort_id, course_id), to: Schedules
+  defdelegate list_upcoming_deadlines(account_id, opts \\ []), to: Schedules
   defdelegate set_override(user, cohort, course, attrs), to: Schedules
   defdelegate clear_override(user, cohort, course, resource_type, resource_id), to: Schedules
 

@@ -36,6 +36,9 @@ defmodule Athena do
       Learning.CohortInstructor,
       Learning.Submission,
       Learning.SubmissionContent,
-      Execution
+      Execution,
+      Gamification,
+      Gamification.Badge,
+      Gamification.Sprint
     ]
 end

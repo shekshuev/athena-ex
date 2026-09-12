@@ -157,7 +157,7 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
+    <.page_container size="wide" class="space-y-6">
       <div class="flex justify-between items-center">
         <div>
           <h1 class="text-2xl font-display font-bold text-base-content">{gettext("Cohorts")}</h1>
@@ -220,36 +220,38 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
         </:col>
         <:action :let={{_id, cohort}}>
           <div class="flex justify-end gap-2">
-            <.button
+            <.icon_button
               navigate={~p"/teaching/cohorts/#{cohort.id}"}
-              class="btn btn-ghost btn-xs btn-square"
-              title={gettext("View Details")}
-            >
-              <.icon name="hero-eye" class="size-4" />
-            </.button>
+              icon="hero-eye"
+              label={gettext("View Details")}
+            />
 
-            <.button
+            <.icon_button
               :if={Identity.can?(@current_user, "cohorts.update", cohort)}
               patch={~p"/teaching/cohorts/#{cohort.id}/edit?#{build_query_params(assigns, %{})}"}
-              class="btn btn-ghost btn-xs btn-square"
-              title={gettext("Edit")}
-            >
-              <.icon name="hero-pencil-square" class="size-4" />
-            </.button>
+              icon="hero-pencil-square"
+              label={gettext("Edit")}
+            />
 
-            <.button
+            <.icon_button
               :if={Identity.can?(@current_user, "cohorts.delete", cohort)}
               type="button"
               phx-click="delete_click"
               phx-value-id={cohort.id}
-              class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
-              title={gettext("Delete")}
-            >
-              <.icon name="hero-trash" class="size-4" />
-            </.button>
+              icon="hero-trash"
+              label={gettext("Delete")}
+              variant="danger"
+            />
           </div>
         </:action>
       </.table>
+
+      <.empty_state
+        :if={@meta.total_count == 0}
+        icon="hero-user-group"
+        title={gettext("No cohorts yet")}
+        description={gettext("Create one to get started.")}
+      />
 
       <div class="flex justify-end">
         <.pagination meta={@meta} path_fn={path_fn} />
@@ -286,7 +288,7 @@ defmodule AthenaWeb.TeachingLive.Cohorts do
         on_cancel={JS.push("cancel_delete")}
         on_confirm={JS.push("confirm_delete")}
       />
-    </div>
+    </.page_container>
     """
   end
 

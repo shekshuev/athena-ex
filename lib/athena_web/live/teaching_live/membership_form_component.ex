@@ -119,14 +119,14 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
                 <span class="font-bold">{@selected_account.login}</span>
               </div>
 
-              <.button
+              <.icon_button
                 type="button"
                 phx-click="clear_account"
                 phx-target={@myself}
-                class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/20"
-              >
-                <.icon name="hero-x-mark" class="size-4" />
-              </.button>
+                icon="hero-x-mark"
+                label={gettext("Clear")}
+                variant="danger"
+              />
             </div>
           <% else %>
             <div class="relative">
@@ -172,14 +172,10 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
         </div>
 
         <div class="flex justify-end gap-3 mt-4">
-          <.button
-            type="button"
-            class="btn btn-ghost"
-            phx-click={JS.patch(@patch)}
-          >
+          <.button type="button" variant="ghost" phx-click={JS.patch(@patch)}>
             {gettext("Cancel")}
           </.button>
-          <.button type="submit" class="btn btn-primary" disabled={is_nil(@selected_account)}>
+          <.button type="submit" variant="primary" disabled={is_nil(@selected_account)}>
             {gettext("Add Student")}
           </.button>
         </div>

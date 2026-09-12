@@ -40,6 +40,29 @@ defmodule Athena.Learning.Schedules do
   end
 
   @doc """
+  Lists upcoming lock deadlines across every cohort the account belongs to.
+
+  Access to this LMS isn't 24/7, so students need to see *when* something
+  locks, not just that a due date exists somewhere in a syllabus. Powers the
+  dashboard's "coming up" widget.
+  """
+  @spec list_upcoming_deadlines(String.t(), keyword()) :: [CohortSchedule.t()]
+  def list_upcoming_deadlines(account_id, opts \\ []) do
+    limit_n = Keyword.get(opts, :limit, 5)
+    now = DateTime.utc_now()
+
+    cohort_ids_query =
+      from cm in CohortMembership, where: cm.account_id == ^account_id, select: cm.cohort_id
+
+    Repo.all(
+      from cs in CohortSchedule,
+        where: cs.cohort_id in subquery(cohort_ids_query) and cs.lock_at > ^now,
+        order_by: [asc: cs.lock_at],
+        limit: ^limit_n
+    )
+  end
+
+  @doc """
   Creates or updates an override for a specific resource.
   Enforces ACL: user must have rights to manage the cohort or the course.
   """

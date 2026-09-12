@@ -181,7 +181,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
 
       <div class="flex-1 overflow-y-auto bg-base-200 p-8 relative">
         <%= if @active_block do %>
-          <div class="max-w-4xl mx-auto">
+          <.page_container size="narrow">
             <.link
               patch={
                 ~p"/teaching/cohorts/#{@cohort.id}/access/#{@course.id}?section_id=#{@active_section.id}"
@@ -202,10 +202,10 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
               override={get_override(@overrides, :block, @active_block.id)}
               global_rules={@active_block.access_rules}
             />
-          </div>
+          </.page_container>
         <% else %>
           <%= if @active_section do %>
-            <div class="max-w-4xl mx-auto">
+            <.page_container size="narrow">
               <h1 class="text-3xl font-black mb-8">{@active_section.title}</h1>
 
               <.override_form
@@ -260,7 +260,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
                   <% end %>
                 </div>
               </div>
-            </div>
+            </.page_container>
           <% end %>
         <% end %>
       </div>

@@ -31,9 +31,28 @@ defmodule Athena.Learning.Submissions do
     query =
       Submission
       |> scope_submissions(user, "grading.read")
+      |> maybe_exclude_daily_challenge(params)
 
     Flop.validate_and_run(query, params, for: Submission)
   end
+
+  # Daily-challenge re-attempts (see Athena.Gamification.DailyChallenges) are
+  # hidden from the default grading list so they don't clutter review of
+  # first-time work — visible only when a caller explicitly filters on
+  # `origin` (e.g. a teacher who wants to see them).
+  defp maybe_exclude_daily_challenge(query, params) do
+    if filters_on_origin?(params) do
+      query
+    else
+      where(query, [s], s.origin != :daily_challenge)
+    end
+  end
+
+  defp filters_on_origin?(%{"filters" => filters}) when is_list(filters) do
+    Enum.any?(filters, &(Map.get(&1, "field") == "origin"))
+  end
+
+  defp filters_on_origin?(_params), do: false
 
   @doc """
   Gets a single submission by its ID. Enforces grading.read ACL through custom scoping.

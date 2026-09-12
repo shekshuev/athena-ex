@@ -532,7 +532,7 @@ defmodule AthenaWeb.LearnLive.Exam do
     ~H"""
     <div id="exam-container" class="flex flex-col min-h-screen">
       <header class="bg-base-100 border-b border-base-300">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <.page_container size="wide" class="px-4 sm:px-6 lg:px-8">
           <div class="flex items-center justify-between h-16">
             <div class="flex items-center gap-3">
               <.icon name="hero-academic-cap" class="size-6 text-primary" />
@@ -564,10 +564,10 @@ defmodule AthenaWeb.LearnLive.Exam do
               </button>
             </div>
           </div>
-        </div>
+        </.page_container>
 
         <div class="border-t border-base-300 bg-base-100">
-          <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+          <.page_container size="wide" class="px-4 sm:px-6 lg:px-8 py-3">
             <div class="flex items-center gap-2 overflow-x-auto scrollbar-thin scrollbar-thumb-base-300 scrollbar-track-transparent pb-1">
               <%= for {q, index} <- Enum.with_index(@questions) do %>
                 <button
@@ -587,7 +587,7 @@ defmodule AthenaWeb.LearnLive.Exam do
                 </button>
               <% end %>
             </div>
-          </div>
+          </.page_container>
         </div>
       </header>
 
@@ -910,11 +910,17 @@ defmodule AthenaWeb.LearnLive.Exam do
     {:ok, pending_sub} =
       Learning.system_update_submission(submission, %{"status" => initial_status})
 
-    if initial_status == "pending" do
-      eval_results = Learning.evaluate_sync(pending_sub)
+    final_sub =
+      if initial_status == "pending" do
+        eval_results = Learning.evaluate_sync(pending_sub)
 
-      {:ok, _} = Learning.system_update_submission(pending_sub, eval_results)
-    end
+        {:ok, graded_sub} = Learning.system_update_submission(pending_sub, eval_results)
+        graded_sub
+      else
+        pending_sub
+      end
+
+    Learning.maybe_complete_from_submission(final_sub)
 
     broadcast_team_progress(socket.assigns.team_id, course_id)
 

@@ -131,18 +131,18 @@ defmodule AthenaWeb.StudioLive.CharacterFormComponent do
         </.form>
       </div>
       <div class="shrink-0 p-6 border-t border-base-200 bg-base-100 flex justify-end gap-3">
-        <.link :if={@patch} patch={@patch} class="btn btn-ghost">{gettext("Cancel")}</.link>
-        <button :if={!@patch} type="button" phx-click={@on_cancel} class="btn btn-ghost">
+        <.button :if={@patch} variant="ghost" patch={@patch}>{gettext("Cancel")}</.button>
+        <.button :if={!@patch} type="button" variant="ghost" phx-click={@on_cancel}>
           {gettext("Cancel")}
-        </button>
-        <button
+        </.button>
+        <.button
           type="submit"
           form="character-form"
-          class="btn btn-primary"
+          variant="primary"
           phx-disable-with={gettext("Saving...")}
         >
           {gettext("Save")}
-        </button>
+        </.button>
       </div>
     </div>
     """

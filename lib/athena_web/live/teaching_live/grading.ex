@@ -210,7 +210,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="max-w-7xl mx-auto space-y-6 pb-20">
+    <.page_container size="wide" class="space-y-6 pb-20">
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 class="text-2xl font-display font-bold text-base-content">
@@ -359,7 +359,9 @@ defmodule AthenaWeb.TeachingLive.Grading do
           </:col>
 
           <:col :let={{_id, sub}} label={gettext("Status")} sort="status">
-            <.status_badge status={sub.status} />
+            <.badge tone={status_tone(sub.status)} class="tracking-wide shrink-0">
+              {Atom.to_string(sub.status) |> String.replace("_", " ") |> String.capitalize()}
+            </.badge>
           </:col>
 
           <:col :let={{_id, sub}} label={gettext("Score")} sort="score">
@@ -425,29 +427,24 @@ defmodule AthenaWeb.TeachingLive.Grading do
       <div class="flex justify-end mt-4">
         <.pagination :if={@has_submissions} meta={@meta} path_fn={path_fn} />
       </div>
-    </div>
+    </.page_container>
     """
   end
 
-  defp status_badge(assigns) do
-    ~H"""
-    <span class={[
-      "badge badge-sm font-bold tracking-wide shrink-0",
-      @status in [:graded, :accepted] && "badge-success badge-soft",
-      @status == :needs_review && "badge-warning badge-soft",
-      @status in [
-        :rejected,
-        :wrong_answer,
-        :compilation_error,
-        :runtime_error,
-        :time_limit_exceeded,
-        :memory_limit_exceeded,
-        :system_error
-      ] && "badge-error badge-soft",
-      @status in [:pending, :processing] && "badge-neutral badge-soft"
-    ]}>
-      {Atom.to_string(@status) |> String.replace("_", " ") |> String.capitalize()}
-    </span>
-    """
-  end
+  defp status_tone(status) when status in [:graded, :accepted], do: "success"
+  defp status_tone(:needs_review), do: "warning"
+
+  defp status_tone(status)
+       when status in [
+              :rejected,
+              :wrong_answer,
+              :compilation_error,
+              :runtime_error,
+              :time_limit_exceeded,
+              :memory_limit_exceeded,
+              :system_error
+            ],
+       do: "error"
+
+  defp status_tone(status) when status in [:pending, :processing], do: "neutral"
 end

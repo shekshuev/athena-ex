@@ -94,24 +94,58 @@ defmodule AthenaWeb.CoreComponents do
   @doc """
   Renders a button with navigation support.
 
+  `variant` covers the button roles actually used across the app (rather
+  than every call site hand-assembling its own `btn-*` combination):
+  `primary` (main CTA), `ghost` (secondary text action, e.g. "Cancel"),
+  `danger` (solid destructive CTA), `danger_outline` (outlined destructive
+  CTA), `warning` (outlined warning action). No variant falls back to
+  `btn-outline`, same as before. `size` covers the common `btn-sm`/`btn-xs`
+  cases; the default (`nil`) leaves the daisyUI default size.
+
+  When `variant` or `size` is given, `class` is appended alongside the
+  derived classes (for a one-off addition like a hover animation) rather
+  than replacing them. Without either, `class` behaves as a full override,
+  same as before — this keeps older call sites that pass a complete
+  `class="btn ..."` string untouched.
+
   ## Examples
 
       <.button>Send!</.button>
       <.button phx-click="go" variant="primary">Send!</.button>
       <.button navigate={~p"/"}>Home</.button>
+      <.button variant="ghost" phx-click="cancel">Cancel</.button>
+      <.button variant="danger" size="sm" phx-click="delete">Delete</.button>
+      <.button variant="primary" size="sm" class="group-hover:pr-3">Enter</.button>
   """
   attr :rest, :global, include: ~w(href navigate patch method download name value disabled form)
   attr :class, :any
-  attr :variant, :string, values: ~w(primary)
+  attr :variant, :string, values: ~w(primary ghost danger danger_outline warning)
+  attr :size, :string, values: ~w(xs sm lg)
   slot :inner_block, required: true
 
   def button(%{rest: rest} = assigns) do
-    variants = %{"primary" => "btn-primary", nil => "btn-outline"}
+    variants = %{
+      "primary" => "btn-primary",
+      "ghost" => "btn-ghost",
+      "danger" => "btn-error",
+      "danger_outline" => "btn-error btn-outline",
+      "warning" => "btn-warning btn-outline",
+      nil => "btn-outline"
+    }
+
+    sizes = %{"xs" => "btn-xs", "sm" => "btn-sm", "lg" => "btn-lg", nil => nil}
 
     assigns =
-      assign_new(assigns, :class, fn ->
-        ["btn", Map.fetch!(variants, assigns[:variant])]
-      end)
+      if assigns[:variant] || assigns[:size] do
+        assign(assigns, :class, [
+          "btn",
+          Map.fetch!(variants, assigns[:variant]),
+          Map.fetch!(sizes, assigns[:size]),
+          assigns[:class]
+        ])
+      else
+        assign_new(assigns, :class, fn -> ["btn", Map.fetch!(variants, nil)] end)
+      end
 
     if rest[:href] || rest[:navigate] || rest[:patch] do
       ~H"""
@@ -126,6 +160,222 @@ defmodule AthenaWeb.CoreComponents do
       </button>
       """
     end
+  end
+
+  @doc """
+  Renders an icon-only action button — the "edit"/"delete" cluster used in
+  table rows. One shared shape instead of the half-dozen ad-hoc class
+  combinations (different sizes, different hover treatments) previously
+  scattered across CRUD list pages.
+
+  `variant="primary"` is for the rare case where one icon action in a
+  cluster is the primary way into the row (e.g. "open" next to plain
+  "edit"/"share" icons) — everything else should stay `neutral`.
+
+  ## Examples
+
+      <.icon_button icon="hero-pencil-square" label="Edit" patch={~p"/admin/users/\#{user.id}/edit"} />
+      <.icon_button icon="hero-trash" label="Delete" variant="danger" phx-click="delete" phx-value-id={user.id} />
+  """
+  attr :rest, :global,
+    include: ~w(href navigate patch phx-click phx-value-id type disabled data-confirm)
+
+  attr :variant, :string, values: ~w(neutral danger primary), default: "neutral"
+  attr :size, :string, values: ~w(xs sm), default: "xs"
+  attr :icon, :string, required: true
+
+  attr :label, :string,
+    required: true,
+    doc: "accessible label, rendered as both aria-label and a hover title"
+
+  attr :class, :any, default: nil
+
+  def icon_button(%{rest: rest} = assigns) do
+    variants = %{
+      "neutral" => "btn-ghost",
+      "danger" => "btn-ghost text-error hover:bg-error/10",
+      "primary" => "btn-primary btn-soft"
+    }
+
+    assigns =
+      assign(assigns, :class, [
+        "btn btn-square",
+        Map.fetch!(variants, assigns.variant),
+        assigns.size == "xs" && "btn-xs",
+        assigns.size == "sm" && "btn-sm",
+        assigns.class
+      ])
+
+    if rest[:href] || rest[:navigate] || rest[:patch] do
+      ~H"""
+      <.link class={@class} aria-label={@label} title={@label} {@rest}>
+        <.icon name={@icon} class="size-4" />
+      </.link>
+      """
+    else
+      ~H"""
+      <button type="button" class={@class} aria-label={@label} title={@label} {@rest}>
+        <.icon name={@icon} class="size-4" />
+      </button>
+      """
+    end
+  end
+
+  @doc """
+  Renders a colored pill — status indicators and tag/type labels alike.
+  One shared shape instead of the half-dozen independently hand-rolled
+  "status → color" implementations previously scattered across the app.
+
+  ## Examples
+
+      <.badge tone="success">Active</.badge>
+      <.badge tone="error">Rejected</.badge>
+  """
+  attr :tone, :string,
+    values: ~w(success warning error neutral info primary secondary accent),
+    default: "neutral"
+
+  attr :class, :any, default: nil
+  slot :inner_block, required: true
+
+  def badge(assigns) do
+    ~H"""
+    <span class={["badge badge-sm font-bold", "badge-#{@tone}", "badge-soft", @class]}>
+      {render_slot(@inner_block)}
+    </span>
+    """
+  end
+
+  @doc """
+  Renders a consistent "nothing here yet" placeholder — icon, title,
+  optional description — replacing the several structurally different
+  empty-state treatments previously used across the app. Also meant to be
+  dropped in next to `<.table>` when `@rows == []`, which otherwise renders
+  a silently-blank table body.
+
+  ## Examples
+
+      <.empty_state
+        :if={@courses == []}
+        icon="hero-book-open"
+        title="No courses yet"
+        description="Once you join a cohort, it will show up here."
+      />
+  """
+  attr :icon, :string, default: "hero-inbox"
+  attr :title, :string, required: true
+  attr :description, :string, default: nil
+  attr :class, :any, default: nil
+  slot :inner_block
+
+  def empty_state(assigns) do
+    ~H"""
+    <div class={["text-center py-16 px-6", @class]}>
+      <.icon name={@icon} class="size-14 text-base-content/20 mb-4 mx-auto" />
+      <h3 class="text-lg font-display font-bold text-base-content">{@title}</h3>
+      <p :if={@description} class="text-base-content/60 mt-2 max-w-sm mx-auto text-sm">
+        {@description}
+      </p>
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
+  @doc """
+  Renders a "number + label" metric — one shared shape instead of the
+  several unrelated ad-hoc markups previously used for the same idea (an
+  XP/level pill in a header, achievement numbers on a profile, mini-stat
+  cards on a dashboard).
+
+  ## Examples
+
+      <.stat value={@total_xp} label="XP" icon="hero-star" />
+      <.stat value={@level.level} label="Level" size="lg" />
+  """
+  attr :value, :any, required: true
+  attr :label, :string, required: true
+  attr :size, :string, values: ~w(sm lg), default: "sm"
+  attr :icon, :string, default: nil
+  attr :class, :any, default: nil
+
+  def stat(assigns) do
+    ~H"""
+    <div class={["flex flex-col", @class]}>
+      <div class="flex items-center gap-1.5">
+        <.icon
+          :if={@icon}
+          name={@icon}
+          class={["text-primary shrink-0", @size == "lg" && "size-6", @size == "sm" && "size-4"]}
+        />
+        <span class={[
+          "font-display font-black",
+          @size == "lg" && "text-3xl",
+          @size == "sm" && "text-lg"
+        ]}>
+          {@value}
+        </span>
+      </div>
+      <span class="text-xs font-bold text-base-content/50 uppercase tracking-widest">
+        {@label}
+      </span>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders the outer content-width wrapper for a page — three named tiers
+  instead of the five different `max-w-*` values (plus several pages with
+  no limit at all) previously scattered across the app. The layout's
+  `<main>` already applies consistent outer padding
+  (`layouts/dashboard.html.heex`); this only controls how wide the content
+  itself gets, centered via `mx-auto`.
+
+  - `narrow` (`max-w-4xl`) — reading/single-task screens (course player,
+    course overview, leaderboard, sprints).
+  - `standard` (`max-w-6xl`) — the main app pages (dashboard, My Learning).
+  - `wide` (`max-w-7xl`) — data-dense screens (grading, the content
+    library, CRUD tables).
+
+  Any other utility classes a page needs (vertical spacing, padding) go in
+  `class`, same as before — only the width mechanism is being unified.
+
+  ## Examples
+
+      <.page_container size="wide" class="space-y-6 pb-20">
+        ...
+      </.page_container>
+  """
+  attr :size, :string, values: ~w(narrow standard wide), default: "standard"
+  attr :class, :any, default: nil
+  slot :inner_block, required: true
+
+  def page_container(assigns) do
+    sizes = %{"narrow" => "max-w-4xl", "standard" => "max-w-6xl", "wide" => "max-w-7xl"}
+    assigns = assign(assigns, :size_class, Map.fetch!(sizes, assigns.size))
+
+    ~H"""
+    <div class={[@size_class, "mx-auto", @class]}>
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
+  @doc """
+  Renders the canonical "operation in progress" indicator — a spinning
+  arrow-path icon. The one loading treatment the app should use, instead of
+  mixing this with daisyUI's `loading` component or a static, non-animated
+  icon that looks the same as an inert action button.
+
+  ## Examples
+
+      <.spinner :if={@checking?} />
+  """
+  attr :class, :any, default: "size-4"
+
+  def spinner(assigns) do
+    ~H"""
+    <.icon name="hero-arrow-path" class={["motion-safe:animate-spin", @class]} />
+    """
   end
 
   @doc """

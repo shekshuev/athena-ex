@@ -259,36 +259,30 @@ defmodule AthenaWeb.StudioLive.Courses do
   defp access_badges(assigns) do
     ~H"""
     <div class="flex gap-1 items-center">
-      <span
-        :if={@info.role != :none}
-        class={[
-          "badge badge-xs font-bold uppercase shrink-0",
-          @info.role == :owner && "badge-primary badge-soft",
-          @info.role == :writer && "badge-secondary badge-soft",
-          @info.role == :reader && "badge-accent badge-soft"
-        ]}
-      >
+      <.badge :if={@info.role != :none} tone={role_tone(@info.role)} class="uppercase shrink-0">
         {Atom.to_string(@info.role)}
-      </span>
+      </.badge>
 
-      <span
-        :if={@info.is_public}
-        class="badge badge-xs badge-neutral font-bold uppercase shrink-0"
-      >
+      <.badge :if={@info.is_public} tone="neutral" class="uppercase shrink-0">
         <.icon name="hero-globe-alt" class="size-3 mr-1" />
         {gettext("Public")}
-      </span>
+      </.badge>
 
-      <span
+      <.badge
         :if={!@info.is_public and @info.shares_count > 0 and @info.role == :owner}
-        class="badge badge-xs badge-info badge-soft font-bold shrink-0"
+        tone="info"
+        class="shrink-0"
       >
         <.icon name="hero-users" class="size-3 mr-1" />
         {@info.shares_count}
-      </span>
+      </.badge>
     </div>
     """
   end
+
+  defp role_tone(:owner), do: "primary"
+  defp role_tone(:writer), do: "secondary"
+  defp role_tone(:reader), do: "accent"
 
   @doc false
   defp build_query_params(assigns, overrides) do
@@ -319,7 +313,7 @@ defmodule AthenaWeb.StudioLive.Courses do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
+    <.page_container size="wide" class="space-y-6">
       <div class="flex justify-between items-center">
         <div>
           <h1 class="text-2xl font-display font-bold text-base-content">{gettext("Courses")}</h1>
@@ -371,7 +365,9 @@ defmodule AthenaWeb.StudioLive.Courses do
           </span>
         </:col>
         <:col :let={{_id, course}} label={gettext("Status")} sort="status">
-          <.status_badge status={course.status} />
+          <.badge tone={status_tone(course.status)}>
+            {Atom.to_string(course.status) |> String.capitalize()}
+          </.badge>
         </:col>
 
         <:col :let={{_id, course}} label={gettext("Owner")}>
@@ -390,62 +386,58 @@ defmodule AthenaWeb.StudioLive.Courses do
           <% can_view = can_edit or info.role == :reader or info.is_public %>
 
           <div class="flex justify-end gap-2">
-            <.button
+            <.icon_button
               :if={can_view}
               navigate={~p"/studio/courses/#{course.id}/builder"}
-              class="btn btn-primary btn-xs btn-square btn-soft"
-              title={if can_edit, do: gettext("Open Builder"), else: gettext("View Course")}
-            >
-              <.icon
-                name={if can_edit, do: "hero-wrench-screwdriver", else: "hero-eye"}
-                class="size-4"
-              />
-            </.button>
+              variant="primary"
+              icon={if can_edit, do: "hero-wrench-screwdriver", else: "hero-eye"}
+              label={if can_edit, do: gettext("Open Builder"), else: gettext("View Course")}
+            />
 
-            <.button
+            <.icon_button
               :if={can_edit}
               patch={~p"/studio/courses/#{course.id}/edit?#{build_query_params(assigns, %{})}"}
-              class="btn btn-ghost btn-xs btn-square"
-              title={gettext("Edit Settings")}
-            >
-              <.icon name="hero-pencil-square" class="size-4" />
-            </.button>
+              icon="hero-pencil-square"
+              label={gettext("Edit Settings")}
+            />
 
-            <.button
+            <.icon_button
               :if={can_edit}
               type="button"
               phx-click="share_click"
               phx-value-id={course.id}
-              class="btn btn-ghost btn-xs btn-square"
-              title={gettext("Share Access")}
-            >
-              <.icon name="hero-share" class="size-4" />
-            </.button>
+              icon="hero-share"
+              label={gettext("Share Access")}
+            />
 
-            <.button
+            <.icon_button
               :if={can_edit}
               type="button"
               phx-click="enroll_click"
               phx-value-id={course.id}
-              class="btn btn-ghost btn-xs btn-square"
-              title={gettext("Enroll Students")}
-            >
-              <.icon name="hero-user-plus" class="size-4" />
-            </.button>
+              icon="hero-user-plus"
+              label={gettext("Enroll Students")}
+            />
 
-            <.button
+            <.icon_button
               :if={can_edit}
               type="button"
               phx-click="delete_click"
               phx-value-id={course.id}
-              class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
-              title={gettext("Delete")}
-            >
-              <.icon name="hero-trash" class="size-4" />
-            </.button>
+              icon="hero-trash"
+              label={gettext("Delete")}
+              variant="danger"
+            />
           </div>
         </:action>
       </.table>
+
+      <.empty_state
+        :if={@meta.total_count == 0}
+        icon="hero-book-open"
+        title={gettext("No courses yet")}
+        description={gettext("Create one to get started.")}
+      />
 
       <div class="flex justify-end">
         <.pagination meta={@meta} path_fn={path_fn} />
@@ -516,20 +508,11 @@ defmodule AthenaWeb.StudioLive.Courses do
           current_user={@current_user}
         />
       </.modal>
-    </div>
+    </.page_container>
     """
   end
 
-  defp status_badge(assigns) do
-    ~H"""
-    <span class={[
-      "badge badge-sm font-bold",
-      @status == :published && "badge-success badge-soft",
-      @status == :draft && "badge-warning badge-soft",
-      @status == :archived && "badge-error badge-soft"
-    ]}>
-      {Atom.to_string(@status) |> String.capitalize()}
-    </span>
-    """
-  end
+  defp status_tone(:published), do: "success"
+  defp status_tone(:draft), do: "warning"
+  defp status_tone(:archived), do: "error"
 end

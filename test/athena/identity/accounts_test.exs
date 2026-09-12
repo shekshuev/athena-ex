@@ -195,6 +195,54 @@ defmodule Athena.Identity.AccountsTest do
     end
   end
 
+  describe "update_own_profile/2" do
+    test "creates a profile when the account doesn't have one yet" do
+      account = insert(:account)
+
+      assert {:ok, profile} =
+               Accounts.update_own_profile(account, %{
+                 "first_name" => "Ada",
+                 "last_name" => "Lovelace"
+               })
+
+      assert profile.owner_id == account.id
+      assert profile.first_name == "Ada"
+      assert profile.last_name == "Lovelace"
+    end
+
+    test "updates an existing profile" do
+      account = insert(:account)
+      insert(:profile, owner: account, first_name: "Old", last_name: "Name")
+
+      assert {:ok, profile} =
+               Accounts.update_own_profile(account, %{
+                 "first_name" => "New",
+                 "last_name" => "Name"
+               })
+
+      assert profile.first_name == "New"
+    end
+
+    test "does not require any ACL permission to update the caller's own profile" do
+      account = insert(:account, role: insert(:role, permissions: []))
+
+      assert {:ok, _profile} =
+               Accounts.update_own_profile(account, %{
+                 "first_name" => "NoPerms",
+                 "last_name" => "Student"
+               })
+    end
+
+    test "returns an error changeset for invalid data" do
+      account = insert(:account)
+
+      assert {:error, changeset} =
+               Accounts.update_own_profile(account, %{"first_name" => "", "last_name" => ""})
+
+      refute changeset.valid?
+    end
+  end
+
   describe "register_admin_user/3" do
     test "should create account and profile atomically", %{admin: admin} do
       role = insert(:role)

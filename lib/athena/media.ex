@@ -122,6 +122,36 @@ defmodule Athena.Media do
   def get_file(id), do: Repo.get(File, id)
 
   @doc """
+  Prepares a presigned S3 upload for a user's own avatar.
+
+  Unlike course material uploads, this is not scoped by course/section
+  ownership — any authenticated account may upload its own avatar.
+  """
+  @spec prepare_avatar_upload(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def prepare_avatar_upload(account_id, filename) do
+    bucket = Application.get_env(:athena, Media)[:bucket] || "athena"
+
+    unique_filename = "#{Ecto.UUID.generate()}-#{filename}"
+    key = "avatars/#{account_id}/#{unique_filename}"
+
+    case generate_upload_url(bucket, key) do
+      {:ok, presigned_url} ->
+        meta = %{
+          uploader: "S3",
+          url: presigned_url,
+          url_for_saved_entry: "/media/#{key}",
+          bucket: bucket,
+          key: key
+        }
+
+        {:ok, meta}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
   Persists file metadata into the database after a successful S3 upload.
   """
   @spec create_file(map()) :: {:ok, File.t()} | {:error, Ecto.Changeset.t()}

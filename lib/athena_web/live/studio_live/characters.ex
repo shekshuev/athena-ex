@@ -163,7 +163,7 @@ defmodule AthenaWeb.StudioLive.Characters do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
+    <.page_container size="wide" class="space-y-6">
       <div class="flex justify-between items-center">
         <div>
           <h1 class="text-2xl font-display font-bold text-base-content">{@page_title}</h1>
@@ -233,25 +233,29 @@ defmodule AthenaWeb.StudioLive.Characters do
 
         <:action :let={{_id, character}}>
           <div class="flex justify-end gap-2">
-            <.button
+            <.icon_button
               patch={~p"/studio/characters/#{character.id}/edit?#{build_query_params(assigns, %{})}"}
-              class="btn btn-ghost btn-xs btn-square"
-              title={gettext("Edit")}
-            >
-              <.icon name="hero-pencil-square" class="size-4" />
-            </.button>
-            <.button
+              icon="hero-pencil-square"
+              label={gettext("Edit")}
+            />
+            <.icon_button
               type="button"
               phx-click="delete_click"
               phx-value-id={character.id}
-              class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
-              title={gettext("Delete")}
-            >
-              <.icon name="hero-trash" class="size-4" />
-            </.button>
+              icon="hero-trash"
+              label={gettext("Delete")}
+              variant="danger"
+            />
           </div>
         </:action>
       </.table>
+
+      <.empty_state
+        :if={@meta.total_count == 0}
+        icon="hero-user-group"
+        title={gettext("No characters yet")}
+        description={gettext("Create one to get started.")}
+      />
 
       <div class="flex justify-end">
         <.pagination meta={@meta} path_fn={path_fn} />
@@ -290,7 +294,7 @@ defmodule AthenaWeb.StudioLive.Characters do
         on_cancel={JS.push("cancel_delete")}
         on_confirm={JS.push("confirm_delete")}
       />
-    </div>
+    </.page_container>
     """
   end
 end
