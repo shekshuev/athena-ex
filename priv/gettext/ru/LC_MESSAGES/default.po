@@ -4557,7 +4557,7 @@ msgstr "Пока нет студентов"
 #: lib/athena_web/live/dashboard_live/index.ex:280
 #, elixir-autogen, elixir-format
 msgid "No upcoming access-window deadlines."
-msgstr "Нет ближайших дедлайнов доступа."
+msgstr "Нет ближайших дедлайнов."
 
 #: lib/athena_web/live/admin_live/users.ex:264
 #, elixir-autogen, elixir-format, fuzzy
@@ -4612,7 +4612,7 @@ msgstr "Удалить этот аватар?"
 #: lib/athena_web/live/dashboard_live/index.ex:222
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Resume"
-msgstr "Отправить заново"
+msgstr "Продолжить"
 
 #: lib/athena_web/live/studio_live/characters.ex:171
 #, elixir-autogen, elixir-format
