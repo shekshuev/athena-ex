@@ -28,7 +28,7 @@ defmodule AthenaWeb.DashboardLive.Index do
     courses =
       Enum.map(enrollments, fn enrollment ->
         progress =
-          Learning.course_progress(account.id, enrollment.course_id, enrollment.cohort_id)
+          Learning.course_progress(account.id, enrollment.course_id, team_id(enrollment))
 
         %{enrollment: enrollment, progress: progress}
       end)
@@ -50,6 +50,15 @@ defmodule AthenaWeb.DashboardLive.Index do
      |> assign(:level, Gamification.level_for_xp(total_xp))
      |> assign(:streak, streak)}
   end
+
+  # `Progress.course_progress/3`'s cohort_id argument means "team" (a
+  # `:team`-type competition cohort — progress there is shared across the
+  # whole team, see `Athena.Learning.Progress.count_completed/3`), never an
+  # academic class. `Enrollment.cohort_id` is set for both cohort types, so
+  # this mirrors the same derivation `LearnLive.Player` already uses.
+  defp team_id(%{cohort_id: nil}), do: nil
+  defp team_id(%{cohort: %{type: :team}, cohort_id: cohort_id}), do: cohort_id
+  defp team_id(_enrollment), do: nil
 
   defp resolve_daily_challenge(account_id) do
     with %{} = challenge <- Gamification.today_challenge(account_id),

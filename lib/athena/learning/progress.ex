@@ -155,10 +155,15 @@ defmodule Athena.Learning.Progress do
   defp count_completed(account_id, cohort_id, block_ids) do
     query =
       if cohort_id do
+        # `cohort_id` here means "team" (a `:team`-type competition cohort,
+        # see `Athena.Learning.Cohort`), never an academic class — progress
+        # for a team is deliberately shared, one `BlockProgress` row per
+        # (cohort_id, block_id) regardless of which member completed it
+        # (same collective model `Submissions.get_team_leaderboard/1` uses),
+        # so this intentionally does NOT filter by account_id.
         from bp in BlockProgress,
           where:
-            bp.account_id == ^account_id and bp.cohort_id == ^cohort_id and
-              bp.status == :completed and bp.block_id in ^block_ids
+            bp.cohort_id == ^cohort_id and bp.status == :completed and bp.block_id in ^block_ids
       else
         from bp in BlockProgress,
           where:

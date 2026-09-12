@@ -325,7 +325,7 @@ defmodule Athena.Learning.ProgressTest do
       assert Progress.course_progress(user.id, course.id).percent == 0
     end
 
-    test "within a cohort, only counts the given account's own completions, not the whole cohort's",
+    test "within a team, progress is shared — any teammate's completion counts for everyone",
          %{user: user, team: team} do
       course = insert(:course)
       section = insert(:section, course: course)
@@ -336,7 +336,9 @@ defmodule Athena.Learning.ProgressTest do
       insert(:cohort_membership, account_id: user.id, cohort_id: team.id)
       insert(:cohort_membership, account_id: other_student.id, cohort_id: team.id)
 
-      # Only `user` has completed anything in this cohort.
+      # `user` completes both blocks on the team's behalf — same collective
+      # model Submissions.get_team_leaderboard/1 uses (one shared row per
+      # (cohort_id, block_id), not per account).
       {:ok, _} = Progress.mark_completed(user.id, block1.id, team.id)
       {:ok, _} = Progress.mark_completed(user.id, block2.id, team.id)
 
@@ -346,10 +348,12 @@ defmodule Athena.Learning.ProgressTest do
                percent: 100
              }
 
+      # `other_student` never personally completed anything, but sees the
+      # team's shared progress, not their own empty individual progress.
       assert Progress.course_progress(other_student.id, course.id, team.id) == %{
-               completed: 0,
+               completed: 2,
                total: 2,
-               percent: 0
+               percent: 100
              }
     end
   end

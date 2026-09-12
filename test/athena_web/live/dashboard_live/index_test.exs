@@ -32,6 +32,32 @@ defmodule AthenaWeb.DashboardLive.IndexTest do
       assert html =~ "50%"
     end
 
+    test "shows real (non-zero) progress for a student enrolled via an academic cohort", %{
+      conn: conn
+    } do
+      account = insert(:account)
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block1 = insert(:block, section: section)
+      insert(:block, section: section)
+
+      # Academic-cohort enrollment: the Enrollment belongs to the cohort
+      # (not the account directly), and the account gets access via cohort
+      # membership. Progress for academic (non-team) students is still
+      # recorded with a nil cohort_id on BlockProgress — same as
+      # LearnLive.Player does via its team_id derivation (nil unless the
+      # cohort is :team-type).
+      cohort = insert(:cohort, type: :academic)
+      insert(:cohort_membership, account_id: account.id, cohort_id: cohort.id)
+      insert(:enrollment, cohort_id: cohort.id, course_id: course.id)
+      Progress.mark_completed(account.id, block1.id)
+
+      conn = init_test_session(conn, %{"account_id" => account.id})
+      {:ok, _lv, html} = live(conn, ~p"/dashboard")
+
+      assert html =~ "50%"
+    end
+
     test "shows the continue-learning shortcut pointing at the last active section", %{
       conn: conn
     } do
