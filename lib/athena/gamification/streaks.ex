@@ -44,8 +44,23 @@ defmodule Athena.Gamification.Streaks do
   end
 
   defp upsert_streak(account_id, week_start) do
-    previous_week = Date.add(week_start, -7)
     stats = Repo.get_by(AccountStats, account_id: account_id)
+
+    if stats && stats.last_active_week == week_start do
+      # Already rolled up for this exact week — e.g. an Oban retry re-running
+      # the whole job after a later step (snapshot_week/evaluate_league_badges)
+      # failed, or a duplicate cron tick. Leave the streak as-is: recomputing
+      # it here would compare `last_active_week` (== week_start, just written)
+      # against `previous_week` and always see "not consecutive", incorrectly
+      # collapsing the streak back down to 1.
+      {:ok, stats}
+    else
+      do_upsert_streak(account_id, week_start, stats)
+    end
+  end
+
+  defp do_upsert_streak(account_id, week_start, stats) do
+    previous_week = Date.add(week_start, -7)
 
     current = (stats && stats.current_streak_weeks) || 0
     longest = (stats && stats.longest_streak_weeks) || 0

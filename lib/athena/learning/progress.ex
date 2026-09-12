@@ -157,7 +157,8 @@ defmodule Athena.Learning.Progress do
       if cohort_id do
         from bp in BlockProgress,
           where:
-            bp.cohort_id == ^cohort_id and bp.status == :completed and bp.block_id in ^block_ids
+            bp.account_id == ^account_id and bp.cohort_id == ^cohort_id and
+              bp.status == :completed and bp.block_id in ^block_ids
       else
         from bp in BlockProgress,
           where:

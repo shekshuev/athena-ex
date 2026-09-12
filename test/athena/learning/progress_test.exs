@@ -324,5 +324,33 @@ defmodule Athena.Learning.ProgressTest do
       assert Progress.course_progress(user.id, course.id, team.id).percent == 100
       assert Progress.course_progress(user.id, course.id).percent == 0
     end
+
+    test "within a cohort, only counts the given account's own completions, not the whole cohort's",
+         %{user: user, team: team} do
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block1 = insert(:block, section: section)
+      block2 = insert(:block, section: section)
+
+      other_student = insert(:account)
+      insert(:cohort_membership, account_id: user.id, cohort_id: team.id)
+      insert(:cohort_membership, account_id: other_student.id, cohort_id: team.id)
+
+      # Only `user` has completed anything in this cohort.
+      {:ok, _} = Progress.mark_completed(user.id, block1.id, team.id)
+      {:ok, _} = Progress.mark_completed(user.id, block2.id, team.id)
+
+      assert Progress.course_progress(user.id, course.id, team.id) == %{
+               completed: 2,
+               total: 2,
+               percent: 100
+             }
+
+      assert Progress.course_progress(other_student.id, course.id, team.id) == %{
+               completed: 0,
+               total: 2,
+               percent: 0
+             }
+    end
   end
 end

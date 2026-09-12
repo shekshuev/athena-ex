@@ -94,5 +94,21 @@ defmodule Athena.Gamification.StreaksTest do
       assert stats.current_streak_weeks == 0
       assert stats.last_active_week == nil
     end
+
+    test "is idempotent — re-running the same week (e.g. an Oban retry) does not reset the streak" do
+      account = insert(:account)
+
+      award_xp_at(account.id, @week1)
+      Streaks.rollup_week(@week1)
+
+      award_xp_at(account.id, @week2)
+      Streaks.rollup_week(@week2)
+      # A retried job, or a duplicate cron tick, re-runs the same week.
+      Streaks.rollup_week(@week2)
+
+      stats = Repo.get_by(AccountStats, account_id: account.id)
+      assert stats.current_streak_weeks == 2
+      assert stats.longest_streak_weeks == 2
+    end
   end
 end
