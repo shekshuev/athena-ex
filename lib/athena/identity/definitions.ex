@@ -6,6 +6,7 @@ defmodule Athena.Identity.Definitions do
   roles.create roles.read roles.update roles.delete
   courses.create courses.read courses.update courses.delete
   library.create library.read library.update library.delete
+  characters.create characters.read characters.update characters.delete
   grading.read grading.update
   instructors.create instructors.read instructors.update instructors.delete
   cohorts.create cohorts.read cohorts.update cohorts.delete

@@ -6,7 +6,7 @@ defmodule Athena.Content do
   mutating operations to broadcast real-time updates via PubSub.
   """
 
-  alias Athena.Content.{Courses, Sections, Blocks, Library, Policy}
+  alias Athena.Content.{Courses, Sections, Blocks, Library, Policy, Characters}
   alias Athena.Content.{Course, Section, Block}
 
   defdelegate list_courses(user, params \\ %{}), to: Courses
@@ -174,6 +174,15 @@ defmodule Athena.Content do
   end
 
   defdelegate list_block_shares(block), to: Library
+
+  defdelegate list_characters(user, params \\ %{}), to: Characters
+  defdelegate all_characters(user), to: Characters
+  defdelegate characters_for_picker(user), to: Characters
+  defdelegate get_character(user, id), to: Characters
+  defdelegate create_character(user, attrs), to: Characters
+  defdelegate update_character(user, character, attrs), to: Characters
+  defdelegate delete_character(user, character), to: Characters
+  defdelegate prepare_avatar_upload(user, filename), to: Characters
 
   defdelegate can_view?(user_or_mode, item, overrides), to: Policy
 

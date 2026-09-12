@@ -46,6 +46,7 @@ import tippy from "tippy.js";
 import "tippy.js/dist/tippy.css";
 import ImageResize from "tiptap-extension-resize-image";
 import topbar from "../vendor/topbar";
+import { Dialogue, DialogueLine, insertDialogue } from "./tiptap/dialogue";
 
 const lowlight = createLowlight(common);
 
@@ -300,6 +301,15 @@ Hooks.TiptapEditor = {
     const isReadOnly = this.el.dataset.readonly === "true";
     let timeout;
 
+    hook.characters = this.el.dataset.characters
+      ? JSON.parse(this.el.dataset.characters)
+      : [];
+
+    this.handleCharactersUpdated = (e) => {
+      hook.characters = e.detail.characters;
+    };
+    window.addEventListener("phx:characters_updated", this.handleCharactersUpdated);
+
     this.clipboardFiles = {};
 
     const uploadBlobToS3 = (blobEntry) => {
@@ -372,6 +382,11 @@ Hooks.TiptapEditor = {
       ResizableImage.configure({
         inline: false,
         HTMLAttributes: { class: "rounded-sm my-4 mx-auto" },
+      }),
+      Dialogue,
+      DialogueLine.configure({
+        getCharacters: () => hook.characters,
+        onManageCharacters: () => hook.pushEvent("open_character_manager", {}),
       }),
     ];
 
@@ -759,6 +774,7 @@ Hooks.TiptapEditor = {
               media_type: "tiptap_image",
             });
           }
+          if (action === "dialogue") insertDialogue(this.editor);
         });
 
         toolbar.addEventListener("input", (e) => {
@@ -950,6 +966,12 @@ Hooks.TiptapEditor = {
     if (this.editor) this.editor.destroy();
     if (this.handleInsertMedia) {
       window.removeEventListener("phx:insert_media", this.handleInsertMedia);
+    }
+    if (this.handleCharactersUpdated) {
+      window.removeEventListener(
+        "phx:characters_updated",
+        this.handleCharactersUpdated,
+      );
     }
 
     document.removeEventListener("click", this.handleGlobalClick);

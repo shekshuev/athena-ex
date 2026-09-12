@@ -91,6 +91,10 @@ defmodule AthenaWeb.Router do
         live "/library/:id/edit", Library, :edit
         live "/library/:id/editor", LibraryEditor, :index
 
+        live "/characters", Characters, :index
+        live "/characters/new", Characters, :new
+        live "/characters/:id/edit", Characters, :edit
+
         live "/courses/:id/library", Library, :course_library
         live "/courses/:id/library/new", Library, :new
         live "/courses/:id/library/:block_id/edit", Library, :edit

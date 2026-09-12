@@ -25,13 +25,14 @@ defmodule AthenaWeb.BlockComponents do
   attr :draft, :map, default: nil
   attr :hide_submit, :boolean, default: false
   attr :user_id, :string, default: nil
+  attr :characters, :list, default: []
 
   def content_block(assigns) do
     ~H"""
     <div class={wrapper_classes(@mode, @active)}>
       <%= case @block.type do %>
         <% :text -> %>
-          <.render_text block={@block} mode={@mode} />
+          <.render_text block={@block} mode={@mode} characters={@characters} />
         <% :image -> %>
           <.render_image block={@block} mode={@mode} />
         <% :video -> %>
@@ -111,6 +112,7 @@ defmodule AthenaWeb.BlockComponents do
         phx-update="ignore"
         data-on-change="update_content"
         data-content={Jason.encode!(@block.content)}
+        data-characters={Jason.encode!(@characters)}
         class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed"
       >
       </div>
@@ -1968,6 +1970,14 @@ defmodule AthenaWeb.BlockComponents do
           data-tippy-content={"#{gettext("Insert Table")} ($mod+$alt+T)"}
         >
           <.icon name="hero-table-cells" class="size-5" />
+        </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
+          data-action="dialogue"
+          data-tippy-content={gettext("Insert Dialogue")}
+        >
+          <.icon name="hero-chat-bubble-left-right" class="size-5" />
         </button>
 
         <button
