@@ -67,6 +67,7 @@ defmodule AthenaWeb.Router do
       pipe_through :browser
       live "/dashboard", DashboardLive.Index, :index
       live "/me", AccountLive.Profile, :index
+      live "/daily-challenge", LearnLive.DailyChallenge, :index
 
       live "/files", FileLive.Index, :index
       live "/community", CommunityLive.Index, :index

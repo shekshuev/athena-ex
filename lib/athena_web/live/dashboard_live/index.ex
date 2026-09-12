@@ -202,9 +202,7 @@ defmodule AthenaWeb.DashboardLive.Index do
             :if={!@daily_challenge.completed?}
             variant="primary"
             size="sm"
-            navigate={
-              ~p"/learn/courses/#{@daily_challenge.course.id}/play/#{@daily_challenge.section_id}"
-            }
+            navigate={~p"/daily-challenge"}
           >
             {gettext("Solve")}
             <.icon name="hero-arrow-right" class="size-4" />
