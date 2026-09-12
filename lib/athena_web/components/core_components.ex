@@ -102,6 +102,12 @@ defmodule AthenaWeb.CoreComponents do
   `btn-outline`, same as before. `size` covers the common `btn-sm`/`btn-xs`
   cases; the default (`nil`) leaves the daisyUI default size.
 
+  When `variant` or `size` is given, `class` is appended alongside the
+  derived classes (for a one-off addition like a hover animation) rather
+  than replacing them. Without either, `class` behaves as a full override,
+  same as before — this keeps older call sites that pass a complete
+  `class="btn ..."` string untouched.
+
   ## Examples
 
       <.button>Send!</.button>
@@ -109,6 +115,7 @@ defmodule AthenaWeb.CoreComponents do
       <.button navigate={~p"/"}>Home</.button>
       <.button variant="ghost" phx-click="cancel">Cancel</.button>
       <.button variant="danger" size="sm" phx-click="delete">Delete</.button>
+      <.button variant="primary" size="sm" class="group-hover:pr-3">Enter</.button>
   """
   attr :rest, :global, include: ~w(href navigate patch method download name value disabled form)
   attr :class, :any
@@ -129,9 +136,16 @@ defmodule AthenaWeb.CoreComponents do
     sizes = %{"xs" => "btn-xs", "sm" => "btn-sm", "lg" => "btn-lg", nil => nil}
 
     assigns =
-      assign_new(assigns, :class, fn ->
-        ["btn", Map.fetch!(variants, assigns[:variant]), Map.fetch!(sizes, assigns[:size])]
-      end)
+      if assigns[:variant] || assigns[:size] do
+        assign(assigns, :class, [
+          "btn",
+          Map.fetch!(variants, assigns[:variant]),
+          Map.fetch!(sizes, assigns[:size]),
+          assigns[:class]
+        ])
+      else
+        assign_new(assigns, :class, fn -> ["btn", Map.fetch!(variants, nil)] end)
+      end
 
     if rest[:href] || rest[:navigate] || rest[:patch] do
       ~H"""

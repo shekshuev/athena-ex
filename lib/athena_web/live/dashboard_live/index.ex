@@ -194,49 +194,45 @@ defmodule AthenaWeb.DashboardLive.Index do
               <div class="font-display font-black">{@daily_challenge.course.title}</div>
             </div>
           </div>
-          <span :if={@daily_challenge.completed?} class="badge badge-success gap-1">
+          <.badge :if={@daily_challenge.completed?} tone="success" class="gap-1">
             <.icon name="hero-check" class="size-4" />
             {gettext("Solved today")}
-          </span>
-          <.link
+          </.badge>
+          <.button
             :if={!@daily_challenge.completed?}
+            variant="primary"
+            size="sm"
             navigate={
               ~p"/learn/courses/#{@daily_challenge.course.id}/play/#{@daily_challenge.section_id}"
             }
-            class="btn btn-primary btn-sm"
           >
             {gettext("Solve")}
             <.icon name="hero-arrow-right" class="size-4" />
-          </.link>
+          </.button>
         </div>
       </div>
 
-      <div :if={@continue} class="card bg-primary text-primary-content rounded-sm overflow-hidden">
+      <div :if={@continue} class="card bg-base-100 border border-base-300 rounded-sm">
         <div class="card-body flex-row items-center justify-between flex-wrap gap-4">
           <div>
-            <div class="text-xs font-black uppercase tracking-widest opacity-70">
+            <div class="text-xs font-black uppercase tracking-widest text-base-content/50">
               {gettext("Continue learning")}
             </div>
             <h2 class="text-2xl font-display font-black mt-1">{@continue.course.title}</h2>
           </div>
-          <.link
-            navigate={continue_path(@continue)}
-            class="btn btn-lg bg-primary-content text-primary hover:bg-primary-content/90 border-0"
-          >
+          <.button variant="primary" navigate={continue_path(@continue)}>
             {gettext("Resume")}
             <.icon name="hero-arrow-right" class="size-5" />
-          </.link>
+          </.button>
         </div>
       </div>
 
       <div :if={!@continue} class="card bg-base-100 border border-base-300 rounded-sm">
-        <div class="card-body text-center py-12">
-          <.icon name="hero-book-open" class="size-12 text-base-content/20 mx-auto mb-4" />
-          <h3 class="font-display font-bold text-lg">{gettext("No courses yet")}</h3>
-          <p class="text-base-content/60 mt-1">
-            {gettext("Once you join a cohort or unlock a course, it will show up here.")}
-          </p>
-        </div>
+        <.empty_state
+          icon="hero-book-open"
+          title={gettext("No courses yet")}
+          description={gettext("Once you join a cohort or unlock a course, it will show up here.")}
+        />
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -258,7 +254,7 @@ defmodule AthenaWeb.DashboardLive.Index do
               <div class="card-body flex-row items-center gap-4 py-4">
                 <div
                   class="radial-progress text-primary bg-primary/10 text-[10px] font-bold shrink-0"
-                  style={"--value:#{progress.percent}; --size:2.75rem; --thickness: 3px;"}
+                  style={"--value:#{progress.percent}; --size:2.5rem; --thickness: 3px;"}
                   role="progressbar"
                 >
                   {progress.percent}%
@@ -324,9 +320,9 @@ defmodule AthenaWeb.DashboardLive.Index do
                 )}
               </div>
             </div>
-            <.link navigate={~p"/teaching/grading"} class="btn btn-warning btn-sm">
+            <.button variant="warning" size="sm" navigate={~p"/teaching/grading"}>
               {gettext("Go to grading")}
-            </.link>
+            </.button>
           </div>
         </div>
 
@@ -342,9 +338,9 @@ defmodule AthenaWeb.DashboardLive.Index do
             <div class="card-body py-4 gap-2">
               <div class="flex items-center justify-between">
                 <div class="font-bold">{row.cohort.name}</div>
-                <.link navigate={~p"/teaching/cohorts/#{row.cohort.id}"} class="btn btn-ghost btn-xs">
+                <.button variant="ghost" size="xs" navigate={~p"/teaching/cohorts/#{row.cohort.id}"}>
                   {gettext("Open")}
-                </.link>
+                </.button>
               </div>
 
               <div :if={row.quiet_members == []} class="text-xs text-base-content/50">

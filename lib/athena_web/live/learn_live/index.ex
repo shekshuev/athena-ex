@@ -44,18 +44,17 @@ defmodule AthenaWeb.LearnLive.Index do
         </p>
       </div>
 
-      <div
+      <.empty_state
         :if={@enrollments == []}
-        class="text-center py-24 px-6 rounded-3xl mt-8"
-      >
-        <.icon name="hero-book-open" class="size-20 text-base-content/20 mb-6 mx-auto" />
-        <h3 class="text-2xl font-display font-bold text-base-content">{gettext("No courses yet")}</h3>
-        <p class="text-base-content/60 mt-3 max-w-md mx-auto text-lg">
-          {gettext(
+        class="mt-8"
+        icon="hero-book-open"
+        title={gettext("No courses yet")}
+        description={
+          gettext(
             "You are not enrolled in any courses at the moment. Once you join a cohort or unlock a course, it will appear right here."
-          )}
-        </p>
-      </div>
+          )
+        }
+      />
 
       <div :if={@enrollments != []} class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 mt-8">
         <%= for enrollment <- @enrollments do %>
@@ -63,17 +62,11 @@ defmodule AthenaWeb.LearnLive.Index do
           <div class="card bg-base-100 border border-base-200 hover:border-primary/40 transition-all duration-300 overflow-hidden group flex flex-col">
             <div class="h-36 bg-linear-to-br from-base-200 to-base-300 relative overflow-hidden">
               <div class="absolute bottom-4 left-4 z-10">
-                <span class={[
-                  "badge badge-sm font-bold border-0",
-                  if(enrollment.cohort_id,
-                    do: "bg-primary text-primary-content",
-                    else: "bg-accent text-accent-content"
-                  )
-                ]}>
+                <.badge tone={if enrollment.cohort_id, do: "primary", else: "neutral"}>
                   {if enrollment.cohort_id,
                     do: enrollment.cohort.name,
                     else: gettext("Self-paced")}
-                </span>
+                </.badge>
               </div>
             </div>
 
@@ -102,16 +95,18 @@ defmodule AthenaWeb.LearnLive.Index do
                   </span>
                 </div>
 
-                <.link
+                <.button
+                  variant="primary"
+                  size="sm"
+                  class="group-hover:pr-3 transition-all"
                   navigate={~p"/learn/courses/#{enrollment.course.id}"}
-                  class="btn btn-primary btn-sm group-hover:pr-3 transition-all"
                 >
                   {gettext("Enter")}
                   <.icon
                     name="hero-arrow-right"
                     class="size-4 opacity-0 -ml-4 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300"
                   />
-                </.link>
+                </.button>
               </div>
             </div>
           </div>
