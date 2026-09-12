@@ -149,7 +149,11 @@ defmodule AthenaWeb.AdminLive.GamificationTest do
 
       {:ok, lv, _html} = live(conn, ~p"/admin/gamification")
 
-      lv |> element("button[phx-value-id='#{badge.id}'][phx-click='delete']") |> render_click()
+      lv
+      |> element("button[phx-value-id='#{badge.id}'][phx-click='delete_click']")
+      |> render_click()
+
+      lv |> element("#delete-badge-modal button", "Delete") |> render_click()
 
       refute Athena.Repo.get(Badge, badge.id)
     end
@@ -173,7 +177,9 @@ defmodule AthenaWeb.AdminLive.GamificationTest do
       conn = init_test_session(base_conn, %{"account_id" => account.id})
       {:ok, lv, _html} = live(conn, ~p"/admin/gamification")
 
-      lv |> element("button[phx-value-id='#{badge.id}'][phx-click='delete']") |> render_click()
+      lv
+      |> element("button[phx-value-id='#{badge.id}'][phx-click='delete_click']")
+      |> render_click()
 
       assert Athena.Repo.get(Badge, badge.id)
     end

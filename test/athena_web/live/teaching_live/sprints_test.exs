@@ -83,7 +83,11 @@ defmodule AthenaWeb.TeachingLive.SprintsTest do
     refute Athena.Repo.get_by(Sprint, cohort_id: cohort.id, title: "Nope")
   end
 
-  test "deletes a sprint", %{conn: conn, cohort: cohort, instructor: instructor} do
+  test "deletes a sprint after confirming in the modal", %{
+    conn: conn,
+    cohort: cohort,
+    instructor: instructor
+  } do
     {:ok, sprint} =
       Athena.Gamification.create_sprint(instructor, %{
         "cohort_id" => cohort.id,
@@ -100,7 +104,12 @@ defmodule AthenaWeb.TeachingLive.SprintsTest do
     |> element("form[phx-change='select_cohort']")
     |> render_change(%{"cohort_id" => cohort.id})
 
-    lv |> element("button[phx-value-id='#{sprint.id}']") |> render_click()
+    html = lv |> element("button[phx-value-id='#{sprint.id}']") |> render_click()
+
+    assert html =~ "Delete this sprint?"
+    assert Athena.Repo.get(Sprint, sprint.id)
+
+    lv |> element("#delete-sprint-modal button", "Delete") |> render_click()
 
     refute Athena.Repo.get(Sprint, sprint.id)
   end

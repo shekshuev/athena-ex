@@ -16,11 +16,15 @@ defmodule AthenaWeb.AdminLive.Gamification do
 
   @impl true
   def mount(_params, _session, socket) do
+    badges = Gamification.list_badges()
+
     {:ok,
      socket
      |> assign(:test_result, nil)
      |> assign(:known_facts, Enum.join(Gamification.known_facts(), ", "))
-     |> stream(:badges, Gamification.list_badges())}
+     |> assign(:badges_count, length(badges))
+     |> assign(:badge_to_delete, nil)
+     |> stream(:badges, badges)}
   end
 
   @impl true
@@ -122,15 +126,32 @@ defmodule AthenaWeb.AdminLive.Gamification do
     end
   end
 
-  def handle_event("delete", %{"id" => id}, socket) do
-    user = socket.assigns.current_user
-
+  def handle_event("delete_click", %{"id" => id}, socket) do
     with true <- can_delete?(socket),
-         {:ok, badge} <- Gamification.get_badge(id),
-         {:ok, _} <- Gamification.delete_badge(user, badge) do
-      {:noreply, stream_delete(socket, :badges, badge)}
+         {:ok, badge} <- Gamification.get_badge(id) do
+      {:noreply, assign(socket, :badge_to_delete, badge)}
     else
       _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("cancel_delete", _params, socket) do
+    {:noreply, assign(socket, :badge_to_delete, nil)}
+  end
+
+  def handle_event("confirm_delete", _params, %{assigns: %{badge_to_delete: badge}} = socket) do
+    user = socket.assigns.current_user
+
+    case Gamification.delete_badge(user, badge) do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> stream_delete(:badges, badge)
+         |> assign(:badges_count, socket.assigns.badges_count - 1)
+         |> assign(:badge_to_delete, nil)}
+
+      _ ->
+        {:noreply, assign(socket, :badge_to_delete, nil)}
     end
   end
 
@@ -165,6 +186,7 @@ defmodule AthenaWeb.AdminLive.Gamification do
          socket
          |> put_flash(:info, gettext("Badge created."))
          |> stream_insert(:badges, badge, at: 0)
+         |> assign(:badges_count, socket.assigns.badges_count + 1)
          |> push_patch(to: ~p"/admin/gamification")}
 
       {:error, changeset} ->
@@ -244,26 +266,42 @@ defmodule AthenaWeb.AdminLive.Gamification do
                 </button>
               </td>
               <td class="text-right">
-                <.link patch={~p"/admin/gamification/#{badge.id}/edit"} class="btn btn-ghost btn-xs">
-                  <.icon name="hero-pencil-square" class="size-4" />
-                </.link>
-                <button
+                <.icon_button
+                  patch={~p"/admin/gamification/#{badge.id}/edit"}
+                  icon="hero-pencil-square"
+                  label={gettext("Edit")}
+                />
+                <.icon_button
                   type="button"
-                  phx-click="delete"
+                  phx-click="delete_click"
                   phx-value-id={badge.id}
-                  data-confirm={gettext("Delete this badge? Existing awards are removed too.")}
-                  class="btn btn-ghost btn-xs text-error"
-                >
-                  <.icon name="hero-trash" class="size-4" />
-                </button>
+                  icon="hero-trash"
+                  label={gettext("Delete")}
+                  variant="danger"
+                />
               </td>
             </tr>
           </tbody>
         </table>
-        <div id="badges-empty" class="hidden only:block p-12 text-center text-base-content/50">
-          {gettext("No badges yet — create one to get started.")}
-        </div>
+
+        <.empty_state
+          :if={@badges_count == 0}
+          icon="hero-sparkles"
+          title={gettext("No badges yet")}
+          description={gettext("Create one to get started.")}
+        />
       </div>
+
+      <.modal
+        id="delete-badge-modal"
+        show={@badge_to_delete != nil}
+        title={gettext("Delete this badge?")}
+        description={gettext("Existing awards are removed too.")}
+        on_cancel={JS.push("cancel_delete")}
+        on_confirm={JS.push("confirm_delete")}
+        confirm_label={gettext("Delete")}
+        danger={true}
+      />
 
       <.modal
         :if={@live_action in [:new, :edit]}

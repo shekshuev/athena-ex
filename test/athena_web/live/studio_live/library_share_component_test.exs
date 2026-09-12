@@ -127,7 +127,14 @@ defmodule AthenaWeb.StudioLive.LibraryShareComponentTest do
 
       html =
         view
-        |> element("button[phx-click='remove_share'][phx-value-account_id='#{target.id}']")
+        |> element("button[phx-click='remove_share_click'][phx-value-account_id='#{target.id}']")
+        |> render_click()
+
+      assert html =~ "Revoke this person"
+
+      html =
+        view
+        |> element("#share-modal-remove-share-modal button", "Revoke")
         |> render_click()
 
       refute html =~ target.login

@@ -32,6 +32,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
          |> assign(:cohort, cohort)
          |> assign(:membership_to_delete, nil)
          |> assign(:enrollment_to_delete, nil)
+         |> assign(:enrollments_count, length(enrollments))
          |> stream(:memberships, [])
          |> stream(:enrollments, enrollments)}
 
@@ -149,7 +150,10 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
          socket
          |> put_flash(:info, gettext("Course assignment removed."))
          |> stream_delete(:enrollments, enrollment)
-         |> assign(enrollment_to_delete: nil)}
+         |> assign(
+           enrollment_to_delete: nil,
+           enrollments_count: socket.assigns.enrollments_count - 1
+         )}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, gettext("Failed to remove assignment."))}
@@ -173,7 +177,11 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
 
   def handle_info({EnrollmentFormComponent, {:saved, enrollment}}, socket) do
     reloaded = Learning.get_enrollment!(socket.assigns.current_user, enrollment.id)
-    {:noreply, stream_insert(socket, :enrollments, reloaded)}
+
+    {:noreply,
+     socket
+     |> stream_insert(:enrollments, reloaded)
+     |> assign(:enrollments_count, socket.assigns.enrollments_count + 1)}
   end
 
   @impl true
@@ -219,10 +227,11 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           <h2 class="text-xl font-display font-bold">{gettext("Assigned Courses")}</h2>
           <.button
             :if={Learning.can_manage_cohort_processes?(@current_user, @cohort)}
+            variant="primary"
+            size="sm"
             patch={
               ~p"/teaching/cohorts/#{@cohort.id}/enroll_course?#{build_query_params(assigns, %{})}"
             }
-            class="btn btn-primary btn-sm"
           >
             <.icon name="hero-book-open" class="size-4" />
             {gettext("Assign Course")}
@@ -252,29 +261,35 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           </:col>
           <:action :let={{_id, enrollment}}>
             <div class="flex items-center gap-2 justify-end">
-              <.link
+              <.button
                 :if={Learning.can_view_cohort_processes?(@current_user, @cohort)}
+                variant="ghost"
+                size="xs"
+                class="text-primary hover:bg-primary/10"
                 navigate={~p"/teaching/cohorts/#{@cohort.id}/access/#{enrollment.course.id}"}
-                class="btn btn-ghost btn-xs text-primary hover:bg-primary/10"
-                title={gettext("Access Settings")}
               >
                 <.icon name="hero-key" class="size-4" />
                 <span class="hidden sm:inline">{gettext("Access")}</span>
-              </.link>
+              </.button>
 
-              <button
+              <.icon_button
                 :if={Learning.can_manage_cohort_processes?(@current_user, @cohort)}
                 type="button"
                 phx-click="delete_enrollment_click"
                 phx-value-id={enrollment.id}
-                class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
-                title={gettext("Remove Assignment")}
-              >
-                <.icon name="hero-x-mark" class="size-4" />
-              </button>
+                icon="hero-x-mark"
+                label={gettext("Remove Assignment")}
+                variant="danger"
+              />
             </div>
           </:action>
         </.table>
+
+        <.empty_state
+          :if={@enrollments_count == 0}
+          icon="hero-book-open"
+          title={gettext("No courses assigned yet")}
+        />
       </div>
 
       <div class="space-y-4">
@@ -282,10 +297,11 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           <h2 class="text-xl font-display font-bold">{gettext("Students")}</h2>
           <.button
             :if={Learning.can_manage_cohort_processes?(@current_user, @cohort)}
+            variant="primary"
+            size="sm"
             patch={
               ~p"/teaching/cohorts/#{@cohort.id}/add_student?#{build_query_params(assigns, %{})}"
             }
-            class="btn btn-primary btn-sm"
           >
             <.icon name="hero-user-plus" class="size-4" />
             {gettext("Add Student")}
@@ -307,19 +323,24 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           </:col>
           <:action :let={{_id, membership}}>
             <div class="flex justify-end">
-              <.button
+              <.icon_button
                 :if={Learning.can_manage_cohort_processes?(@current_user, @cohort)}
                 type="button"
                 phx-click="delete_click"
                 phx-value-id={membership.id}
-                class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
-                title={gettext("Remove")}
-              >
-                <.icon name="hero-x-mark" class="size-4" />
-              </.button>
+                icon="hero-x-mark"
+                label={gettext("Remove")}
+                variant="danger"
+              />
             </div>
           </:action>
         </.table>
+
+        <.empty_state
+          :if={@meta.total_count == 0}
+          icon="hero-users"
+          title={gettext("No students yet")}
+        />
 
         <div class="flex justify-end">
           <.pagination meta={@meta} path_fn={path_fn} />

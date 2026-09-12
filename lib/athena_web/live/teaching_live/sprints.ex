@@ -23,6 +23,7 @@ defmodule AthenaWeb.TeachingLive.Sprints do
      |> assign(:cohort_options, Learning.get_cohort_options(user))
      |> assign(:selected_cohort_id, nil)
      |> assign(:sprints, [])
+     |> assign(:sprint_to_delete, nil)
      |> assign(:form, to_form(Sprint.changeset(%Sprint{}, %{})))}
   end
 
@@ -67,14 +68,30 @@ defmodule AthenaWeb.TeachingLive.Sprints do
     end
   end
 
-  def handle_event("delete", %{"id" => id}, socket) do
+  def handle_event("delete_click", %{"id" => id}, socket) do
+    sprint = Enum.find(socket.assigns.sprints, &(&1.id == id))
+    {:noreply, assign(socket, :sprint_to_delete, sprint)}
+  end
+
+  def handle_event("cancel_delete", _params, socket) do
+    {:noreply, assign(socket, :sprint_to_delete, nil)}
+  end
+
+  def handle_event("confirm_delete", _params, %{assigns: %{sprint_to_delete: sprint}} = socket) do
     user = socket.assigns.current_user
 
-    with {:ok, sprint} <- Gamification.get_sprint(id),
-         {:ok, _} <- Gamification.delete_sprint(user, sprint) do
-      {:noreply, assign(socket, :sprints, Enum.reject(socket.assigns.sprints, &(&1.id == id)))}
-    else
-      _ -> {:noreply, put_flash(socket, :error, gettext("Could not delete this sprint."))}
+    case Gamification.delete_sprint(user, sprint) do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> assign(:sprints, Enum.reject(socket.assigns.sprints, &(&1.id == sprint.id)))
+         |> assign(:sprint_to_delete, nil)}
+
+      _ ->
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("Could not delete this sprint."))
+         |> assign(:sprint_to_delete, nil)}
     end
   end
 
@@ -182,19 +199,28 @@ defmodule AthenaWeb.TeachingLive.Sprints do
                   )} · x{sprint.xp_multiplier}
                 </div>
               </div>
-              <button
+              <.icon_button
                 type="button"
-                phx-click="delete"
+                phx-click="delete_click"
                 phx-value-id={sprint.id}
-                data-confirm={gettext("Delete this sprint?")}
-                class="btn btn-ghost btn-xs text-error"
-              >
-                <.icon name="hero-trash" class="size-4" />
-              </button>
+                icon="hero-trash"
+                label={gettext("Delete")}
+                variant="danger"
+              />
             </li>
           </ul>
         </div>
       </div>
+
+      <.modal
+        id="delete-sprint-modal"
+        show={@sprint_to_delete != nil}
+        title={gettext("Delete this sprint?")}
+        on_cancel={JS.push("cancel_delete")}
+        on_confirm={JS.push("confirm_delete")}
+        confirm_label={gettext("Delete")}
+        danger={true}
+      />
     </.page_container>
     """
   end

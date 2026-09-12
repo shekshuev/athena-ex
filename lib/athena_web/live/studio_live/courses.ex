@@ -390,62 +390,58 @@ defmodule AthenaWeb.StudioLive.Courses do
           <% can_view = can_edit or info.role == :reader or info.is_public %>
 
           <div class="flex justify-end gap-2">
-            <.button
+            <.icon_button
               :if={can_view}
               navigate={~p"/studio/courses/#{course.id}/builder"}
-              class="btn btn-primary btn-xs btn-square btn-soft"
-              title={if can_edit, do: gettext("Open Builder"), else: gettext("View Course")}
-            >
-              <.icon
-                name={if can_edit, do: "hero-wrench-screwdriver", else: "hero-eye"}
-                class="size-4"
-              />
-            </.button>
+              variant="primary"
+              icon={if can_edit, do: "hero-wrench-screwdriver", else: "hero-eye"}
+              label={if can_edit, do: gettext("Open Builder"), else: gettext("View Course")}
+            />
 
-            <.button
+            <.icon_button
               :if={can_edit}
               patch={~p"/studio/courses/#{course.id}/edit?#{build_query_params(assigns, %{})}"}
-              class="btn btn-ghost btn-xs btn-square"
-              title={gettext("Edit Settings")}
-            >
-              <.icon name="hero-pencil-square" class="size-4" />
-            </.button>
+              icon="hero-pencil-square"
+              label={gettext("Edit Settings")}
+            />
 
-            <.button
+            <.icon_button
               :if={can_edit}
               type="button"
               phx-click="share_click"
               phx-value-id={course.id}
-              class="btn btn-ghost btn-xs btn-square"
-              title={gettext("Share Access")}
-            >
-              <.icon name="hero-share" class="size-4" />
-            </.button>
+              icon="hero-share"
+              label={gettext("Share Access")}
+            />
 
-            <.button
+            <.icon_button
               :if={can_edit}
               type="button"
               phx-click="enroll_click"
               phx-value-id={course.id}
-              class="btn btn-ghost btn-xs btn-square"
-              title={gettext("Enroll Students")}
-            >
-              <.icon name="hero-user-plus" class="size-4" />
-            </.button>
+              icon="hero-user-plus"
+              label={gettext("Enroll Students")}
+            />
 
-            <.button
+            <.icon_button
               :if={can_edit}
               type="button"
               phx-click="delete_click"
               phx-value-id={course.id}
-              class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
-              title={gettext("Delete")}
-            >
-              <.icon name="hero-trash" class="size-4" />
-            </.button>
+              icon="hero-trash"
+              label={gettext("Delete")}
+              variant="danger"
+            />
           </div>
         </:action>
       </.table>
+
+      <.empty_state
+        :if={@meta.total_count == 0}
+        icon="hero-book-open"
+        title={gettext("No courses yet")}
+        description={gettext("Create one to get started.")}
+      />
 
       <div class="flex justify-end">
         <.pagination meta={@meta} path_fn={path_fn} />

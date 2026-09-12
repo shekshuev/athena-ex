@@ -15,6 +15,7 @@ defmodule AthenaWeb.StudioLive.AvatarUploadComponent do
      socket
      |> assign(assigns)
      |> assign(accept_str: settings.description)
+     |> assign_new(:confirm_remove?, fn -> false end)
      |> allow_upload(:avatar,
        accept: settings.accept,
        max_entries: 1,
@@ -71,9 +72,17 @@ defmodule AthenaWeb.StudioLive.AvatarUploadComponent do
     end
   end
 
-  def handle_event("remove_avatar", _params, socket) do
+  def handle_event("remove_avatar_click", _params, socket) do
+    {:noreply, assign(socket, :confirm_remove?, true)}
+  end
+
+  def handle_event("cancel_remove_avatar", _params, socket) do
+    {:noreply, assign(socket, :confirm_remove?, false)}
+  end
+
+  def handle_event("confirm_remove_avatar", _params, socket) do
     send(self(), {__MODULE__, :removed})
-    {:noreply, socket}
+    {:noreply, assign(socket, :confirm_remove?, false)}
   end
 
   defp error_to_string(:too_large), do: gettext("File is too large")
@@ -114,40 +123,53 @@ defmodule AthenaWeb.StudioLive.AvatarUploadComponent do
               max="100"
             >
             </progress>
-            <button
+            <.icon_button
               type="button"
               phx-click="cancel_entry"
               phx-value-ref={entry.ref}
               phx-target={@myself}
-              class="btn btn-ghost btn-xs btn-square text-error"
-            >
-              <.icon name="hero-x-mark" class="size-4" />
-            </button>
+              icon="hero-x-mark"
+              label={gettext("Cancel")}
+              variant="danger"
+            />
             <span :for={err <- upload_errors(@uploads.avatar, entry)} class="text-error">
               {error_to_string(err)}
             </span>
           </div>
 
-          <button
+          <.button
             :if={@uploads.avatar.entries != []}
             type="submit"
-            class="btn btn-primary btn-xs"
+            variant="primary"
+            size="xs"
             phx-disable-with={gettext("Uploading...")}
           >
             {gettext("Upload")}
-          </button>
+          </.button>
         </form>
 
-        <button
+        <.button
           :if={@avatar_url}
           type="button"
-          phx-click="remove_avatar"
+          variant="ghost"
+          size="xs"
+          class="text-error mt-1"
+          phx-click="remove_avatar_click"
           phx-target={@myself}
-          class="btn btn-ghost btn-xs text-error mt-1"
         >
           {gettext("Remove avatar")}
-        </button>
+        </.button>
       </div>
+
+      <.modal
+        id={"#{@id}-remove-avatar-modal"}
+        show={@confirm_remove?}
+        title={gettext("Remove this avatar?")}
+        on_cancel={JS.push("cancel_remove_avatar", target: @myself)}
+        on_confirm={JS.push("confirm_remove_avatar", target: @myself)}
+        confirm_label={gettext("Remove")}
+        danger={true}
+      />
     </div>
     """
   end

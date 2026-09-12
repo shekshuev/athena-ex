@@ -168,6 +168,10 @@ defmodule AthenaWeb.CoreComponents do
   combinations (different sizes, different hover treatments) previously
   scattered across CRUD list pages.
 
+  `variant="primary"` is for the rare case where one icon action in a
+  cluster is the primary way into the row (e.g. "open" next to plain
+  "edit"/"share" icons) — everything else should stay `neutral`.
+
   ## Examples
 
       <.icon_button icon="hero-pencil-square" label="Edit" patch={~p"/admin/users/\#{user.id}/edit"} />
@@ -176,31 +180,41 @@ defmodule AthenaWeb.CoreComponents do
   attr :rest, :global,
     include: ~w(href navigate patch phx-click phx-value-id type disabled data-confirm)
 
-  attr :variant, :string, values: ~w(neutral danger), default: "neutral"
+  attr :variant, :string, values: ~w(neutral danger primary), default: "neutral"
   attr :size, :string, values: ~w(xs sm), default: "xs"
   attr :icon, :string, required: true
-  attr :label, :string, required: true, doc: "accessible label, rendered as aria-label"
+
+  attr :label, :string,
+    required: true,
+    doc: "accessible label, rendered as both aria-label and a hover title"
+
   attr :class, :any, default: nil
 
   def icon_button(%{rest: rest} = assigns) do
+    variants = %{
+      "neutral" => "btn-ghost",
+      "danger" => "btn-ghost text-error hover:bg-error/10",
+      "primary" => "btn-primary btn-soft"
+    }
+
     assigns =
       assign(assigns, :class, [
-        "btn btn-ghost btn-square",
+        "btn btn-square",
+        Map.fetch!(variants, assigns.variant),
         assigns.size == "xs" && "btn-xs",
         assigns.size == "sm" && "btn-sm",
-        assigns.variant == "danger" && "text-error hover:bg-error/10",
         assigns.class
       ])
 
     if rest[:href] || rest[:navigate] || rest[:patch] do
       ~H"""
-      <.link class={@class} aria-label={@label} {@rest}>
+      <.link class={@class} aria-label={@label} title={@label} {@rest}>
         <.icon name={@icon} class="size-4" />
       </.link>
       """
     else
       ~H"""
-      <button type="button" class={@class} aria-label={@label} {@rest}>
+      <button type="button" class={@class} aria-label={@label} title={@label} {@rest}>
         <.icon name={@icon} class="size-4" />
       </button>
       """

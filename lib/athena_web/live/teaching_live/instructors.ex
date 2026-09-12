@@ -204,30 +204,34 @@ defmodule AthenaWeb.TeachingLive.Instructors do
         </:col>
         <:action :let={{_id, instructor}}>
           <div class="flex justify-end gap-2">
-            <.button
+            <.icon_button
               :if={Identity.can?(@current_user, "instructors.update", instructor)}
               patch={
                 ~p"/teaching/instructors/#{instructor.id}/edit?#{build_query_params(assigns, %{})}"
               }
-              class="btn btn-ghost btn-xs btn-square"
-              title={gettext("Edit")}
-            >
-              <.icon name="hero-pencil-square" class="size-4" />
-            </.button>
+              icon="hero-pencil-square"
+              label={gettext("Edit")}
+            />
 
-            <.button
+            <.icon_button
               :if={Identity.can?(@current_user, "instructors.delete", instructor)}
               type="button"
               phx-click="delete_click"
               phx-value-id={instructor.id}
-              class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
-              title={gettext("Delete")}
-            >
-              <.icon name="hero-trash" class="size-4" />
-            </.button>
+              icon="hero-trash"
+              label={gettext("Delete")}
+              variant="danger"
+            />
           </div>
         </:action>
       </.table>
+
+      <.empty_state
+        :if={@meta.total_count == 0}
+        icon="hero-users"
+        title={gettext("No instructors yet")}
+        description={gettext("Create one to get started.")}
+      />
 
       <div class="flex justify-end">
         <.pagination meta={@meta} path_fn={path_fn} />

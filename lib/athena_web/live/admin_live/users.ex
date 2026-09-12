@@ -237,25 +237,31 @@ defmodule AthenaWeb.AdminLive.Users do
         </:col>
         <:action :let={{_id, acc}}>
           <div class="flex justify-end gap-2">
-            <.button
+            <.icon_button
               :if={Identity.can?(@current_user, "users.update")}
               patch={~p"/admin/users/#{acc.id}/edit?#{build_query_params(assigns, %{})}"}
-              class="btn btn-ghost btn-xs btn-square"
-            >
-              <.icon name="hero-pencil-square" class="size-4" />
-            </.button>
-            <.button
+              icon="hero-pencil-square"
+              label={gettext("Edit")}
+            />
+            <.icon_button
               :if={Identity.can?(@current_user, "users.delete")}
               type="button"
               phx-click="delete_click"
               phx-value-id={acc.id}
-              class="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
-            >
-              <.icon name="hero-trash" class="size-4" />
-            </.button>
+              icon="hero-trash"
+              label={gettext("Delete")}
+              variant="danger"
+            />
           </div>
         </:action>
       </.table>
+
+      <.empty_state
+        :if={@meta.total_count == 0}
+        icon="hero-users"
+        title={gettext("No users yet")}
+        description={gettext("Create one to get started.")}
+      />
 
       <div class="flex justify-end">
         <.pagination meta={@meta} path_fn={path_fn} />
