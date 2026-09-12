@@ -426,7 +426,9 @@ defmodule Athena.Learning.ProgressTest do
 
   describe "block_solved?/2" do
     test "existing gates are unaffected: :submit always passes", %{user: user} do
-      block = insert(:block, type: :file_assignment, completion_rule: %CompletionRule{type: :submit})
+      block =
+        insert(:block, type: :file_assignment, completion_rule: %CompletionRule{type: :submit})
+
       submission = insert(:submission, account_id: user.id, block_id: block.id, status: :pending)
 
       assert Progress.block_solved?(block, submission)
@@ -465,8 +467,11 @@ defmodule Athena.Learning.ProgressTest do
     end
 
     test "optional (:none) file_assignment never counts — not auto-gradable", %{user: user} do
-      block = insert(:block, type: :file_assignment, completion_rule: %CompletionRule{type: :none})
-      submission = insert(:submission, account_id: user.id, block_id: block.id, status: :graded, score: 100)
+      block =
+        insert(:block, type: :file_assignment, completion_rule: %CompletionRule{type: :none})
+
+      submission =
+        insert(:submission, account_id: user.id, block_id: block.id, status: :graded, score: 100)
 
       refute Progress.block_solved?(block, submission)
     end
@@ -491,19 +496,38 @@ defmodule Athena.Learning.ProgressTest do
     test "marks the block completed when it's now solved", %{user: user} do
       course = insert(:course)
       section = insert(:section, course: course)
-      block = insert(:block, section: section, type: :code, completion_rule: %CompletionRule{type: :none})
+
+      block =
+        insert(:block,
+          section: section,
+          type: :code,
+          completion_rule: %CompletionRule{type: :none}
+        )
+
       submission = insert(:submission, account_id: user.id, block_id: block.id, status: :accepted)
 
       assert :ok = Progress.maybe_complete_from_submission(submission)
 
-      assert Repo.get_by(BlockProgress, account_id: user.id, block_id: block.id, status: :completed)
+      assert Repo.get_by(BlockProgress,
+               account_id: user.id,
+               block_id: block.id,
+               status: :completed
+             )
     end
 
     test "does nothing when the block isn't solved", %{user: user} do
       course = insert(:course)
       section = insert(:section, course: course)
-      block = insert(:block, section: section, type: :code, completion_rule: %CompletionRule{type: :none})
-      submission = insert(:submission, account_id: user.id, block_id: block.id, status: :wrong_answer)
+
+      block =
+        insert(:block,
+          section: section,
+          type: :code,
+          completion_rule: %CompletionRule{type: :none}
+        )
+
+      submission =
+        insert(:submission, account_id: user.id, block_id: block.id, status: :wrong_answer)
 
       assert :ok = Progress.maybe_complete_from_submission(submission)
 
@@ -532,14 +556,23 @@ defmodule Athena.Learning.ProgressTest do
     test "is idempotent when called again after already completed", %{user: user} do
       course = insert(:course)
       section = insert(:section, course: course)
-      block = insert(:block, section: section, type: :code, completion_rule: %CompletionRule{type: :none})
+
+      block =
+        insert(:block,
+          section: section,
+          type: :code,
+          completion_rule: %CompletionRule{type: :none}
+        )
+
       submission = insert(:submission, account_id: user.id, block_id: block.id, status: :accepted)
 
       Progress.maybe_complete_from_submission(submission)
       assert :ok = Progress.maybe_complete_from_submission(submission)
 
       assert Repo.aggregate(
-               from(bp in BlockProgress, where: bp.account_id == ^user.id and bp.block_id == ^block.id),
+               from(bp in BlockProgress,
+                 where: bp.account_id == ^user.id and bp.block_id == ^block.id
+               ),
                :count
              ) == 1
     end
