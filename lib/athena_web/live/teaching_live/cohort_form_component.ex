@@ -281,14 +281,10 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
         </div>
 
         <div class="flex justify-end gap-3 mt-4">
-          <.button
-            type="button"
-            class="btn btn-ghost"
-            phx-click={JS.patch(@patch)}
-          >
+          <.button type="button" variant="ghost" phx-click={JS.patch(@patch)}>
             {gettext("Cancel")}
           </.button>
-          <.button type="submit" class="btn btn-primary" phx-disable-with={gettext("Saving...")}>
+          <.button type="submit" variant="primary" phx-disable-with={gettext("Saving...")}>
             {gettext("Save")}
           </.button>
         </div>

@@ -207,15 +207,15 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponent do
                 <span class="font-bold">{@selected_account.login}</span>
               </div>
 
-              <.button
+              <.icon_button
                 :if={@action == :new}
                 type="button"
                 phx-click="clear_account"
                 phx-target={@myself}
-                class="btn btn-ghost btn-xs btn-square text-error"
-              >
-                <.icon name="hero-x-mark" class="size-4" />
-              </.button>
+                icon="hero-x-mark"
+                label={gettext("Clear")}
+                variant="danger"
+              />
             </div>
           <% else %>
             <div class="relative">
@@ -272,14 +272,10 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponent do
         />
 
         <div class="flex justify-end gap-3 mt-4">
-          <.button
-            type="button"
-            class="btn btn-ghost"
-            phx-click={JS.patch(@patch)}
-          >
+          <.button type="button" variant="ghost" phx-click={JS.patch(@patch)}>
             {gettext("Cancel")}
           </.button>
-          <.button type="submit" class="btn btn-primary" phx-disable-with={gettext("Saving...")}>
+          <.button type="submit" variant="primary" phx-disable-with={gettext("Saving...")}>
             {gettext("Save")}
           </.button>
         </div>

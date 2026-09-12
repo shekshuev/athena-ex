@@ -221,10 +221,10 @@ defmodule AthenaWeb.AdminLive.Gamification do
             {gettext("Facts available to rules: %{facts}", facts: @known_facts)}
           </p>
         </div>
-        <.link patch={~p"/admin/gamification/new"} class="btn btn-primary">
+        <.button variant="primary" patch={~p"/admin/gamification/new"}>
           <.icon name="hero-plus" class="size-4" />
           {gettext("New Badge")}
-        </.link>
+        </.button>
       </div>
 
       <div class="overflow-x-auto border border-base-300 rounded-sm">
@@ -351,10 +351,10 @@ defmodule AthenaWeb.AdminLive.Gamification do
           </div>
 
           <div class="flex justify-end gap-3">
-            <.link patch={~p"/admin/gamification"} class="btn btn-ghost">{gettext("Cancel")}</.link>
-            <button type="submit" class="btn btn-primary" phx-disable-with={gettext("Saving...")}>
+            <.button variant="ghost" patch={~p"/admin/gamification"}>{gettext("Cancel")}</.button>
+            <.button type="submit" variant="primary" phx-disable-with={gettext("Saving...")}>
               {gettext("Save")}
-            </button>
+            </.button>
           </div>
         </.form>
 
@@ -366,7 +366,7 @@ defmodule AthenaWeb.AdminLive.Gamification do
             <label class="label"><span class="label-text">{gettext("Login")}</span></label>
             <input name="login" type="text" class="input input-bordered w-full" required />
           </div>
-          <button type="submit" class="btn btn-outline">{gettext("Test")}</button>
+          <.button type="submit">{gettext("Test")}</.button>
         </form>
         <div :if={@test_result} class="mt-2 text-sm font-bold">
           <% {login, result} = @test_result %>

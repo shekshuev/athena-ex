@@ -163,9 +163,9 @@ defmodule AthenaWeb.TeachingLive.Sprints do
               />
 
               <div class="flex justify-end">
-                <button type="submit" class="btn btn-primary" phx-disable-with={gettext("Saving...")}>
+                <.button type="submit" variant="primary" phx-disable-with={gettext("Saving...")}>
                   {gettext("Create Sprint")}
-                </button>
+                </.button>
               </div>
             </.form>
           </div>

@@ -373,21 +373,22 @@ defmodule AthenaWeb.AccountLive.Profile do
                 <div :for={entry <- @uploads.avatar.entries} class="mt-3 flex items-center gap-3">
                   <span class="text-sm font-medium truncate">{entry.client_name}</span>
                   <span class="text-xs text-base-content/50">{entry.progress}%</span>
-                  <button
+                  <.icon_button
                     type="button"
                     phx-click="cancel_avatar"
                     phx-value-ref={entry.ref}
-                    class="btn btn-ghost btn-xs text-error"
-                  >
-                    <.icon name="hero-x-mark" class="size-4" />
-                  </button>
-                  <button
+                    icon="hero-x-mark"
+                    label={gettext("Cancel")}
+                    variant="danger"
+                  />
+                  <.button
                     :if={entry.progress == 100}
                     type="submit"
-                    class="btn btn-primary btn-xs"
+                    variant="primary"
+                    size="xs"
                   >
                     {gettext("Save avatar")}
-                  </button>
+                  </.button>
                 </div>
 
                 <div
@@ -435,9 +436,9 @@ defmodule AthenaWeb.AccountLive.Profile do
               />
 
               <div class="flex justify-end">
-                <button type="submit" class="btn btn-primary" phx-disable-with={gettext("Saving...")}>
+                <.button type="submit" variant="primary" phx-disable-with={gettext("Saving...")}>
                   {gettext("Save changes")}
-                </button>
+                </.button>
               </div>
             </.form>
           </div>
@@ -478,9 +479,9 @@ defmodule AthenaWeb.AccountLive.Profile do
               </div>
 
               <div class="flex justify-end">
-                <button type="submit" class="btn btn-primary" phx-disable-with={gettext("Saving...")}>
+                <.button type="submit" variant="primary" phx-disable-with={gettext("Saving...")}>
                   {gettext("Update password")}
-                </button>
+                </.button>
               </div>
             </.form>
           </div>
