@@ -67,6 +67,17 @@ defmodule Athena.Learning.Instructors do
   end
 
   @doc """
+  Looks up the instructor profile owned by an account, if any. Unscoped by
+  ACL — used to answer "is this account an instructor at all" (e.g. to
+  decide whether to show teaching-facing UI), not to grant access to
+  instructor data.
+  """
+  @spec get_instructor_by_account(String.t()) :: Instructor.t() | nil
+  def get_instructor_by_account(account_id) do
+    Repo.get_by(Instructor, owner_id: account_id)
+  end
+
+  @doc """
   Retrieves a single instructor, scoped by ACL.
   """
   def get_instructor(user, id) do

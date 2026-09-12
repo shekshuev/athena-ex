@@ -76,16 +76,18 @@ defmodule AthenaWeb.DashboardLive.IndexTest do
       assert html =~ section.title
     end
 
-    test "shows the pending-review widget for accounts with grading.read permission", %{
+    test "shows the pending-review widget for instructors with grading.read permission", %{
       conn: conn
     } do
-      role = insert(:role, permissions: ["grading.read"])
-      instructor = insert(:account, role: role)
+      role = insert(:role, permissions: ["grading.read", "cohorts.read"])
+      account = insert(:account, role: role)
+      insert(:instructor, owner_id: account.id)
       insert(:submission, status: :needs_review)
 
-      conn = init_test_session(conn, %{"account_id" => instructor.id})
-      {:ok, _lv, html} = live(conn, ~p"/dashboard")
+      conn = init_test_session(conn, %{"account_id" => account.id})
+      {:ok, lv, html} = live(conn, ~p"/dashboard")
 
+      assert has_element?(lv, "h2", "Teaching")
       assert html =~ "awaiting review"
       assert html =~ "Go to grading"
     end
@@ -93,13 +95,48 @@ defmodule AthenaWeb.DashboardLive.IndexTest do
     test "hides the pending-review widget for accounts without grading.read permission", %{
       conn: conn
     } do
-      account = insert(:account, role: insert(:role, permissions: []))
+      role = insert(:role, permissions: ["cohorts.read"])
+      account = insert(:account, role: role)
+      insert(:instructor, owner_id: account.id)
       insert(:submission, status: :needs_review)
 
       conn = init_test_session(conn, %{"account_id" => account.id})
       {:ok, _lv, html} = live(conn, ~p"/dashboard")
 
       refute html =~ "awaiting review"
+    end
+
+    test "hides the whole Teaching section for accounts without an instructor profile, even with grading.read",
+         %{conn: conn} do
+      role = insert(:role, permissions: ["grading.read", "cohorts.read"])
+      account = insert(:account, role: role)
+      insert(:submission, status: :needs_review)
+
+      conn = init_test_session(conn, %{"account_id" => account.id})
+      {:ok, lv, _html} = live(conn, ~p"/dashboard")
+
+      refute has_element?(lv, "h2", "Teaching")
+      refute has_element?(lv, "a", "Go to grading")
+    end
+
+    test "shows quiet cohort members to an instructor managing the cohort", %{conn: conn} do
+      role = insert(:role, permissions: ["cohorts.read"])
+      account = insert(:account, role: role)
+      instructor = insert(:instructor, owner_id: account.id)
+
+      cohort = insert(:cohort, type: :academic)
+      insert(:cohort_instructor, cohort_id: cohort.id, instructor_id: instructor.id)
+
+      quiet_student = insert(:account)
+      insert(:cohort_membership, account_id: quiet_student.id, cohort_id: cohort.id)
+
+      conn = init_test_session(conn, %{"account_id" => account.id})
+      {:ok, lv, html} = live(conn, ~p"/dashboard")
+
+      assert has_element?(lv, "h2", "Teaching")
+      assert html =~ cohort.name
+      assert html =~ "Quiet this week"
+      assert html =~ quiet_student.login
     end
 
     test "shows the account's XP/level badge linking to achievements", %{conn: conn} do

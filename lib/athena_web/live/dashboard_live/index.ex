@@ -2,15 +2,19 @@ defmodule AthenaWeb.DashboardLive.Index do
   @moduledoc """
   Main dashboard landing page.
 
-  Surfaces widgets by what the account actually has access to (RBAC here is
-  permission-driven, not a fixed student/instructor role), rather than
-  branching on a role name: a "continue learning" shortcut, enrolled course
-  progress, upcoming access-window deadlines, and — for accounts that can
-  grade — a pending-review counter.
+  Every account gets the student view: a "continue learning" shortcut,
+  enrolled course progress, and upcoming access-window deadlines. Accounts
+  that additionally own an `Athena.Learning.Instructor` profile (the
+  ground truth for "is this account a teacher" — not a permission or role
+  name) also get a Teaching section underneath: the cohorts they manage,
+  which members went quiet this week, and — for those who can also grade —
+  a pending-review counter. Both layers are gated at the data-loading step
+  in `mount/3`, not just in the template.
   """
   use AthenaWeb, :live_view
 
   alias Athena.{Learning, Content, Identity, Gamification}
+  alias Athena.Learning.Instructor
 
   @impl true
   def mount(_params, _session, socket) do
@@ -35,20 +39,50 @@ defmodule AthenaWeb.DashboardLive.Index do
       |> Enum.map(&resolve_deadline/1)
       |> Enum.reject(&is_nil/1)
 
-    needs_review_count =
-      if Identity.can?(account, "grading.read") do
-        count_needs_review(account)
-      end
-
     {:ok,
      socket
      |> assign(:continue, resolve_continue(last_activity, enrollments))
      |> assign(:courses, courses)
      |> assign(:deadlines, deadlines)
-     |> assign(:needs_review_count, needs_review_count)
+     |> assign(:teaching, build_teaching_section(account))
      |> assign(:total_xp, total_xp)
      |> assign(:level, Gamification.level_for_xp(total_xp))
      |> assign(:streak, streak)}
+  end
+
+  @doc false
+  # Teaching data is only built (and only ever shown) for accounts that own an
+  # `Instructor` profile — being an instructor is a fact about the account
+  # (a row in `instructors`), not a role name, so this is checked here at the
+  # data layer rather than left to a permission string alone.
+  defp build_teaching_section(account) do
+    with %Instructor{} <- Learning.get_instructor_by_account(account.id),
+         true <- Identity.can?(account, "cohorts.read") do
+      {:ok, {cohorts, _meta}} = Learning.list_cohorts(account, %{"page_size" => 50})
+
+      cohort_rows =
+        cohorts
+        |> Enum.filter(&(&1.type == :academic))
+        |> Enum.map(fn cohort ->
+          %{cohort: cohort, quiet_members: quiet_members_with_accounts(cohort.id)}
+        end)
+
+      needs_review_count =
+        if Identity.can?(account, "grading.read"), do: count_needs_review(account)
+
+      %{cohorts: cohort_rows, needs_review_count: needs_review_count}
+    else
+      _ -> nil
+    end
+  end
+
+  defp quiet_members_with_accounts(cohort_id) do
+    members = Gamification.quiet_members(cohort_id)
+    accounts_map = Identity.get_accounts_map(Enum.map(members, & &1.account_id))
+
+    Enum.map(members, fn member ->
+      Map.put(member, :account, Map.get(accounts_map, member.account_id))
+    end)
   end
 
   defp resolve_continue(%{block_id: block_id}, enrollments) do
@@ -159,30 +193,6 @@ defmodule AthenaWeb.DashboardLive.Index do
         </div>
       </div>
 
-      <div
-        :if={@needs_review_count}
-        class="card bg-warning/10 border border-warning/30 rounded-sm"
-      >
-        <div class="card-body flex-row items-center justify-between flex-wrap gap-4">
-          <div class="flex items-center gap-3">
-            <.icon name="hero-academic-cap" class="size-8 text-warning" />
-            <div>
-              <div class="font-display font-black text-lg">
-                {ngettext(
-                  "%{count} submission awaiting review",
-                  "%{count} submissions awaiting review",
-                  @needs_review_count,
-                  count: @needs_review_count
-                )}
-              </div>
-            </div>
-          </div>
-          <.link navigate={~p"/teaching/grading"} class="btn btn-warning btn-sm">
-            {gettext("Go to grading")}
-          </.link>
-        </div>
-      </div>
-
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div class="lg:col-span-2 space-y-4">
           <h2 class="font-display font-black uppercase text-sm text-base-content/70">
@@ -241,6 +251,67 @@ defmodule AthenaWeb.DashboardLive.Index do
                 </div>
                 <div class="font-bold text-sm truncate">{deadline.course.title}</div>
                 <div class="text-xs text-base-content/50 truncate">{deadline.section_title}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div :if={@teaching} class="space-y-4 border-t border-base-300 pt-8">
+        <h2 class="font-display font-black uppercase text-sm text-base-content/70">
+          {gettext("Teaching")}
+        </h2>
+
+        <div
+          :if={@teaching.needs_review_count}
+          class="card bg-warning/10 border border-warning/30 rounded-sm"
+        >
+          <div class="card-body flex-row items-center justify-between flex-wrap gap-4">
+            <div class="flex items-center gap-3">
+              <.icon name="hero-academic-cap" class="size-8 text-warning" />
+              <div class="font-display font-black text-lg">
+                {ngettext(
+                  "%{count} submission awaiting review",
+                  "%{count} submissions awaiting review",
+                  @teaching.needs_review_count,
+                  count: @teaching.needs_review_count
+                )}
+              </div>
+            </div>
+            <.link navigate={~p"/teaching/grading"} class="btn btn-warning btn-sm">
+              {gettext("Go to grading")}
+            </.link>
+          </div>
+        </div>
+
+        <div :if={@teaching.cohorts == []} class="text-base-content/50 text-sm">
+          {gettext("You don't manage any cohorts yet.")}
+        </div>
+
+        <div :if={@teaching.cohorts != []} class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div
+            :for={row <- @teaching.cohorts}
+            class="card bg-base-100 border border-base-300 rounded-sm"
+          >
+            <div class="card-body py-4 gap-2">
+              <div class="flex items-center justify-between">
+                <div class="font-bold">{row.cohort.name}</div>
+                <.link navigate={~p"/teaching/cohorts/#{row.cohort.id}"} class="btn btn-ghost btn-xs">
+                  {gettext("Open")}
+                </.link>
+              </div>
+
+              <div :if={row.quiet_members == []} class="text-xs text-base-content/50">
+                {gettext("Everyone was active this week.")}
+              </div>
+
+              <div :if={row.quiet_members != []} class="space-y-1">
+                <div class="text-xs font-black uppercase text-base-content/50 tracking-wide">
+                  {gettext("Quiet this week")}
+                </div>
+                <div :for={member <- row.quiet_members} class="text-sm truncate">
+                  {member.account && member.account.login}
+                </div>
               </div>
             </div>
           </div>

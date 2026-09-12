@@ -25,6 +25,7 @@ defmodule Athena.Learning do
   defdelegate list_instructors(user, params \\ %{}), to: Instructors
   defdelegate search_instructors(user, search_query, limit \\ 10), to: Instructors
   defdelegate get_instructor(user, id), to: Instructors
+  defdelegate get_instructor_by_account(account_id), to: Instructors
   defdelegate create_instructor(user, attrs), to: Instructors
   defdelegate update_instructor(user, instructor, attrs), to: Instructors
   defdelegate delete_instructor(user, instructor), to: Instructors
