@@ -231,7 +231,10 @@ defmodule AthenaWeb.CoreComponents do
       <.badge tone="success">Active</.badge>
       <.badge tone="error">Rejected</.badge>
   """
-  attr :tone, :string, values: ~w(success warning error neutral info primary), default: "neutral"
+  attr :tone, :string,
+    values: ~w(success warning error neutral info primary secondary accent),
+    default: "neutral"
+
   attr :class, :any, default: nil
   slot :inner_block, required: true
 

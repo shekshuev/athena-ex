@@ -245,14 +245,9 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
             </span>
           </:col>
           <:col :let={{_id, enrollment}} label={gettext("Status")}>
-            <span class={[
-              "badge badge-sm font-bold",
-              enrollment.status == :active && "badge-success badge-soft",
-              enrollment.status == :completed && "badge-info badge-soft",
-              enrollment.status == :dropped && "badge-error badge-soft"
-            ]}>
+            <.badge tone={enrollment_status_tone(enrollment.status)}>
               {Atom.to_string(enrollment.status) |> String.capitalize()}
-            </span>
+            </.badge>
           </:col>
           <:col :let={{_id, enrollment}} label={gettext("Assigned At")}>
             <span class="text-sm opacity-60">
@@ -430,4 +425,8 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
     |> Enum.reject(fn {_, v} -> is_nil(v) or v == "" or v == [] end)
     |> Map.new()
   end
+
+  defp enrollment_status_tone(:active), do: "success"
+  defp enrollment_status_tone(:completed), do: "info"
+  defp enrollment_status_tone(:dropped), do: "error"
 end

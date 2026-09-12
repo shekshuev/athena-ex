@@ -2049,9 +2049,9 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   defp type_badge(assigns) do
     ~H"""
-    <span class="badge badge-sm font-bold border border-base-200 bg-base-100 text-base-content/70 uppercase tracking-widest text-[10px]">
+    <.badge tone="neutral" class="uppercase tracking-widest text-[10px]">
       {Atom.to_string(@type) |> String.replace("_", " ")}
-    </span>
+    </.badge>
     """
   end
 

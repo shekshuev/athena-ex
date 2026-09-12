@@ -227,7 +227,9 @@ defmodule AthenaWeb.AdminLive.Users do
           {if acc.profile, do: Profile.full_name(acc.profile), else: "—"}
         </:col>
         <:col :let={{_id, acc}} label={gettext("Status")} sort="status">
-          <.status_badge status={acc.status} />
+          <.badge tone={account_status_tone(acc.status)}>
+            {Atom.to_string(acc.status) |> String.replace("_", " ") |> String.capitalize()}
+          </.badge>
         </:col>
         <:col :let={{_id, acc}} label={gettext("Role")}>
           <div class="badge badge-outline">{acc.role.name}</div>
@@ -302,18 +304,9 @@ defmodule AthenaWeb.AdminLive.Users do
     """
   end
 
-  defp status_badge(assigns) do
-    ~H"""
-    <span class={[
-      "badge badge-sm font-bold",
-      @status == :active && "badge-success badge-soft",
-      @status == :blocked && "badge-error badge-soft",
-      @status == :temporary_blocked && "badge-warning badge-soft"
-    ]}>
-      {Atom.to_string(@status) |> String.replace("_", " ") |> String.capitalize()}
-    </span>
-    """
-  end
+  defp account_status_tone(:active), do: "success"
+  defp account_status_tone(:blocked), do: "error"
+  defp account_status_tone(:temporary_blocked), do: "warning"
 
   @doc false
   defp build_query_params(assigns, overrides) do

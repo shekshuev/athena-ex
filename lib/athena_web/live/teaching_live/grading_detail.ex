@@ -499,7 +499,9 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                 {gettext("Evaluation")}
               </div>
             </div>
-            <.status_badge status={@submission.status} />
+            <.badge tone={status_tone(@submission.status)} class="tracking-wide">
+              {Atom.to_string(@submission.status) |> String.replace("_", " ") |> String.capitalize()}
+            </.badge>
           </div>
 
           <div class="p-6 space-y-6">
@@ -619,27 +621,21 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
     """
   end
 
-  defp status_badge(assigns) do
-    ~H"""
-    <span class={[
-      "badge font-bold border tracking-wide rounded-sm",
-      @status in [:graded, :accepted] && "bg-success/10 text-success border-success/30",
-      @status == :needs_review && "bg-warning/10 text-warning border-warning/30",
-      @status in [:pending, :processing] && "bg-base-200 text-base-content/70 border-base-300",
-      @status in [
-        :rejected,
-        :wrong_answer,
-        :compilation_error,
-        :runtime_error,
-        :time_limit_exceeded,
-        :memory_limit_exceeded,
-        :system_error
-      ] && "bg-error/10 text-error border-error/30"
-    ]}>
-      {Atom.to_string(@status) |> String.replace("_", " ") |> String.capitalize()}
-    </span>
-    """
-  end
+  defp status_tone(status) when status in [:graded, :accepted], do: "success"
+  defp status_tone(:needs_review), do: "warning"
+  defp status_tone(status) when status in [:pending, :processing], do: "neutral"
+
+  defp status_tone(status)
+       when status in [
+              :rejected,
+              :wrong_answer,
+              :compilation_error,
+              :runtime_error,
+              :time_limit_exceeded,
+              :memory_limit_exceeded,
+              :system_error
+            ],
+       do: "error"
 
   @doc false
   defp hydrate_questions(questions) when is_list(questions),

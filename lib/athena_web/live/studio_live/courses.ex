@@ -259,36 +259,30 @@ defmodule AthenaWeb.StudioLive.Courses do
   defp access_badges(assigns) do
     ~H"""
     <div class="flex gap-1 items-center">
-      <span
-        :if={@info.role != :none}
-        class={[
-          "badge badge-xs font-bold uppercase shrink-0",
-          @info.role == :owner && "badge-primary badge-soft",
-          @info.role == :writer && "badge-secondary badge-soft",
-          @info.role == :reader && "badge-accent badge-soft"
-        ]}
-      >
+      <.badge :if={@info.role != :none} tone={role_tone(@info.role)} class="uppercase shrink-0">
         {Atom.to_string(@info.role)}
-      </span>
+      </.badge>
 
-      <span
-        :if={@info.is_public}
-        class="badge badge-xs badge-neutral font-bold uppercase shrink-0"
-      >
+      <.badge :if={@info.is_public} tone="neutral" class="uppercase shrink-0">
         <.icon name="hero-globe-alt" class="size-3 mr-1" />
         {gettext("Public")}
-      </span>
+      </.badge>
 
-      <span
+      <.badge
         :if={!@info.is_public and @info.shares_count > 0 and @info.role == :owner}
-        class="badge badge-xs badge-info badge-soft font-bold shrink-0"
+        tone="info"
+        class="shrink-0"
       >
         <.icon name="hero-users" class="size-3 mr-1" />
         {@info.shares_count}
-      </span>
+      </.badge>
     </div>
     """
   end
+
+  defp role_tone(:owner), do: "primary"
+  defp role_tone(:writer), do: "secondary"
+  defp role_tone(:reader), do: "accent"
 
   @doc false
   defp build_query_params(assigns, overrides) do
@@ -371,7 +365,9 @@ defmodule AthenaWeb.StudioLive.Courses do
           </span>
         </:col>
         <:col :let={{_id, course}} label={gettext("Status")} sort="status">
-          <.status_badge status={course.status} />
+          <.badge tone={status_tone(course.status)}>
+            {Atom.to_string(course.status) |> String.capitalize()}
+          </.badge>
         </:col>
 
         <:col :let={{_id, course}} label={gettext("Owner")}>
@@ -516,16 +512,7 @@ defmodule AthenaWeb.StudioLive.Courses do
     """
   end
 
-  defp status_badge(assigns) do
-    ~H"""
-    <span class={[
-      "badge badge-sm font-bold",
-      @status == :published && "badge-success badge-soft",
-      @status == :draft && "badge-warning badge-soft",
-      @status == :archived && "badge-error badge-soft"
-    ]}>
-      {Atom.to_string(@status) |> String.capitalize()}
-    </span>
-    """
-  end
+  defp status_tone(:published), do: "success"
+  defp status_tone(:draft), do: "warning"
+  defp status_tone(:archived), do: "error"
 end
