@@ -87,12 +87,21 @@ defmodule Athena.Gamification.DailyChallenges do
   end
 
   defp eligible_block_ids_for_course(course_id) do
-    course_id
-    |> Content.list_linear_lessons()
-    |> Enum.map(& &1.id)
-    |> Content.list_blocks_by_section_ids()
-    |> Enum.filter(&(&1.type in @eligible_block_types))
-    |> Enum.map(& &1.id)
+    case Content.get_course(course_id) do
+      {:ok, %{type: :standard}} ->
+        course_id
+        |> Content.list_linear_lessons()
+        |> Enum.map(& &1.id)
+        |> Content.list_blocks_by_section_ids()
+        |> Enum.filter(&(&1.type in @eligible_block_types))
+        |> Enum.map(& &1.id)
+
+      # A :competition course's tasks must never leak into a daily challenge —
+      # they're meant to stay exclusive to the competitive/graded context they
+      # were written for.
+      _ ->
+        []
+    end
   end
 
   defp completed_block_ids(_account_id, []), do: []

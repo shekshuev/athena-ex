@@ -42,6 +42,18 @@ defmodule Athena.Gamification.DailyChallengesTest do
       assert DailyChallenges.today_for(account.id) == nil
     end
 
+    test "never picks a completed block from a :competition course" do
+      account = insert(:account)
+      course = insert(:course, type: :competition)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section, type: :code)
+
+      insert(:enrollment, account_id: account.id, course_id: course.id)
+      Progress.mark_completed(account.id, block.id)
+
+      assert DailyChallenges.today_for(account.id) == nil
+    end
+
     test "only picks a completed block from a course the account is enrolled in" do
       account = insert(:account)
 
