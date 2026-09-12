@@ -55,18 +55,15 @@ defmodule AthenaWeb.LearnLive.DailyChallenge do
           Phoenix.PubSub.subscribe(Athena.PubSub, "submission:#{account.id}:#{block.id}")
         end
 
-        submission =
-          account.id
-          |> Learning.get_latest_submissions([block.id], nil)
-          |> Map.get(block.id)
-
-        draft = Learning.get_draft(account.id, block.id, nil)
-
+        # Deliberately not preloading the account's prior submission/draft for
+        # this block: this screen is purely a "solve it again" exercise, so it
+        # always starts blank — never showing the answer (or the "Resubmit"
+        # wording) from whenever the block was originally solved in its course.
         assign(socket,
           challenge: challenge,
           block: block,
-          submission: submission,
-          draft: draft,
+          submission: nil,
+          draft: nil,
           solved?: false
         )
 
@@ -199,11 +196,12 @@ defmodule AthenaWeb.LearnLive.DailyChallenge do
     shift_matching_answer(socket, pair_id, 1)
   end
 
+  # Ignored, deliberately not re-fetched from the DB: unlike Player, this
+  # screen never shows the account's historical submission for this block (see
+  # mount_active_challenge/3), and re-fetching "the latest non-draft
+  # submission" here would silently pull that same historical one back in.
   @impl true
-  def handle_info({:submission_updated, %{status: :draft} = submission}, socket) do
-    real_sub = Learning.get_submission(socket.assigns.current_user.id, submission.block_id, nil)
-    {:noreply, assign(socket, :submission, real_sub)}
-  end
+  def handle_info({:submission_updated, %{status: :draft}}, socket), do: {:noreply, socket}
 
   def handle_info({:submission_updated, submission}, socket) do
     block = socket.assigns.block

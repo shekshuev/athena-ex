@@ -78,6 +78,34 @@ defmodule Athena.Gamification.DailyChallengesTest do
       assert first.id == second.id
       assert Repo.aggregate(DailyChallenge, :count) == 1
     end
+
+    test "generates a new challenge for today even if yesterday's went unsolved" do
+      account = insert(:account)
+      section = insert(:section)
+      block = insert(:block, section: section, type: :code)
+      insert(:enrollment, account_id: account.id, course_id: section.course.id)
+      Progress.mark_completed(account.id, block.id)
+
+      yesterday = Date.add(Date.utc_today(), -1)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      stale =
+        Repo.insert!(%DailyChallenge{
+          id: Ecto.UUID.generate(),
+          account_id: account.id,
+          block_id: block.id,
+          assigned_date: yesterday,
+          completed_at: nil,
+          inserted_at: now,
+          updated_at: now
+        })
+
+      today = DailyChallenges.today_for(account.id)
+
+      assert today.id != stale.id
+      assert today.assigned_date == Date.utc_today()
+      assert Repo.aggregate(DailyChallenge, :count) == 2
+    end
   end
 
   describe "handle_block_completed/1" do

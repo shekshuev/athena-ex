@@ -85,6 +85,29 @@ defmodule AthenaWeb.LearnLive.DailyChallengeTest do
 
       assert html =~ "daily-challenge-quiz-#{block.id}"
     end
+
+    test "never shows the account's original submission for this block", %{
+      conn: conn,
+      user: user
+    } do
+      section = insert(:section)
+      block = insert(:block, section: section, type: :code, content: %{"language" => "python3"})
+      enroll_and_complete(user, block)
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :accepted,
+        score: 100,
+        content: %{"code" => "print('original solution')"}
+      )
+
+      {:ok, _lv, html} = live(conn, ~p"/daily-challenge")
+
+      refute html =~ "Resubmit"
+      refute html =~ "original solution"
+      assert html =~ "Submit"
+    end
   end
 
   describe "solving the challenge" do
