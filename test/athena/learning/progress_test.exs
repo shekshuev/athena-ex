@@ -423,4 +423,125 @@ defmodule Athena.Learning.ProgressTest do
       assert result[enrollment.id] == %{completed: 0, total: 2, percent: 0}
     end
   end
+
+  describe "block_solved?/2" do
+    test "existing gates are unaffected: :submit always passes", %{user: user} do
+      block = insert(:block, type: :file_assignment, completion_rule: %CompletionRule{type: :submit})
+      submission = insert(:submission, account_id: user.id, block_id: block.id, status: :pending)
+
+      assert Progress.block_solved?(block, submission)
+    end
+
+    test "existing gates are unaffected: :pass_auto_grade checks the score", %{user: user} do
+      block =
+        insert(:block,
+          type: :quiz_question,
+          completion_rule: %CompletionRule{type: :pass_auto_grade, min_score: 80}
+        )
+
+      passing = insert(:submission, account_id: user.id, block_id: block.id, score: 80)
+      failing = insert(:submission, account_id: user.id, block_id: block.id, score: 79)
+
+      assert Progress.block_solved?(block, passing)
+      refute Progress.block_solved?(block, failing)
+    end
+
+    test "optional (:none) code block counts as solved when accepted", %{user: user} do
+      block = insert(:block, type: :code, completion_rule: %CompletionRule{type: :none})
+      accepted = insert(:submission, account_id: user.id, block_id: block.id, status: :accepted)
+      wrong = insert(:submission, account_id: user.id, block_id: block.id, status: :wrong_answer)
+
+      assert Progress.block_solved?(block, accepted)
+      refute Progress.block_solved?(block, wrong)
+    end
+
+    test "optional (:none) quiz_question block requires a perfect score", %{user: user} do
+      block = insert(:block, type: :quiz_question, completion_rule: %CompletionRule{type: :none})
+      perfect = insert(:submission, account_id: user.id, block_id: block.id, score: 100)
+      partial = insert(:submission, account_id: user.id, block_id: block.id, score: 90)
+
+      assert Progress.block_solved?(block, perfect)
+      refute Progress.block_solved?(block, partial)
+    end
+
+    test "optional (:none) file_assignment never counts — not auto-gradable", %{user: user} do
+      block = insert(:block, type: :file_assignment, completion_rule: %CompletionRule{type: :none})
+      submission = insert(:submission, account_id: user.id, block_id: block.id, status: :graded, score: 100)
+
+      refute Progress.block_solved?(block, submission)
+    end
+
+    test "child exam-question submissions are excluded from the optional path", %{user: user} do
+      block = insert(:block, type: :quiz_question, completion_rule: %CompletionRule{type: :none})
+      parent = insert(:submission, account_id: user.id, block_id: block.id, status: :pending)
+
+      child_submission =
+        insert(:submission,
+          account_id: user.id,
+          block_id: block.id,
+          score: 100,
+          parent_submission_id: parent.id
+        )
+
+      refute Progress.block_solved?(block, child_submission)
+    end
+  end
+
+  describe "maybe_complete_from_submission/1" do
+    test "marks the block completed when it's now solved", %{user: user} do
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section, type: :code, completion_rule: %CompletionRule{type: :none})
+      submission = insert(:submission, account_id: user.id, block_id: block.id, status: :accepted)
+
+      assert :ok = Progress.maybe_complete_from_submission(submission)
+
+      assert Repo.get_by(BlockProgress, account_id: user.id, block_id: block.id, status: :completed)
+    end
+
+    test "does nothing when the block isn't solved", %{user: user} do
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section, type: :code, completion_rule: %CompletionRule{type: :none})
+      submission = insert(:submission, account_id: user.id, block_id: block.id, status: :wrong_answer)
+
+      assert :ok = Progress.maybe_complete_from_submission(submission)
+
+      refute Repo.get_by(BlockProgress, account_id: user.id, block_id: block.id)
+    end
+
+    test "is a no-op for child exam-question submissions", %{user: user} do
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section, type: :quiz_question)
+      parent = insert(:submission, account_id: user.id, block_id: block.id, status: :pending)
+
+      child_submission =
+        insert(:submission,
+          account_id: user.id,
+          block_id: block.id,
+          score: 100,
+          parent_submission_id: parent.id
+        )
+
+      assert :ok = Progress.maybe_complete_from_submission(child_submission)
+
+      refute Repo.get_by(BlockProgress, account_id: user.id, block_id: block.id)
+    end
+
+    test "is idempotent when called again after already completed", %{user: user} do
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section, type: :code, completion_rule: %CompletionRule{type: :none})
+      submission = insert(:submission, account_id: user.id, block_id: block.id, status: :accepted)
+
+      Progress.maybe_complete_from_submission(submission)
+      assert :ok = Progress.maybe_complete_from_submission(submission)
+
+      assert Repo.aggregate(
+               from(bp in BlockProgress, where: bp.account_id == ^user.id and bp.block_id == ^block.id),
+               :count
+             ) == 1
+    end
+  end
 end

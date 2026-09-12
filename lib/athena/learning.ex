@@ -142,6 +142,8 @@ defmodule Athena.Learning do
   defdelegate course_progress(account_id, course_id, cohort_id \\ nil), to: Progress
   defdelegate course_progress_batch(account_id, enrollments), to: Progress
   defdelegate team_id_for_enrollment(enrollment), to: Progress
+  defdelegate block_solved?(block, submission), to: Progress
+  defdelegate maybe_complete_from_submission(submission), to: Progress
 
   defdelegate accessible_section_ids(
                 user,

@@ -4,7 +4,7 @@ defmodule Athena.Learning.Progress do
   """
   import Ecto.Query
   alias Athena.{Repo, Content}
-  alias Athena.Learning.{BlockProgress, CohortMembership, CourseProgressCache}
+  alias Athena.Learning.{BlockProgress, CohortMembership, CourseProgressCache, Submission}
   alias Athena.Content.Section
 
   @doc """
@@ -61,6 +61,65 @@ defmodule Athena.Learning.Progress do
 
     Repo.exists?(query)
   end
+
+  @doc """
+  Whether `submission` counts as "solved" for progress/XP purposes — a
+  broader question than "does it pass this block's gate". A block's
+  `completion_rule` governs whether it blocks the waterline (`:submit`,
+  `:pass_auto_grade`); a `:none`-type block never gates anything, but an
+  auto-gradable `code`/`quiz_question` block can still be genuine practice
+  work a student solved, and should count even though it never blocks
+  progression. Child exam-question submissions (`parent_submission_id` set)
+  are excluded from that second path — they're graded as part of one exam
+  completion, not as independent practice, so counting them separately
+  would double-award XP on top of the exam block's own completion.
+  """
+  @spec block_solved?(Content.Block.t(), Submission.t()) :: boolean()
+  def block_solved?(block, submission) do
+    gate_passed?(block.completion_rule, submission) or
+      optional_practice_solved?(block, submission)
+  end
+
+  defp gate_passed?(%{type: :submit}, _submission), do: true
+
+  defp gate_passed?(%{type: :pass_auto_grade, min_score: min_score}, submission) do
+    submission.score >= (min_score || 0)
+  end
+
+  defp gate_passed?(_rule, _submission), do: false
+
+  defp optional_practice_solved?(block, submission) do
+    is_nil(submission.parent_submission_id) and
+      (is_nil(block.completion_rule) or block.completion_rule.type == :none) and
+      practice_passed?(block.type, submission)
+  end
+
+  defp practice_passed?(:code, submission), do: submission.status == :accepted
+  defp practice_passed?(:quiz_question, submission), do: submission.score == 100
+  defp practice_passed?(_type, _submission), do: false
+
+  @doc """
+  Reacts to a submission being finalized outside the live player session
+  (a teacher grading it, or an exam being auto-scored on exit) by marking
+  its block completed if `block_solved?/2` now says yes and it isn't
+  already. The live player handles its own synchronous case directly
+  (`AthenaWeb.LearnLive.Player`); this is for the paths that don't:
+  `Athena.Learning.update_submission/2` (teacher grading) and the exam
+  LiveViews' `submit_and_exit/4`.
+  """
+  @spec maybe_complete_from_submission(Submission.t()) :: :ok
+  def maybe_complete_from_submission(%Submission{parent_submission_id: nil} = submission) do
+    with {:ok, block} <- Content.get_block(submission.block_id),
+         true <- block_solved?(block, submission),
+         false <-
+           already_completed?(submission.account_id, submission.block_id, submission.cohort_id) do
+      mark_completed(submission.account_id, submission.block_id, submission.cohort_id)
+    end
+
+    :ok
+  end
+
+  def maybe_complete_from_submission(_submission), do: :ok
 
   @doc false
   defp broadcast_block_completed(account_id, cohort_id, block_id) do
