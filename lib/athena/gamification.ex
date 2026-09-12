@@ -6,6 +6,12 @@ defmodule Athena.Gamification do
   `Athena.Gamification.ActivityListener`) rather than being called directly
   by other contexts. The only inbound calls other contexts make are simple
   reads, e.g. for displaying XP on the account profile page.
+
+  Bounded-context rule followed throughout: any reference to another
+  context's data (`Identity.Account`, `Learning.Cohort`, `Content.Block`) is
+  a bare `:binary_id` field with no `belongs_to`/`references()` — a soft
+  link, not a real FK. The one real FK in this context
+  (`BadgeAward.badge_id → Badge`) stays inside Gamification itself.
   """
 
   alias Athena.Gamification.{XpLedger, AccountStats, Badges, Facts, Leagues, Sprints}
