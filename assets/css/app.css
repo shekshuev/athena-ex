@@ -481,6 +481,276 @@
   margin-bottom: 0 !important;
 }
 
+.prose .tiptap-dialogue {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+}
+
+.prose .tiptap-dialogue-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.prose .tiptap-dialogue-line {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.prose .tiptap-dialogue-line[data-side="right"] {
+  flex-direction: row-reverse;
+}
+
+.prose .tiptap-dialogue-avatar {
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9999px;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  user-select: none;
+}
+
+.prose .tiptap-dialogue-col {
+  min-width: 0;
+  max-width: min(30rem, 75%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.prose .tiptap-dialogue-line[data-side="right"] .tiptap-dialogue-col {
+  align-items: flex-end;
+}
+
+.prose .tiptap-dialogue-name {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0 !important;
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-align: left;
+  color: var(--color-base-content);
+  opacity: 0.6;
+  cursor: pointer;
+  width: fit-content;
+}
+
+.prose .tiptap-dialogue-line[data-side="right"] .tiptap-dialogue-name {
+  text-align: right;
+}
+
+.prose .tiptap-dialogue-name:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.prose .tiptap-dialogue-bubble {
+  min-width: 0;
+  border: 1px solid var(--color-base-300);
+  background-color: color-mix(in oklch, var(--color-base-200) 45%, transparent);
+  border-radius: 1rem;
+  border-top-left-radius: 0.25rem;
+  padding: 0.5rem 0.85rem;
+}
+
+.prose .tiptap-dialogue-line[data-side="right"] .tiptap-dialogue-bubble {
+  border-top-left-radius: 1rem;
+  border-top-right-radius: 0.25rem;
+  background-color: color-mix(in oklch, var(--color-primary) 12%, var(--color-base-100));
+}
+
+.prose .tiptap-dialogue-line .dialogue-text {
+  margin: 0 !important;
+}
+
+.prose .tiptap-dialogue-line-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  padding-bottom: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.prose .tiptap-dialogue-line:hover .tiptap-dialogue-line-controls,
+.prose .tiptap-dialogue-line:focus-within .tiptap-dialogue-line-controls {
+  opacity: 1;
+}
+
+.tiptap-dialogue-line-btn {
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-base-300);
+  background-color: var(--color-base-100);
+  color: var(--color-base-content);
+  opacity: 0.6;
+  border-radius: var(--radius-sm, 0.125rem);
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tiptap-dialogue-line-btn:hover {
+  opacity: 1;
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.tiptap-dialogue-line-btn.is-active {
+  opacity: 1;
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background-color: color-mix(in oklch, var(--color-primary) 10%, transparent);
+}
+
+.tiptap-dialogue-line-btn.is-danger:hover {
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.tiptap-dialogue-add-line {
+  align-self: flex-start;
+  border: 1px dashed var(--color-base-300);
+  background: transparent;
+  color: var(--color-base-content);
+  opacity: 0.6;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--radius-sm, 0.125rem);
+  cursor: pointer;
+}
+
+.tiptap-dialogue-add-line:hover {
+  opacity: 1;
+  border-style: solid;
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.tiptap-dialogue-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background-color: rgb(0 0 0 / 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.tiptap-dialogue-modal {
+  width: 100%;
+  max-width: 20rem;
+  max-height: 80vh;
+  background-color: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  border-radius: var(--radius-box, 0.5rem);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tiptap-dialogue-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-base-300);
+  font-weight: 700;
+  color: var(--color-base-content);
+}
+
+.tiptap-dialogue-modal-close {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.5;
+  font-size: 0.9rem;
+  color: var(--color-base-content);
+}
+
+.tiptap-dialogue-modal-close:hover {
+  opacity: 1;
+}
+
+.tiptap-dialogue-modal-create {
+  border: none;
+  border-top: 1px solid var(--color-base-300);
+  background: transparent;
+  padding: 0.75rem 1rem;
+  font-weight: 700;
+  text-align: left;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.tiptap-dialogue-modal-create:hover {
+  background-color: var(--color-base-200);
+}
+
+.tiptap-dialogue-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.5rem;
+  overflow-y: auto;
+}
+
+.tiptap-dialogue-picker-empty {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.tiptap-dialogue-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm, 0.125rem);
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+.tiptap-dialogue-picker-item:hover {
+  background-color: var(--color-base-200);
+}
+
+.tiptap-dialogue-picker-avatar {
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #fff;
+}
+
 .browser-support-banner {
   display: none;
 }

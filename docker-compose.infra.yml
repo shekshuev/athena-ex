@@ -32,7 +32,7 @@ services:
       - athena-network
 
   minio:
-    image: minio/minio
+    image: quay.io/minio/minio
     container_name: athena-minio
     restart: always
     command: server /data --console-address ":9001"

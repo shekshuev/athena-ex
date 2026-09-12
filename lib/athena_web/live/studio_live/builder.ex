@@ -63,7 +63,9 @@ defmodule AthenaWeb.StudioLive.Builder do
          library_insert_after_id: nil,
          pending_uploads: %{},
          running_tests: %{},
-         hide_mobile_nav: true
+         hide_mobile_nav: true,
+         characters: Content.characters_for_picker(socket.assigns.current_user),
+         show_character_modal: false
        )}
     else
       _ ->
@@ -105,6 +107,38 @@ defmodule AthenaWeb.StudioLive.Builder do
          |> put_flash(:error, gettext("This course is no longer available."))
          |> push_navigate(to: ~p"/studio/courses")}
     end
+  end
+
+  def handle_info({AthenaWeb.StudioLive.CharacterFormComponent, {:saved, _character}}, socket) do
+    characters = Content.characters_for_picker(socket.assigns.current_user)
+
+    {:noreply,
+     socket
+     |> assign(characters: characters, show_character_modal: false)
+     |> push_event("characters_updated", %{characters: characters})}
+  end
+
+  def handle_info(
+        {AthenaWeb.StudioLive.AvatarUploadComponent, {:uploaded, %{id: file_id, url: url}}},
+        socket
+      ) do
+    send_update(AthenaWeb.StudioLive.CharacterFormComponent,
+      id: :new,
+      avatar_file_id: file_id,
+      avatar_url: url
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_info({AthenaWeb.StudioLive.AvatarUploadComponent, :removed}, socket) do
+    send_update(AthenaWeb.StudioLive.CharacterFormComponent,
+      id: :new,
+      avatar_file_id: nil,
+      avatar_url: nil
+    )
+
+    {:noreply, socket}
   end
 
   def handle_info(
@@ -1096,6 +1130,18 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
+  def handle_event("open_character_manager", _params, socket) do
+    if can_edit?(socket) do
+      {:noreply, assign(socket, show_character_modal: true)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("cancel_character_modal", _, socket) do
+    {:noreply, assign(socket, show_character_modal: false)}
+  end
+
   def handle_event("media_upload_clipboard_request", params, socket) do
     if can_edit?(socket) do
       %{
@@ -1630,6 +1676,7 @@ defmodule AthenaWeb.StudioLive.Builder do
               mode={@block_mode}
               viewing_parent_id={@viewing_parent_id}
               breadcrumbs={@breadcrumbs}
+              characters={@characters}
             />
           </div>
         </div>
@@ -1660,6 +1707,23 @@ defmodule AthenaWeb.StudioLive.Builder do
           course_id={@course.id}
         />
       <% end %>
+
+      <.modal
+        :if={@show_character_modal}
+        id="character-modal"
+        show={true}
+        title={gettext("New Character")}
+        on_cancel={JS.push("cancel_character_modal")}
+      >
+        <.live_component
+          module={AthenaWeb.StudioLive.CharacterFormComponent}
+          id={:new}
+          action={:new}
+          character={%Athena.Content.Character{}}
+          current_user={@current_user}
+          on_cancel={JS.push("cancel_character_modal")}
+        />
+      </.modal>
 
       <.modal
         :if={@moving_section_id}

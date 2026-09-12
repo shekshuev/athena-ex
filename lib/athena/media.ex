@@ -116,6 +116,12 @@ defmodule Athena.Media do
   end
 
   @doc """
+  Retrieves a single file by id.
+  """
+  @spec get_file(String.t()) :: File.t() | nil
+  def get_file(id), do: Repo.get(File, id)
+
+  @doc """
   Persists file metadata into the database after a successful S3 upload.
   """
   @spec create_file(map()) :: {:ok, File.t()} | {:error, Ecto.Changeset.t()}

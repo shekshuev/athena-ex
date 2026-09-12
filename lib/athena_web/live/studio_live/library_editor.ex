@@ -59,7 +59,9 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
          show_media_modal: false,
          upload_type: nil,
          pending_uploads: %{},
-         running_tests: %{}
+         running_tests: %{},
+         characters: Content.characters_for_picker(socket.assigns.current_user),
+         show_character_modal: false
        )}
     else
       _ ->
@@ -99,6 +101,38 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
   end
 
   @impl true
+  def handle_info({AthenaWeb.StudioLive.CharacterFormComponent, {:saved, _character}}, socket) do
+    characters = Content.characters_for_picker(socket.assigns.current_user)
+
+    {:noreply,
+     socket
+     |> assign(characters: characters, show_character_modal: false)
+     |> push_event("characters_updated", %{characters: characters})}
+  end
+
+  def handle_info(
+        {AthenaWeb.StudioLive.AvatarUploadComponent, {:uploaded, %{id: file_id, url: url}}},
+        socket
+      ) do
+    send_update(AthenaWeb.StudioLive.CharacterFormComponent,
+      id: :new,
+      avatar_file_id: file_id,
+      avatar_url: url
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_info({AthenaWeb.StudioLive.AvatarUploadComponent, :removed}, socket) do
+    send_update(AthenaWeb.StudioLive.CharacterFormComponent,
+      id: :new,
+      avatar_file_id: nil,
+      avatar_url: nil
+    )
+
+    {:noreply, socket}
+  end
+
   def handle_info(
         {AthenaWeb.StudioLive.MediaUploadComponent, {:saved, _block_id, media_type, results}},
         socket
@@ -385,6 +419,18 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
       true -> {:noreply, assign(socket, show_media_modal: false, upload_type: nil)}
       _ -> {:noreply, socket}
     end
+  end
+
+  def handle_event("open_character_manager", _params, socket) do
+    if can_edit?(socket) do
+      {:noreply, assign(socket, show_character_modal: true)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("cancel_character_modal", _, socket) do
+    {:noreply, assign(socket, show_character_modal: false)}
   end
 
   def handle_event("media_upload_clipboard_request", params, socket) do
@@ -797,7 +843,12 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                 <h2 class="text-lg font-bold">{gettext("Content Editor")}</h2>
               </div>
               <div class="relative w-full">
-                <.content_block block={@block} mode={@block_mode} active={true} />
+                <.content_block
+                  block={@block}
+                  mode={@block_mode}
+                  active={true}
+                  characters={@characters}
+                />
                 <.block_editor :if={@role in [:owner, :writer]} block={@block} target={nil} />
               </div>
             </div>
@@ -1250,6 +1301,23 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
           context="library"
         />
       <% end %>
+
+      <.modal
+        :if={@show_character_modal}
+        id="character-modal"
+        show={true}
+        title={gettext("New Character")}
+        on_cancel={JS.push("cancel_character_modal")}
+      >
+        <.live_component
+          module={AthenaWeb.StudioLive.CharacterFormComponent}
+          id={:new}
+          action={:new}
+          character={%Athena.Content.Character{}}
+          current_user={@current_user}
+          on_cancel={JS.push("cancel_character_modal")}
+        />
+      </.modal>
     </div>
     """
   end

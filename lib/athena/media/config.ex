@@ -36,6 +36,15 @@ defmodule Athena.Media.Config do
     }
   end
 
+  def upload_settings("avatar") do
+    %{
+      accept: ~w(.jpg .jpeg .png .gif .webp),
+      max_entries: 1,
+      max_size: 5 * @mb,
+      description: gettext(".JPG, .PNG, .GIF, .WEBP (Max 5MB)")
+    }
+  end
+
   def upload_settings(_) do
     %{
       accept: ~w(.jpg .jpeg .png .gif .webp .svg .bmp .tiff),

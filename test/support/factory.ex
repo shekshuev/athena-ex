@@ -14,7 +14,8 @@ defmodule Athena.Factory do
     LibraryBlock,
     CourseShare,
     LibraryBlockShare,
-    CourseLibraryBlock
+    CourseLibraryBlock,
+    Character
   }
 
   alias Athena.Learning.{
@@ -106,6 +107,13 @@ defmodule Athena.Factory do
       type: :text,
       content: %{"text" => "Default content"},
       tags: [],
+      owner_id: Ecto.UUID.generate()
+    }
+  end
+
+  def character_factory do
+    %Character{
+      name: sequence(:name, &"Character #{&1}"),
       owner_id: Ecto.UUID.generate()
     }
   end

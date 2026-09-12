@@ -21,6 +21,7 @@ defmodule Athena do
       Content,
       Content.Block,
       Content.LibraryBlock,
+      Content.Character,
       Content.Section,
       Content.Course,
       Content.CodeChallenge,

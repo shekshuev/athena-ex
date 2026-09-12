@@ -93,7 +93,12 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
                 @active_block_id != block.id && block.type == :text && "max-h-48 overflow-hidden"
               ]}
             >
-              <.content_block block={block} mode={@mode} active={@active_block_id == block.id} />
+              <.content_block
+                block={block}
+                mode={@mode}
+                active={@active_block_id == block.id}
+                characters={@characters}
+              />
               <div
                 :if={@active_block_id != block.id && block.type == :text}
                 class="absolute bottom-0 left-0 right-0 h-16 bg-linear-to-t from-base-100 to-transparent pointer-events-none rounded-b-sm"
