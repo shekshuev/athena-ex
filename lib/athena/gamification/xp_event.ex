@@ -12,7 +12,7 @@ defmodule Athena.Gamification.XpEvent do
 
   @type t :: %__MODULE__{}
 
-  @source_types ~w(block_progress streak_bonus league_bonus sprint_bonus badge_bonus)a
+  @source_types ~w(block_progress streak_bonus league_bonus sprint_bonus badge_bonus daily_challenge)a
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id

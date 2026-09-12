@@ -14,11 +14,22 @@ defmodule Athena.Gamification do
   (`BadgeAward.badge_id → Badge`) stays inside Gamification itself.
   """
 
-  alias Athena.Gamification.{XpLedger, AccountStats, Badges, Facts, Leagues, Sprints}
+  alias Athena.Gamification.{
+    XpLedger,
+    AccountStats,
+    Badges,
+    Facts,
+    Leagues,
+    Sprints,
+    DailyChallenges
+  }
+
   alias Athena.Repo
 
   defdelegate total_xp(account_id), to: XpLedger
   defdelegate known_facts(), to: Facts
+
+  defdelegate today_challenge(account_id), to: DailyChallenges, as: :today_for
 
   defdelegate current_week_standings(cohort_id), to: Leagues
   defdelegate visible_standings(cohort_id, viewer_account_id), to: Leagues

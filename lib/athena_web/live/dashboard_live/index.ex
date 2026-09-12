@@ -44,10 +44,22 @@ defmodule AthenaWeb.DashboardLive.Index do
      |> assign(:continue, resolve_continue(last_activity, enrollments))
      |> assign(:courses, courses)
      |> assign(:deadlines, deadlines)
+     |> assign(:daily_challenge, resolve_daily_challenge(account.id))
      |> assign(:teaching, build_teaching_section(account))
      |> assign(:total_xp, total_xp)
      |> assign(:level, Gamification.level_for_xp(total_xp))
      |> assign(:streak, streak)}
+  end
+
+  defp resolve_daily_challenge(account_id) do
+    with %{} = challenge <- Gamification.today_challenge(account_id),
+         {:ok, block} <- Content.get_block(challenge.block_id),
+         {:ok, section} <- Content.get_section(block.section_id),
+         {:ok, course} <- Content.get_course(section.course_id) do
+      %{course: course, section_id: section.id, completed?: !is_nil(challenge.completed_at)}
+    else
+      _ -> nil
+    end
   end
 
   @doc false
@@ -163,6 +175,41 @@ defmodule AthenaWeb.DashboardLive.Index do
             {@streak.current_weeks}
           </span>
         </.link>
+      </div>
+
+      <div
+        :if={@daily_challenge}
+        class={[
+          "card border rounded-sm",
+          @daily_challenge.completed? && "bg-success/10 border-success/30",
+          !@daily_challenge.completed? && "bg-base-100 border-base-300"
+        ]}
+      >
+        <div class="card-body flex-row items-center justify-between flex-wrap gap-4">
+          <div class="flex items-center gap-3">
+            <.icon name="hero-sparkles" class="size-8 text-primary" />
+            <div>
+              <div class="text-xs font-black uppercase tracking-widest text-base-content/50">
+                {gettext("Daily challenge")}
+              </div>
+              <div class="font-display font-black">{@daily_challenge.course.title}</div>
+            </div>
+          </div>
+          <span :if={@daily_challenge.completed?} class="badge badge-success gap-1">
+            <.icon name="hero-check" class="size-4" />
+            {gettext("Solved today")}
+          </span>
+          <.link
+            :if={!@daily_challenge.completed?}
+            navigate={
+              ~p"/learn/courses/#{@daily_challenge.course.id}/play/#{@daily_challenge.section_id}"
+            }
+            class="btn btn-primary btn-sm"
+          >
+            {gettext("Solve")}
+            <.icon name="hero-arrow-right" class="size-4" />
+          </.link>
+        </div>
       </div>
 
       <div :if={@continue} class="card bg-primary text-primary-content rounded-sm overflow-hidden">

@@ -25,7 +25,36 @@ defmodule Athena.Gamification.XpLedger do
     case base_amount_for(Map.get(payload, :block_type)) do
       amount when amount > 0 ->
         final_amount = apply_sprint_multiplier(account_id, amount)
-        insert_event(account_id, Map.get(payload, :cohort_id), block_id, final_amount)
+
+        insert_event(
+          account_id,
+          Map.get(payload, :cohort_id),
+          :block_progress,
+          block_id,
+          final_amount
+        )
+
+      _ ->
+        {:ok, :skipped}
+    end
+  end
+
+  @doc """
+  Awards the flat XP bonus for solving the day's challenge — same base
+  amount as the block's type normally earns. `source_id` is the
+  `DailyChallenge` row's id, not the block id, so the ledger's
+  `(account_id, source_type, source_id)` dedup index allows one award per
+  day even though the same block can be re-served on a later day.
+  """
+  @spec record_daily_challenge(map()) :: {:ok, :awarded | :skipped}
+  def record_daily_challenge(%{
+        account_id: account_id,
+        daily_challenge_id: daily_challenge_id,
+        block_type: block_type
+      }) do
+    case base_amount_for(block_type) do
+      amount when amount > 0 ->
+        insert_event(account_id, nil, :daily_challenge, daily_challenge_id, amount)
 
       _ ->
         {:ok, :skipped}
@@ -62,15 +91,15 @@ defmodule Athena.Gamification.XpLedger do
     end
   end
 
-  defp insert_event(account_id, cohort_id, block_id, amount) do
+  defp insert_event(account_id, cohort_id, source_type, source_id, amount) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     attrs = %{
       id: Ecto.UUID.generate(),
       account_id: account_id,
       cohort_id: cohort_id,
-      source_type: :block_progress,
-      source_id: block_id,
+      source_type: source_type,
+      source_id: source_id,
       amount: amount,
       inserted_at: now,
       updated_at: now

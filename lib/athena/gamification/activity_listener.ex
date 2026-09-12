@@ -7,7 +7,7 @@ defmodule Athena.Gamification.ActivityListener do
   use GenServer
   require Logger
 
-  alias Athena.Gamification.{XpLedger, Combo, Badges}
+  alias Athena.Gamification.{XpLedger, Combo, Badges, DailyChallenges}
 
   def start_link(_) do
     GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
@@ -25,6 +25,7 @@ defmodule Athena.Gamification.ActivityListener do
   def handle_info({:block_completed, payload}, state) do
     guarded(fn ->
       XpLedger.record_activity(payload)
+      DailyChallenges.handle_block_completed(payload)
       Badges.evaluate_for_account(payload.account_id)
     end)
 

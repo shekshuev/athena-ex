@@ -139,6 +139,34 @@ defmodule AthenaWeb.DashboardLive.IndexTest do
       assert html =~ quiet_student.login
     end
 
+    test "shows a daily challenge once an eligible block has been solved", %{conn: conn} do
+      account = insert(:account)
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section, type: :code)
+
+      insert(:enrollment, account_id: account.id, course_id: course.id)
+      Progress.mark_completed(account.id, block.id)
+
+      conn = init_test_session(conn, %{"account_id" => account.id})
+      {:ok, lv, html} = live(conn, ~p"/dashboard")
+
+      assert html =~ "Daily challenge"
+      assert html =~ course.title
+      assert has_element?(lv, "a", "Solve")
+    end
+
+    test "does not show a daily challenge widget without any eligible completed block", %{
+      conn: conn
+    } do
+      account = insert(:account)
+      conn = init_test_session(conn, %{"account_id" => account.id})
+
+      {:ok, _lv, html} = live(conn, ~p"/dashboard")
+
+      refute html =~ "Daily challenge"
+    end
+
     test "shows the account's XP/level badge linking to achievements", %{conn: conn} do
       account = insert(:account)
       block = insert(:block, type: :code)

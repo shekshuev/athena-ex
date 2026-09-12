@@ -17,7 +17,7 @@ defmodule Athena.Learning.Submission do
 
   @derive {
     Flop.Schema,
-    filterable: ~w(status score account_id cohort_id inserted_at has_cheats block_id)a,
+    filterable: ~w(status score account_id cohort_id inserted_at has_cheats block_id origin)a,
     sortable: ~w(inserted_at status score)a,
     default_limit: 10,
     default_order: %{order_by: [:inserted_at], order_directions: [:desc]},
@@ -42,6 +42,8 @@ defmodule Athena.Learning.Submission do
     field :account_id, :binary_id
     field :block_id, :binary_id
     field :cohort_id, :binary_id
+
+    field :origin, Ecto.Enum, values: [:regular, :daily_challenge], default: :regular
 
     belongs_to :parent_submission, Athena.Learning.Submission
     has_many :child_submissions, Athena.Learning.Submission, foreign_key: :parent_submission_id
@@ -73,6 +75,7 @@ defmodule Athena.Learning.Submission do
           account_id: binary() | nil,
           cohort_id: binary() | nil,
           block_id: binary() | nil,
+          origin: :regular | :daily_challenge,
           parent_submission: t(),
           child_submissions: [t()],
           inserted_at: DateTime.t() | NaiveDateTime.t() | nil,
@@ -90,6 +93,7 @@ defmodule Athena.Learning.Submission do
       :account_id,
       :block_id,
       :cohort_id,
+      :origin,
       :parent_submission_id,
       :expires_at
     ])

@@ -54,6 +54,32 @@ defmodule Athena.Learning.SubmissionsTest do
 
       assert Enum.map(submissions, & &1.id) == [sub2.id, sub1.id]
     end
+
+    test "hides daily-challenge submissions by default", %{admin: admin} do
+      regular = insert(:submission, origin: :regular)
+      insert(:submission, origin: :daily_challenge)
+
+      assert {:ok, {submissions, meta}} = Submissions.list_submissions(admin, %{})
+
+      assert [%{id: id}] = submissions
+      assert id == regular.id
+      assert meta.total_count == 1
+    end
+
+    test "shows daily-challenge submissions when explicitly filtered on origin", %{admin: admin} do
+      insert(:submission, origin: :regular)
+      daily = insert(:submission, origin: :daily_challenge)
+
+      params = %{
+        "filters" => [%{"field" => "origin", "op" => "==", "value" => "daily_challenge"}]
+      }
+
+      assert {:ok, {submissions, meta}} = Submissions.list_submissions(admin, params)
+
+      assert [%{id: id}] = submissions
+      assert id == daily.id
+      assert meta.total_count == 1
+    end
   end
 
   describe "get_submission!/2" do
