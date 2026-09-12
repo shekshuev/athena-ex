@@ -149,7 +149,7 @@ defmodule AthenaWeb.DashboardLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="max-w-6xl mx-auto space-y-8">
+    <.page_container size="standard" class="space-y-8">
       <div class="flex items-center justify-between flex-wrap gap-4">
         <h1 class="text-3xl font-display font-black uppercase tracking-tight text-base-content">
           {gettext("Dashboard")}
@@ -363,7 +363,7 @@ defmodule AthenaWeb.DashboardLive.Index do
           </div>
         </div>
       </div>
-    </div>
+    </.page_container>
     """
   end
 

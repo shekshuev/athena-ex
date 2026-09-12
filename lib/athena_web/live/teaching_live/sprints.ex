@@ -88,7 +88,7 @@ defmodule AthenaWeb.TeachingLive.Sprints do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="max-w-3xl mx-auto space-y-6">
+    <.page_container size="narrow" class="space-y-6">
       <div>
         <h1 class="text-3xl font-display font-black uppercase tracking-tight">
           {gettext("Sprints")}
@@ -195,7 +195,7 @@ defmodule AthenaWeb.TeachingLive.Sprints do
           </ul>
         </div>
       </div>
-    </div>
+    </.page_container>
     """
   end
 end

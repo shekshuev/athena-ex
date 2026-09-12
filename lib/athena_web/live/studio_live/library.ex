@@ -434,7 +434,7 @@ defmodule AthenaWeb.StudioLive.Library do
     <div class={
       @course_library_mode && "fixed inset-0 z-50 bg-base-100 overflow-y-auto p-4 pb-20 sm:p-8"
     }>
-      <div class={@course_library_mode && "max-w-7xl mx-auto"}>
+      <.page_container size="wide">
         <div class="space-y-6">
           <div class="flex justify-between items-center">
             <div class="flex items-center gap-4">
@@ -704,7 +704,7 @@ defmodule AthenaWeb.StudioLive.Library do
             </div>
           </div>
         </div>
-      </div>
+      </.page_container>
 
       <% base_patch =
         if @course_library_mode,

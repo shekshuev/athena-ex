@@ -292,6 +292,44 @@ defmodule AthenaWeb.CoreComponents do
   end
 
   @doc """
+  Renders the outer content-width wrapper for a page — three named tiers
+  instead of the five different `max-w-*` values (plus several pages with
+  no limit at all) previously scattered across the app. The layout's
+  `<main>` already applies consistent outer padding
+  (`layouts/dashboard.html.heex`); this only controls how wide the content
+  itself gets, centered via `mx-auto`.
+
+  - `narrow` (`max-w-4xl`) — reading/single-task screens (course player,
+    course overview, leaderboard, sprints).
+  - `standard` (`max-w-6xl`) — the main app pages (dashboard, My Learning).
+  - `wide` (`max-w-7xl`) — data-dense screens (grading, the content
+    library, CRUD tables).
+
+  Any other utility classes a page needs (vertical spacing, padding) go in
+  `class`, same as before — only the width mechanism is being unified.
+
+  ## Examples
+
+      <.page_container size="wide" class="space-y-6 pb-20">
+        ...
+      </.page_container>
+  """
+  attr :size, :string, values: ~w(narrow standard wide), default: "standard"
+  attr :class, :any, default: nil
+  slot :inner_block, required: true
+
+  def page_container(assigns) do
+    sizes = %{"narrow" => "max-w-4xl", "standard" => "max-w-6xl", "wide" => "max-w-7xl"}
+    assigns = assign(assigns, :size_class, Map.fetch!(sizes, assigns.size))
+
+    ~H"""
+    <div class={[@size_class, "mx-auto", @class]}>
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
+  @doc """
   Renders the canonical "operation in progress" indicator — a spinning
   arrow-path icon. The one loading treatment the app should use, instead of
   mixing this with daisyUI's `loading` component or a static, non-animated

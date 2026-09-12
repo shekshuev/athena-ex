@@ -358,7 +358,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="max-w-7xl mx-auto pb-20">
+    <.page_container size="wide" class="pb-20">
       <div class="flex items-center gap-4 mb-8 border-b border-base-200 pb-6">
         <.link
           navigate={@return_to}
@@ -615,7 +615,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
         on_cancel={JS.push("close_delete_modal")}
         on_confirm={JS.push("confirm_delete_submission")}
       />
-    </div>
+    </.page_container>
     """
   end
 

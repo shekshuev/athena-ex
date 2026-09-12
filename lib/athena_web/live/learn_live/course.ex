@@ -121,7 +121,7 @@ defmodule AthenaWeb.LearnLive.Course do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="max-w-4xl mx-auto py-12">
+    <.page_container size="narrow" class="py-12">
       <div class="pb-10">
         <a
           href="/learn"
@@ -256,7 +256,7 @@ defmodule AthenaWeb.LearnLive.Course do
           <% end %>
         </div>
       </div>
-    </div>
+    </.page_container>
     """
   end
 

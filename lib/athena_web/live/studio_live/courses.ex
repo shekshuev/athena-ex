@@ -319,7 +319,7 @@ defmodule AthenaWeb.StudioLive.Courses do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
+    <.page_container size="wide" class="space-y-6">
       <div class="flex justify-between items-center">
         <div>
           <h1 class="text-2xl font-display font-bold text-base-content">{gettext("Courses")}</h1>
@@ -516,7 +516,7 @@ defmodule AthenaWeb.StudioLive.Courses do
           current_user={@current_user}
         />
       </.modal>
-    </div>
+    </.page_container>
     """
   end
 

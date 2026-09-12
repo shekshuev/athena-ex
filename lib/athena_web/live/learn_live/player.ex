@@ -1226,7 +1226,7 @@ defmodule AthenaWeb.LearnLive.Player do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="max-w-3xl mx-auto py-10 pb-32">
+    <.page_container size="narrow" class="py-10 pb-32">
       <div class="flex items-center justify-between mb-12 border-b border-base-200 pb-6">
         <a
           href={"/learn/courses/#{@course.id}"}
@@ -1485,7 +1485,7 @@ defmodule AthenaWeb.LearnLive.Player do
           current_file_count={@current_file_count_for_upload}
         />
       <% end %>
-    </div>
+    </.page_container>
     """
   end
 

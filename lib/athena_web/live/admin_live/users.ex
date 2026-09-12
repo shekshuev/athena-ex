@@ -168,7 +168,7 @@ defmodule AthenaWeb.AdminLive.Users do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="space-y-6">
+    <.page_container size="wide" class="space-y-6">
       <div class="flex justify-between items-center">
         <div>
           <h1 class="text-2xl font-display font-bold text-base-content">{gettext("Users")}</h1>
@@ -292,7 +292,7 @@ defmodule AthenaWeb.AdminLive.Users do
         on_cancel={JS.push("cancel_delete")}
         on_confirm={JS.push("confirm_delete")}
       />
-    </div>
+    </.page_container>
     """
   end
 

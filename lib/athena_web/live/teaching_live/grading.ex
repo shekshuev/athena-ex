@@ -210,7 +210,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="max-w-7xl mx-auto space-y-6 pb-20">
+    <.page_container size="wide" class="space-y-6 pb-20">
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 class="text-2xl font-display font-bold text-base-content">
@@ -425,7 +425,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
       <div class="flex justify-end mt-4">
         <.pagination :if={@has_submissions} meta={@meta} path_fn={path_fn} />
       </div>
-    </div>
+    </.page_container>
     """
   end
 

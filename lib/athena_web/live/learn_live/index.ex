@@ -34,7 +34,7 @@ defmodule AthenaWeb.LearnLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="max-w-6xl mx-auto space-y-8">
+    <.page_container size="standard" class="space-y-8">
       <div class="flex flex-col gap-2">
         <h1 class="text-3xl font-display font-black text-base-content tracking-tight">
           {gettext("My Learning")}
@@ -117,7 +117,7 @@ defmodule AthenaWeb.LearnLive.Index do
           </div>
         <% end %>
       </div>
-    </div>
+    </.page_container>
     """
   end
 end
