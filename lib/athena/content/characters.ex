@@ -13,7 +13,7 @@ defmodule Athena.Content.Characters do
   @spec list_characters(map(), map()) ::
           {:ok, {[Character.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_characters(user, params \\ %{}) do
-    Character
+    from(c in Character)
     |> Acl.scope_query(user, "characters.read")
     |> Flop.validate_and_run(params, for: Character)
   end
@@ -21,7 +21,7 @@ defmodule Athena.Content.Characters do
   @doc "Returns all characters visible to the user, unpaginated (for editor pickers)."
   @spec all_characters(map()) :: [Character.t()]
   def all_characters(user) do
-    Character
+    from(c in Character)
     |> Acl.scope_query(user, "characters.read")
     |> order_by([c], asc: c.name)
     |> Repo.all()

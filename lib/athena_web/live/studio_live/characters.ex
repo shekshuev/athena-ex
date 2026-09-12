@@ -19,26 +19,34 @@ defmodule AthenaWeb.StudioLive.Characters do
      socket
      |> assign(page_title: gettext("Characters"))
      |> assign(character_to_delete: nil)
-     |> assign(has_characters: false)
      |> stream(:characters, [])}
   end
 
   @impl true
   def handle_params(params, _url, socket) do
-    {:noreply, socket |> apply_action(socket.assigns.live_action, params) |> load_characters()}
-  end
+    search = Map.get(params, "search", "")
 
-  defp load_characters(socket) do
-    case Content.list_characters(socket.assigns.current_user, %{}) do
-      {:ok, {characters, _meta}} ->
-        socket
-        |> assign(has_characters: characters != [])
-        |> stream(:characters, characters, reset: true)
+    flop_params =
+      if search != "" do
+        Map.put(params, "filters", %{
+          "0" => %{"field" => "name", "op" => "ilike_and", "value" => search}
+        })
+      else
+        params
+      end
+
+    case Content.list_characters(socket.assigns.current_user, flop_params) do
+      {:ok, {characters, meta}} ->
+        socket =
+          socket
+          |> assign(meta: meta, search: search)
+          |> stream(:characters, characters, reset: true)
+          |> apply_action(socket.assigns.live_action, params)
+
+        {:noreply, socket}
 
       {:error, _meta} ->
-        socket
-        |> assign(has_characters: false)
-        |> stream(:characters, [], reset: true)
+        {:noreply, push_patch(socket, to: ~p"/studio/characters")}
     end
   end
 
@@ -63,6 +71,16 @@ defmodule AthenaWeb.StudioLive.Characters do
   end
 
   @impl true
+  def handle_event("search", %{"search" => search}, socket) do
+    params = build_query_params(socket.assigns, %{"search" => search, "page" => 1})
+    {:noreply, push_patch(socket, to: ~p"/studio/characters?#{params}")}
+  end
+
+  def handle_event("update_page_size", %{"page_size" => size}, socket) do
+    params = build_query_params(socket.assigns, %{"page_size" => size, "page" => 1})
+    {:noreply, push_patch(socket, to: ~p"/studio/characters?#{params}")}
+  end
+
   def handle_event("delete_click", %{"id" => id}, socket) do
     case Content.get_character(socket.assigns.current_user, id) do
       {:ok, character} -> {:noreply, assign(socket, character_to_delete: character)}
@@ -116,6 +134,32 @@ defmodule AthenaWeb.StudioLive.Characters do
   defp fallback_letter(name),
     do: name |> String.trim() |> String.first() |> to_string() |> String.upcase()
 
+  @doc false
+  defp build_query_params(assigns, overrides) do
+    meta = assigns.meta
+
+    order_by =
+      meta.flop.order_by
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+
+    order_directions =
+      meta.flop.order_directions
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+
+    %{
+      "search" => assigns.search,
+      "page" => meta.current_page,
+      "page_size" => meta.page_size,
+      "order_by" => order_by,
+      "order_directions" => order_directions
+    }
+    |> Map.merge(overrides)
+    |> Enum.reject(fn {_, v} -> is_nil(v) or v == "" or v == [] end)
+    |> Map.new()
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -130,7 +174,7 @@ defmodule AthenaWeb.StudioLive.Characters do
 
         <.button
           :if={Identity.can?(@current_user, "characters.create")}
-          patch={~p"/studio/characters/new"}
+          patch={~p"/studio/characters/new?#{build_query_params(assigns, %{})}"}
           class="btn btn-primary"
         >
           <.icon name="hero-plus" class="size-5" />
@@ -139,51 +183,58 @@ defmodule AthenaWeb.StudioLive.Characters do
         </.button>
       </div>
 
-      <div
-        :if={not @has_characters}
-        class="text-center py-24 px-6 border border-dashed border-base-300 rounded-box mt-4"
-      >
-        <.icon name="hero-user-group" class="size-16 text-base-content/20 mb-4 mx-auto" />
-        <h3 class="text-xl font-bold text-base-content">{gettext("No characters yet")}</h3>
-        <p class="text-base-content/60 mt-2 max-w-sm mx-auto text-sm">
-          {gettext("Create a character to use it in dialogue blocks.")}
-        </p>
+      <div class="flex gap-4">
+        <.form for={nil} phx-change="search" phx-submit="search" class="w-full max-w-sm">
+          <div class="relative">
+            <.icon
+              name="hero-magnifying-glass"
+              class="absolute left-3 top-3.5 size-5 text-base-content/50 z-10"
+            />
+            <.input
+              type="text"
+              name="search"
+              value={@search}
+              placeholder={gettext("Search characters...")}
+              class="input input-bordered w-full pl-10"
+              phx-debounce="500"
+            />
+          </div>
+        </.form>
       </div>
 
-      <div
-        :if={@has_characters}
-        id="characters-list"
-        phx-update="stream"
-        class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
-      >
-        <div
-          :for={{dom_id, character} <- @streams.characters}
-          id={dom_id}
-          class="flex items-center gap-4 p-4 bg-base-100 border border-base-200 rounded-box"
-        >
-          <div class="avatar placeholder shrink-0">
-            <div class="bg-neutral text-neutral-content w-12 rounded-full flex items-center justify-center">
-              <img
-                :if={avatar_url(character.avatar_file_id)}
-                src={avatar_url(character.avatar_file_id)}
-                alt=""
-              />
-              <span :if={!avatar_url(character.avatar_file_id)} class="leading-none">
-                {fallback_letter(character.name)}
-              </span>
-            </div>
-          </div>
+      <% path_fn = fn overrides ->
+        ~p"/studio/characters?#{build_query_params(assigns, overrides)}"
+      end %>
 
-          <div class="flex-1 min-w-0">
-            <div class="font-bold truncate">{character.name}</div>
-            <div class="text-xs text-base-content/50">
-              {Calendar.strftime(character.inserted_at, "%d.%m.%Y")}
+      <.table id="characters" rows={@streams.characters} meta={@meta} path_fn={path_fn}>
+        <:col :let={{_id, character}} label={gettext("Name")} sort="name">
+          <div class="flex items-center gap-3">
+            <div class="avatar placeholder shrink-0">
+              <div class="bg-neutral text-neutral-content w-8 rounded-full flex items-center justify-center">
+                <img
+                  :if={avatar_url(character.avatar_file_id)}
+                  src={avatar_url(character.avatar_file_id)}
+                  alt=""
+                />
+                <span :if={!avatar_url(character.avatar_file_id)} class="leading-none text-xs">
+                  {fallback_letter(character.name)}
+                </span>
+              </div>
             </div>
+            <span class="font-bold">{character.name}</span>
           </div>
+        </:col>
 
-          <div class="flex gap-1 shrink-0">
+        <:col :let={{_id, character}} label={gettext("Created At")} sort="inserted_at">
+          <span class="text-sm opacity-60">
+            {Calendar.strftime(character.inserted_at, "%d.%m.%Y")}
+          </span>
+        </:col>
+
+        <:action :let={{_id, character}}>
+          <div class="flex justify-end gap-2">
             <.button
-              patch={~p"/studio/characters/#{character.id}/edit"}
+              patch={~p"/studio/characters/#{character.id}/edit?#{build_query_params(assigns, %{})}"}
               class="btn btn-ghost btn-xs btn-square"
               title={gettext("Edit")}
             >
@@ -199,7 +250,11 @@ defmodule AthenaWeb.StudioLive.Characters do
               <.icon name="hero-trash" class="size-4" />
             </.button>
           </div>
-        </div>
+        </:action>
+      </.table>
+
+      <div class="flex justify-end">
+        <.pagination meta={@meta} path_fn={path_fn} />
       </div>
 
       <.slide_over
@@ -208,7 +263,7 @@ defmodule AthenaWeb.StudioLive.Characters do
         title={
           if(@live_action == :new, do: gettext("Create Character"), else: gettext("Edit Character"))
         }
-        on_close={JS.patch(~p"/studio/characters")}
+        on_close={JS.patch(~p"/studio/characters?#{build_query_params(assigns, %{})}")}
       >
         <.live_component
           :if={@character}
@@ -217,7 +272,7 @@ defmodule AthenaWeb.StudioLive.Characters do
           action={@live_action}
           character={@character}
           current_user={@current_user}
-          patch={~p"/studio/characters"}
+          patch={~p"/studio/characters?#{build_query_params(assigns, %{})}"}
         />
       </.slide_over>
 

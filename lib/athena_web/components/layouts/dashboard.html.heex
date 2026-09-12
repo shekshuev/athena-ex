@@ -94,7 +94,7 @@
         </li>
       </ul>
 
-      <%= if Identity.can_any?(@current_user, ["courses.read", "library.read"]) do %>
+      <%= if Identity.can_any?(@current_user, ["courses.read", "library.read", "characters.read"]) do %>
         <div class="py-4 overflow-hidden">
           <div class="h-px bg-base-300 w-full"></div>
           <div class="mt-4 px-3 text-[10px] font-black text-base-content/50 uppercase tracking-widest group-[.is-collapsed]/sidebar:hidden">
@@ -118,6 +118,16 @@
                 <.icon name="hero-bookmark-square" class="size-6 shrink-0" />
                 <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
                   {gettext("Library")}
+                </span>
+              </div>
+            </.link>
+          </li>
+          <li :if={Identity.can?(@current_user, "characters.read")}>
+            <.link navigate={~p"/studio/characters"} class="flex items-center">
+              <div class="flex items-center gap-2">
+                <.icon name="hero-identification" class="size-6 shrink-0" />
+                <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                  {gettext("Characters")}
                 </span>
               </div>
             </.link>

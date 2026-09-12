@@ -140,6 +140,59 @@ export const Dialogue = Node.create({
       0,
     ];
   },
+
+  addNodeView() {
+    return ({ editor, getPos }) => {
+      const dom = document.createElement("div");
+      dom.className = "tiptap-dialogue";
+
+      const lines = document.createElement("div");
+      lines.className = "tiptap-dialogue-content";
+      dom.appendChild(lines);
+
+      if (editor.isEditable) {
+        const addButton = document.createElement("button");
+        addButton.type = "button";
+        addButton.className = "tiptap-dialogue-add-line";
+        addButton.contentEditable = "false";
+        addButton.textContent = "+ Add line";
+
+        addButton.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          if (typeof getPos !== "function") return;
+          const pos = getPos();
+          const dialogueNode = editor.state.doc.nodeAt(pos);
+          if (!dialogueNode) return;
+
+          const lastLine = dialogueNode.lastChild;
+          const attrs = lastLine
+            ? { ...lastLine.attrs }
+            : { characterId: null, name: "", avatarUrl: null, color: null, side: "left" };
+
+          const endPos = pos + dialogueNode.nodeSize - 1;
+
+          editor
+            .chain()
+            .focus()
+            .insertContentAt(endPos, { type: "dialogueLine", attrs, content: [] })
+            .setTextSelection(endPos + 1)
+            .run();
+        });
+
+        dom.appendChild(addButton);
+      }
+
+      return {
+        dom,
+        contentDOM: lines,
+        update(updatedNode) {
+          return updatedNode.type.name === "dialogue";
+        },
+      };
+    };
+  },
 });
 
 export const DialogueLine = Node.create({
@@ -160,6 +213,7 @@ export const DialogueLine = Node.create({
       name: { default: "" },
       avatarUrl: { default: null },
       color: { default: null },
+      side: { default: "left" },
     };
   },
 
@@ -173,6 +227,7 @@ export const DialogueLine = Node.create({
           name: el.getAttribute("data-name") || "",
           avatarUrl: el.getAttribute("data-avatar-url") || null,
           color: el.getAttribute("data-color") || null,
+          side: el.getAttribute("data-side") || "left",
         }),
       },
     ];
@@ -187,6 +242,7 @@ export const DialogueLine = Node.create({
         "data-name": node.attrs.name,
         "data-avatar-url": node.attrs.avatarUrl,
         "data-color": node.attrs.color,
+        "data-side": node.attrs.side || "left",
         class: "tiptap-dialogue-line",
       }),
       ["div", { class: "dialogue-text" }, 0],
@@ -194,7 +250,9 @@ export const DialogueLine = Node.create({
   },
 
   addNodeView() {
-    return ({ node, editor, updateAttributes, getPos }) => {
+    return ({ node, editor, getPos }) => {
+      let currentNode = node;
+
       const dom = document.createElement("div");
       dom.className = "tiptap-dialogue-line";
 
@@ -202,26 +260,105 @@ export const DialogueLine = Node.create({
       avatar.className = "tiptap-dialogue-avatar";
       avatar.contentEditable = "false";
 
-      const meta = document.createElement("div");
-      meta.className = "tiptap-dialogue-meta";
+      const col = document.createElement("div");
+      col.className = "tiptap-dialogue-col";
 
       const nameButton = document.createElement("button");
       nameButton.type = "button";
       nameButton.className = "tiptap-dialogue-name";
       nameButton.contentEditable = "false";
 
-      meta.appendChild(nameButton);
+      const bubble = document.createElement("div");
+      bubble.className = "tiptap-dialogue-bubble";
 
       const content = document.createElement("div");
       content.className = "dialogue-text";
+      bubble.appendChild(content);
+
+      col.appendChild(nameButton);
+      col.appendChild(bubble);
 
       dom.appendChild(avatar);
-      dom.appendChild(meta);
-      dom.appendChild(content);
+      dom.appendChild(col);
 
-      const render = (currentNode) => {
-        const { name, avatarUrl, color } = currentNode.attrs;
+      const patchAttrs = (patch) => {
+        const pos = typeof getPos === "function" ? getPos() : null;
+        if (typeof pos !== "number") return;
+
+        editor.commands.command(({ tr }) => {
+          tr.setNodeMarkup(pos, undefined, { ...currentNode.attrs, ...patch });
+          return true;
+        });
+      };
+
+      let controls = null;
+      let leftButton = null;
+      let rightButton = null;
+
+      if (editor.isEditable) {
+        controls = document.createElement("div");
+        controls.className = "tiptap-dialogue-line-controls";
+        controls.contentEditable = "false";
+
+        leftButton = document.createElement("button");
+        leftButton.type = "button";
+        leftButton.className = "tiptap-dialogue-line-btn";
+        leftButton.title = "Move bubble left";
+        leftButton.textContent = "←";
+        leftButton.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          patchAttrs({ side: "left" });
+        });
+
+        rightButton = document.createElement("button");
+        rightButton.type = "button";
+        rightButton.className = "tiptap-dialogue-line-btn";
+        rightButton.title = "Move bubble right";
+        rightButton.textContent = "→";
+        rightButton.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          patchAttrs({ side: "right" });
+        });
+
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.className = "tiptap-dialogue-line-btn is-danger";
+        deleteButton.title = "Delete line";
+        deleteButton.textContent = "✕";
+        deleteButton.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const pos = typeof getPos === "function" ? getPos() : null;
+          if (typeof pos !== "number") return;
+
+          editor.commands.command(({ tr, state }) => {
+            const $pos = state.doc.resolve(pos);
+            const dialogueNode = $pos.parent;
+            if (dialogueNode.type.name !== "dialogue") return false;
+
+            if (dialogueNode.childCount <= 1) {
+              const dialoguePos = $pos.before($pos.depth);
+              tr.delete(dialoguePos, dialoguePos + dialogueNode.nodeSize);
+            } else {
+              tr.delete(pos, pos + currentNode.nodeSize);
+            }
+            return true;
+          });
+        });
+
+        controls.appendChild(leftButton);
+        controls.appendChild(rightButton);
+        controls.appendChild(deleteButton);
+        dom.appendChild(controls);
+      }
+
+      const render = (n) => {
+        const { name, avatarUrl, color, side } = n.attrs;
         nameButton.textContent = name || "Choose speaker…";
+        dom.dataset.side = side || "left";
 
         if (avatarUrl) {
           avatar.style.backgroundImage = `url(${avatarUrl})`;
@@ -231,6 +368,11 @@ export const DialogueLine = Node.create({
           avatar.style.backgroundImage = "";
           avatar.style.backgroundColor = color || colorForName(name);
           avatar.textContent = firstLetter(name);
+        }
+
+        if (leftButton && rightButton) {
+          leftButton.classList.toggle("is-active", (side || "left") === "left");
+          rightButton.classList.toggle("is-active", side === "right");
         }
       };
 
@@ -243,15 +385,17 @@ export const DialogueLine = Node.create({
           openCharacterPicker(
             this.options.getCharacters,
             (character) => {
-              if (typeof getPos === "function") {
-                editor.chain().focus(getPos() + 1).run();
-              }
-              updateAttributes({
+              patchAttrs({
                 characterId: character.id,
                 name: character.name,
                 avatarUrl: character.avatarUrl,
                 color: character.color,
               });
+
+              const pos = typeof getPos === "function" ? getPos() : null;
+              if (typeof pos === "number") {
+                editor.chain().focus(pos + 1).run();
+              }
             },
             this.options.onManageCharacters,
           );
@@ -268,6 +412,7 @@ export const DialogueLine = Node.create({
         contentDOM: content,
         update(updatedNode) {
           if (updatedNode.type.name !== "dialogueLine") return false;
+          currentNode = updatedNode;
           render(updatedNode);
           return true;
         },
@@ -326,7 +471,7 @@ export const insertDialogue = (editor) =>
       content: [
         {
           type: "dialogueLine",
-          attrs: { characterId: null, name: "", avatarUrl: null, color: null },
+          attrs: { characterId: null, name: "", avatarUrl: null, color: null, side: "left" },
         },
       ],
     })
