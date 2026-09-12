@@ -4,7 +4,7 @@ defmodule Athena.Learning.Progress do
   """
   import Ecto.Query
   alias Athena.{Repo, Content}
-  alias Athena.Learning.{BlockProgress, CohortMembership}
+  alias Athena.Learning.{BlockProgress, CohortMembership, CourseProgressCache}
   alias Athena.Content.Section
 
   @doc """
@@ -19,6 +19,8 @@ defmodule Athena.Learning.Progress do
       else
         {:unsafe_fragment, "(account_id, block_id) WHERE cohort_id IS NULL"}
       end
+
+    already_completed? = already_completed?(account_id, block_id, cohort_id)
 
     result =
       %BlockProgress{}
@@ -36,11 +38,28 @@ defmodule Athena.Learning.Progress do
     case result do
       {:ok, progress} ->
         broadcast_block_completed(account_id, cohort_id, block_id)
+        unless already_completed?, do: bump_course_progress_cache(account_id, cohort_id, block_id)
         {:ok, progress}
 
       error ->
         error
     end
+  end
+
+  defp already_completed?(account_id, block_id, cohort_id) do
+    query =
+      if cohort_id do
+        from bp in BlockProgress,
+          where:
+            bp.cohort_id == ^cohort_id and bp.block_id == ^block_id and bp.status == :completed
+      else
+        from bp in BlockProgress,
+          where:
+            bp.account_id == ^account_id and is_nil(bp.cohort_id) and bp.block_id == ^block_id and
+              bp.status == :completed
+      end
+
+    Repo.exists?(query)
   end
 
   @doc false
@@ -135,18 +154,137 @@ defmodule Athena.Learning.Progress do
           percent: non_neg_integer()
         }
   def course_progress(account_id, course_id, cohort_id \\ nil) do
-    block_ids =
-      course_id
-      |> Content.list_linear_lessons()
-      |> Enum.map(& &1.id)
-      |> Content.list_blocks_by_section_ids()
-      |> Enum.map(& &1.id)
+    block_ids = block_ids_for_course(course_id)
 
     total = length(block_ids)
     completed = count_completed(account_id, cohort_id, block_ids)
     percent = if total == 0, do: 0, else: round(completed / total * 100)
 
     %{completed: completed, total: total, percent: percent}
+  end
+
+  defp block_ids_for_course(course_id) do
+    course_id
+    |> Content.list_linear_lessons()
+    |> Enum.map(& &1.id)
+    |> Content.list_blocks_by_section_ids()
+    |> Enum.map(& &1.id)
+  end
+
+  @doc """
+  Returns `cohort_id` only if it's a `:team`-type (competition) cohort —
+  the only case `course_progress/3`'s `cohort_id` argument means anything
+  (see the comment on `count_completed/3`). Enrolled-via-academic-cohort
+  students, and self-paced ones, both get `nil` (their own individual
+  progress). Mirrors the derivation `AthenaWeb.LearnLive.Player` already
+  does for the same reason.
+  """
+  @spec team_id_for_enrollment(map()) :: String.t() | nil
+  def team_id_for_enrollment(%{cohort_id: nil}), do: nil
+
+  def team_id_for_enrollment(%{cohort: %Ecto.Association.NotLoaded{}}) do
+    # Silently falling through to "individual" here would be a much worse
+    # bug than crashing — it's exactly this mistake (mixing up team vs
+    # individual progress) that caused the dashboard's 0%-progress bug this
+    # function exists to prevent.
+    raise ArgumentError,
+          "team_id_for_enrollment/1 requires :cohort to be preloaded on the enrollment"
+  end
+
+  def team_id_for_enrollment(%{cohort: %{type: :team}, cohort_id: cohort_id}), do: cohort_id
+  def team_id_for_enrollment(_enrollment), do: nil
+
+  @doc """
+  Batched version of `course_progress/3` for a list of enrollments — reads
+  `Athena.Learning.CourseProgressCache` in at most two queries (one for
+  individually-tracked enrollments, one for team-shared ones) instead of
+  walking each course's content tree once per enrollment. Returns a map
+  keyed by `enrollment.id`. Any enrollment without a cache row yet (never
+  completed anything, or the very first completion hasn't landed) falls
+  back to `course_progress/3`, which is also what populates the cache going
+  forward.
+  """
+  @spec course_progress_batch(String.t(), [struct()]) :: %{String.t() => map()}
+  def course_progress_batch(account_id, enrollments) do
+    cache_by_key = fetch_progress_cache(account_id, enrollments)
+
+    Map.new(enrollments, fn enrollment ->
+      team_id = team_id_for_enrollment(enrollment)
+      cache_key = {enrollment.course_id, team_id}
+
+      progress =
+        case Map.get(cache_by_key, cache_key) do
+          nil -> course_progress(account_id, enrollment.course_id, team_id)
+          row -> progress_from_cache(row)
+        end
+
+      {enrollment.id, progress}
+    end)
+  end
+
+  defp progress_from_cache(%CourseProgressCache{completed_count: completed, total_count: total}) do
+    percent = if total == 0, do: 0, else: round(completed / total * 100)
+    %{completed: completed, total: total, percent: percent}
+  end
+
+  defp fetch_progress_cache(account_id, enrollments) do
+    {individual_course_ids, team_pairs} =
+      Enum.reduce(enrollments, {[], []}, fn enrollment, {individual, team} ->
+        case team_id_for_enrollment(enrollment) do
+          nil -> {[enrollment.course_id | individual], team}
+          team_id -> {individual, [team_id | team]}
+        end
+      end)
+
+    individual_rows =
+      if individual_course_ids == [] do
+        []
+      else
+        CourseProgressCache
+        |> where(
+          [c],
+          c.account_id == ^account_id and is_nil(c.cohort_id) and
+            c.course_id in ^individual_course_ids
+        )
+        |> Repo.all()
+      end
+
+    team_rows =
+      case Enum.uniq(team_pairs) do
+        [] -> []
+        team_ids -> CourseProgressCache |> where([c], c.cohort_id in ^team_ids) |> Repo.all()
+      end
+
+    Map.new(individual_rows ++ team_rows, &{{&1.course_id, &1.cohort_id}, &1})
+  end
+
+  defp bump_course_progress_cache(account_id, cohort_id, block_id) do
+    with {:ok, block} <- Content.get_block(block_id),
+         {:ok, section} <- Content.get_section(block.section_id) do
+      course_id = section.course_id
+      total = length(block_ids_for_course(course_id))
+
+      key_account_id = if cohort_id, do: nil, else: account_id
+
+      conflict_target =
+        if cohort_id do
+          {:unsafe_fragment, "(cohort_id, course_id) WHERE cohort_id IS NOT NULL"}
+        else
+          {:unsafe_fragment, "(account_id, course_id) WHERE cohort_id IS NULL"}
+        end
+
+      %CourseProgressCache{}
+      |> CourseProgressCache.changeset(%{
+        account_id: key_account_id,
+        cohort_id: cohort_id,
+        course_id: course_id,
+        completed_count: 1,
+        total_count: total
+      })
+      |> Repo.insert(on_conflict: [inc: [completed_count: 1]], conflict_target: conflict_target)
+    end
+
+    :ok
   end
 
   @doc false

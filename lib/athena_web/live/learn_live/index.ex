@@ -17,11 +17,13 @@ defmodule AthenaWeb.LearnLive.Index do
     current_user = socket.assigns.current_user
 
     enrollments = Learning.list_student_enrollments(current_user.id)
+    progress_by_enrollment_id = Learning.course_progress_batch(current_user.id, enrollments)
 
     {:ok,
      socket
      |> assign(:page_title, gettext("My Learning"))
-     |> assign(:enrollments, enrollments)}
+     |> assign(:enrollments, enrollments)
+     |> assign(:progress_by_enrollment_id, progress_by_enrollment_id)}
   end
 
   @doc """
@@ -57,6 +59,7 @@ defmodule AthenaWeb.LearnLive.Index do
 
       <div :if={@enrollments != []} class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 mt-8">
         <%= for enrollment <- @enrollments do %>
+          <% progress = Map.fetch!(@progress_by_enrollment_id, enrollment.id) %>
           <div class="card bg-base-100 border border-base-200 hover:border-primary/40 transition-all duration-300 overflow-hidden group flex flex-col">
             <div class="h-36 bg-linear-to-br from-base-200 to-base-300 relative overflow-hidden">
               <div class="absolute bottom-4 left-4 z-10">
@@ -89,10 +92,10 @@ defmodule AthenaWeb.LearnLive.Index do
                 <div class="flex items-center gap-3">
                   <div
                     class="radial-progress text-primary bg-primary/10 text-[10px] font-bold"
-                    style="--value:0; --size:2.5rem; --thickness: 3px;"
+                    style={"--value:#{progress.percent}; --size:2.5rem; --thickness: 3px;"}
                     role="progressbar"
                   >
-                    0%
+                    {progress.percent}%
                   </div>
                   <span class="text-xs font-bold text-base-content/50 uppercase tracking-widest">
                     {gettext("Progress")}

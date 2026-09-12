@@ -2,7 +2,7 @@ defmodule Athena.Learning.ProgressTest do
   use Athena.DataCase, async: true
 
   alias Athena.Learning.Progress
-  alias Athena.Learning.BlockProgress
+  alias Athena.Learning.{BlockProgress, CourseProgressCache}
   alias Athena.Content.CompletionRule
   alias Athena.Repo
   import Athena.Factory
@@ -355,6 +355,72 @@ defmodule Athena.Learning.ProgressTest do
                total: 2,
                percent: 100
              }
+    end
+  end
+
+  describe "CourseProgressCache (via mark_completed/3 and course_progress_batch/2)" do
+    test "a fresh completion populates the cache, and re-submitting the same block does not double-count it",
+         %{user: user} do
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section)
+      insert(:block, section: section)
+
+      Progress.mark_completed(user.id, block.id)
+      Progress.mark_completed(user.id, block.id)
+
+      row = Repo.get_by(CourseProgressCache, account_id: user.id, course_id: course.id)
+      assert row.completed_count == 1
+      assert row.total_count == 2
+    end
+
+    test "course_progress_batch/2 matches course_progress/3 for individual and team enrollments",
+         %{user: user, team: team} do
+      individual_course = insert(:course)
+      section1 = insert(:section, course: individual_course)
+      block1 = insert(:block, section: section1)
+      Progress.mark_completed(user.id, block1.id)
+
+      team_course = insert(:course)
+      section2 = insert(:section, course: team_course)
+      block2 = insert(:block, section: section2)
+      insert(:block, section: section2)
+      Progress.mark_completed(user.id, block2.id, team.id)
+
+      individual_enrollment =
+        insert(:enrollment, account_id: user.id, course_id: individual_course.id)
+        |> Repo.preload(:cohort)
+
+      team_enrollment =
+        insert(:enrollment, cohort_id: team.id, course_id: team_course.id)
+        |> Repo.preload(:cohort)
+
+      result = Progress.course_progress_batch(user.id, [individual_enrollment, team_enrollment])
+
+      assert result[individual_enrollment.id] ==
+               Progress.course_progress(user.id, individual_course.id)
+
+      assert result[team_enrollment.id] ==
+               Progress.course_progress(user.id, team_course.id, team.id)
+
+      assert result[individual_enrollment.id].percent == 100
+      assert result[team_enrollment.id].percent == 50
+    end
+
+    test "course_progress_batch/2 falls back to a live computation for an enrollment with no cache row yet",
+         %{user: user} do
+      course = insert(:course)
+      section = insert(:section, course: course)
+      insert(:block, section: section)
+      insert(:block, section: section)
+
+      enrollment = insert(:enrollment, account_id: user.id, course_id: course.id)
+
+      refute Repo.get_by(CourseProgressCache, account_id: user.id, course_id: course.id)
+
+      result = Progress.course_progress_batch(user.id, [enrollment])
+
+      assert result[enrollment.id] == %{completed: 0, total: 2, percent: 0}
     end
   end
 end
