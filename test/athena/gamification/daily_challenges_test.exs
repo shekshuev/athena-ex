@@ -188,4 +188,39 @@ defmodule Athena.Gamification.DailyChallengesTest do
       assert Repo.get!(DailyChallenge, challenge.id).completed_at
     end
   end
+
+  describe "delete_stale/1" do
+    defp insert_challenge(assigned_date) do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      Repo.insert!(%DailyChallenge{
+        id: Ecto.UUID.generate(),
+        account_id: Ecto.UUID.generate(),
+        block_id: Ecto.UUID.generate(),
+        assigned_date: assigned_date,
+        inserted_at: now,
+        updated_at: now
+      })
+    end
+
+    test "deletes rows older than the cutoff and keeps the rest" do
+      old = insert_challenge(~D[2020-01-01])
+      recent = insert_challenge(Date.utc_today())
+
+      assert DailyChallenges.delete_stale(~D[2020-06-01]) == 1
+
+      refute Repo.get(DailyChallenge, old.id)
+      assert Repo.get(DailyChallenge, recent.id)
+    end
+
+    test "defaults to a 30-day retention window" do
+      just_inside = insert_challenge(Date.add(Date.utc_today(), -29))
+      just_outside = insert_challenge(Date.add(Date.utc_today(), -31))
+
+      assert DailyChallenges.delete_stale() == 1
+
+      assert Repo.get(DailyChallenge, just_inside.id)
+      refute Repo.get(DailyChallenge, just_outside.id)
+    end
+  end
 end

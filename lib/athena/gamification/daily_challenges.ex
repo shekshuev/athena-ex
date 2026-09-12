@@ -167,4 +167,25 @@ defmodule Athena.Gamification.DailyChallenges do
         :ok
     end
   end
+
+  @retention_days 30
+
+  @doc """
+  Deletes daily-challenge rows older than the retention cutoff (30 days by
+  default). These rows are only a short-lived "what's assigned today, is it
+  done" pointer — any XP a challenge earned already lives permanently in
+  `gamification_xp_events` (`source_type: :daily_challenge`), so once a row
+  is old there is nothing left that needs it. Returns the number of rows
+  deleted. Run periodically by
+  `Athena.Gamification.Workers.DailyChallengeCleanup`.
+  """
+  @spec delete_stale(Date.t()) :: non_neg_integer()
+  def delete_stale(cutoff \\ Date.add(Date.utc_today(), -@retention_days)) do
+    {count, _} =
+      DailyChallenge
+      |> where([c], c.assigned_date < ^cutoff)
+      |> Repo.delete_all()
+
+    count
+  end
 end

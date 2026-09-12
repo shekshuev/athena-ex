@@ -151,6 +151,9 @@ if config_env() == :prod do
     media_cron = System.get_env("MEDIA_CLEANUP_CRON") || "0 * * * *"
     gamification_rollup_cron = System.get_env("GAMIFICATION_ROLLUP_CRON") || "5 0 * * MON"
 
+    daily_challenge_cleanup_cron =
+      System.get_env("DAILY_CHALLENGE_CLEANUP_CRON") || "15 0 * * *"
+
     config :athena, Oban,
       plugins: [
         Oban.Plugins.Pruner,
@@ -158,6 +161,8 @@ if config_env() == :prod do
          crontab: [
            {media_cron, Athena.Workers.MediaCleanup, queue: :maintenance},
            {gamification_rollup_cron, Athena.Gamification.Workers.WeeklyRollup,
+            queue: :maintenance},
+           {daily_challenge_cleanup_cron, Athena.Gamification.Workers.DailyChallengeCleanup,
             queue: :maintenance}
          ]}
       ]
