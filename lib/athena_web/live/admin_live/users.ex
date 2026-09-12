@@ -178,8 +178,8 @@ defmodule AthenaWeb.AdminLive.Users do
           <.button
             :if={Identity.can?(@current_user, "system.cache")}
             type="button"
+            variant="warning"
             phx-click="clear_cache"
-            class="btn btn-outline btn-warning"
           >
             <.icon name="hero-arrow-path" class="size-5" />
             {gettext("Clear Cache")}

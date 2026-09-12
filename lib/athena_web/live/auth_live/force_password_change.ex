@@ -135,10 +135,10 @@ defmodule AthenaWeb.AuthLive.ForcePasswordChange do
               required
             />
 
-            <button class="btn btn-warning w-full mt-4 phx-submit-loading:opacity-70">
+            <.button variant="warning" class="w-full mt-4 phx-submit-loading:opacity-70">
               {gettext("Save and continue")}
               <.icon name="hero-arrow-right" class="size-5 ml-2" />
-            </button>
+            </.button>
           </.form>
         </div>
       </div>

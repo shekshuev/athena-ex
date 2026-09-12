@@ -138,22 +138,20 @@ defmodule AthenaWeb.LearnLive.Course do
         </p>
 
         <%= if @waterline_id do %>
-          <.link
+          <.button
+            variant="primary"
+            class="px-10"
             navigate={~p"/learn/courses/#{@course.id}/play/#{@waterline_id}"}
-            class="btn btn-primary px-10"
           >
             {gettext("Continue Learning")}
-          </.link>
+          </.button>
         <% end %>
 
         <%= if @course.type == :competition do %>
-          <.link
-            navigate={~p"/learn/courses/#{@course.id}/leaderboard"}
-            class="btn btn-outline btn-warning"
-          >
+          <.button variant="warning" navigate={~p"/learn/courses/#{@course.id}/leaderboard"}>
             <.icon name="hero-trophy" class="size-5 mr-2" />
             {gettext("Leaderboard")}
-          </.link>
+          </.button>
         <% end %>
       </div>
 
