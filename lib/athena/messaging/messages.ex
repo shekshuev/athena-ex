@@ -54,37 +54,45 @@ defmodule Athena.Messaging.Messages do
           {:ok, Message.t()} | {:error, Ecto.Changeset.t()} | {:error, :forbidden}
   def post_message(user, conversation, attrs) do
     if participant?(conversation.id, user.id) do
-      mention_account_ids = Map.get(attrs, "mention_account_ids", []) |> List.wrap()
-
-      result =
-        Repo.transaction(fn ->
-          with {:ok, message} <-
-                 %Message{}
-                 |> Message.changeset(%{
-                   conversation_id: conversation.id,
-                   account_id: user.id,
-                   body: Map.get(attrs, "body", "")
-                 })
-                 |> Repo.insert(),
-               :ok <- insert_mentions(message, mention_account_ids),
-               :ok <- touch_conversation(conversation.id, message.inserted_at),
-               :ok <- touch_last_read(conversation.id, user.id, message.inserted_at) do
-            message
-          else
-            {:error, changeset} -> Repo.rollback(changeset)
-          end
-        end)
-
-      case result do
-        {:ok, message} ->
-          broadcast_and_notify(conversation, message, user)
-          {:ok, enrich_message(message)}
-
-        {:error, changeset} ->
-          {:error, changeset}
-      end
+      do_post_message(user, conversation, attrs)
     else
       {:error, :forbidden}
+    end
+  end
+
+  defp do_post_message(user, conversation, attrs) do
+    mention_account_ids = attrs |> Map.get("mention_account_ids", []) |> List.wrap()
+
+    result =
+      Repo.transaction(fn ->
+        insert_message_tx(user, conversation, attrs, mention_account_ids)
+      end)
+
+    case result do
+      {:ok, message} ->
+        broadcast_and_notify(conversation, message, user)
+        {:ok, enrich_message(message)}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  defp insert_message_tx(user, conversation, attrs, mention_account_ids) do
+    with {:ok, message} <-
+           %Message{}
+           |> Message.changeset(%{
+             conversation_id: conversation.id,
+             account_id: user.id,
+             body: Map.get(attrs, "body", "")
+           })
+           |> Repo.insert(),
+         :ok <- insert_mentions(message, mention_account_ids),
+         :ok <- touch_conversation(conversation.id, message.inserted_at),
+         :ok <- touch_last_read(conversation.id, user.id, message.inserted_at) do
+      message
+    else
+      {:error, changeset} -> Repo.rollback(changeset)
     end
   end
 
@@ -177,24 +185,24 @@ defmodule Athena.Messaging.Messages do
     accounts_map = Identity.get_accounts_map(mention_account_ids)
 
     Enum.reduce_while(mention_account_ids, :ok, fn account_id, :ok ->
-      case Map.get(accounts_map, account_id) do
-        nil ->
-          {:cont, :ok}
-
-        account ->
-          %MessageMention{}
-          |> MessageMention.changeset(%{
-            message_id: message.id,
-            account_id: account_id,
-            matched_text: "@" <> Identity.display_name(account)
-          })
-          |> Repo.insert()
-          |> case do
-            {:ok, _} -> {:cont, :ok}
-            {:error, changeset} -> {:halt, {:error, changeset}}
-          end
-      end
+      insert_mention(message, account_id, Map.get(accounts_map, account_id))
     end)
+  end
+
+  defp insert_mention(_message, _account_id, nil), do: {:cont, :ok}
+
+  defp insert_mention(message, account_id, account) do
+    %MessageMention{}
+    |> MessageMention.changeset(%{
+      message_id: message.id,
+      account_id: account_id,
+      matched_text: "@" <> Identity.display_name(account)
+    })
+    |> Repo.insert()
+    |> case do
+      {:ok, _} -> {:cont, :ok}
+      {:error, changeset} -> {:halt, {:error, changeset}}
+    end
   end
 
   defp touch_conversation(conversation_id, inserted_at) do

@@ -141,8 +141,7 @@ defmodule AthenaWeb.MessengerLive.MessageComponent do
 
     pattern =
       matched_texts
-      |> Enum.map(&Regex.escape/1)
-      |> Enum.join("|")
+      |> Enum.map_join("|", &Regex.escape/1)
       |> then(&"(#{&1})")
       |> Regex.compile!()
 
