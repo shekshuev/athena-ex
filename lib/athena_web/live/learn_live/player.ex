@@ -1564,152 +1564,87 @@ defmodule AthenaWeb.LearnLive.Player do
         phx-hook="EngagementTracker"
         data-session-id={@engagement_session_id}
       >
-      <div class="flex items-center justify-between mb-12 border-b border-base-200 pb-6">
-        <a
-          href={"/learn/courses/#{@course.id}"}
-          class="inline-flex items-center gap-2 text-sm font-medium text-base-content/50 hover:text-base-content transition-colors"
-        >
-          <.icon name="hero-arrow-left" class="size-4" />
-          <span class="hidden sm:inline">{gettext("Back to Syllabus")}</span>
-        </a>
-
-        <div class="flex items-center gap-2">
-          <%= if @prev_section_id do %>
-            <.link
-              navigate={~p"/learn/courses/#{@course.id}/play/#{@prev_section_id}"}
-              class="btn btn-ghost btn-sm btn-square text-base-content/70 hover:text-primary"
-            >
-              <.icon name="hero-chevron-left" class="size-5" />
-            </.link>
-          <% end %>
-
-          <button
-            phx-click="open_course_map"
-            class="btn btn-ghost btn-sm text-base-content/70 hover:text-primary"
+        <div class="flex items-center justify-between mb-12 border-b border-base-200 pb-6">
+          <a
+            href={"/learn/courses/#{@course.id}"}
+            class="inline-flex items-center gap-2 text-sm font-medium text-base-content/50 hover:text-base-content transition-colors"
           >
-            <.icon name="hero-map" class="size-4" />
-            <span class="hidden sm:inline">{gettext("Course Map")}</span>
-          </button>
+            <.icon name="hero-arrow-left" class="size-4" />
+            <span class="hidden sm:inline">{gettext("Back to Syllabus")}</span>
+          </a>
 
-          <%= if @next_section_id && all_blocks_completed?(@visible_blocks, @completed_ids) do %>
-            <.link
-              navigate={~p"/learn/courses/#{@course.id}/play/#{@next_section_id}"}
-              class="btn btn-ghost btn-sm btn-square text-base-content/70 hover:text-primary"
+          <div class="flex items-center gap-2">
+            <%= if @prev_section_id do %>
+              <.link
+                navigate={~p"/learn/courses/#{@course.id}/play/#{@prev_section_id}"}
+                class="btn btn-ghost btn-sm btn-square text-base-content/70 hover:text-primary"
+              >
+                <.icon name="hero-chevron-left" class="size-5" />
+              </.link>
+            <% end %>
+
+            <button
+              phx-click="open_course_map"
+              class="btn btn-ghost btn-sm text-base-content/70 hover:text-primary"
             >
-              <.icon name="hero-chevron-right" class="size-5" />
-            </.link>
-          <% end %>
+              <.icon name="hero-map" class="size-4" />
+              <span class="hidden sm:inline">{gettext("Course Map")}</span>
+            </button>
+
+            <%= if @next_section_id && all_blocks_completed?(@visible_blocks, @completed_ids) do %>
+              <.link
+                navigate={~p"/learn/courses/#{@course.id}/play/#{@next_section_id}"}
+                class="btn btn-ghost btn-sm btn-square text-base-content/70 hover:text-primary"
+              >
+                <.icon name="hero-chevron-right" class="size-5" />
+              </.link>
+            <% end %>
+          </div>
         </div>
-      </div>
 
-      <h1 class="text-3xl md:text-4xl font-display font-black text-base-content mb-12">
-        {@section.title}
-      </h1>
+        <h1 class="text-3xl md:text-4xl font-display font-black text-base-content mb-12">
+          {@section.title}
+        </h1>
 
-      <div class="space-y-10">
-        <%= for block <- @visible_blocks do %>
-          <% submission = Map.get(@submissions || %{}, block.id) %>
+        <div class="space-y-10">
+          <%= for block <- @visible_blocks do %>
+            <% submission = Map.get(@submissions || %{}, block.id) %>
 
-          <% attempts = Map.get(@attempts_map || %{}, block.id, 0) %>
-          <% raw_max = block.content["max_attempts"] %>
-          <% max_attempts =
-            case raw_max do
-              v when is_integer(v) -> v
-              v when is_binary(v) and v != "" -> String.to_integer(v)
-              _ -> nil
-            end %>
-          <% attempts_exhausted = not is_nil(max_attempts) and attempts >= max_attempts %>
+            <% attempts = Map.get(@attempts_map || %{}, block.id, 0) %>
+            <% raw_max = block.content["max_attempts"] %>
+            <% max_attempts =
+              case raw_max do
+                v when is_integer(v) -> v
+                v when is_binary(v) and v != "" -> String.to_integer(v)
+                _ -> nil
+              end %>
+            <% attempts_exhausted = not is_nil(max_attempts) and attempts >= max_attempts %>
 
-          <% sub_status_str = if submission, do: to_string(submission.status), else: "" %>
-          <% sub_score = if submission, do: submission.score, else: 0 %>
+            <% sub_status_str = if submission, do: to_string(submission.status), else: "" %>
+            <% sub_score = if submission, do: submission.score, else: 0 %>
 
-          <% is_passed =
-            sub_status_str == "accepted" or (sub_status_str == "graded" and sub_score == 100) %>
-          <% is_pending = sub_status_str in ["pending", "processing"] %>
+            <% is_passed =
+              sub_status_str == "accepted" or (sub_status_str == "graded" and sub_score == 100) %>
+            <% is_pending = sub_status_str in ["pending", "processing"] %>
 
-          <% is_review_needed = sub_status_str in ["rejected", "needs_review"] %>
+            <% is_review_needed = sub_status_str in ["rejected", "needs_review"] %>
 
-          <% is_locked = is_passed or attempts_exhausted or is_review_needed %>
-          <% mode = if is_locked, do: :review, else: :play %>
+            <% is_locked = is_passed or attempts_exhausted or is_review_needed %>
+            <% mode = if is_locked, do: :review, else: :play %>
 
-          <div
-            id={"block-wrapper-#{block.id}"}
-            data-block-id={block.id}
-            data-block-type={block.type}
-            class="animate-in slide-in-from-bottom-4 fade-in duration-500 fill-mode-both"
-          >
-            <%= case block.type do %>
-              <% :quiz_question -> %>
-                <form
-                  phx-submit="submit_quiz"
-                  phx-change="save_draft"
-                  phx-value-block_id={block.id}
-                  id={"quiz-form-#{block.id}"}
-                >
-                  <input type="hidden" name="block_id" value={block.id} />
-
-                  <.content_block
-                    block={block}
-                    mode={mode}
-                    submission={submission}
-                    answers={@submissions}
-                    draft={Map.get(@drafts || %{}, block.id)}
-                    attempts_count={attempts}
-                    user_id={@current_user.id}
-                  />
-
-                  <div
-                    :if={submission && submission.feedback not in [nil, ""]}
-                    class={[
-                      "mt-4 mb-4 rounded-sm text-sm",
-                      submission.status == :rejected &&
-                        "text-error",
-                      submission.status != :rejected &&
-                        "text-info"
-                    ]}
-                  >
-                    <strong class="flex items-center gap-1 mb-2">
-                      <.icon name="hero-chat-bubble-bottom-center-text" class="size-4" />
-                      {gettext("Instructor Feedback")}
-                    </strong>
-                    <p class="whitespace-pre-wrap leading-relaxed">{submission.feedback}</p>
-                  </div>
-
-                  <div class="mt-6 flex items-center justify-between">
-                    <button
-                      type="submit"
-                      class="btn btn-primary btn-sm"
-                      disabled={is_locked}
-                    >
-                      {cond do
-                        is_locked -> gettext("Locked")
-                        submission != nil -> gettext("Retry Answer")
-                        true -> gettext("Submit Answer")
-                      end}
-                    </button>
-
-                    <div :if={max_attempts} class="text-right">
-                      <span class="text-xs font-bold uppercase tracking-widest text-base-content/50">
-                        {gettext("Attempts:")} {attempts} / {max_attempts}
-                      </span>
-                    </div>
-                  </div>
-                </form>
-              <% type when type in [:quiz_exam, :ticket_exam] -> %>
-                <div class="relative">
-                  <.content_block
-                    block={block}
-                    mode={mode}
-                    submission={submission}
-                  />
-                </div>
-              <% :code -> %>
-                <div class="space-y-4">
+            <div
+              id={"block-wrapper-#{block.id}"}
+              data-block-id={block.id}
+              data-block-type={block.type}
+              class="animate-in slide-in-from-bottom-4 fade-in duration-500 fill-mode-both"
+            >
+              <%= case block.type do %>
+                <% :quiz_question -> %>
                   <form
-                    phx-submit="submit_code"
+                    phx-submit="submit_quiz"
                     phx-change="save_draft"
                     phx-value-block_id={block.id}
-                    id={"code-form-#{block.id}"}
+                    id={"quiz-form-#{block.id}"}
                   >
                     <input type="hidden" name="block_id" value={block.id} />
 
@@ -1720,110 +1655,175 @@ defmodule AthenaWeb.LearnLive.Player do
                       answers={@submissions}
                       draft={Map.get(@drafts || %{}, block.id)}
                       attempts_count={attempts}
-                    />
-                  </form>
-                </div>
-              <% :file_assignment -> %>
-                <% fa_locked =
-                  sub_status_str == "accepted" or (sub_status_str == "graded" and sub_score == 100) or
-                    is_pending %>
-
-                <div class="space-y-4">
-                  <form
-                    phx-submit="submit_file_assignment"
-                    phx-change="save_draft"
-                    phx-value-block_id={block.id}
-                    id={"file-assignment-form-#{block.id}"}
-                  >
-                    <input type="hidden" name="block_id" value={block.id} />
-
-                    <.content_block
-                      block={block}
-                      mode={if fa_locked, do: :review, else: :play}
-                      submission={submission}
-                      pending_file_urls={@pending_file_urls}
-                      draft={Map.get(@drafts || %{}, block.id)}
+                      user_id={@current_user.id}
                     />
 
-                    <div :if={!fa_locked} class="mt-6 flex items-center justify-between">
+                    <div
+                      :if={submission && submission.feedback not in [nil, ""]}
+                      class={[
+                        "mt-4 mb-4 rounded-sm text-sm",
+                        submission.status == :rejected &&
+                          "text-error",
+                        submission.status != :rejected &&
+                          "text-info"
+                      ]}
+                    >
+                      <strong class="flex items-center gap-1 mb-2">
+                        <.icon name="hero-chat-bubble-bottom-center-text" class="size-4" />
+                        {gettext("Instructor Feedback")}
+                      </strong>
+                      <p class="whitespace-pre-wrap leading-relaxed">{submission.feedback}</p>
+                    </div>
+
+                    <div class="mt-6 flex items-center justify-between">
                       <button
                         type="submit"
-                        class="btn btn-primary"
-                        disabled={Map.get(@pending_file_urls, block.id, []) == []}
+                        class="btn btn-primary btn-sm"
+                        disabled={is_locked}
                       >
                         {cond do
-                          submission != nil ->
-                            gettext("Resubmit")
-
-                          Map.get(@pending_file_urls, block.id, []) == [] ->
-                            gettext("Select Files First")
-
-                          true ->
-                            gettext("Submit Assignment")
+                          is_locked -> gettext("Locked")
+                          submission != nil -> gettext("Retry Answer")
+                          true -> gettext("Submit Answer")
                         end}
                       </button>
+
+                      <div :if={max_attempts} class="text-right">
+                        <span class="text-xs font-bold uppercase tracking-widest text-base-content/50">
+                          {gettext("Attempts:")} {attempts} / {max_attempts}
+                        </span>
+                      </div>
                     </div>
                   </form>
-                </div>
-              <% _ -> %>
-                <.content_block block={block} mode={:play} />
-            <% end %>
+                <% type when type in [:quiz_exam, :ticket_exam] -> %>
+                  <div class="relative">
+                    <.content_block
+                      block={block}
+                      mode={mode}
+                      submission={submission}
+                    />
+                  </div>
+                <% :code -> %>
+                  <div class="space-y-4">
+                    <form
+                      phx-submit="submit_code"
+                      phx-change="save_draft"
+                      phx-value-block_id={block.id}
+                      id={"code-form-#{block.id}"}
+                    >
+                      <input type="hidden" name="block_id" value={block.id} />
 
-            <div :if={gate?(block)} class="mt-8">
-              <.render_gate block={block} is_completed={block.id in @completed_ids} />
+                      <.content_block
+                        block={block}
+                        mode={mode}
+                        submission={submission}
+                        answers={@submissions}
+                        draft={Map.get(@drafts || %{}, block.id)}
+                        attempts_count={attempts}
+                      />
+                    </form>
+                  </div>
+                <% :file_assignment -> %>
+                  <% fa_locked =
+                    sub_status_str == "accepted" or (sub_status_str == "graded" and sub_score == 100) or
+                      is_pending %>
+
+                  <div class="space-y-4">
+                    <form
+                      phx-submit="submit_file_assignment"
+                      phx-change="save_draft"
+                      phx-value-block_id={block.id}
+                      id={"file-assignment-form-#{block.id}"}
+                    >
+                      <input type="hidden" name="block_id" value={block.id} />
+
+                      <.content_block
+                        block={block}
+                        mode={if fa_locked, do: :review, else: :play}
+                        submission={submission}
+                        pending_file_urls={@pending_file_urls}
+                        draft={Map.get(@drafts || %{}, block.id)}
+                      />
+
+                      <div :if={!fa_locked} class="mt-6 flex items-center justify-between">
+                        <button
+                          type="submit"
+                          class="btn btn-primary"
+                          disabled={Map.get(@pending_file_urls, block.id, []) == []}
+                        >
+                          {cond do
+                            submission != nil ->
+                              gettext("Resubmit")
+
+                            Map.get(@pending_file_urls, block.id, []) == [] ->
+                              gettext("Select Files First")
+
+                            true ->
+                              gettext("Submit Assignment")
+                          end}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                <% _ -> %>
+                  <.content_block block={block} mode={:play} />
+              <% end %>
+
+              <div :if={gate?(block)} class="mt-8">
+                <.render_gate block={block} is_completed={block.id in @completed_ids} />
+              </div>
             </div>
-          </div>
-        <% end %>
-      </div>
-
-      <div
-        :if={all_blocks_completed?(@visible_blocks, @completed_ids)}
-        class="mt-10 pt-5 animate-in fade-in slide-in-from-bottom-8 duration-1000"
-      >
-        <%= if @next_section_id do %>
-          <.link
-            navigate={~p"/learn/courses/#{@course.id}/play/#{@next_section_id}"}
-            class="btn btn-ghost"
-          >
-            {gettext("Next Lesson")} <.icon name="hero-arrow-right" class="size-5 ml-2" />
-          </.link>
-        <% else %>
-          <.link navigate={~p"/learn/courses/#{@course.id}"} class="btn btn-ghost">
-            {gettext("Back to Syllabus")}
-          </.link>
-        <% end %>
-      </div>
-
-      <.modal
-        :if={@course_map_open}
-        id="course-map-modal"
-        show={true}
-        title={gettext("Course Map")}
-        on_cancel={JS.push("close_course_map")}
-      >
-        <div class="max-h-[60vh] overflow-y-auto -mx-6 px-6 py-2">
-          <.course_map_tree
-            sections={@tree}
-            active_section_id={@section.id}
-            course_id={@course.id}
-            block_counts={@block_counts}
-          />
+          <% end %>
         </div>
-      </.modal>
 
-      <%= if @show_media_modal do %>
-        <.live_component
-          module={AthenaWeb.StudioLive.MediaUploadComponent}
-          id={"media-uploader-player-#{@active_upload_block_id}"}
-          block_id={@active_upload_block_id}
-          upload_type={@upload_type}
-          current_user={@current_user}
-          course_id={@course.id}
-          context="student_submission"
-          max_files={@max_files_for_upload}
-          current_file_count={@current_file_count_for_upload}
-        />
-      <% end %>
+        <div
+          :if={all_blocks_completed?(@visible_blocks, @completed_ids)}
+          class="mt-10 pt-5 animate-in fade-in slide-in-from-bottom-8 duration-1000"
+        >
+          <%= if @next_section_id do %>
+            <.link
+              navigate={~p"/learn/courses/#{@course.id}/play/#{@next_section_id}"}
+              class="btn btn-ghost"
+            >
+              {gettext("Next Lesson")} <.icon name="hero-arrow-right" class="size-5 ml-2" />
+            </.link>
+          <% else %>
+            <.link navigate={~p"/learn/courses/#{@course.id}"} class="btn btn-ghost">
+              {gettext("Back to Syllabus")}
+            </.link>
+          <% end %>
+        </div>
+
+        <.modal
+          :if={@course_map_open}
+          id="course-map-modal"
+          show={true}
+          title={gettext("Course Map")}
+          on_cancel={JS.push("close_course_map")}
+        >
+          <div class="max-h-[60vh] overflow-y-auto -mx-6 px-6 py-2">
+            <.course_map_tree
+              sections={@tree}
+              active_section_id={@section.id}
+              course_id={@course.id}
+              block_counts={@block_counts}
+            />
+          </div>
+        </.modal>
+
+        <%= if @show_media_modal do %>
+          <.live_component
+            module={AthenaWeb.StudioLive.MediaUploadComponent}
+            id={"media-uploader-player-#{@active_upload_block_id}"}
+            block_id={@active_upload_block_id}
+            upload_type={@upload_type}
+            current_user={@current_user}
+            course_id={@course.id}
+            context="student_submission"
+            max_files={@max_files_for_upload}
+            current_file_count={@current_file_count_for_upload}
+          />
+        <% end %>
       </div>
     </.page_container>
     """

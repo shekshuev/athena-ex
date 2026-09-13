@@ -89,7 +89,7 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompare do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8">
+    <.page_container size="narrow" class="p-4 sm:p-6 lg:p-8">
       <.link
         navigate={~p"/teaching/cohorts"}
         class="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-base-content/50 hover:text-primary transition-colors mb-4"
@@ -117,21 +117,21 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompare do
           {gettext("Cohorts")}
         </h2>
         <div class="flex flex-wrap gap-2">
-          <button
+          <.button
             :for={cohort <- @cohorts}
+            variant={if cohort.id in @selected_cohort_ids, do: "primary", else: "ghost"}
+            size="sm"
             type="button"
             phx-click="toggle_cohort"
             phx-value-cohort_id={cohort.id}
-            class={[
-              "btn btn-sm rounded-sm",
-              (cohort.id in @selected_cohort_ids && "btn-primary") || "btn-ghost"
-            ]}
           >
             {cohort.name}
-          </button>
-          <div :if={@cohorts == []} class="text-sm text-base-content/40">
-            {gettext("No cohorts are enrolled in this course yet.")}
-          </div>
+          </.button>
+          <.empty_state
+            :if={@cohorts == []}
+            icon="hero-user-group"
+            title={gettext("No cohorts are enrolled in this course yet.")}
+          />
         </div>
       </div>
 
@@ -144,7 +144,7 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompare do
         >
         </canvas>
       </div>
-    </div>
+    </.page_container>
     """
   end
 

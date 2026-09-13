@@ -125,19 +125,19 @@ msgstr ""
 msgid "is required"
 msgstr ""
 
-#: lib/athena/identity/account.ex:70
+#: lib/athena/identity/account.ex:71
 #: lib/athena_web/live/auth_live/login.ex:48
 #, elixir-autogen, elixir-format
 msgid "can only contain letters, numbers, dots, dashes, and underscores"
 msgstr ""
 
-#: lib/athena/identity/account.ex:85
+#: lib/athena/identity/account.ex:86
 #, elixir-autogen, elixir-format
 msgid "does not exist"
 msgstr ""
 
-#: lib/athena/identity/account.ex:77
-#: lib/athena/identity/account.ex:96
+#: lib/athena/identity/account.ex:78
+#: lib/athena/identity/account.ex:97
 #: lib/athena_web/live/account_live/profile.ex:41
 #: lib/athena_web/live/auth_live/force_password_change.ex:35
 #: lib/athena_web/live/auth_live/login.ex:55

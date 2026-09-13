@@ -195,9 +195,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
             {gettext("Back to Cohort")}
           </.link>
           <h2 class="font-black text-lg truncate">{@course.title}</h2>
-          <div class="badge badge-primary rounded-sm badge-outline mt-1 font-bold">
-            {@cohort.name}
-          </div>
+          <.badge tone="primary" class="mt-1">{@cohort.name}</.badge>
         </div>
 
         <div class="p-4 space-y-1">
@@ -211,7 +209,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
       </div>
 
       <div class="flex-1 overflow-y-auto bg-base-200 p-8 relative">
-        <div class="max-w-6xl mx-auto">
+        <.page_container size="standard">
           <div class="mb-6 flex items-center gap-2">
             <.link
               :if={@view == :students}
@@ -236,12 +234,13 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
               </.link>
             </div>
 
-            <.link
+            <.button
+              variant="ghost"
+              size="sm"
               navigate={~p"/teaching/courses/#{@course.id}/engagement/compare"}
-              class="btn btn-ghost btn-sm rounded-sm"
             >
               <.icon name="hero-chart-bar-square" class="size-4" /> {gettext("Compare Cohorts")}
-            </.link>
+            </.button>
           </div>
 
           <%= if @view == :students do %>
@@ -274,21 +273,24 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
                 </select>
               </form>
 
-              <.link
+              <.button
+                variant="ghost"
+                size="sm"
                 href={~p"/teaching/cohorts/#{@cohort.id}/engagement/#{@course.id}/export.csv"}
-                class="btn btn-ghost btn-sm rounded-sm"
               >
                 <.icon name="hero-arrow-down-tray" class="size-4" /> {gettext("Export CSV")}
-              </.link>
+              </.button>
             </div>
 
             <%= if @active_block do %>
-              <.link
+              <.button
+                variant="ghost"
+                size="sm"
+                class="mb-6"
                 patch={build_path(assigns, block_id: nil)}
-                class="btn btn-ghost rounded-sm btn-sm mb-6"
               >
                 <.icon name="hero-arrow-left" class="size-4" /> {gettext("Back to Section")}
-              </.link>
+              </.button>
 
               <.metrics_table metrics={@metrics} />
 
@@ -452,29 +454,32 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
                   <div class="flex items-center justify-between mb-2">
                     <div class="flex items-center gap-2">
                       <div class="text-sm font-bold">{block.type}</div>
-                      <div
+                      <span
                         :if={content_flags_for(Map.get(@metrics, block.id, %{})) != []}
-                        class="badge badge-warning badge-sm rounded-sm gap-1"
                         title={Enum.join(content_flags_for(Map.get(@metrics, block.id, %{})), ", ")}
                       >
-                        <.icon name="hero-exclamation-triangle" class="size-3" />
-                        {gettext("Content issue")}
-                      </div>
+                        <.badge tone="warning" class="gap-1">
+                          <.icon name="hero-exclamation-triangle" class="size-3" />
+                          {gettext("Content issue")}
+                        </.badge>
+                      </span>
                     </div>
-                    <.link
+                    <.button
+                      variant="ghost"
+                      size="xs"
+                      class="text-primary"
                       patch={build_path(assigns, block_id: block.id)}
-                      class="btn btn-ghost btn-xs text-primary"
                     >
                       {gettext("View metrics")}
                       <.icon name="hero-arrow-right" class="size-4" />
-                    </.link>
+                    </.button>
                   </div>
                   <.metrics_table metrics={Map.get(@metrics, block.id, %{})} compact={true} />
                 </div>
               </div>
             <% end %>
           <% end %>
-        </div>
+        </.page_container>
       </div>
     </div>
     """
@@ -533,8 +538,8 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
               <td>{status_badge(assigns, row.status)}</td>
             </tr>
             <tr :if={@rows == []}>
-              <td colspan="5" class="text-sm text-base-content/40 text-center py-6">
-                {gettext("No students in this cohort yet.")}
+              <td colspan="5">
+                <.empty_state icon="hero-user-group" title={gettext("No students in this cohort yet.")} />
               </td>
             </tr>
           </tbody>
@@ -548,15 +553,13 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
     assigns = assign(assigns, :status, status)
 
     ~H"""
-    <span class={["badge rounded-sm font-bold", status_badge_class(@status)]}>
-      {status_label(@status)}
-    </span>
+    <.badge tone={status_tone(@status)}>{status_label(@status)}</.badge>
     """
   end
 
-  defp status_badge_class(:red), do: "badge-error"
-  defp status_badge_class(:yellow), do: "badge-warning"
-  defp status_badge_class(:green), do: "badge-success"
+  defp status_tone(:red), do: "error"
+  defp status_tone(:yellow), do: "warning"
+  defp status_tone(:green), do: "success"
 
   defp status_label(:red), do: gettext("Needs attention")
   defp status_label(:yellow), do: gettext("Struggling")

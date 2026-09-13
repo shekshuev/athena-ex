@@ -8,8 +8,8 @@ defmodule Athena.Engagement.Events do
   """
 
   import Ecto.Query
-  alias Athena.Repo
   alias Athena.Engagement.Event
+  alias Athena.Repo
 
   @doc """
   Inserts a batch of raw events for one account/session in a single
