@@ -16,6 +16,7 @@ defmodule AthenaWeb.MessengerLive.Index do
       |> assign(:subscribed_conversation_id, nil)
       |> assign(:typing_accounts, %{})
       |> assign(:online_account_ids, online_account_ids())
+      |> assign(:full_bleed, true)
       |> load_conversations()
 
     {:ok, socket}
@@ -272,7 +273,7 @@ defmodule AthenaWeb.MessengerLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="flex h-[calc(100vh-4rem)] -m-4 sm:-m-6 lg:-m-8 border-t border-base-300">
+    <div class="flex h-full border-t border-base-300">
       <div class="w-full sm:w-80 shrink-0 border-r border-base-300 flex flex-col bg-base-100">
         <.live_component
           module={AthenaWeb.MessengerLive.ConversationListComponent}

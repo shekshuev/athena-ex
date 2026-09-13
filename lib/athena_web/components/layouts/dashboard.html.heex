@@ -350,8 +350,8 @@
       </header>
     <% end %>
 
-    <main class="flex-1 overflow-y-auto p-4 pb-20 sm:p-8">
-      <div class="max-w-7xl mx-auto">
+    <main class={["flex-1 overflow-y-auto", if(assigns[:full_bleed], do: "", else: "p-4 pb-20 sm:p-8")]}>
+      <div class={if(assigns[:full_bleed], do: "h-full", else: "max-w-7xl mx-auto")}>
         <.flash_group flash={@flash} />
         {@inner_content}
       </div>
