@@ -25,6 +25,23 @@ defmodule AthenaWeb.MessengerLive.ConversationListComponent do
         />
       </div>
 
+      <div
+        id="notification-banner"
+        phx-hook="NotificationBanner"
+        hidden
+        class="flex flex-col gap-2 px-4 py-2 bg-primary/10 border-b border-primary/20 text-sm"
+      >
+        <span class="text-base-content/80">{gettext("Get notified about new messages?")}</span>
+        <div class="flex items-center gap-2">
+          <button type="button" data-allow class="btn btn-primary btn-xs">
+            {gettext("Enable")}
+          </button>
+          <button type="button" data-dismiss class="btn btn-ghost btn-xs">
+            {gettext("Not now")}
+          </button>
+        </div>
+      </div>
+
       <div class="flex-1 overflow-y-auto">
         <.empty_state
           :if={!@has_conversations}

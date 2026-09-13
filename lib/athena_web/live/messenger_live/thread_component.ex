@@ -86,10 +86,19 @@ defmodule AthenaWeb.MessengerLive.ThreadComponent do
         id={"messages-#{@conversation.id}"}
         phx-update="stream"
       >
-        <div :for={{dom_id, message} <- @messages} id={dom_id} class="py-0.5">
+        <div :for={{dom_id, item} <- @messages} id={dom_id} class="py-0.5">
+          <div :if={divider?(item)} id="read-divider" class="flex items-center gap-2 my-2">
+            <div class="flex-1 h-px bg-error/30"></div>
+            <span class="text-[11px] font-bold uppercase tracking-wide text-error shrink-0">
+              {gettext("New messages")}
+            </span>
+            <div class="flex-1 h-px bg-error/30"></div>
+          </div>
+
           <.message_bubble
-            message={message}
-            own={message.account_id == @current_user.id}
+            :if={!divider?(item)}
+            message={item}
+            own={item.account_id == @current_user.id}
             myself={@myself}
           />
         </div>
@@ -106,6 +115,9 @@ defmodule AthenaWeb.MessengerLive.ThreadComponent do
     </div>
     """
   end
+
+  defp divider?(%{kind: :divider}), do: true
+  defp divider?(_item), do: false
 
   defp header_title(%{kind: :direct, other_participant: nil}), do: gettext("Unknown user")
 

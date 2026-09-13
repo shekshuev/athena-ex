@@ -46,9 +46,16 @@ defmodule AthenaWeb.MessengerLive.Index do
   end
 
   defp apply_action(socket, :show, %{"conversation_id" => id}) do
-    case Messaging.get_conversation(socket.assigns.current_user, id) do
+    user = socket.assigns.current_user
+
+    case Messaging.get_conversation(user, id) do
       {:ok, conversation} ->
-        Messaging.mark_read(socket.assigns.current_user, conversation)
+        # Captured *before* anything marks the conversation read, so the
+        # "new messages" divider reflects where the user's read cursor was
+        # when they opened it, not the position it's about to move to.
+        last_read_at = Messaging.get_last_read_at(user, conversation)
+        messages = Messaging.list_messages(conversation)
+        has_unread = conversation.unread_count > 0
 
         socket
         |> unsubscribe_conversation()
@@ -56,12 +63,33 @@ defmodule AthenaWeb.MessengerLive.Index do
         |> assign(:conversation, conversation)
         |> assign(:typing_accounts, %{})
         |> assign(:page_title, conversation_title(conversation))
-        |> stream(:messages, Messaging.list_messages(conversation), reset: true)
+        |> stream(:messages, divider_items(messages, last_read_at, has_unread), reset: true)
+        |> push_event("scroll_thread", %{to: if(has_unread, do: "read-divider", else: "bottom")})
 
       {:error, :not_found} ->
         socket
         |> put_flash(:error, gettext("Conversation not found."))
         |> push_navigate(to: ~p"/messenger")
+    end
+  end
+
+  # Inserts a synthetic `%{id: "read-divider", kind: :divider}` marker
+  # right before the first message the user hasn't seen yet, so the stream
+  # (and `ThreadComponent`'s template) can render a "new messages" line
+  # there. Plain map, not a `Message` struct, deliberately — it flows
+  # through the same stream as real messages (Phoenix.LiveView.LiveStream
+  # only needs an `:id`), and `divider?/1` tells them apart.
+  defp divider_items(messages, _last_read_at, false), do: messages
+
+  defp divider_items(messages, last_read_at, true) do
+    index =
+      Enum.find_index(messages, fn m ->
+        is_nil(last_read_at) or DateTime.compare(m.inserted_at, last_read_at) == :gt
+      end)
+
+    case index do
+      nil -> messages
+      idx -> List.insert_at(messages, idx, %{id: "read-divider", kind: :divider})
     end
   end
 
@@ -150,7 +178,10 @@ defmodule AthenaWeb.MessengerLive.Index do
   defp maybe_append_message(socket, message) do
     if current_conversation?(socket, message.conversation_id) do
       Messaging.mark_read(socket.assigns.current_user, socket.assigns.conversation)
-      stream_insert(socket, :messages, message)
+
+      socket
+      |> stream_insert(:messages, message)
+      |> push_event("scroll_thread", %{to: "bottom"})
     else
       socket
     end
@@ -197,8 +228,26 @@ defmodule AthenaWeb.MessengerLive.Index do
 
       id ->
         if connected?(socket), do: Phoenix.PubSub.unsubscribe(Athena.PubSub, "conversation:#{id}")
+        mark_current_conversation_read(socket)
         assign(socket, :subscribed_conversation_id, nil)
     end
+  end
+
+  # Marking read happens when *leaving* a conversation (here, and in
+  # `terminate/2` for a closed tab/navigated-away socket) rather than the
+  # instant it's opened — that's what leaves a window, however brief, for
+  # the "new messages" divider built in `apply_action/3` to actually mean
+  # something.
+  defp mark_current_conversation_read(socket) do
+    if conversation = socket.assigns[:conversation] do
+      Messaging.mark_read(socket.assigns.current_user, conversation)
+    end
+  end
+
+  @impl true
+  def terminate(_reason, socket) do
+    mark_current_conversation_read(socket)
+    :ok
   end
 
   defp load_conversations(socket) do

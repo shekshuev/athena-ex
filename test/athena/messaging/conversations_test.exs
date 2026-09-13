@@ -81,6 +81,19 @@ defmodule Athena.Messaging.ConversationsTest do
       assert Messaging.count_unread_conversations(alice) == 0
     end
 
+    test "get_last_read_at/2 reflects the cursor before and after mark_read/2" do
+      alice = insert(:account)
+      bob = insert(:account)
+
+      {:ok, conversation} = Messaging.find_or_create_direct_conversation(alice, bob.id)
+      assert Messaging.get_last_read_at(alice, conversation) == nil
+
+      Messaging.post_message(bob, conversation, %{"body" => "hi"})
+      Messaging.mark_read(alice, conversation)
+
+      assert %DateTime{} = Messaging.get_last_read_at(alice, conversation)
+    end
+
     test "count_unread_conversations/1 counts conversations, not messages" do
       alice = insert(:account)
       bob = insert(:account)

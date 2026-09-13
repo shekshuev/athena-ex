@@ -263,7 +263,11 @@ defmodule AthenaWeb.CoreComponents do
       <.avatar initials="C" color="secondary" size="w-9" text_size="text-xs" />
   """
   attr :src, :string, default: nil, doc: "avatar image URL; when nil, initials are shown instead"
-  attr :initials, :string, default: "", doc: "shown when there is no `src` — keep it short (1-2 chars)"
+
+  attr :initials, :string,
+    default: "",
+    doc: "shown when there is no `src` — keep it short (1-2 chars)"
+
   attr :alt, :string, default: ""
   attr :size, :string, default: "w-10", doc: "Tailwind width class, e.g. \"w-8\", \"w-14\""
   attr :text_size, :string, default: nil, doc: "Tailwind text-size class for the initials"

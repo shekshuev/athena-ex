@@ -51,10 +51,34 @@ defmodule AthenaWeb.Hooks.Messenger do
     propagate_to_messenger(message, socket)
   end
 
+  # Fully handled here (toast + browser Notification, see app.js) on
+  # whatever page the user happens to be on — unlike the events above,
+  # nothing needs this forwarded to a LiveView's own `handle_info`.
+  # Suppressed when the user is already looking at that exact conversation,
+  # since `MessengerLive.Index` already live-appends the message there.
+  defp handle_inbox_event({:new_message_notification, notification}, socket) do
+    socket =
+      if viewing_conversation?(socket, notification.conversation_id) do
+        socket
+      else
+        push_event(socket, "new_message_notification", notification)
+      end
+
+    {:halt, socket}
+  end
+
   defp handle_inbox_event(_message, socket), do: {:cont, socket}
 
   defp propagate_to_messenger(_message, %{view: AthenaWeb.MessengerLive.Index} = socket),
     do: {:cont, socket}
 
   defp propagate_to_messenger(_message, socket), do: {:halt, socket}
+
+  defp viewing_conversation?(
+         %{view: AthenaWeb.MessengerLive.Index, assigns: %{conversation: %{id: id}}},
+         id
+       ),
+       do: true
+
+  defp viewing_conversation?(_socket, _conversation_id), do: false
 end

@@ -77,7 +77,7 @@ defmodule Athena.Messaging.Messages do
 
       case result do
         {:ok, message} ->
-          broadcast_and_notify(conversation, message, user.id)
+          broadcast_and_notify(conversation, message, user)
           {:ok, enrich_message(message)}
 
         {:error, changeset} ->
@@ -213,15 +213,22 @@ defmodule Athena.Messaging.Messages do
     :ok
   end
 
-  defp broadcast_and_notify(conversation, message, sender_id) do
+  defp broadcast_and_notify(conversation, message, sender) do
     broadcast(message, :new_message)
 
     other_participant_ids =
       from(cp in ConversationParticipant,
-        where: cp.conversation_id == ^conversation.id and cp.account_id != ^sender_id,
+        where: cp.conversation_id == ^conversation.id and cp.account_id != ^sender.id,
         select: cp.account_id
       )
       |> Repo.all()
+
+    notification = %{
+      conversation_id: conversation.id,
+      title: notification_title(conversation, sender),
+      preview: String.slice(message.body || "", 0, 120),
+      url: "/messenger/#{conversation.id}"
+    }
 
     Enum.each(other_participant_ids, fn account_id ->
       Phoenix.PubSub.broadcast(
@@ -229,8 +236,21 @@ defmodule Athena.Messaging.Messages do
         "inbox:#{account_id}",
         {:inbox_updated, conversation.id}
       )
+
+      Phoenix.PubSub.broadcast(
+        Athena.PubSub,
+        "inbox:#{account_id}",
+        {:new_message_notification, notification}
+      )
     end)
   end
+
+  defp notification_title(%{kind: :direct}, sender), do: Identity.display_name(sender)
+
+  defp notification_title(%{kind: :cohort, cohort: %{name: name}}, sender),
+    do: "#{name} · #{Identity.display_name(sender)}"
+
+  defp notification_title(%{kind: :cohort}, sender), do: Identity.display_name(sender)
 
   defp broadcast(message, event) do
     Phoenix.PubSub.broadcast(

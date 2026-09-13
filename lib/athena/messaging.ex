@@ -10,6 +10,7 @@ defmodule Athena.Messaging do
   defdelegate get_conversation(user, id), to: Conversations
   defdelegate find_or_create_direct_conversation(user, other_account_id), to: Conversations
   defdelegate mark_read(user, conversation), to: Conversations
+  defdelegate get_last_read_at(user, conversation), to: Conversations
   defdelegate count_unread_conversations(user), to: Conversations
   defdelegate list_participant_accounts(conversation), to: Conversations
 

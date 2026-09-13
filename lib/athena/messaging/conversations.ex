@@ -75,6 +75,23 @@ defmodule Athena.Messaging.Conversations do
   end
 
   @doc """
+  Returns the given user's `last_read_at` cursor for a conversation (`nil`
+  if they've never read it). Used to place the "new messages" divider at
+  the position it was at when the conversation was opened, before
+  `mark_read/2` moves the cursor forward.
+  """
+  @spec get_last_read_at(map(), Conversation.t()) :: DateTime.t() | nil
+  def get_last_read_at(user, conversation) do
+    case Repo.get_by(ConversationParticipant,
+           conversation_id: conversation.id,
+           account_id: user.id
+         ) do
+      nil -> nil
+      participant -> participant.last_read_at
+    end
+  end
+
+  @doc """
   Marks a conversation as read (up to now) for the given user, and notifies
   their other sessions/tabs so the unread badge updates live.
   """
@@ -83,9 +100,10 @@ defmodule Athena.Messaging.Conversations do
     now = DateTime.utc_now()
 
     from(cp in ConversationParticipant,
-      where: cp.conversation_id == ^conversation.id and cp.account_id == ^user.id
+      where: cp.conversation_id == ^conversation.id and cp.account_id == ^user.id,
+      update: [set: [last_read_at: ^now]]
     )
-    |> Repo.update_all(set: [last_read_at: now])
+    |> Repo.update_all([])
 
     Phoenix.PubSub.broadcast(Athena.PubSub, "inbox:#{user.id}", {:inbox_updated, conversation.id})
 
