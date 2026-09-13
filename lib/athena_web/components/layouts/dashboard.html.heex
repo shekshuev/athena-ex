@@ -297,9 +297,9 @@
       </div>
 
       <ul class="menu p-0 w-full gap-1">
-        <li>
-          <.link navigate={~p"/me"} class="flex items-center">
-            <div class="flex items-center gap-2 min-w-0">
+        <li class="min-w-0 w-full">
+          <.link navigate={~p"/me"} class="flex items-center min-w-0 w-full">
+            <div class="flex items-center gap-2 min-w-0 flex-1">
               <.avatar
                 src={@current_user.profile && @current_user.profile.avatar_url}
                 initials={@current_user.login |> String.slice(0, 2) |> String.upcase()}
@@ -307,7 +307,7 @@
                 size="w-6"
                 text_size="text-[10px]"
               />
-              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate min-w-0 flex-1">
                 {if @current_user.profile,
                   do: Athena.Identity.Profile.full_name(@current_user.profile),
                   else: @current_user.login}
