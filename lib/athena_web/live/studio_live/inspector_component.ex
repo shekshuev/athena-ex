@@ -9,6 +9,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   use AthenaWeb, :live_component
   alias Athena.Content.{Section, Block}
   alias Athena.Execution
+  alias Athena.Identity
 
   @doc """
   Lifecycle hook: handles incoming assigns and sets defaults.
@@ -17,7 +18,8 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   def update(assigns, socket) do
     {:ok,
      socket
-     |> assign(assigns)}
+     |> assign(assigns)
+     |> assign_new(:current_user, fn -> nil end)}
   end
 
   @doc """
@@ -35,9 +37,9 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
       </div>
       <%= cond do %>
         <% @active_block -> %>
-          <.block_inspector block={@active_block} />
+          <.block_inspector block={@active_block} current_user={@current_user} />
         <% @active_section -> %>
-          <.section_inspector section={@active_section} />
+          <.section_inspector section={@active_section} current_user={@current_user} />
         <% true -> %>
           <div class="flex-1 flex items-center justify-center p-4 text-center">
             <p class="text-sm text-base-content/50 italic">
@@ -53,6 +55,10 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   @spec section_inspector(map()) :: Phoenix.LiveView.Rendered.t()
   defp section_inspector(assigns) do
     attrs = if assigns.section.access_rules, do: %{}, else: %{"access_rules" => %{}}
+
+    attrs =
+      if assigns.section.engagement_rule, do: attrs, else: Map.put(attrs, "engagement_rule", %{})
+
     section_changeset = Section.changeset(assigns.section, attrs)
 
     assigns = assign(assigns, :form, to_form(section_changeset))
@@ -87,6 +93,51 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
           />
 
           <div class="divider my-4"></div>
+
+          <div :if={Identity.can?(@current_user, "engagement.update")} class="space-y-4 mb-6">
+            <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
+              {gettext("Engagement Tracking")}
+            </div>
+            <div class="text-xs text-base-content/50 leading-relaxed -mt-2">
+              {gettext(
+                "Default for every block in this section, unless a block overrides it. Leave blank to inherit the application default."
+              )}
+            </div>
+
+            <.inputs_for :let={er} field={@form[:engagement_rule]}>
+              <.input
+                type="number"
+                field={er[:expected_seconds]}
+                label={gettext("Expected time to complete (seconds)")}
+                placeholder={gettext("Inherit")}
+                min="1"
+                phx-debounce="500"
+              />
+
+              <.input
+                type="number"
+                field={er[:fast_ratio_threshold]}
+                label={gettext("Fast-completion threshold (0-1)")}
+                placeholder={gettext("Inherit")}
+                step="0.05"
+                min="0.05"
+                max="1"
+                phx-debounce="500"
+              />
+
+              <.input
+                type="select"
+                field={er[:nudge_enabled]}
+                label={gettext("Allow nudges in this section?")}
+                options={[
+                  {gettext("Inherit"), ""},
+                  {gettext("Enabled"), "true"},
+                  {gettext("Disabled"), "false"}
+                ]}
+              />
+            </.inputs_for>
+          </div>
+          <div :if={Identity.can?(@current_user, "engagement.update")} class="divider my-4"></div>
 
           <div class="space-y-4">
             <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
@@ -171,6 +222,11 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
           if assigns.block.completion_rule,
             do: attrs,
             else: Map.put(attrs, "completion_rule", %{"type" => "none"})
+
+        attrs =
+          if assigns.block.engagement_rule,
+            do: attrs,
+            else: Map.put(attrs, "engagement_rule", %{})
 
         Block.changeset(assigns.block, attrs)
       end
@@ -646,6 +702,56 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
             </.inputs_for>
           </div>
           <div class="divider my-4"></div>
+
+          <div :if={Identity.can?(@current_user, "engagement.update")} class="space-y-4 mb-6">
+            <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
+              {gettext("Engagement Tracking")}
+            </div>
+            <div class="text-xs text-base-content/50 leading-relaxed -mt-2">
+              {gettext(
+                "Leave blank to inherit from the section, or ultimately the application default."
+              )}
+            </div>
+
+            <.inputs_for :let={er} field={@form[:engagement_rule]}>
+              <.input
+                type="number"
+                field={er[:expected_seconds]}
+                label={gettext("Expected time to complete (seconds)")}
+                placeholder={gettext("Inherit")}
+                min="1"
+                phx-debounce="500"
+              />
+
+              <.input
+                type="number"
+                field={er[:fast_ratio_threshold]}
+                label={gettext("Fast-completion threshold (0-1)")}
+                placeholder={gettext("Inherit")}
+                step="0.05"
+                min="0.05"
+                max="1"
+                phx-debounce="500"
+              />
+
+              <.input
+                type="select"
+                field={er[:nudge_enabled]}
+                label={gettext("Allow nudges on this block?")}
+                options={[
+                  {gettext("Inherit"), ""},
+                  {gettext("Enabled"), "true"},
+                  {gettext("Disabled"), "false"}
+                ]}
+              />
+              <div class="text-xs text-base-content/50 leading-relaxed -mt-2">
+                {gettext(
+                  "When a cohort has nudges enabled, students who complete this block suspiciously fast see a gentle reminder to double-check."
+                )}
+              </div>
+            </.inputs_for>
+          </div>
+          <div :if={Identity.can?(@current_user, "engagement.update")} class="divider my-4"></div>
 
           <div class="space-y-4">
             <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">

@@ -6,7 +6,7 @@ defmodule Athena.Content.Policy do
 
   alias Athena.Identity.Account
   alias Athena.Repo
-  alias Athena.Content.{Block, Section}
+  alias Athena.Content.{Block, Section, EngagementRule}
 
   @doc """
   Determines if the given user is authorized to view the item.
@@ -101,4 +101,54 @@ defmodule Athena.Content.Policy do
   end
 
   defp parse_to_unix(_), do: nil
+
+  @doc """
+  Resolves a block's effective engagement-tracking thresholds through the
+  same "specific overrides general" cascade already used for access rules:
+  a value set directly on the block wins; otherwise the block's section
+  supplies the default; otherwise the application-wide config default
+  applies (see `config :athena, Athena.Engagement` in `config/config.exs`).
+
+  A `nil` field on `Block.engagement_rule`/`Section.engagement_rule` means
+  "inherit from the next level up", not "disabled" - that's what makes the
+  cascade work field-by-field rather than all-or-nothing.
+  """
+  @spec resolve_engagement_rule(Block.t(), Section.t()) :: %{
+          expected_seconds: pos_integer() | nil,
+          fast_ratio_threshold: float(),
+          nudge_enabled: boolean()
+        }
+  def resolve_engagement_rule(%Block{} = block, %Section{} = section) do
+    block_rule = block.engagement_rule || %EngagementRule{}
+    section_rule = section.engagement_rule || %EngagementRule{}
+    config = Application.get_env(:athena, Athena.Engagement, [])
+
+    %{
+      expected_seconds:
+        first_non_nil([
+          block_rule.expected_seconds,
+          section_rule.expected_seconds,
+          Keyword.get(config, :default_expected_seconds)
+        ]),
+      fast_ratio_threshold:
+        first_non_nil([
+          block_rule.fast_ratio_threshold,
+          section_rule.fast_ratio_threshold,
+          Keyword.get(config, :default_fast_ratio_threshold)
+        ]) || 0.4,
+      nudge_enabled: resolve_nudge_enabled(block_rule.nudge_enabled, section_rule.nudge_enabled)
+    }
+  end
+
+  @doc false
+  defp first_non_nil(values), do: Enum.find(values, &(&1 != nil))
+
+  # A plain `||` chain would be wrong here: `false` is a meaningful resolved
+  # value ("explicitly opted out"), not an absent one like `nil` - so it must
+  # not fall through to the `true` default the way `first_non_nil(...) ||
+  # true` would (Elixir's `||` treats `false` itself as falsy).
+  @doc false
+  defp resolve_nudge_enabled(nil, nil), do: true
+  defp resolve_nudge_enabled(nil, section_value), do: section_value
+  defp resolve_nudge_enabled(block_value, _section_value), do: block_value
 end

@@ -122,6 +122,84 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       {:ok, updated_section} = Content.get_section(section.id)
       assert updated_section.title == "Updated Title"
     end
+
+    test "saves engagement_rule thresholds set on a section", %{
+      conn: conn,
+      course: course,
+      admin: admin
+    } do
+      {:ok, section} =
+        Content.create_section(admin, %{
+          "title" => "Week 1",
+          "course_id" => course.id,
+          "owner_id" => admin.id
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> form("#section-inspector-form-#{section.id}", %{
+        "section" => %{
+          "engagement_rule" => %{"expected_seconds" => "120", "nudge_enabled" => "false"}
+        }
+      })
+      |> render_change()
+
+      {:ok, updated_section} = Content.get_section(section.id)
+      assert updated_section.engagement_rule.expected_seconds == 120
+      assert updated_section.engagement_rule.nudge_enabled == false
+    end
+
+    test "saves engagement_rule thresholds set on a block", %{
+      conn: conn,
+      course: course,
+      admin: admin
+    } do
+      {:ok, section} =
+        Content.create_section(admin, %{
+          "title" => "Week 1",
+          "course_id" => course.id,
+          "owner_id" => admin.id
+        })
+
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "text",
+          "content" => %{"text" => "Hello"},
+          "section_id" => section.id
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']")
+      |> render_click()
+
+      lv
+      |> form("#block-inspector-form-#{block.id}", %{
+        "block" => %{
+          "engagement_rule" => %{
+            "expected_seconds" => "60",
+            "fast_ratio_threshold" => "0.3",
+            "nudge_enabled" => "true"
+          }
+        }
+      })
+      |> render_change()
+
+      {:ok, updated_block} = Content.get_block(block.id)
+      assert updated_block.engagement_rule.expected_seconds == 60
+      assert updated_block.engagement_rule.fast_ratio_threshold == 0.3
+      assert updated_block.engagement_rule.nudge_enabled == true
+    end
   end
 
   describe "Block Management (UI Actions)" do

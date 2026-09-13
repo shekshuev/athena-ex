@@ -9,6 +9,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
   alias Athena.Content
   alias Athena.Learning
   import AthenaWeb.BlockComponents
+  import AthenaWeb.TeachingLive.CourseTreeComponents, only: [course_tree_nav: 1]
 
   @impl true
   def mount(%{"id" => cohort_id, "course_id" => course_id}, _session, socket) do
@@ -172,9 +173,13 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
           <.course_tree_nav
             sections={@tree}
             active_section_id={if @active_section, do: @active_section.id, else: nil}
-            course_id={@course.id}
-            cohort_id={@cohort.id}
-            overrides={@overrides}
+            node_path={
+              fn section ->
+                ~p"/teaching/cohorts/#{@cohort.id}/access/#{@course.id}?section_id=#{section.id}"
+              end
+            }
+            has_badge={fn section -> get_override(@overrides, :section, section.id) != nil end}
+            badge_title={gettext("Has Override")}
           />
         </div>
       </div>
@@ -398,63 +403,6 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
           </div>
         </div>
       </form>
-    </div>
-    """
-  end
-
-  defp course_tree_nav(assigns) do
-    assigns = assign_new(assigns, :level, fn -> 0 end)
-
-    ~H"""
-    <div class="space-y-1">
-      <div :for={section <- @sections}>
-        <% has_override = get_override(@overrides, :section, section.id) != nil %>
-
-        <.link
-          patch={~p"/teaching/cohorts/#{@cohort_id}/access/#{@course_id}?section_id=#{section.id}"}
-          class={[
-            "w-full justify-between px-3 py-2.5 rounded-sm flex items-center gap-3 transition-all group",
-            @active_section_id == section.id && "bg-primary/10 text-primary",
-            @active_section_id != section.id && "hover:bg-base-200 text-base-content/70"
-          ]}
-          style={"padding-left: #{(@level * 1.5) + 0.75}rem;"}
-        >
-          <div class="flex items-center gap-2 truncate">
-            <.icon
-              name={if section.children == [], do: "hero-document-text", else: "hero-folder"}
-              class={[
-                "size-4 shrink-0 transition-colors",
-                @active_section_id == section.id && "text-primary",
-                @active_section_id != section.id && "text-base-content/30 group-hover:text-primary/70"
-              ]}
-            />
-            <span class={
-              if section.children == [],
-                do: "text-sm font-medium truncate",
-                else: "text-xs uppercase tracking-widest font-black truncate"
-            }>
-              {section.title}
-            </span>
-          </div>
-
-          <div
-            :if={has_override}
-            class="size-2 rounded-sm bg-primary shrink-0"
-            title={gettext("Has Override")}
-          >
-          </div>
-        </.link>
-
-        <.course_tree_nav
-          :if={section.children != []}
-          sections={section.children}
-          active_section_id={@active_section_id}
-          course_id={@course_id}
-          cohort_id={@cohort_id}
-          overrides={@overrides}
-          level={@level + 1}
-        />
-      </div>
     </div>
     """
   end

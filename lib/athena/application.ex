@@ -59,6 +59,8 @@ defmodule Athena.Application do
       Athena.Gamification.ActivityListener,
       Supervisor.child_spec({Cachex, name: :account_cache}, id: :account_cache),
       Supervisor.child_spec({Cachex, name: :draft_cache}, id: :draft_cache),
+      {Registry, keys: :unique, name: Athena.Engagement.BlockStatsRegistry},
+      {DynamicSupervisor, name: Athena.Engagement.BlockStatsSupervisor, strategy: :one_for_one},
       AthenaWeb.Endpoint
     ]
 

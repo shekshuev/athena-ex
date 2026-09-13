@@ -8,7 +8,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   """
   use AthenaWeb, :live_view
 
-  alias Athena.Learning
+  alias Athena.{Identity, Learning}
   alias AthenaWeb.TeachingLive.MembershipFormComponent
   alias AthenaWeb.TeachingLive.EnrollmentFormComponent
 
@@ -265,6 +265,17 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
               >
                 <.icon name="hero-key" class="size-4" />
                 <span class="hidden sm:inline">{gettext("Access")}</span>
+              </.button>
+
+              <.button
+                :if={Identity.can?(@current_user, "engagement.read")}
+                variant="ghost"
+                size="xs"
+                class="text-primary hover:bg-primary/10"
+                navigate={~p"/teaching/cohorts/#{@cohort.id}/engagement/#{enrollment.course.id}"}
+              >
+                <.icon name="hero-chart-bar" class="size-4" />
+                <span class="hidden sm:inline">{gettext("Engagement")}</span>
               </.button>
 
               <.icon_button

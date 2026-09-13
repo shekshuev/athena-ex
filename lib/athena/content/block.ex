@@ -16,6 +16,7 @@ defmodule Athena.Content.Block do
     Section,
     AccessRules,
     CompletionRule,
+    EngagementRule,
     CodeChallenge,
     FileAssignment
   }
@@ -54,6 +55,8 @@ defmodule Athena.Content.Block do
 
     embeds_one :completion_rule, CompletionRule, on_replace: :update
 
+    embeds_one :engagement_rule, EngagementRule, on_replace: :update
+
     belongs_to :section, Section
 
     timestamps(type: :utc_datetime)
@@ -68,6 +71,7 @@ defmodule Athena.Content.Block do
     |> cast(attrs, [:type, :content, :order, :section_id, :visibility])
     |> cast_embed(:access_rules, with: &AccessRules.changeset/2)
     |> cast_embed(:completion_rule, with: &CompletionRule.changeset/2)
+    |> cast_embed(:engagement_rule, with: &EngagementRule.changeset/2)
     |> validate_required([:type, :content, :section_id, :visibility])
     |> foreign_key_constraint(:section_id)
     |> validate_content_by_type()

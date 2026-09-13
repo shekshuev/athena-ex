@@ -88,6 +88,26 @@ config :athena, Athena.Execution.TestWorker, timeout: 60_000
 config :athena, Athena.Execution.SqlRunner,
   url: "ecto://postgres:postgres@localhost:5432/postgres"
 
+config :athena, Athena.Engagement,
+  default_expected_seconds: nil,
+  default_fast_ratio_threshold: 0.4,
+  histogram_buckets: 10,
+  histogram_max_seconds: 1200,
+  min_sample_size_for_percentile: 15,
+  block_stats_idle_timeout_minutes: 30,
+  min_scroll_percent_for_text: 70,
+  paste_ratio_nudge_threshold: 0.8,
+  video_skip_ratio_threshold: 0.3,
+  panic_debug_gap_seconds: 10,
+  panic_debug_min_bursts: 3,
+  concern_backtrack_rate_threshold: 0.4,
+  concern_hesitation_rate_threshold: 0.4,
+  concern_dwell_ratio_threshold: 0.5,
+  slow_dwell_ratio_threshold: 2.0,
+  student_radar_slacking_threshold: 2,
+  student_radar_struggling_threshold: 2,
+  student_radar_default_window_days: 7
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

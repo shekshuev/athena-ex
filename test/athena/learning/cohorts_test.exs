@@ -144,6 +144,71 @@ defmodule Athena.Learning.CohortsTest do
     end
   end
 
+  describe "list_cohorts_for_course/2" do
+    test "returns a cohort enrolled in the course", %{admin: admin} do
+      course = insert(:course)
+      cohort = insert(:cohort)
+      insert(:enrollment, course_id: course.id, cohort_id: cohort.id)
+
+      cohorts = Cohorts.list_cohorts_for_course(admin, course.id)
+
+      assert [fetched] = cohorts
+      assert fetched.id == cohort.id
+    end
+
+    test "does not return a cohort enrolled in a different course", %{admin: admin} do
+      course = insert(:course)
+      other_course = insert(:course)
+      cohort = insert(:cohort)
+      insert(:enrollment, course_id: other_course.id, cohort_id: cohort.id)
+
+      assert Cohorts.list_cohorts_for_course(admin, course.id) == []
+    end
+
+    test "ignores individual (non-cohort) enrollments in the same course", %{admin: admin} do
+      course = insert(:course)
+      insert(:enrollment, course_id: course.id, cohort_id: nil, account_id: Ecto.UUID.generate())
+
+      assert Cohorts.list_cohorts_for_course(admin, course.id) == []
+    end
+
+    test "applies the own_only ACL - an instructor only sees their own cohorts, even if others are enrolled",
+         %{
+           inst1_account: inst1_account,
+           inst1_profile: inst1_profile,
+           inst2_account: inst2_account,
+           inst2_profile: inst2_profile
+         } do
+      course = insert(:course)
+
+      {:ok, my_cohort} =
+        Cohorts.create_cohort(inst1_account, %{
+          "name" => "Mine",
+          "instructor_ids" => [inst1_profile.id]
+        })
+
+      {:ok, other_cohort} =
+        Cohorts.create_cohort(inst2_account, %{
+          "name" => "Theirs",
+          "instructor_ids" => [inst2_profile.id]
+        })
+
+      insert(:enrollment, course_id: course.id, cohort_id: my_cohort.id)
+      insert(:enrollment, course_id: course.id, cohort_id: other_cohort.id)
+
+      cohorts = Cohorts.list_cohorts_for_course(inst1_account, course.id)
+
+      assert [fetched] = cohorts
+      assert fetched.id == my_cohort.id
+    end
+
+    test "returns an empty list for a course with no cohort enrollments", %{admin: admin} do
+      course = insert(:course)
+
+      assert Cohorts.list_cohorts_for_course(admin, course.id) == []
+    end
+  end
+
   describe "create_cohort/2" do
     test "creates a cohort with valid attributes", %{admin: admin} do
       attrs = %{"name" => "Winter Bootcamp", "description" => "Intensive course"}

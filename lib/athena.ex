@@ -25,6 +25,7 @@ defmodule Athena do
       Content.Section,
       Content.Course,
       Content.CodeChallenge,
+      Content.Policy,
       Media,
       Media.Config,
       Learning,
@@ -44,6 +45,8 @@ defmodule Athena do
       Messaging.Conversation,
       Messaging.ConversationParticipant,
       Messaging.Message,
-      Messaging.MessageMention
+      Messaging.MessageMention,
+      Engagement,
+      Engagement.Event
     ]
 end

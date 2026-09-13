@@ -132,4 +132,72 @@ defmodule Athena.Content.PolicyTest do
       assert Policy.can_view?(user, block, overrides) == false
     end
   end
+
+  describe "resolve_engagement_rule/2" do
+    alias Athena.Content.EngagementRule
+
+    test "falls back to the application config default when neither block nor section set anything" do
+      section = insert(:section, engagement_rule: nil)
+      block = insert(:block, section: section, engagement_rule: nil)
+
+      resolved = Policy.resolve_engagement_rule(block, section)
+
+      assert resolved.expected_seconds ==
+               Application.get_env(:athena, Athena.Engagement)[:default_expected_seconds]
+
+      assert resolved.fast_ratio_threshold ==
+               Application.get_env(:athena, Athena.Engagement)[:default_fast_ratio_threshold]
+
+      assert resolved.nudge_enabled == true
+    end
+
+    test "a section-level value fills in when the block sets nothing" do
+      section = insert(:section, engagement_rule: %EngagementRule{expected_seconds: 90})
+      block = insert(:block, section: section, engagement_rule: nil)
+
+      assert Policy.resolve_engagement_rule(block, section).expected_seconds == 90
+    end
+
+    test "a block-level value wins over the section's" do
+      section = insert(:section, engagement_rule: %EngagementRule{expected_seconds: 90})
+
+      block =
+        insert(:block, section: section, engagement_rule: %EngagementRule{expected_seconds: 30})
+
+      assert Policy.resolve_engagement_rule(block, section).expected_seconds == 30
+    end
+
+    test "each field cascades independently - a block can override just one field" do
+      section =
+        insert(:section,
+          engagement_rule: %EngagementRule{expected_seconds: 90, fast_ratio_threshold: 0.5}
+        )
+
+      block =
+        insert(:block,
+          section: section,
+          engagement_rule: %EngagementRule{fast_ratio_threshold: 0.2}
+        )
+
+      resolved = Policy.resolve_engagement_rule(block, section)
+      assert resolved.expected_seconds == 90
+      assert resolved.fast_ratio_threshold == 0.2
+    end
+
+    test "an explicit false on nudge_enabled is respected, not treated as absent" do
+      section = insert(:section, engagement_rule: nil)
+
+      block =
+        insert(:block, section: section, engagement_rule: %EngagementRule{nudge_enabled: false})
+
+      assert Policy.resolve_engagement_rule(block, section).nudge_enabled == false
+    end
+
+    test "an explicit false at the section level is respected when the block sets nothing" do
+      section = insert(:section, engagement_rule: %EngagementRule{nudge_enabled: false})
+      block = insert(:block, section: section, engagement_rule: nil)
+
+      assert Policy.resolve_engagement_rule(block, section).nudge_enabled == false
+    end
+  end
 end

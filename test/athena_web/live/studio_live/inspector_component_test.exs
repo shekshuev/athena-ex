@@ -54,6 +54,37 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "Ignore previous locked lessons"
       assert html =~ ~s(name="section[access_rules][reset_waterline]")
     end
+
+    test "renders engagement tracking fields as the section-level default when the viewer can manage engagement",
+         %{section: section} do
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: section,
+          active_block: nil,
+          current_user: build(:account, role: build(:role, permissions: ["engagement.update"]))
+        )
+
+      assert html =~ "Engagement Tracking"
+      assert html =~ ~s(name="section[engagement_rule][expected_seconds]")
+      assert html =~ ~s(name="section[engagement_rule][fast_ratio_threshold]")
+      assert html =~ ~s(name="section[engagement_rule][nudge_enabled]")
+    end
+
+    test "hides engagement tracking fields from a viewer without engagement.update", %{
+      section: section
+    } do
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: section,
+          active_block: nil,
+          current_user: build(:account, role: build(:role, permissions: ["courses.update"]))
+        )
+
+      refute html =~ "Engagement Tracking"
+      refute html =~ ~s(name="section[engagement_rule][expected_seconds]")
+    end
   end
 
   describe "Block Inspector" do
@@ -430,6 +461,62 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
 
       assert html =~ "Max Attempts"
       assert html =~ ~s(name="block[content][max_attempts]")
+    end
+
+    test "renders engagement tracking fields for any block type when the viewer can manage engagement",
+         %{block: block} do
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block,
+          current_user: build(:account, role: build(:role, permissions: ["engagement.update"]))
+        )
+
+      assert html =~ "Engagement Tracking"
+      assert html =~ "Expected time to complete"
+      assert html =~ ~s(name="block[engagement_rule][expected_seconds]")
+      assert html =~ "Fast-completion threshold"
+      assert html =~ ~s(name="block[engagement_rule][fast_ratio_threshold]")
+      assert html =~ ~s(name="block[engagement_rule][nudge_enabled]")
+    end
+
+    test "hides engagement tracking fields from a viewer without engagement.update", %{
+      block: block
+    } do
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block,
+          current_user: build(:account, role: build(:role, permissions: ["courses.update"]))
+        )
+
+      refute html =~ "Engagement Tracking"
+      refute html =~ ~s(name="block[engagement_rule][expected_seconds]")
+    end
+
+    test "renders previously configured engagement_rule values", %{block: base_block} do
+      block = %{
+        base_block
+        | engagement_rule: %Athena.Content.EngagementRule{
+            expected_seconds: 90,
+            fast_ratio_threshold: 0.3,
+            nudge_enabled: false
+          }
+      }
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block,
+          current_user: build(:account, role: build(:role, permissions: ["engagement.update"]))
+        )
+
+      assert html =~ ~s(value="90")
+      assert html =~ ~s(value="0.3")
+      assert html =~ ~s(<option selected value="false">Disabled</option>)
     end
   end
 end

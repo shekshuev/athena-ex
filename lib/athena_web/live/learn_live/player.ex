@@ -13,6 +13,8 @@ defmodule AthenaWeb.LearnLive.Player do
   use AthenaWeb, :live_view
 
   alias Athena.Content
+  alias Athena.Content.Policy
+  alias Athena.Engagement
   alias Athena.Execution
   alias Athena.Learning
   import AthenaWeb.BlockComponents
@@ -52,7 +54,9 @@ defmodule AthenaWeb.LearnLive.Player do
           overrides: overrides,
           cohort_id: cohort_id,
           team_id: team_id,
-          block_counts: block_counts
+          block_counts: block_counts,
+          engagement_session_id: Ecto.UUID.generate(),
+          nudges_enabled: !!(cohort && cohort.nudges_enabled)
         }
 
         setup_player_state(socket, course, section_id, linear_lessons, accessible_ids, ctx)
@@ -118,6 +122,13 @@ defmodule AthenaWeb.LearnLive.Player do
       socket
       |> assign(:page_title, section.title)
       |> assign(:course, course)
+      |> assign(:engagement_session_id, ctx.engagement_session_id)
+      |> assign(:nudges_enabled, ctx.nudges_enabled)
+      |> assign(:engagement_pending_enters, %{})
+      |> assign(:engagement_scroll_progress, %{})
+      |> assign(:engagement_video_forward_skip, %{})
+      |> assign(:engagement_answered_blocks, MapSet.new())
+      |> assign(:nudged_block_ids, MapSet.new())
       |> assign(:cohort_id, ctx.cohort_id)
       |> assign(:team_id, ctx.team_id)
       |> assign(:tree, tree)
@@ -400,6 +411,8 @@ defmodule AthenaWeb.LearnLive.Player do
     block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
     draft = Map.get(socket.assigns.drafts || %{}, block_id, %{})
 
+    socket = emit_engagement_event(socket, block_id, :code_run_attempt)
+
     do_run_code(socket, block, draft)
   end
 
@@ -429,7 +442,13 @@ defmodule AthenaWeb.LearnLive.Player do
     case Learning.save_draft(user, block_id, content, team_id) do
       {:ok, _submission} ->
         new_drafts = Map.put(socket.assigns.drafts || %{}, block_id, content)
-        {:noreply, assign(socket, :drafts, new_drafts)}
+
+        socket =
+          socket
+          |> assign(:drafts, new_drafts)
+          |> record_quiz_interaction(block)
+
+        {:noreply, socket}
 
       {:error, _changeset} ->
         {:noreply, socket}
@@ -439,6 +458,27 @@ defmodule AthenaWeb.LearnLive.Player do
   def handle_event("update_content", %{"id" => block_id, "content" => content}, socket) do
     params = %{"block_id" => block_id, "answer" => content}
     handle_event("save_draft", params, socket)
+  end
+
+  def handle_event("engagement_batch", %{"events" => events}, socket) do
+    section_id = socket.assigns.section.id
+    user = socket.assigns.current_user
+
+    normalized =
+      events
+      |> Enum.map(&normalize_engagement_event(&1, section_id))
+      |> Enum.reject(&is_nil/1)
+
+    Engagement.record_events(
+      user.id,
+      socket.assigns.cohort_id,
+      socket.assigns.engagement_session_id,
+      normalized
+    )
+
+    socket = Enum.reduce(normalized, socket, &maybe_nudge/2)
+
+    {:noreply, socket}
   end
 
   def handle_event("save_draft", _params, socket) do
@@ -468,6 +508,302 @@ defmodule AthenaWeb.LearnLive.Player do
       ) do
     shift_matching_answer(socket, block_id, pair_id, 1)
   end
+
+  # Tracks this student's own pending viewport_enter timestamps (a simple
+  # per-session map - not to be confused with `Athena.Engagement.BlockStats`,
+  # which pairs enter/exit across the whole cohort for the aggregate
+  # distribution), plus per-block scroll depth and video forward-skip
+  # accumulators. Each raw event type below feeds exactly one independent
+  # nudge reason - `nudged_block_ids` is keyed by `{block_id, reason}` so
+  # different reasons on the same block don't block each other, but the same
+  # reason never repeats within one session.
+  @doc false
+  defp maybe_nudge(%{event_type: :viewport_enter} = event, socket) do
+    pending = Map.put(socket.assigns.engagement_pending_enters, event.block_id, event.occurred_at)
+    assign(socket, :engagement_pending_enters, pending)
+  end
+
+  defp maybe_nudge(%{event_type: :viewport_exit} = event, socket) do
+    {entered_at, pending} = Map.pop(socket.assigns.engagement_pending_enters, event.block_id)
+
+    {max_scroll_percent, scroll_progress} =
+      Map.pop(socket.assigns.engagement_scroll_progress, event.block_id, 0)
+
+    socket =
+      socket
+      |> assign(:engagement_pending_enters, pending)
+      |> assign(:engagement_scroll_progress, scroll_progress)
+
+    block = Enum.find(socket.assigns.blocks, &(&1.id == event.block_id))
+
+    shallow_scroll? =
+      block != nil and block.type == :text and max_scroll_percent < min_scroll_percent_for_text()
+
+    socket = maybe_trigger(socket, event.block_id, :shallow_scroll, shallow_scroll?)
+
+    cond do
+      is_nil(entered_at) ->
+        socket
+
+      # A more specific signal already covered this exit (or a past one for
+      # this block) - don't also pile on with the generic "too fast" nudge.
+      nudged?(socket, event.block_id, :shallow_scroll) ->
+        socket
+
+      nudged?(socket, event.block_id, :fast_dwell) ->
+        socket
+
+      true ->
+        elapsed = DateTime.diff(event.occurred_at, entered_at, :second)
+        decide_fast_dwell_nudge(socket, event.block_id, elapsed)
+    end
+  end
+
+  defp maybe_nudge(%{event_type: :scroll_milestone} = event, socket) do
+    percent = event.payload["percent"] || 0
+
+    progress =
+      Map.update(
+        socket.assigns.engagement_scroll_progress,
+        event.block_id,
+        percent,
+        &max(&1, percent)
+      )
+
+    assign(socket, :engagement_scroll_progress, progress)
+  end
+
+  defp maybe_nudge(%{event_type: :paste_detected} = event, socket) do
+    pasted = event.payload["pasted_chars"] || 0
+    total = event.payload["total_chars"] || 0
+    heavy_paste? = total > 0 and pasted / total > paste_ratio_nudge_threshold()
+
+    maybe_trigger(socket, event.block_id, :heavy_paste, heavy_paste?)
+  end
+
+  defp maybe_nudge(%{event_type: :video_seek} = event, socket) do
+    from_sec = event.payload["from_sec"] || 0
+    to_sec = event.payload["to_sec"] || 0
+    forward_delta = max(to_sec - from_sec, 0)
+
+    skip =
+      Map.update(
+        socket.assigns.engagement_video_forward_skip,
+        event.block_id,
+        forward_delta,
+        &(&1 + forward_delta)
+      )
+
+    assign(socket, :engagement_video_forward_skip, skip)
+  end
+
+  defp maybe_nudge(%{event_type: :video_ended} = event, socket) do
+    {skipped_seconds, skip_map} =
+      Map.pop(socket.assigns.engagement_video_forward_skip, event.block_id, 0)
+
+    socket = assign(socket, :engagement_video_forward_skip, skip_map)
+
+    duration = event.payload["duration"]
+
+    video_skipped? =
+      is_number(duration) and duration > 0 and
+        skipped_seconds / duration > video_skip_ratio_threshold()
+
+    maybe_trigger(socket, event.block_id, :video_skipped, video_skipped?)
+  end
+
+  defp maybe_nudge(_event, socket), do: socket
+
+  @doc false
+  defp decide_fast_dwell_nudge(socket, block_id, elapsed_seconds) do
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
+    if block do
+      resolved_rule = Policy.resolve_engagement_rule(block, socket.assigns.section)
+
+      case Engagement.evaluate_nudge(
+             socket.assigns.cohort_id,
+             block_id,
+             resolved_rule,
+             elapsed_seconds,
+             socket.assigns.nudges_enabled
+           ) do
+        :nudge -> nudge_student(socket, block_id, :fast_dwell)
+        :ok -> socket
+      end
+    else
+      socket
+    end
+  end
+
+  # Shared entry point for the three threshold-based reasons (shallow scroll,
+  # heavy paste, skipped video) - unlike `:fast_dwell`, these don't need
+  # `Athena.Engagement.evaluate_nudge/5`'s cohort-percentile comparison
+  # (scroll depth and paste ratio are far less content-dependent than "how
+  # long should this take", so one global threshold is enough), but they
+  # still have to respect the same on/off switches.
+  @doc false
+  defp maybe_trigger(socket, _block_id, _reason, false), do: socket
+
+  defp maybe_trigger(socket, block_id, reason, true) do
+    if nudged?(socket, block_id, reason) do
+      socket
+    else
+      with block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == block_id)),
+           resolved_rule <- Policy.resolve_engagement_rule(block, socket.assigns.section),
+           true <- socket.assigns.nudges_enabled and resolved_rule.nudge_enabled do
+        nudge_student(socket, block_id, reason)
+      else
+        _ -> socket
+      end
+    end
+  end
+
+  @doc false
+  defp nudged?(socket, block_id, reason),
+    do: MapSet.member?(socket.assigns.nudged_block_ids, {block_id, reason})
+
+  @doc false
+  defp nudge_student(socket, block_id, reason) do
+    emit_engagement_event(socket, block_id, :nudge_shown, %{"reason" => to_string(reason)})
+
+    socket
+    |> assign(:nudged_block_ids, MapSet.put(socket.assigns.nudged_block_ids, {block_id, reason}))
+    |> put_flash(:info, nudge_message(reason))
+  end
+
+  # Shared entry point for events the *server* originates on the student's
+  # behalf (as opposed to the batches `handle_event("engagement_batch", ...)`
+  # relays from the client) - `nudge_shown`, `code_run_attempt`,
+  # `code_run_result`. Always for the current section/session, so callers
+  # only ever need to supply the block, type, and payload.
+  @doc false
+  defp emit_engagement_event(socket, block_id, event_type, payload \\ %{}) do
+    Engagement.record_events(
+      socket.assigns.current_user.id,
+      socket.assigns.cohort_id,
+      socket.assigns.engagement_session_id,
+      [
+        %{
+          block_id: block_id,
+          section_id: socket.assigns.section.id,
+          event_type: event_type,
+          payload: payload,
+          occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
+        }
+      ]
+    )
+
+    socket
+  end
+
+  # Same as `emit_engagement_event/4` but for several event types that
+  # genuinely happen at the same instant (`first_interaction` +
+  # `answer_selected` on a quiz's very first answer) - one batch, one
+  # timestamp, instead of two separate round trips.
+  @doc false
+  defp emit_engagement_events(socket, block_id, event_types) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    events =
+      Enum.map(event_types, fn event_type ->
+        %{
+          block_id: block_id,
+          section_id: socket.assigns.section.id,
+          event_type: event_type,
+          payload: %{},
+          occurred_at: now
+        }
+      end)
+
+    Engagement.record_events(
+      socket.assigns.current_user.id,
+      socket.assigns.cohort_id,
+      socket.assigns.engagement_session_id,
+      events
+    )
+
+    socket
+  end
+
+  # `answer_selected`/`answer_changed` were part of the event catalog from
+  # the start but never actually wired client-side - rather than a new JS
+  # hook on every radio/checkbox/rich-text input, this reuses the
+  # `save_draft` autosave that already fires on every quiz interaction
+  # (single/multiple/exact_match and the open rich-text answer all go
+  # through it). First save for this block this session doubles as TTFA's
+  # `first_interaction`; every save after that is a revision.
+  @doc false
+  defp record_quiz_interaction(socket, %{type: :quiz_question, id: block_id}) do
+    answered = socket.assigns.engagement_answered_blocks
+
+    if MapSet.member?(answered, block_id) do
+      emit_engagement_event(socket, block_id, :answer_changed)
+    else
+      socket
+      |> emit_engagement_events(block_id, [:first_interaction, :answer_selected])
+      |> assign(:engagement_answered_blocks, MapSet.put(answered, block_id))
+    end
+  end
+
+  defp record_quiz_interaction(socket, _block), do: socket
+
+  @doc false
+  defp nudge_message(:shallow_scroll),
+    do: gettext("Looks like you scrolled past without reading much - want to go back?")
+
+  defp nudge_message(:heavy_paste),
+    do: gettext("Looks like you pasted a ready-made answer - are you sure you understand it?")
+
+  defp nudge_message(:video_skipped),
+    do: gettext("You skipped through most of that video - sure you got it all?")
+
+  defp nudge_message(_fast_dwell),
+    do: gettext("You went through that pretty fast - want to go back and double-check?")
+
+  defp engagement_config, do: Application.get_env(:athena, Athena.Engagement, [])
+
+  defp min_scroll_percent_for_text,
+    do: Keyword.get(engagement_config(), :min_scroll_percent_for_text, 70)
+
+  defp paste_ratio_nudge_threshold,
+    do: Keyword.get(engagement_config(), :paste_ratio_nudge_threshold, 0.8)
+
+  defp video_skip_ratio_threshold,
+    do: Keyword.get(engagement_config(), :video_skip_ratio_threshold, 0.3)
+
+  @doc false
+  defp normalize_engagement_event(event, section_id) do
+    with block_id when is_binary(block_id) <- event["block_id"],
+         {:ok, event_type} <- parse_engagement_event_type(event["event_type"]),
+         {:ok, occurred_at, _offset} <- parse_occurred_at(event["occurred_at"]) do
+      %{
+        block_id: block_id,
+        section_id: section_id,
+        event_type: event_type,
+        payload: event["payload"] || %{},
+        occurred_at: DateTime.truncate(occurred_at, :second)
+      }
+    else
+      _ -> nil
+    end
+  end
+
+  @doc false
+  defp parse_engagement_event_type(type) when is_binary(type) do
+    Engagement.Event.event_types()
+    |> Enum.find(&(Atom.to_string(&1) == type))
+    |> case do
+      nil -> :error
+      atom -> {:ok, atom}
+    end
+  end
+
+  defp parse_engagement_event_type(_), do: :error
+
+  @doc false
+  defp parse_occurred_at(iso8601) when is_binary(iso8601), do: DateTime.from_iso8601(iso8601)
+  defp parse_occurred_at(_), do: :error
 
   defp do_run_code(socket, nil, _draft), do: {:noreply, socket}
 
@@ -1008,6 +1344,11 @@ defmodule AthenaWeb.LearnLive.Player do
       if submission.status in [:pending, :processing, :draft] do
         socket
       else
+        socket =
+          emit_engagement_event(socket, block.id, :code_run_result, %{
+            "outcome" => to_string(submission.status)
+          })
+
         attempts = Map.get(socket.assigns.attempts_map || %{}, block.id, 0)
         {flash_type, flash_msg} = build_code_flash(submission, block, attempts)
         put_flash(socket, flash_type, flash_msg)
@@ -1218,150 +1559,92 @@ defmodule AthenaWeb.LearnLive.Player do
   def render(assigns) do
     ~H"""
     <.page_container size="narrow" class="py-10 pb-32">
-      <div class="flex items-center justify-between mb-12 border-b border-base-200 pb-6">
-        <a
-          href={"/learn/courses/#{@course.id}"}
-          class="inline-flex items-center gap-2 text-sm font-medium text-base-content/50 hover:text-base-content transition-colors"
-        >
-          <.icon name="hero-arrow-left" class="size-4" />
-          <span class="hidden sm:inline">{gettext("Back to Syllabus")}</span>
-        </a>
-
-        <div class="flex items-center gap-2">
-          <%= if @prev_section_id do %>
-            <.link
-              navigate={~p"/learn/courses/#{@course.id}/play/#{@prev_section_id}"}
-              class="btn btn-ghost btn-sm btn-square text-base-content/70 hover:text-primary"
-            >
-              <.icon name="hero-chevron-left" class="size-5" />
-            </.link>
-          <% end %>
-
-          <button
-            phx-click="open_course_map"
-            class="btn btn-ghost btn-sm text-base-content/70 hover:text-primary"
+      <div
+        id="engagement-tracker"
+        phx-hook="EngagementTracker"
+        data-session-id={@engagement_session_id}
+      >
+        <div class="flex items-center justify-between mb-12 border-b border-base-200 pb-6">
+          <a
+            href={"/learn/courses/#{@course.id}"}
+            class="inline-flex items-center gap-2 text-sm font-medium text-base-content/50 hover:text-base-content transition-colors"
           >
-            <.icon name="hero-map" class="size-4" />
-            <span class="hidden sm:inline">{gettext("Course Map")}</span>
-          </button>
+            <.icon name="hero-arrow-left" class="size-4" />
+            <span class="hidden sm:inline">{gettext("Back to Syllabus")}</span>
+          </a>
 
-          <%= if @next_section_id && all_blocks_completed?(@visible_blocks, @completed_ids) do %>
-            <.link
-              navigate={~p"/learn/courses/#{@course.id}/play/#{@next_section_id}"}
-              class="btn btn-ghost btn-sm btn-square text-base-content/70 hover:text-primary"
+          <div class="flex items-center gap-2">
+            <%= if @prev_section_id do %>
+              <.link
+                navigate={~p"/learn/courses/#{@course.id}/play/#{@prev_section_id}"}
+                class="btn btn-ghost btn-sm btn-square text-base-content/70 hover:text-primary"
+              >
+                <.icon name="hero-chevron-left" class="size-5" />
+              </.link>
+            <% end %>
+
+            <button
+              phx-click="open_course_map"
+              class="btn btn-ghost btn-sm text-base-content/70 hover:text-primary"
             >
-              <.icon name="hero-chevron-right" class="size-5" />
-            </.link>
-          <% end %>
+              <.icon name="hero-map" class="size-4" />
+              <span class="hidden sm:inline">{gettext("Course Map")}</span>
+            </button>
+
+            <%= if @next_section_id && all_blocks_completed?(@visible_blocks, @completed_ids) do %>
+              <.link
+                navigate={~p"/learn/courses/#{@course.id}/play/#{@next_section_id}"}
+                class="btn btn-ghost btn-sm btn-square text-base-content/70 hover:text-primary"
+              >
+                <.icon name="hero-chevron-right" class="size-5" />
+              </.link>
+            <% end %>
+          </div>
         </div>
-      </div>
 
-      <h1 class="text-3xl md:text-4xl font-display font-black text-base-content mb-12">
-        {@section.title}
-      </h1>
+        <h1 class="text-3xl md:text-4xl font-display font-black text-base-content mb-12">
+          {@section.title}
+        </h1>
 
-      <div class="space-y-10">
-        <%= for block <- @visible_blocks do %>
-          <% submission = Map.get(@submissions || %{}, block.id) %>
+        <div class="space-y-10">
+          <%= for block <- @visible_blocks do %>
+            <% submission = Map.get(@submissions || %{}, block.id) %>
 
-          <% attempts = Map.get(@attempts_map || %{}, block.id, 0) %>
-          <% raw_max = block.content["max_attempts"] %>
-          <% max_attempts =
-            case raw_max do
-              v when is_integer(v) -> v
-              v when is_binary(v) and v != "" -> String.to_integer(v)
-              _ -> nil
-            end %>
-          <% attempts_exhausted = not is_nil(max_attempts) and attempts >= max_attempts %>
+            <% attempts = Map.get(@attempts_map || %{}, block.id, 0) %>
+            <% raw_max = block.content["max_attempts"] %>
+            <% max_attempts =
+              case raw_max do
+                v when is_integer(v) -> v
+                v when is_binary(v) and v != "" -> String.to_integer(v)
+                _ -> nil
+              end %>
+            <% attempts_exhausted = not is_nil(max_attempts) and attempts >= max_attempts %>
 
-          <% sub_status_str = if submission, do: to_string(submission.status), else: "" %>
-          <% sub_score = if submission, do: submission.score, else: 0 %>
+            <% sub_status_str = if submission, do: to_string(submission.status), else: "" %>
+            <% sub_score = if submission, do: submission.score, else: 0 %>
 
-          <% is_passed =
-            sub_status_str == "accepted" or (sub_status_str == "graded" and sub_score == 100) %>
-          <% is_pending = sub_status_str in ["pending", "processing"] %>
+            <% is_passed =
+              sub_status_str == "accepted" or (sub_status_str == "graded" and sub_score == 100) %>
+            <% is_pending = sub_status_str in ["pending", "processing"] %>
 
-          <% is_review_needed = sub_status_str in ["rejected", "needs_review"] %>
+            <% is_review_needed = sub_status_str in ["rejected", "needs_review"] %>
 
-          <% is_locked = is_passed or attempts_exhausted or is_review_needed %>
-          <% mode = if is_locked, do: :review, else: :play %>
+            <% is_locked = is_passed or attempts_exhausted or is_review_needed %>
+            <% mode = if is_locked, do: :review, else: :play %>
 
-          <div
-            id={"block-wrapper-#{block.id}"}
-            class="animate-in slide-in-from-bottom-4 fade-in duration-500 fill-mode-both"
-          >
-            <%= case block.type do %>
-              <% :quiz_question -> %>
-                <form
-                  phx-submit="submit_quiz"
-                  phx-change="save_draft"
-                  phx-value-block_id={block.id}
-                  id={"quiz-form-#{block.id}"}
-                >
-                  <input type="hidden" name="block_id" value={block.id} />
-
-                  <.content_block
-                    block={block}
-                    mode={mode}
-                    submission={submission}
-                    answers={@submissions}
-                    draft={Map.get(@drafts || %{}, block.id)}
-                    attempts_count={attempts}
-                    user_id={@current_user.id}
-                  />
-
-                  <div
-                    :if={submission && submission.feedback not in [nil, ""]}
-                    class={[
-                      "mt-4 mb-4 rounded-sm text-sm",
-                      submission.status == :rejected &&
-                        "text-error",
-                      submission.status != :rejected &&
-                        "text-info"
-                    ]}
-                  >
-                    <strong class="flex items-center gap-1 mb-2">
-                      <.icon name="hero-chat-bubble-bottom-center-text" class="size-4" />
-                      {gettext("Instructor Feedback")}
-                    </strong>
-                    <p class="whitespace-pre-wrap leading-relaxed">{submission.feedback}</p>
-                  </div>
-
-                  <div class="mt-6 flex items-center justify-between">
-                    <button
-                      type="submit"
-                      class="btn btn-primary btn-sm"
-                      disabled={is_locked}
-                    >
-                      {cond do
-                        is_locked -> gettext("Locked")
-                        submission != nil -> gettext("Retry Answer")
-                        true -> gettext("Submit Answer")
-                      end}
-                    </button>
-
-                    <div :if={max_attempts} class="text-right">
-                      <span class="text-xs font-bold uppercase tracking-widest text-base-content/50">
-                        {gettext("Attempts:")} {attempts} / {max_attempts}
-                      </span>
-                    </div>
-                  </div>
-                </form>
-              <% type when type in [:quiz_exam, :ticket_exam] -> %>
-                <div class="relative">
-                  <.content_block
-                    block={block}
-                    mode={mode}
-                    submission={submission}
-                  />
-                </div>
-              <% :code -> %>
-                <div class="space-y-4">
+            <div
+              id={"block-wrapper-#{block.id}"}
+              data-block-id={block.id}
+              data-block-type={block.type}
+              class="animate-in slide-in-from-bottom-4 fade-in duration-500 fill-mode-both"
+            >
+              <%= case block.type do %>
+                <% :quiz_question -> %>
                   <form
-                    phx-submit="submit_code"
+                    phx-submit="submit_quiz"
                     phx-change="save_draft"
                     phx-value-block_id={block.id}
-                    id={"code-form-#{block.id}"}
+                    id={"quiz-form-#{block.id}"}
                   >
                     <input type="hidden" name="block_id" value={block.id} />
 
@@ -1372,110 +1655,176 @@ defmodule AthenaWeb.LearnLive.Player do
                       answers={@submissions}
                       draft={Map.get(@drafts || %{}, block.id)}
                       attempts_count={attempts}
-                    />
-                  </form>
-                </div>
-              <% :file_assignment -> %>
-                <% fa_locked =
-                  sub_status_str == "accepted" or (sub_status_str == "graded" and sub_score == 100) or
-                    is_pending %>
-
-                <div class="space-y-4">
-                  <form
-                    phx-submit="submit_file_assignment"
-                    phx-change="save_draft"
-                    phx-value-block_id={block.id}
-                    id={"file-assignment-form-#{block.id}"}
-                  >
-                    <input type="hidden" name="block_id" value={block.id} />
-
-                    <.content_block
-                      block={block}
-                      mode={if fa_locked, do: :review, else: :play}
-                      submission={submission}
-                      pending_file_urls={@pending_file_urls}
-                      draft={Map.get(@drafts || %{}, block.id)}
+                      user_id={@current_user.id}
                     />
 
-                    <div :if={!fa_locked} class="mt-6 flex items-center justify-between">
+                    <div
+                      :if={submission && submission.feedback not in [nil, ""]}
+                      class={[
+                        "mt-4 mb-4 rounded-sm text-sm",
+                        submission.status == :rejected &&
+                          "text-error",
+                        submission.status != :rejected &&
+                          "text-info"
+                      ]}
+                    >
+                      <strong class="flex items-center gap-1 mb-2">
+                        <.icon name="hero-chat-bubble-bottom-center-text" class="size-4" />
+                        {gettext("Instructor Feedback")}
+                      </strong>
+                      <p class="whitespace-pre-wrap leading-relaxed">{submission.feedback}</p>
+                    </div>
+
+                    <div class="mt-6 flex items-center justify-between">
                       <button
                         type="submit"
-                        class="btn btn-primary"
-                        disabled={Map.get(@pending_file_urls, block.id, []) == []}
+                        class="btn btn-primary btn-sm"
+                        disabled={is_locked}
                       >
                         {cond do
-                          submission != nil ->
-                            gettext("Resubmit")
-
-                          Map.get(@pending_file_urls, block.id, []) == [] ->
-                            gettext("Select Files First")
-
-                          true ->
-                            gettext("Submit Assignment")
+                          is_locked -> gettext("Locked")
+                          submission != nil -> gettext("Retry Answer")
+                          true -> gettext("Submit Answer")
                         end}
                       </button>
+
+                      <div :if={max_attempts} class="text-right">
+                        <span class="text-xs font-bold uppercase tracking-widest text-base-content/50">
+                          {gettext("Attempts:")} {attempts} / {max_attempts}
+                        </span>
+                      </div>
                     </div>
                   </form>
-                </div>
-              <% _ -> %>
-                <.content_block block={block} mode={:play} />
-            <% end %>
+                <% type when type in [:quiz_exam, :ticket_exam] -> %>
+                  <div class="relative">
+                    <.content_block
+                      block={block}
+                      mode={mode}
+                      submission={submission}
+                    />
+                  </div>
+                <% :code -> %>
+                  <div class="space-y-4">
+                    <form
+                      phx-submit="submit_code"
+                      phx-change="save_draft"
+                      phx-value-block_id={block.id}
+                      id={"code-form-#{block.id}"}
+                    >
+                      <input type="hidden" name="block_id" value={block.id} />
 
-            <div :if={gate?(block)} class="mt-8">
-              <.render_gate block={block} is_completed={block.id in @completed_ids} />
+                      <.content_block
+                        block={block}
+                        mode={mode}
+                        submission={submission}
+                        answers={@submissions}
+                        draft={Map.get(@drafts || %{}, block.id)}
+                        attempts_count={attempts}
+                      />
+                    </form>
+                  </div>
+                <% :file_assignment -> %>
+                  <% fa_locked =
+                    sub_status_str == "accepted" or (sub_status_str == "graded" and sub_score == 100) or
+                      is_pending %>
+
+                  <div class="space-y-4">
+                    <form
+                      phx-submit="submit_file_assignment"
+                      phx-change="save_draft"
+                      phx-value-block_id={block.id}
+                      id={"file-assignment-form-#{block.id}"}
+                    >
+                      <input type="hidden" name="block_id" value={block.id} />
+
+                      <.content_block
+                        block={block}
+                        mode={if fa_locked, do: :review, else: :play}
+                        submission={submission}
+                        pending_file_urls={@pending_file_urls}
+                        draft={Map.get(@drafts || %{}, block.id)}
+                      />
+
+                      <div :if={!fa_locked} class="mt-6 flex items-center justify-between">
+                        <button
+                          type="submit"
+                          class="btn btn-primary"
+                          disabled={Map.get(@pending_file_urls, block.id, []) == []}
+                        >
+                          {cond do
+                            submission != nil ->
+                              gettext("Resubmit")
+
+                            Map.get(@pending_file_urls, block.id, []) == [] ->
+                              gettext("Select Files First")
+
+                            true ->
+                              gettext("Submit Assignment")
+                          end}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                <% _ -> %>
+                  <.content_block block={block} mode={:play} />
+              <% end %>
+
+              <div :if={gate?(block)} class="mt-8">
+                <.render_gate block={block} is_completed={block.id in @completed_ids} />
+              </div>
             </div>
-          </div>
-        <% end %>
-      </div>
-
-      <div
-        :if={all_blocks_completed?(@visible_blocks, @completed_ids)}
-        class="mt-10 pt-5 animate-in fade-in slide-in-from-bottom-8 duration-1000"
-      >
-        <%= if @next_section_id do %>
-          <.link
-            navigate={~p"/learn/courses/#{@course.id}/play/#{@next_section_id}"}
-            class="btn btn-ghost"
-          >
-            {gettext("Next Lesson")} <.icon name="hero-arrow-right" class="size-5 ml-2" />
-          </.link>
-        <% else %>
-          <.link navigate={~p"/learn/courses/#{@course.id}"} class="btn btn-ghost">
-            {gettext("Back to Syllabus")}
-          </.link>
-        <% end %>
-      </div>
-
-      <.modal
-        :if={@course_map_open}
-        id="course-map-modal"
-        show={true}
-        title={gettext("Course Map")}
-        on_cancel={JS.push("close_course_map")}
-      >
-        <div class="max-h-[60vh] overflow-y-auto -mx-6 px-6 py-2">
-          <.course_map_tree
-            sections={@tree}
-            active_section_id={@section.id}
-            course_id={@course.id}
-            block_counts={@block_counts}
-          />
+          <% end %>
         </div>
-      </.modal>
 
-      <%= if @show_media_modal do %>
-        <.live_component
-          module={AthenaWeb.StudioLive.MediaUploadComponent}
-          id={"media-uploader-player-#{@active_upload_block_id}"}
-          block_id={@active_upload_block_id}
-          upload_type={@upload_type}
-          current_user={@current_user}
-          course_id={@course.id}
-          context="student_submission"
-          max_files={@max_files_for_upload}
-          current_file_count={@current_file_count_for_upload}
-        />
-      <% end %>
+        <div
+          :if={all_blocks_completed?(@visible_blocks, @completed_ids)}
+          class="mt-10 pt-5 animate-in fade-in slide-in-from-bottom-8 duration-1000"
+        >
+          <%= if @next_section_id do %>
+            <.link
+              navigate={~p"/learn/courses/#{@course.id}/play/#{@next_section_id}"}
+              class="btn btn-ghost"
+            >
+              {gettext("Next Lesson")} <.icon name="hero-arrow-right" class="size-5 ml-2" />
+            </.link>
+          <% else %>
+            <.link navigate={~p"/learn/courses/#{@course.id}"} class="btn btn-ghost">
+              {gettext("Back to Syllabus")}
+            </.link>
+          <% end %>
+        </div>
+
+        <.modal
+          :if={@course_map_open}
+          id="course-map-modal"
+          show={true}
+          title={gettext("Course Map")}
+          on_cancel={JS.push("close_course_map")}
+        >
+          <div class="max-h-[60vh] overflow-y-auto -mx-6 px-6 py-2">
+            <.course_map_tree
+              sections={@tree}
+              active_section_id={@section.id}
+              course_id={@course.id}
+              block_counts={@block_counts}
+            />
+          </div>
+        </.modal>
+
+        <%= if @show_media_modal do %>
+          <.live_component
+            module={AthenaWeb.StudioLive.MediaUploadComponent}
+            id={"media-uploader-player-#{@active_upload_block_id}"}
+            block_id={@active_upload_block_id}
+            upload_type={@upload_type}
+            current_user={@current_user}
+            course_id={@course.id}
+            context="student_submission"
+            max_files={@max_files_for_upload}
+            current_file_count={@current_file_count_for_upload}
+          />
+        <% end %>
+      </div>
     </.page_container>
     """
   end
