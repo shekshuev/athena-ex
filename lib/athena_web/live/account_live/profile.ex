@@ -347,20 +347,17 @@ defmodule AthenaWeb.AccountLive.Profile do
               phx-submit="save_avatar"
               class="flex items-center gap-6"
             >
-              <div class="avatar placeholder shrink-0">
-                <div class="bg-neutral text-neutral-content rounded-full w-16">
-                  <img
-                    :if={@current_user.profile && @current_user.profile.avatar_url}
-                    src={@current_user.profile.avatar_url}
-                    alt={gettext("Avatar")}
-                  />
-                  <span :if={!@current_user.profile || !@current_user.profile.avatar_url}>
-                    {initials(@current_user.login)}
-                  </span>
-                </div>
-              </div>
+              <.avatar
+                src={@current_user.profile && @current_user.profile.avatar_url}
+                initials={initials(@current_user.login)}
+                alt={gettext("Avatar")}
+                size="w-16"
+              />
 
               <div class="flex-1 min-w-0">
+                <div class="text-sm font-mono text-base-content/50 mb-2">
+                  @{@current_user.login}
+                </div>
                 <label
                   for={@uploads.avatar.ref}
                   class="btn btn-outline btn-sm font-bold cursor-pointer"
@@ -372,7 +369,7 @@ defmodule AthenaWeb.AccountLive.Profile do
 
                 <div :for={entry <- @uploads.avatar.entries} class="mt-3 flex items-center gap-3">
                   <span class="text-sm font-medium truncate">{entry.client_name}</span>
-                  <span class="text-xs text-base-content/50">{entry.progress}%</span>
+                  <progress class="progress progress-primary w-16" value={entry.progress} max="100" />
                   <.icon_button
                     type="button"
                     phx-click="cancel_avatar"
@@ -381,15 +378,18 @@ defmodule AthenaWeb.AccountLive.Profile do
                     label={gettext("Cancel")}
                     variant="danger"
                   />
-                  <.button
-                    :if={entry.progress == 100}
-                    type="submit"
-                    variant="primary"
-                    size="xs"
-                  >
-                    {gettext("Save avatar")}
-                  </.button>
                 </div>
+
+                <.button
+                  :if={@uploads.avatar.entries != []}
+                  type="submit"
+                  variant="primary"
+                  size="xs"
+                  class="mt-2"
+                  phx-disable-with={gettext("Uploading...")}
+                >
+                  {gettext("Save avatar")}
+                </.button>
 
                 <div
                   :for={{_ref, msg} <- @uploads.avatar.errors}

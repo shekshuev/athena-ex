@@ -9,6 +9,7 @@ defmodule Athena.Learning.Cohorts do
 
   import Ecto.Query
   alias Athena.Repo
+  require Logger
 
   alias Athena.Learning.{
     Cohort,
@@ -19,7 +20,7 @@ defmodule Athena.Learning.Cohorts do
     Enrollment
   }
 
-  alias Athena.{Identity, Content}
+  alias Athena.{Identity, Content, Messaging}
 
   @doc """
   Retrieves a paginated list of cohorts, scoped by user permissions.
@@ -64,14 +65,37 @@ defmodule Athena.Learning.Cohorts do
           {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()} | {:error, :forbidden}
   def create_cohort(user, attrs) do
     if Identity.can?(user, "cohorts.create") do
+      do_create_cohort(user, attrs)
+    else
+      {:error, :forbidden}
+    end
+  end
+
+  defp do_create_cohort(user, attrs) do
+    result =
       %Cohort{owner_id: user.id}
       |> Repo.preload(:instructors)
       |> Cohort.changeset(attrs)
       |> put_instructors(attrs["instructor_ids"] || attrs[:instructor_ids])
       |> Repo.insert()
-    else
-      {:error, :forbidden}
+
+    case result do
+      {:ok, cohort} ->
+        safe_sync(fn -> sync_new_cohort_participants(cohort) end)
+        result
+
+      error ->
+        error
     end
+  end
+
+  defp sync_new_cohort_participants(cohort) do
+    {:ok, _conversation} = Messaging.ensure_cohort_conversation(cohort)
+
+    Enum.each(
+      cohort.instructors,
+      &Messaging.add_cohort_participant(cohort.id, &1.owner_id)
+    )
   end
 
   @doc """
@@ -83,14 +107,57 @@ defmodule Athena.Learning.Cohorts do
           {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()} | {:error, :forbidden}
   def update_cohort(user, %Cohort{} = cohort, attrs) do
     if Identity.can?(user, "cohorts.update", cohort) do
-      cohort
-      |> Repo.preload(:instructors)
-      |> Cohort.changeset(attrs)
-      |> put_instructors(attrs["instructor_ids"] || attrs[:instructor_ids])
-      |> Repo.update()
+      do_update_cohort(cohort, attrs)
     else
       {:error, :forbidden}
     end
+  end
+
+  defp do_update_cohort(cohort, attrs) do
+    preloaded_cohort = Repo.preload(cohort, :instructors)
+    old_instructor_account_ids = Enum.map(preloaded_cohort.instructors, & &1.owner_id)
+
+    result =
+      preloaded_cohort
+      |> Cohort.changeset(attrs)
+      |> put_instructors(attrs["instructor_ids"] || attrs[:instructor_ids])
+      |> Repo.update()
+
+    case result do
+      {:ok, updated} ->
+        safe_sync(fn ->
+          sync_cohort_instructor_participants(updated, old_instructor_account_ids)
+        end)
+
+        result
+
+      error ->
+        error
+    end
+  end
+
+  @doc false
+  defp sync_cohort_instructor_participants(cohort, old_instructor_account_ids) do
+    new_ids = cohort.instructors |> Enum.map(& &1.owner_id) |> MapSet.new()
+    old_ids = MapSet.new(old_instructor_account_ids)
+
+    new_ids
+    |> MapSet.difference(old_ids)
+    |> Enum.each(&Messaging.add_cohort_participant(cohort.id, &1))
+
+    old_ids
+    |> MapSet.difference(new_ids)
+    |> Enum.each(&Messaging.remove_cohort_participant(cohort.id, &1))
+  end
+
+  @doc false
+  defp safe_sync(fun) do
+    fun.()
+  rescue
+    e ->
+      Logger.error(
+        "[Cohorts] messenger sync failed: " <> Exception.format(:error, e, __STACKTRACE__)
+      )
   end
 
   @doc """
@@ -217,7 +284,7 @@ defmodule Athena.Learning.Cohorts do
     Enrollment
   }
 
-  alias Athena.{Identity, Content}
+  alias Athena.{Identity, Content, Messaging}
 
   @doc """
   Adds a student account to a cohort.
@@ -235,7 +302,19 @@ defmodule Athena.Learning.Cohorts do
 
     with :ok <- check_cohort_manage_rights(user, cohort),
          :ok <- validate_no_student_overlap(cohort_id, account_id) do
-      do_insert_membership(cohort_id, account_id)
+      finish_add_student(cohort_id, account_id)
+    end
+  end
+
+  @doc false
+  defp finish_add_student(cohort_id, account_id) do
+    case do_insert_membership(cohort_id, account_id) do
+      {:ok, _membership} = result ->
+        safe_sync(fn -> Messaging.add_cohort_participant(cohort_id, account_id) end)
+        result
+
+      error ->
+        error
     end
   end
 
@@ -324,10 +403,34 @@ defmodule Athena.Learning.Cohorts do
     cohort = Repo.get!(Cohort, membership.cohort_id)
 
     if can_manage_cohort_processes?(user, cohort) do
-      Repo.delete(membership)
+      case Repo.delete(membership) do
+        {:ok, deleted} = result ->
+          safe_sync(fn ->
+            Messaging.remove_cohort_participant(deleted.cohort_id, deleted.account_id)
+          end)
+
+          result
+
+        error ->
+          error
+      end
     else
       {:error, :forbidden}
     end
+  end
+
+  @doc """
+  Returns a map of `%{cohort_id => Cohort}` for bulk enrichment across
+  contexts. Unscoped by design (mirrors `Identity.get_accounts_map/1`) — a
+  cohort chat participant must see the cohort's name regardless of whether
+  they hold the `"cohorts.read"` permission.
+  """
+  @spec get_cohorts_map([String.t()]) :: %{String.t() => Cohort.t()}
+  def get_cohorts_map(ids) when is_list(ids) do
+    Cohort
+    |> where([c], c.id in ^ids)
+    |> Repo.all()
+    |> Map.new(&{&1.id, &1})
   end
 
   @doc """

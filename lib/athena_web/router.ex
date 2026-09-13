@@ -24,6 +24,7 @@ defmodule AthenaWeb.Router do
     pipe_through [:browser, :app_layout]
 
     get "/", PageController, :home
+    get "/community", PageController, :redirect_to_messenger
     get "/locale/:locale", LocaleController, :set
     post "/auth/log_in", SessionController, :create
     delete "/auth/log_out", SessionController, :delete
@@ -61,7 +62,8 @@ defmodule AthenaWeb.Router do
     on_mount: [
       {AthenaWeb.Hooks.Auth, :default},
       {AthenaWeb.Hooks.Auth, :require_authenticated_user},
-      {AthenaWeb.Hooks.Auth, :ensure_password_changed}
+      {AthenaWeb.Hooks.Auth, :ensure_password_changed},
+      {AthenaWeb.Hooks.Messenger, :default}
     ] do
     scope "/", AthenaWeb do
       pipe_through :browser
@@ -70,7 +72,10 @@ defmodule AthenaWeb.Router do
       live "/daily-challenge", LearnLive.DailyChallenge, :index
 
       live "/files", FileLive.Index, :index
-      live "/community", CommunityLive.Index, :index
+
+      live "/messenger", MessengerLive.Index, :index
+      live "/messenger/new", MessengerLive.Index, :new
+      live "/messenger/:conversation_id", MessengerLive.Index, :show
 
       scope "/learn", LearnLive do
         live "/", Index, :index

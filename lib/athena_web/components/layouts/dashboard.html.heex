@@ -83,13 +83,19 @@
           </.link>
         </li>
         <li>
-          <.link navigate={~p"/community"} class="flex items-center">
+          <.link navigate={~p"/messenger"} class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <.icon name="hero-chat-bubble-left-right" class="size-6 shrink-0" />
               <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
-                {gettext("Community")}
+                {gettext("Messenger")}
               </span>
             </div>
+            <span
+              :if={Map.get(assigns, :unread_conversations_count, 0) > 0}
+              class="badge badge-primary badge-sm group-[.is-collapsed]/sidebar:hidden"
+            >
+              {@unread_conversations_count}
+            </span>
           </.link>
         </li>
       </ul>
@@ -291,25 +297,17 @@
       </div>
 
       <ul class="menu p-0 w-full gap-1">
-        <li>
-          <.link navigate={~p"/me"} class="flex items-center">
-            <div class="flex items-center gap-2 min-w-0">
-              <div class="avatar placeholder shrink-0">
-                <div class="bg-neutral text-neutral-content rounded-full w-6">
-                  <img
-                    :if={@current_user.profile && @current_user.profile.avatar_url}
-                    src={@current_user.profile.avatar_url}
-                    alt={gettext("Avatar")}
-                  />
-                  <span
-                    :if={!@current_user.profile || !@current_user.profile.avatar_url}
-                    class="text-[10px]"
-                  >
-                    {@current_user.login |> String.slice(0, 2) |> String.upcase()}
-                  </span>
-                </div>
-              </div>
-              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+        <li class="min-w-0 w-full">
+          <.link navigate={~p"/me"} class="flex items-center min-w-0 w-full">
+            <div class="flex items-center gap-2 min-w-0 flex-1">
+              <.avatar
+                src={@current_user.profile && @current_user.profile.avatar_url}
+                initials={@current_user.login |> String.slice(0, 2) |> String.upcase()}
+                alt={gettext("Avatar")}
+                size="w-6"
+                text_size="text-[10px]"
+              />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate min-w-0 flex-1">
                 {if @current_user.profile,
                   do: Athena.Identity.Profile.full_name(@current_user.profile),
                   else: @current_user.login}
@@ -352,8 +350,11 @@
       </header>
     <% end %>
 
-    <main class="flex-1 overflow-y-auto p-4 pb-20 sm:p-8">
-      <div class="max-w-7xl mx-auto">
+    <main class={[
+      "flex-1 overflow-y-auto",
+      if(assigns[:full_bleed], do: "", else: "p-4 pb-20 sm:p-8")
+    ]}>
+      <div class={if(assigns[:full_bleed], do: "h-full", else: "max-w-7xl mx-auto")}>
         <.flash_group flash={@flash} />
         {@inner_content}
       </div>

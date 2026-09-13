@@ -22,7 +22,7 @@ defmodule AthenaWeb.MediaController do
   def download(conn, %{"path" => path_list}) do
     if get_session(conn, "account_id") do
       key = Enum.join(path_list, "/")
-      bucket = Application.get_env(:athena, Media)[:bucket] || "athena"
+      bucket = Application.get_env(:athena, Athena.Media)[:bucket] || "athena"
 
       case Media.generate_download_url(bucket, key) do
         {:ok, presigned_url} ->

@@ -95,14 +95,7 @@ defmodule AthenaWeb.StudioLive.AvatarUploadComponent do
   def render(assigns) do
     ~H"""
     <div class="flex items-center gap-4">
-      <div class="avatar placeholder shrink-0">
-        <div class="bg-neutral text-neutral-content w-16 rounded-full flex items-center justify-center">
-          <img :if={@avatar_url} src={@avatar_url} alt="" />
-          <span :if={!@avatar_url} class="text-xl leading-none">
-            {@fallback_letter}
-          </span>
-        </div>
-      </div>
+      <.avatar src={@avatar_url} initials={@fallback_letter} size="w-16" text_size="text-xl" />
 
       <div class="flex-1">
         <form

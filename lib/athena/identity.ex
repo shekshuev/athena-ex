@@ -29,6 +29,9 @@ defmodule Athena.Identity do
   defdelegate password_regex(), to: Account
   defdelegate get_accounts_map(ids), to: Accounts
   defdelegate search_accounts_by_login(user, query, limit), to: Accounts
+  defdelegate search_messageable_accounts(user, query, limit \\ 10), to: Accounts
+  defdelegate touch_last_seen(account_id), to: Accounts
+  defdelegate display_name(account), to: Accounts
   defdelegate force_change_password(account, attrs), to: Accounts
   defdelegate change_password(account, old_password, new_password), to: Accounts
   defdelegate update_own_profile(account, profile_attrs), to: Accounts

@@ -38,6 +38,7 @@ defmodule Athena.Identity.Account do
     field :must_change_password, :boolean, default: false
     field :failed_login_attempts, :integer, default: 0
     field :last_failed_at, :utc_datetime
+    field :last_seen_at, :utc_datetime
 
     belongs_to :role, Role
     has_one :profile, Profile, foreign_key: :owner_id

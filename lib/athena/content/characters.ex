@@ -124,7 +124,7 @@ defmodule Athena.Content.Characters do
   """
   @spec prepare_avatar_upload(map(), String.t()) :: {:ok, map()} | {:error, term()}
   def prepare_avatar_upload(user, filename) do
-    bucket = Application.get_env(:athena, Media)[:bucket] || "athena"
+    bucket = Application.get_env(:athena, Athena.Media)[:bucket] || "athena"
     unique_filename = "#{Ecto.UUID.generate()}-#{filename}"
     key = "avatars/#{user.id}/#{unique_filename}"
 

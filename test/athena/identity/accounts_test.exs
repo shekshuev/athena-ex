@@ -241,6 +241,61 @@ defmodule Athena.Identity.AccountsTest do
 
       refute changeset.valid?
     end
+
+    @tag :external
+    test "deletes the previous avatar file (S3 + row) when it's replaced" do
+      account = insert(:account)
+      insert(:profile, owner: account, avatar_url: "/media/avatars/#{account.id}/old.png")
+
+      old_file =
+        insert(:media_file,
+          key: "avatars/#{account.id}/old.png",
+          context: :avatar,
+          owner_id: account.id
+        )
+
+      assert {:ok, profile} =
+               Accounts.update_own_profile(account, %{
+                 "avatar_url" => "/media/avatars/#{account.id}/new.png"
+               })
+
+      assert profile.avatar_url == "/media/avatars/#{account.id}/new.png"
+      assert Repo.get(Athena.Media.File, old_file.id) == nil
+    end
+
+    @tag :external
+    test "does not touch the avatar file when the avatar itself is unchanged" do
+      account = insert(:account)
+      insert(:profile, owner: account, avatar_url: "/media/avatars/#{account.id}/same.png")
+
+      file =
+        insert(:media_file,
+          key: "avatars/#{account.id}/same.png",
+          context: :avatar,
+          owner_id: account.id
+        )
+
+      assert {:ok, _profile} =
+               Accounts.update_own_profile(account, %{
+                 "first_name" => "Same",
+                 "last_name" => "Person"
+               })
+
+      assert Repo.get(Athena.Media.File, file.id) != nil
+    end
+
+    test "does nothing special when there was no previous avatar to clean up" do
+      account = insert(:account)
+
+      assert {:ok, profile} =
+               Accounts.update_own_profile(account, %{
+                 "first_name" => "New",
+                 "last_name" => "User",
+                 "avatar_url" => "/media/avatars/#{account.id}/first.png"
+               })
+
+      assert profile.avatar_url == "/media/avatars/#{account.id}/first.png"
+    end
   end
 
   describe "register_admin_user/3" do
@@ -371,6 +426,45 @@ defmodule Athena.Identity.AccountsTest do
       insert(:account, login: "john_doe")
       results = Accounts.search_accounts_by_login(student, "john")
       assert results == []
+    end
+  end
+
+  describe "search_messageable_accounts/3" do
+    test "matches by login regardless of the user's ACL permissions", %{student: student} do
+      match = insert(:account, login: "john_doe")
+
+      results = Accounts.search_messageable_accounts(student, "john")
+
+      assert Enum.map(results, & &1.id) == [match.id]
+    end
+
+    test "matches by profile first/last/patronymic name", %{student: student} do
+      account = insert(:account, login: "unrelated_login")
+
+      insert(:profile,
+        owner: account,
+        first_name: "Ivan",
+        last_name: "Petrov",
+        patronymic: "Sergeevich"
+      )
+
+      assert [%{id: id}] = Accounts.search_messageable_accounts(student, "petrov")
+      assert id == account.id
+      assert [%{id: id}] = Accounts.search_messageable_accounts(student, "sergeevich")
+      assert id == account.id
+    end
+
+    test "excludes the current user, inactive, and soft-deleted accounts" do
+      current_user = insert(:account, login: "match_self")
+      blocked = insert(:account, login: "match_blocked", status: :blocked)
+      deleted = insert(:account, login: "match_deleted", deleted_at: DateTime.utc_now(:second))
+
+      results = Accounts.search_messageable_accounts(current_user, "match")
+      ids = Enum.map(results, & &1.id)
+
+      refute current_user.id in ids
+      refute blocked.id in ids
+      refute deleted.id in ids
     end
   end
 

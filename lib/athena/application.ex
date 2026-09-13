@@ -3,7 +3,7 @@ defmodule Athena.Application do
   # for more information on OTP Applications
   @moduledoc false
 
-  @compile {:boundary, ignore: [AthenaWeb.Endpoint, AthenaWeb.Telemetry]}
+  @compile {:boundary, ignore: [AthenaWeb.Endpoint, AthenaWeb.Telemetry, AthenaWeb.Presence]}
 
   use Application
 
@@ -53,6 +53,7 @@ defmodule Athena.Application do
       AthenaWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:athena, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Athena.PubSub},
+      AthenaWeb.Presence,
       Athena.Media.EventListener,
       Athena.Content.Listener,
       Athena.Gamification.ActivityListener,

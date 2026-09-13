@@ -1042,6 +1042,32 @@ Hooks.DblClickDrillDown = {
   },
 };
 
+// The "enable browser notifications" banner inside the messenger. Requests
+// permission only on a real click (never on page load — browsers
+// penalize/ignore silent auto-prompts, and asking outside of an explicit
+// user action is exactly the annoying pattern we want to avoid). Hides
+// itself once answered, or once dismissed via "not now" (remembered per
+// browser so it doesn't nag on every visit).
+Hooks.NotificationBanner = {
+  mounted() {
+    this.sync();
+    this.el.querySelector("[data-allow]")?.addEventListener("click", () => {
+      if (!("Notification" in window)) return;
+      Notification.requestPermission().then(() => this.sync());
+    });
+    this.el.querySelector("[data-dismiss]")?.addEventListener("click", () => {
+      localStorage.setItem("chat-notif-banner-dismissed", "1");
+      this.sync();
+    });
+  },
+  sync() {
+    const supported = "Notification" in window;
+    const answered = supported && Notification.permission !== "default";
+    const dismissed = localStorage.getItem("chat-notif-banner-dismissed") === "1";
+    this.el.hidden = !supported || answered || dismissed;
+  },
+};
+
 let Uploaders = {};
 
 Uploaders.S3 = function (entries, onViewError) {
@@ -1077,6 +1103,82 @@ Uploaders.S3 = function (entries, onViewError) {
     xhr.send(entry.file);
   });
 };
+
+// Scrolls the open thread either to the bottom (new message just sent/
+// received) or to the "new messages" divider (just opened a conversation
+// with unread history) — see AthenaWeb.MessengerLive.Index.
+window.addEventListener("phx:scroll_thread", (e) => {
+  const to = e.detail.to;
+
+  setTimeout(() => {
+    const container = document.querySelector('[id^="messages-"][phx-update="stream"]');
+    if (!container) return;
+
+    if (to && to !== "bottom") {
+      const target = document.getElementById(to);
+      if (target) {
+        target.scrollIntoView({ block: "center" });
+        return;
+      }
+    }
+
+    container.scrollTop = container.scrollHeight;
+  }, 50);
+});
+
+// In-app toast + (when the tab is hidden/unfocused and permission was
+// granted) a native browser Notification for a new chat message — pushed
+// from AthenaWeb.Hooks.Messenger on every authenticated page, not just
+// the messenger itself, so a message still gets noticed while you're
+// elsewhere in the LMS.
+window.addEventListener("phx:new_message_notification", (e) => {
+  const { title, preview, url, conversation_id } = e.detail;
+
+  showChatToast(title, preview, url);
+
+  const tabHidden = document.hidden || !document.hasFocus();
+  if (tabHidden && "Notification" in window && Notification.permission === "granted") {
+    const notification = new Notification(title, {
+      body: preview,
+      tag: `athena-message-${conversation_id}`,
+    });
+    notification.onclick = () => {
+      window.focus();
+      window.location.href = url;
+      notification.close();
+    };
+  }
+});
+
+function chatToastContainer() {
+  let container = document.getElementById("chat-toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "chat-toast-container";
+    container.style.cssText =
+      "position:fixed;bottom:1rem;right:1rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;max-width:22rem;";
+    document.body.appendChild(container);
+  }
+  return container;
+}
+
+function showChatToast(title, preview, url) {
+  const toast = document.createElement("a");
+  toast.href = url;
+  toast.className =
+    "block bg-base-100 border border-base-300 rounded-box shadow-lg p-3 hover:bg-base-200 transition-colors cursor-pointer";
+  toast.innerHTML =
+    '<div class="font-bold text-sm truncate"></div><div class="text-sm text-base-content/70 truncate"></div>';
+  toast.querySelector("div:first-child").textContent = title;
+  toast.querySelector("div:last-child").textContent = preview;
+
+  const container = chatToastContainer();
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.remove();
+  }, 6000);
+}
 
 window.addEventListener("phx:scroll_to_block", (e) => {
   const blockId = e.detail.id;

@@ -30,6 +30,8 @@ defmodule Athena.Factory do
     BlockProgress
   }
 
+  alias Athena.Messaging.{Conversation, ConversationParticipant, Message, MessageMention}
+
   def role_factory do
     %Role{
       name: sequence(:name, &"Role #{&1}"),
@@ -226,6 +228,37 @@ defmodule Athena.Factory do
     %CourseLibraryBlock{
       course: build(:course),
       library_block: build(:library_block)
+    }
+  end
+
+  def conversation_factory do
+    %Conversation{
+      kind: :direct,
+      direct_key: sequence(:direct_key, &"acct-#{&1}:acct-#{&1 + 1}")
+    }
+  end
+
+  def conversation_participant_factory do
+    %ConversationParticipant{
+      conversation: build(:conversation),
+      account_id: Ecto.UUID.generate()
+    }
+  end
+
+  def message_factory do
+    %Message{
+      conversation: build(:conversation),
+      account_id: Ecto.UUID.generate(),
+      kind: :text,
+      body: "Hello!"
+    }
+  end
+
+  def message_mention_factory do
+    %MessageMention{
+      message: build(:message),
+      account_id: Ecto.UUID.generate(),
+      matched_text: "@Jane Doe"
     }
   end
 end

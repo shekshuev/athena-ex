@@ -247,6 +247,53 @@ defmodule AthenaWeb.CoreComponents do
   end
 
   @doc """
+  Renders a circular avatar: the given image when `src` is set, otherwise a
+  colored circle with centered initials. One shared implementation instead
+  of each call site hand-rolling the daisyUI placeholder markup — which
+  matters here because daisyUI 5 renamed the old two-class pair
+  (`avatar placeholder`) to a single `avatar-placeholder` class; the old
+  pair still "works" (no error) but silently drops the centering rule,
+  leaving initials stuck in the top-left corner. Going through this
+  component means that can't regress at a new call site.
+
+  ## Examples
+
+      <.avatar initials="JD" size="w-10" text_size="text-sm" />
+      <.avatar src={user.avatar_url} initials="JD" alt="Jane Doe" />
+      <.avatar initials="C" color="secondary" size="w-9" text_size="text-xs" />
+  """
+  attr :src, :string, default: nil, doc: "avatar image URL; when nil, initials are shown instead"
+
+  attr :initials, :string,
+    default: "",
+    doc: "shown when there is no `src` — keep it short (1-2 chars)"
+
+  attr :alt, :string, default: ""
+  attr :size, :string, default: "w-10", doc: "Tailwind width class, e.g. \"w-8\", \"w-14\""
+  attr :text_size, :string, default: nil, doc: "Tailwind text-size class for the initials"
+  attr :color, :string, values: ~w(neutral primary secondary), default: "neutral"
+  attr :class, :any, default: nil, doc: "extra classes for the outer avatar element"
+
+  def avatar(assigns) do
+    colors = %{
+      "neutral" => "bg-neutral text-neutral-content",
+      "primary" => "bg-primary text-primary-content",
+      "secondary" => "bg-secondary text-secondary-content"
+    }
+
+    assigns = assign(assigns, :color_class, Map.fetch!(colors, assigns.color))
+
+    ~H"""
+    <div class={["avatar shrink-0", @src in [nil, ""] && "avatar-placeholder", @class]}>
+      <div class={["rounded-full", @size, @src in [nil, ""] && [@color_class, @text_size]]}>
+        <img :if={@src not in [nil, ""]} src={@src} alt={@alt} />
+        <span :if={@src in [nil, ""]} class="uppercase font-bold leading-none">{@initials}</span>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
   Renders a consistent "nothing here yet" placeholder — icon, title,
   optional description — replacing the several structurally different
   empty-state treatments previously used across the app. Also meant to be

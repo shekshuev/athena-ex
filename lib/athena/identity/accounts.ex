@@ -11,7 +11,7 @@ defmodule Athena.Identity.Accounts do
   """
 
   import Ecto.Query
-  alias Athena.{Repo, Identity, Workers}
+  alias Athena.{Repo, Identity, Media, Workers}
   alias Athena.Identity.{Account, Acl, Profile}
 
   @doc """
@@ -345,10 +345,12 @@ defmodule Athena.Identity.Accounts do
           {:ok, Profile.t()} | {:error, Ecto.Changeset.t()}
   def update_own_profile(%Account{} = account, profile_attrs) do
     account = Repo.preload(account, :profile)
+    old_avatar_url = account.profile && account.profile.avatar_url
 
     case upsert_profile(Repo, account, profile_attrs) do
       {:ok, profile} ->
         Cachex.del(:account_cache, account.id)
+        cleanup_old_avatar(old_avatar_url, profile.avatar_url)
 
         Phoenix.PubSub.broadcast(
           Athena.PubSub,
@@ -362,6 +364,23 @@ defmodule Athena.Identity.Accounts do
         error
     end
   end
+
+  # `Profile.avatar_url` is a plain string (not a `Media.File` foreign key,
+  # unlike `Character.avatar_file_id`), so the only way to find the
+  # replaced file is by parsing its key back out of the old `/media/...`
+  # URL. Without this, every avatar change leaked the previous upload
+  # (S3 object + `media_files` row) forever — nothing ever cleaned it up,
+  # since `Athena.Workers.MediaCleanup` only garbage-collects
+  # `:course_material`/`:submission` files, not `:avatar` ones.
+  @doc false
+  defp cleanup_old_avatar(old_url, new_url) when is_binary(old_url) and old_url != new_url do
+    case old_url do
+      "/media/" <> key -> Media.delete_file_by_key(key)
+      _ -> :ok
+    end
+  end
+
+  defp cleanup_old_avatar(_old_url, _new_url), do: :ok
 
   @doc """
   Changes the password for a given account, verifying the old password first.
@@ -379,12 +398,14 @@ defmodule Athena.Identity.Accounts do
   end
 
   @doc """
-  Returns a map of `%{account_id => Account}` for bulk enrichment across contexts.
+  Returns a map of `%{account_id => Account}` (with `:profile` preloaded) for
+  bulk enrichment across contexts.
   """
   @spec get_accounts_map([String.t()]) :: %{String.t() => Account.t()}
   def get_accounts_map(ids) when is_list(ids) do
     Account
     |> where([a], a.id in ^ids)
+    |> preload(:profile)
     |> Repo.all()
     |> Map.new(&{&1.id, &1})
   end
@@ -402,6 +423,59 @@ defmodule Athena.Identity.Accounts do
     |> Identity.scope_query(user, "users.read")
     |> limit(^limit)
     |> Repo.all()
+  end
+
+  @doc """
+  Searches active, non-deleted accounts by login OR profile name
+  (first/last/patronymic), for the open messenger's "start a new
+  conversation" flow.
+
+  Deliberately does **not** scope via `Identity.scope_query/3`/`"users.read"`
+  the way `search_accounts_by_login/3` does above: the messenger is
+  intentionally open (any user may start a conversation with any other
+  active user), so only account status is enforced here, not the
+  `"users.read"` ACL permission. This is a deliberate, documented exception
+  to the ACL system.
+  """
+  @spec search_messageable_accounts(Account.t(), String.t(), integer()) :: [Account.t()]
+  def search_messageable_accounts(current_user, query, limit \\ 10) do
+    term = "%#{query}%"
+
+    from(a in Account,
+      left_join: p in Profile,
+      on: p.owner_id == a.id,
+      where: a.status == :active and is_nil(a.deleted_at) and a.id != ^current_user.id,
+      where:
+        ilike(a.login, ^term) or ilike(p.first_name, ^term) or ilike(p.last_name, ^term) or
+          ilike(p.patronymic, ^term),
+      order_by: [asc: a.login],
+      limit: ^limit,
+      preload: [profile: p]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Returns the account's display name: their profile's full name if set,
+  otherwise their login. Safe to call whether or not `:profile` is preloaded.
+  """
+  @spec display_name(Account.t()) :: String.t()
+  def display_name(%Account{profile: %Profile{} = profile}), do: Profile.full_name(profile)
+  def display_name(%Account{login: login}), do: login
+
+  @doc """
+  Updates the account's `last_seen_at` timestamp to now. Used by
+  `AthenaWeb.Presence` when a user's presence fully drops (all their tabs
+  disconnect).
+  """
+  @spec touch_last_seen(String.t()) :: :ok
+  def touch_last_seen(account_id) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    from(a in Account, where: a.id == ^account_id)
+    |> Repo.update_all(set: [last_seen_at: now])
+
+    :ok
   end
 
   @doc """
