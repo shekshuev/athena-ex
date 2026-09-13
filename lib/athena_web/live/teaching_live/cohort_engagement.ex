@@ -539,7 +539,10 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
             </tr>
             <tr :if={@rows == []}>
               <td colspan="5">
-                <.empty_state icon="hero-user-group" title={gettext("No students in this cohort yet.")} />
+                <.empty_state
+                  icon="hero-user-group"
+                  title={gettext("No students in this cohort yet.")}
+                />
               </td>
             </tr>
           </tbody>
