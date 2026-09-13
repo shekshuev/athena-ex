@@ -110,4 +110,3 @@ config :ex_aws,
   ]
 
 config :athena, Athena.Media, bucket: "athena"
-config :athena, Athena.Media, bucket: "athena"

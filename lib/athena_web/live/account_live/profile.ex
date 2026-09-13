@@ -366,7 +366,7 @@ defmodule AthenaWeb.AccountLive.Profile do
 
                 <div :for={entry <- @uploads.avatar.entries} class="mt-3 flex items-center gap-3">
                   <span class="text-sm font-medium truncate">{entry.client_name}</span>
-                  <span class="text-xs text-base-content/50">{entry.progress}%</span>
+                  <progress class="progress progress-primary w-16" value={entry.progress} max="100" />
                   <.icon_button
                     type="button"
                     phx-click="cancel_avatar"
@@ -375,15 +375,18 @@ defmodule AthenaWeb.AccountLive.Profile do
                     label={gettext("Cancel")}
                     variant="danger"
                   />
-                  <.button
-                    :if={entry.progress == 100}
-                    type="submit"
-                    variant="primary"
-                    size="xs"
-                  >
-                    {gettext("Save avatar")}
-                  </.button>
                 </div>
+
+                <.button
+                  :if={@uploads.avatar.entries != []}
+                  type="submit"
+                  variant="primary"
+                  size="xs"
+                  class="mt-2"
+                  phx-disable-with={gettext("Uploading...")}
+                >
+                  {gettext("Save avatar")}
+                </.button>
 
                 <div
                   :for={{_ref, msg} <- @uploads.avatar.errors}

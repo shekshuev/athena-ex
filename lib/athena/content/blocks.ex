@@ -203,7 +203,7 @@ defmodule Athena.Content.Blocks do
       end
 
     if authorized? do
-      bucket = Application.get_env(:athena, Media)[:bucket] || "athena"
+      bucket = Application.get_env(:athena, Athena.Media)[:bucket] || "athena"
 
       unique_filename = "#{Ecto.UUID.generate()}-#{filename}"
       key = "courses/#{course_id}/#{unique_filename}"
