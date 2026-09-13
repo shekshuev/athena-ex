@@ -41,6 +41,9 @@ msgstr "Преподаватели"
 msgid "cohorts"
 msgstr "Учебные потоки"
 
+msgid "engagement"
+msgstr "Вовлечённость"
+
 msgid "files"
 msgstr "Файлы"
 

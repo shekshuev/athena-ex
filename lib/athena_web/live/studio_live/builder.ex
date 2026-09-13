@@ -317,6 +317,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   def handle_event("update_section_meta", %{"section" => section_params}, socket) do
     id = section_params["id"]
+    section_params = strip_unauthorized_engagement_rule(section_params, socket)
 
     with true <- can_edit?(socket),
          section when not is_nil(section) <- find_section_in_tree(socket.assigns.sections, id),
@@ -1003,6 +1004,7 @@ defmodule AthenaWeb.StudioLive.Builder do
   @impl true
   def handle_event("update_block_meta", %{"block" => block_params} = params, socket) do
     id = block_params["id"]
+    block_params = strip_unauthorized_engagement_rule(block_params, socket)
 
     with true <- can_edit?(socket),
          block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == id)) do
@@ -1690,6 +1692,7 @@ defmodule AthenaWeb.StudioLive.Builder do
           <.live_component
             module={AthenaWeb.StudioLive.Builder.InspectorComponent}
             id="inspector-component"
+            current_user={@current_user}
             active_section={@active_section}
             active_block={@active_block}
             block_changeset={assigns[:active_block_changeset]}
@@ -2300,6 +2303,18 @@ defmodule AthenaWeb.StudioLive.Builder do
   end
 
   defp can_edit?(socket), do: socket.assigns.role in [:owner, :writer]
+
+  # Metrics/engagement thresholds are meant to be configured only by whoever
+  # actually understands the methodology, independent of general course-edit
+  # rights - drop the sub-form's params server-side too, since the inspector
+  # already hides the fields but a crafted request could still send them.
+  defp strip_unauthorized_engagement_rule(params, socket) do
+    if Identity.can?(socket.assigns.current_user, "engagement.update") do
+      params
+    else
+      Map.delete(params, "engagement_rule")
+    end
+  end
 
   @doc false
   defp clear_active_uploads(socket, nil), do: socket

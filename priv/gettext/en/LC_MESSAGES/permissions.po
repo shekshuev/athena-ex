@@ -41,6 +41,9 @@ msgstr "Instructors"
 msgid "cohorts"
 msgstr "Cohorts"
 
+msgid "engagement"
+msgstr "Engagement"
+
 msgid "files"
 msgstr "Files"
 

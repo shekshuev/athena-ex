@@ -9,6 +9,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   use AthenaWeb, :live_component
   alias Athena.Content.{Section, Block}
   alias Athena.Execution
+  alias Athena.Identity
 
   @doc """
   Lifecycle hook: handles incoming assigns and sets defaults.
@@ -17,7 +18,8 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   def update(assigns, socket) do
     {:ok,
      socket
-     |> assign(assigns)}
+     |> assign(assigns)
+     |> assign_new(:current_user, fn -> nil end)}
   end
 
   @doc """
@@ -35,9 +37,9 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
       </div>
       <%= cond do %>
         <% @active_block -> %>
-          <.block_inspector block={@active_block} />
+          <.block_inspector block={@active_block} current_user={@current_user} />
         <% @active_section -> %>
-          <.section_inspector section={@active_section} />
+          <.section_inspector section={@active_section} current_user={@current_user} />
         <% true -> %>
           <div class="flex-1 flex items-center justify-center p-4 text-center">
             <p class="text-sm text-base-content/50 italic">
@@ -92,7 +94,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
 
           <div class="divider my-4"></div>
 
-          <div class="space-y-4 mb-6">
+          <div :if={Identity.can?(@current_user, "engagement.update")} class="space-y-4 mb-6">
             <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
               {gettext("Engagement Tracking")}
             </div>
@@ -135,7 +137,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
               />
             </.inputs_for>
           </div>
-          <div class="divider my-4"></div>
+          <div :if={Identity.can?(@current_user, "engagement.update")} class="divider my-4"></div>
 
           <div class="space-y-4">
             <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
@@ -701,7 +703,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
           </div>
           <div class="divider my-4"></div>
 
-          <div class="space-y-4 mb-6">
+          <div :if={Identity.can?(@current_user, "engagement.update")} class="space-y-4 mb-6">
             <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
               {gettext("Engagement Tracking")}
             </div>
@@ -749,7 +751,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
               </div>
             </.inputs_for>
           </div>
-          <div class="divider my-4"></div>
+          <div :if={Identity.can?(@current_user, "engagement.update")} class="divider my-4"></div>
 
           <div class="space-y-4">
             <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
