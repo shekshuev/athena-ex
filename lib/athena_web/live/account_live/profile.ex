@@ -355,6 +355,9 @@ defmodule AthenaWeb.AccountLive.Profile do
               />
 
               <div class="flex-1 min-w-0">
+                <div class="text-sm font-mono text-base-content/50 mb-2">
+                  @{@current_user.login}
+                </div>
                 <label
                   for={@uploads.avatar.ref}
                   class="btn btn-outline btn-sm font-bold cursor-pointer"
