@@ -39,6 +39,11 @@ defmodule Athena do
       Execution,
       Gamification,
       Gamification.Badge,
-      Gamification.Sprint
+      Gamification.Sprint,
+      Messaging,
+      Messaging.Conversation,
+      Messaging.ConversationParticipant,
+      Messaging.Message,
+      Messaging.MessageMention
     ]
 end

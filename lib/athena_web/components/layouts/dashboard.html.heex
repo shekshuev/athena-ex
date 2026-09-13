@@ -83,13 +83,19 @@
           </.link>
         </li>
         <li>
-          <.link navigate={~p"/community"} class="flex items-center">
+          <.link navigate={~p"/messenger"} class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <.icon name="hero-chat-bubble-left-right" class="size-6 shrink-0" />
               <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
-                {gettext("Community")}
+                {gettext("Messenger")}
               </span>
             </div>
+            <span
+              :if={Map.get(assigns, :unread_conversations_count, 0) > 0}
+              class="badge badge-primary badge-sm group-[.is-collapsed]/sidebar:hidden"
+            >
+              {@unread_conversations_count}
+            </span>
           </.link>
         </li>
       </ul>

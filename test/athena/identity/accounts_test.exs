@@ -374,6 +374,45 @@ defmodule Athena.Identity.AccountsTest do
     end
   end
 
+  describe "search_messageable_accounts/3" do
+    test "matches by login regardless of the user's ACL permissions", %{student: student} do
+      match = insert(:account, login: "john_doe")
+
+      results = Accounts.search_messageable_accounts(student, "john")
+
+      assert Enum.map(results, & &1.id) == [match.id]
+    end
+
+    test "matches by profile first/last/patronymic name", %{student: student} do
+      account = insert(:account, login: "unrelated_login")
+
+      insert(:profile,
+        owner: account,
+        first_name: "Ivan",
+        last_name: "Petrov",
+        patronymic: "Sergeevich"
+      )
+
+      assert [%{id: id}] = Accounts.search_messageable_accounts(student, "petrov")
+      assert id == account.id
+      assert [%{id: id}] = Accounts.search_messageable_accounts(student, "sergeevich")
+      assert id == account.id
+    end
+
+    test "excludes the current user, inactive, and soft-deleted accounts" do
+      current_user = insert(:account, login: "match_self")
+      blocked = insert(:account, login: "match_blocked", status: :blocked)
+      deleted = insert(:account, login: "match_deleted", deleted_at: DateTime.utc_now(:second))
+
+      results = Accounts.search_messageable_accounts(current_user, "match")
+      ids = Enum.map(results, & &1.id)
+
+      refute current_user.id in ids
+      refute blocked.id in ids
+      refute deleted.id in ids
+    end
+  end
+
   describe "force_change_password/3" do
     test "successfully changes password, resets must_change_password flag and clears cache" do
       account = insert(:account, must_change_password: true)

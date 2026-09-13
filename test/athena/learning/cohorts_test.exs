@@ -529,4 +529,62 @@ defmodule Athena.Learning.CohortsTest do
                Cohorts.add_student_to_cohort(admin, cohort_b.id, account.id)
     end
   end
+
+  describe "cohort chat sync (Messaging integration)" do
+    alias Athena.Messaging
+    alias Athena.Messaging.Conversation
+
+    test "create_cohort/2 provisions a group chat and adds instructors", %{admin: admin} do
+      inst_account = insert(:account)
+      inst = insert(:instructor, owner_id: inst_account.id)
+
+      {:ok, cohort} =
+        Cohorts.create_cohort(admin, %{"name" => "New Cohort", "instructor_ids" => [inst.id]})
+
+      conversation = Repo.get_by!(Conversation, cohort_id: cohort.id)
+      assert conversation.kind == :cohort
+      assert {:ok, _} = Messaging.get_conversation(inst_account, conversation.id)
+    end
+
+    test "add_student_to_cohort/3 grants access to the cohort's chat", %{admin: admin} do
+      cohort = insert(:cohort)
+      student = insert(:account)
+
+      {:ok, _} = Cohorts.add_student_to_cohort(admin, cohort.id, student.id)
+
+      conversation = Repo.get_by!(Conversation, cohort_id: cohort.id)
+      assert {:ok, _} = Messaging.get_conversation(student, conversation.id)
+    end
+
+    test "remove_student_from_cohort/2 revokes access to the cohort's chat", %{admin: admin} do
+      cohort = insert(:cohort)
+      student = insert(:account)
+
+      {:ok, membership} = Cohorts.add_student_to_cohort(admin, cohort.id, student.id)
+      conversation = Repo.get_by!(Conversation, cohort_id: cohort.id)
+      assert {:ok, _} = Messaging.get_conversation(student, conversation.id)
+
+      {:ok, _} = Cohorts.remove_student_from_cohort(admin, membership)
+
+      assert {:error, :not_found} = Messaging.get_conversation(student, conversation.id)
+    end
+
+    test "update_cohort/3 syncs added and removed instructors in the chat", %{admin: admin} do
+      inst1_account = insert(:account)
+      inst1 = insert(:instructor, owner_id: inst1_account.id)
+      inst2_account = insert(:account)
+      inst2 = insert(:instructor, owner_id: inst2_account.id)
+
+      {:ok, cohort} =
+        Cohorts.create_cohort(admin, %{"name" => "Base", "instructor_ids" => [inst1.id]})
+
+      conversation = Repo.get_by!(Conversation, cohort_id: cohort.id)
+      assert {:ok, _} = Messaging.get_conversation(inst1_account, conversation.id)
+
+      {:ok, _updated} = Cohorts.update_cohort(admin, cohort, %{"instructor_ids" => [inst2.id]})
+
+      assert {:error, :not_found} = Messaging.get_conversation(inst1_account, conversation.id)
+      assert {:ok, _} = Messaging.get_conversation(inst2_account, conversation.id)
+    end
+  end
 end
