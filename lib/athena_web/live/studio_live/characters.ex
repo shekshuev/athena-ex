@@ -209,18 +209,12 @@ defmodule AthenaWeb.StudioLive.Characters do
       <.table id="characters" rows={@streams.characters} meta={@meta} path_fn={path_fn}>
         <:col :let={{_id, character}} label={gettext("Name")} sort="name">
           <div class="flex items-center gap-3">
-            <div class="avatar placeholder shrink-0">
-              <div class="bg-neutral text-neutral-content w-8 rounded-full flex items-center justify-center">
-                <img
-                  :if={avatar_url(character.avatar_file_id)}
-                  src={avatar_url(character.avatar_file_id)}
-                  alt=""
-                />
-                <span :if={!avatar_url(character.avatar_file_id)} class="leading-none text-xs">
-                  {fallback_letter(character.name)}
-                </span>
-              </div>
-            </div>
+            <.avatar
+              src={avatar_url(character.avatar_file_id)}
+              initials={fallback_letter(character.name)}
+              size="w-8"
+              text_size="text-xs"
+            />
             <span class="font-bold">{character.name}</span>
           </div>
         </:col>

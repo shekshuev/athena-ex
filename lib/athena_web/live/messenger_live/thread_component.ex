@@ -68,15 +68,12 @@ defmodule AthenaWeb.MessengerLive.ThreadComponent do
           <.icon name="hero-arrow-left" class="size-5" />
         </.button>
 
-        <div class="avatar placeholder shrink-0">
-          <div class={[
-            "rounded-full w-9",
-            @conversation.kind == :cohort && "bg-secondary text-secondary-content",
-            @conversation.kind == :direct && "bg-neutral text-neutral-content"
-          ]}>
-            <span class="text-xs uppercase">{String.slice(header_title(@conversation), 0..1)}</span>
-          </div>
-        </div>
+        <.avatar
+          initials={String.slice(header_title(@conversation), 0..1)}
+          size="w-9"
+          text_size="text-xs"
+          color={if @conversation.kind == :cohort, do: "secondary", else: "neutral"}
+        />
 
         <div class="min-w-0">
           <div class="font-bold truncate">{header_title(@conversation)}</div>

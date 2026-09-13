@@ -79,13 +79,11 @@ defmodule AthenaWeb.MessengerLive.NewDmComponent do
               phx-target={@myself}
               class="w-full flex items-center gap-3 p-3 hover:bg-base-200 rounded-box text-left"
             >
-              <div class="avatar placeholder shrink-0">
-                <div class="bg-neutral text-neutral-content rounded-full w-9">
-                  <span class="text-xs uppercase">
-                    {String.slice(Identity.display_name(account), 0..1)}
-                  </span>
-                </div>
-              </div>
+              <.avatar
+                initials={String.slice(Identity.display_name(account), 0..1)}
+                size="w-9"
+                text_size="text-xs"
+              />
               <div class="min-w-0">
                 <div class="font-bold truncate">{Identity.display_name(account)}</div>
                 <div class="text-sm text-base-content/60 truncate">@{account.login}</div>

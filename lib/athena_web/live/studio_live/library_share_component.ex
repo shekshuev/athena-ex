@@ -237,11 +237,7 @@ defmodule AthenaWeb.StudioLive.LibraryShareComponent do
           class="flex items-center justify-between p-3 bg-base-100 border border-base-200 rounded-box"
         >
           <div class="flex items-center gap-3 min-w-0">
-            <div class="avatar placeholder shrink-0">
-              <div class="bg-neutral text-neutral-content rounded-full w-8">
-                <span class="text-xs uppercase">{String.slice(share.login, 0..1)}</span>
-              </div>
-            </div>
+            <.avatar initials={String.slice(share.login, 0..1)} size="w-8" text_size="text-xs" />
             <span class="font-bold truncate">{share.login}</span>
           </div>
 

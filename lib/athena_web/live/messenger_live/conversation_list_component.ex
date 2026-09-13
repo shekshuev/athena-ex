@@ -87,15 +87,12 @@ defmodule AthenaWeb.MessengerLive.ConversationListComponent do
         @active && "bg-primary/10"
       ]}
     >
-      <div class="avatar placeholder shrink-0">
-        <div class={[
-          "rounded-full w-10",
-          @conversation.kind == :cohort && "bg-secondary text-secondary-content",
-          @conversation.kind == :direct && "bg-neutral text-neutral-content"
-        ]}>
-          <span class="text-sm uppercase">{String.slice(@title, 0..1)}</span>
-        </div>
-      </div>
+      <.avatar
+        initials={String.slice(@title, 0..1)}
+        size="w-10"
+        text_size="text-sm"
+        color={if @conversation.kind == :cohort, do: "secondary", else: "neutral"}
+      />
 
       <div class="min-w-0 flex-1">
         <div class="flex items-center justify-between gap-2">

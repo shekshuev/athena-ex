@@ -347,18 +347,12 @@ defmodule AthenaWeb.AccountLive.Profile do
               phx-submit="save_avatar"
               class="flex items-center gap-6"
             >
-              <div class="avatar placeholder shrink-0">
-                <div class="bg-neutral text-neutral-content rounded-full w-16">
-                  <img
-                    :if={@current_user.profile && @current_user.profile.avatar_url}
-                    src={@current_user.profile.avatar_url}
-                    alt={gettext("Avatar")}
-                  />
-                  <span :if={!@current_user.profile || !@current_user.profile.avatar_url}>
-                    {initials(@current_user.login)}
-                  </span>
-                </div>
-              </div>
+              <.avatar
+                src={@current_user.profile && @current_user.profile.avatar_url}
+                initials={initials(@current_user.login)}
+                alt={gettext("Avatar")}
+                size="w-16"
+              />
 
               <div class="flex-1 min-w-0">
                 <label
