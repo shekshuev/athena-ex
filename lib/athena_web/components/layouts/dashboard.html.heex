@@ -100,7 +100,12 @@
         </li>
       </ul>
 
-      <%= if Identity.can_any?(@current_user, ["courses.read", "library.read", "characters.read"]) do %>
+      <%= if Identity.can_any?(@current_user, [
+        "courses.read",
+        "competitions.read",
+        "library.read",
+        "characters.read"
+      ]) do %>
         <div class="py-4 overflow-hidden">
           <div class="h-px bg-base-300 w-full"></div>
           <div class="mt-4 px-3 text-[10px] font-black text-base-content/50 uppercase tracking-widest group-[.is-collapsed]/sidebar:hidden">
@@ -114,6 +119,16 @@
                 <.icon name="hero-building-library" class="size-6 shrink-0" />
                 <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
                   {gettext("Course Manager")}
+                </span>
+              </div>
+            </.link>
+          </li>
+          <li :if={Identity.can?(@current_user, "competitions.read")}>
+            <.link navigate={~p"/studio/competitions"} class="flex items-center">
+              <div class="flex items-center gap-2">
+                <.icon name="hero-trophy" class="size-6 shrink-0" />
+                <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                  {gettext("Competitions")}
                 </span>
               </div>
             </.link>
@@ -141,7 +156,12 @@
         </ul>
       <% end %>
 
-      <%= if Identity.can_any?(@current_user, ["cohorts.read", "instructors.read", "grading.read"]) do %>
+      <%= if Identity.can_any?(@current_user, [
+        "cohorts.read",
+        "teams.read",
+        "instructors.read",
+        "grading.read"
+      ]) do %>
         <div class="py-4 overflow-hidden">
           <div class="h-px bg-base-300 w-full"></div>
           <div class="mt-4 px-3 text-[10px] font-black text-base-content/50 uppercase tracking-widest group-[.is-collapsed]/sidebar:hidden">
@@ -165,6 +185,16 @@
                 <.icon name="hero-user-group" class="size-6 shrink-0" />
                 <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
                   {gettext("Cohorts")}
+                </span>
+              </div>
+            </.link>
+          </li>
+          <li :if={Identity.can?(@current_user, "teams.read")}>
+            <.link navigate={~p"/teaching/teams"} class="flex items-center">
+              <div class="flex items-center gap-2">
+                <.icon name="hero-flag" class="size-6 shrink-0" />
+                <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                  {gettext("Teams")}
                 </span>
               </div>
             </.link>
@@ -298,7 +328,10 @@
 
       <ul class="menu p-0 w-full gap-1">
         <li class="min-w-0 w-full">
-          <.link navigate={~p"/me"} class="flex items-center min-w-0 w-full">
+          <.link
+            navigate={~p"/profile/#{@current_user.id}"}
+            class="flex items-center min-w-0 w-full"
+          >
             <div class="flex items-center gap-2 min-w-0 flex-1">
               <.avatar
                 src={@current_user.profile && @current_user.profile.avatar_url}
@@ -368,4 +401,19 @@
     >
     </div>
   <% end %>
+
+  <dialog
+    id="lightbox"
+    class="modal backdrop:bg-black/80"
+    onclick="if (event.target === this) this.close()"
+  >
+    <div class="modal-box max-w-5xl w-fit p-0 bg-transparent shadow-none overflow-visible">
+      <img
+        id="lightbox-img"
+        src=""
+        alt=""
+        class="w-full h-auto max-h-[85vh] rounded-sm object-contain"
+      />
+    </div>
+  </dialog>
 </div>

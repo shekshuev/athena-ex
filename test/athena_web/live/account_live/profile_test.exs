@@ -232,4 +232,102 @@ defmodule AthenaWeb.AccountLive.ProfileTest do
       assert profile.metadata["show_in_league"] == false
     end
   end
+
+  describe "Viewing another account's profile" do
+    test "/profile/:id for the viewer's own id behaves exactly like /me", %{conn: conn} do
+      account = insert(:account)
+      insert(:profile, owner: account, first_name: "Ada", last_name: "Lovelace")
+
+      conn = init_test_session(conn, %{"account_id" => account.id})
+      {:ok, lv, html} = live(conn, ~p"/profile/#{account.id}")
+
+      assert html =~ "My Account"
+      assert has_element?(lv, "#profile-form")
+    end
+
+    test "shows a read-only identity card for someone else's profile, with no edit forms", %{
+      conn: conn
+    } do
+      viewer = insert(:account)
+      other = insert(:account, login: "grace_hopper")
+      insert(:profile, owner: other, first_name: "Grace", last_name: "Hopper")
+
+      conn = init_test_session(conn, %{"account_id" => viewer.id})
+      {:ok, lv, html} = live(conn, ~p"/profile/#{other.id}")
+
+      assert html =~ "Hopper Grace"
+      assert html =~ "@grace_hopper"
+      refute has_element?(lv, "#profile-form")
+      refute has_element?(lv, "#password-form")
+      refute has_element?(lv, "#avatar-form")
+    end
+
+    test "shows achievements for someone else's profile too", %{conn: conn} do
+      viewer = insert(:account)
+      other = insert(:account)
+      block = insert(:block, type: :code)
+
+      Athena.Gamification.XpLedger.record_activity(%{
+        account_id: other.id,
+        block_id: block.id,
+        block_type: :code
+      })
+
+      conn = init_test_session(conn, %{"account_id" => viewer.id})
+      {:ok, lv, _html} = live(conn, ~p"/profile/#{other.id}?tab=achievements")
+
+      html = render(lv)
+      assert html =~ "Level 1"
+      assert html =~ "15 XP"
+      refute has_element?(lv, "input[phx-click='toggle_league_visibility']")
+    end
+
+    test "does not let a stranger toggle another account's league visibility", %{conn: conn} do
+      viewer = insert(:account)
+      other = insert(:account)
+
+      conn = init_test_session(conn, %{"account_id" => viewer.id})
+      {:ok, lv, _html} = live(conn, ~p"/profile/#{other.id}?tab=achievements")
+
+      refute has_element?(lv, "input[phx-click='toggle_league_visibility']")
+    end
+
+    test "respects an opted-out account's league privacy when viewed by a stranger", %{
+      conn: conn
+    } do
+      viewer = insert(:account)
+      other = insert(:account)
+      insert(:profile, owner: other, metadata: %{"show_in_league" => false})
+
+      cohort = insert(:cohort, type: :academic)
+      course = insert(:course)
+      insert(:enrollment, cohort_id: cohort.id, course_id: course.id)
+      insert(:cohort_membership, account_id: other.id, cohort_id: cohort.id)
+
+      block = insert(:block, type: :code)
+
+      Athena.Gamification.XpLedger.record_activity(%{
+        account_id: other.id,
+        block_id: block.id,
+        block_type: :code
+      })
+
+      conn = init_test_session(conn, %{"account_id" => viewer.id})
+      {:ok, lv, html} = live(conn, ~p"/profile/#{other.id}?tab=achievements")
+
+      assert html =~ "Weekly League"
+      assert html =~ cohort.name
+      refute has_element?(lv, "li", other.login)
+    end
+
+    test "redirects with a flash error for an unknown account id", %{conn: conn} do
+      viewer = insert(:account)
+      conn = init_test_session(conn, %{"account_id" => viewer.id})
+
+      assert {:error, {:live_redirect, %{to: "/dashboard", flash: flash}}} =
+               live(conn, ~p"/profile/#{Ecto.UUID.generate()}")
+
+      assert flash["error"] == "Account not found."
+    end
+  end
 end

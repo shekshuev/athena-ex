@@ -36,7 +36,21 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
         {:ok,
          socket
          |> put_flash(:error, gettext("Access denied or course not found."))
-         |> push_navigate(to: ~p"/teaching/cohorts/#{cohort_id}")}
+         |> push_navigate(to: denied_redirect_path(cohort_id))}
+    end
+  end
+
+  # An ACL failure still routes back to the cohort/team's own detail page
+  # (not the list) when we can at least tell which one it is - an unscoped
+  # lookup (mirrors `Athena.Learning.Cohorts.get_cohorts_map/1`'s own
+  # "unscoped by design" reasoning) is fine here since only the `type`
+  # (which side of the split to redirect to) is read, never the record
+  # itself.
+  defp denied_redirect_path(cohort_id) do
+    case Learning.get_cohorts_map([cohort_id]) do
+      %{^cohort_id => %{type: :team}} -> ~p"/teaching/teams/#{cohort_id}"
+      %{^cohort_id => _cohort} -> ~p"/teaching/cohorts/#{cohort_id}"
+      _ -> ~p"/teaching/cohorts"
     end
   end
 
@@ -157,11 +171,11 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
       <div class="w-80 shrink-0 border-r border-base-200 flex flex-col bg-base-100 overflow-y-auto">
         <div class="p-4 border-b border-base-200 bg-base-50 shrink-0">
           <.link
-            navigate={~p"/teaching/cohorts/#{@cohort.id}"}
+            navigate={cohort_show_path(@cohort)}
             class="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-base-content/50 hover:text-primary transition-colors mb-2"
           >
             <.icon name="hero-arrow-left" class="size-4" />
-            {gettext("Back to Cohort")}
+            {if @cohort.type == :team, do: gettext("Back to Team"), else: gettext("Back to Cohort")}
           </.link>
           <h2 class="font-black text-lg truncate">{@course.title}</h2>
           <div class="badge badge-primary rounded-sm badge-outline mt-1 font-bold">
@@ -173,11 +187,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
           <.course_tree_nav
             sections={@tree}
             active_section_id={if @active_section, do: @active_section.id, else: nil}
-            node_path={
-              fn section ->
-                ~p"/teaching/cohorts/#{@cohort.id}/access/#{@course.id}?section_id=#{section.id}"
-              end
-            }
+            node_path={fn section -> access_path(@cohort, @course.id, section_id: section.id) end}
             has_badge={fn section -> get_override(@overrides, :section, section.id) != nil end}
             badge_title={gettext("Has Override")}
           />
@@ -188,9 +198,7 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
         <%= if @active_block do %>
           <.page_container size="narrow">
             <.link
-              patch={
-                ~p"/teaching/cohorts/#{@cohort.id}/access/#{@course.id}?section_id=#{@active_section.id}"
-              }
+              patch={access_path(@cohort, @course.id, section_id: @active_section.id)}
               class="btn btn-ghost rounded-sm btn-sm mb-6"
             >
               <.icon name="hero-arrow-left" class="size-4" /> {gettext("Back to Section")}
@@ -253,7 +261,10 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
                         </div>
                         <.link
                           patch={
-                            ~p"/teaching/cohorts/#{@cohort.id}/access/#{@course.id}?section_id=#{@active_section.id}&block_id=#{block.id}"
+                            access_path(@cohort, @course.id,
+                              section_id: @active_section.id,
+                              block_id: block.id
+                            )
                           }
                           class="btn btn-ghost btn-xs text-primary"
                         >
@@ -406,6 +417,18 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
     </div>
     """
   end
+
+  # `CohortAccess` is mounted from both `/teaching/cohorts/:id/access/...`
+  # (academic) and `/teaching/teams/:id/access/...` (team) routes, so every
+  # link must stay on whichever side the loaded `@cohort.type` belongs to.
+  defp cohort_show_path(%{type: :team, id: id}), do: ~p"/teaching/teams/#{id}"
+  defp cohort_show_path(%{id: id}), do: ~p"/teaching/cohorts/#{id}"
+
+  defp access_path(%{type: :team, id: id}, course_id, query),
+    do: ~p"/teaching/teams/#{id}/access/#{course_id}?#{query}"
+
+  defp access_path(%{id: id}, course_id, query),
+    do: ~p"/teaching/cohorts/#{id}/access/#{course_id}?#{query}"
 
   defp get_first_section_id([]), do: nil
   defp get_first_section_id([first | _]), do: first.id

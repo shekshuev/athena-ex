@@ -16,6 +16,8 @@ defmodule AthenaWeb.DashboardLive.Index do
   alias Athena.{Learning, Content, Identity, Gamification}
   alias Athena.Learning.Instructor
 
+  @max_dashboard_competitions 5
+
   @impl true
   def mount(_params, _session, socket) do
     account = socket.assigns.current_user
@@ -38,6 +40,9 @@ defmodule AthenaWeb.DashboardLive.Index do
       |> Enum.map(&resolve_deadline/1)
       |> Enum.reject(&is_nil/1)
 
+    public_competitions = load_public_competitions()
+    if connected?(socket), do: subscribe_to_leaderboards(public_competitions)
+
     {:ok,
      socket
      |> assign(:continue, resolve_continue(last_activity, enrollments))
@@ -47,7 +52,52 @@ defmodule AthenaWeb.DashboardLive.Index do
      |> assign(:teaching, build_teaching_section(account))
      |> assign(:total_xp, total_xp)
      |> assign(:level, Gamification.level_for_xp(total_xp))
-     |> assign(:streak, streak)}
+     |> assign(:streak, streak)
+     |> assign(:public_competitions, public_competitions)}
+  end
+
+  @impl true
+  def handle_info(:update_leaderboard, socket) do
+    {:noreply, assign(socket, :public_competitions, load_public_competitions())}
+  end
+
+  # The 5 most recently active published competitions - a competition
+  # nobody has enrolled a team in yet has nothing to show, so it's dropped
+  # rather than padding the list out. `last_activity: nil` on every row
+  # (teams enrolled, nobody has submitted anything yet) sorts last.
+  defp load_public_competitions do
+    Content.list_public_competitions()
+    |> Enum.map(fn course ->
+      %{course: course, board: Learning.get_team_leaderboard(course.id)}
+    end)
+    |> Enum.reject(&(&1.board == []))
+    |> Enum.sort_by(&latest_activity_unix(&1.board), :desc)
+    |> Enum.take(@max_dashboard_competitions)
+  end
+
+  # The single leading (non-disqualified) team, for the dashboard's
+  # one-line teaser under each competition - `board` is already ranked by
+  # `get_team_leaderboard/1`.
+  defp leading_team(board) do
+    Enum.find(board, &(!&1.is_disqualified))
+  end
+
+  defp teams_count(board), do: length(board)
+
+  defp latest_activity_unix(board) do
+    board
+    |> Enum.map(& &1.last_activity)
+    |> Enum.reject(&is_nil/1)
+    |> case do
+      [] -> 0
+      activities -> activities |> Enum.map(&DateTime.to_unix/1) |> Enum.max()
+    end
+  end
+
+  defp subscribe_to_leaderboards(public_competitions) do
+    Enum.each(public_competitions, fn %{course: course} ->
+      Phoenix.PubSub.subscribe(Athena.PubSub, "leaderboard:#{course.id}")
+    end)
   end
 
   defp resolve_daily_challenge(account_id) do
@@ -156,7 +206,7 @@ defmodule AthenaWeb.DashboardLive.Index do
         </h1>
 
         <.link
-          navigate={~p"/me?tab=achievements"}
+          navigate={~p"/profile/#{@current_user.id}?tab=achievements"}
           class="flex items-center gap-2 px-4 py-2 rounded-sm bg-base-200 hover:bg-base-300 transition-colors"
         >
           <.icon name="hero-star" class="size-4 text-primary" />
@@ -294,6 +344,40 @@ defmodule AthenaWeb.DashboardLive.Index do
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div :if={@public_competitions != []} class="space-y-4">
+        <h2 class="font-display font-black uppercase text-sm text-base-content/70">
+          {gettext("Competitions")}
+        </h2>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <.link
+            :for={%{course: course, board: board} <- @public_competitions}
+            navigate={~p"/learn/courses/#{course.id}/leaderboard"}
+            class="card bg-base-100 border border-base-300 hover:border-primary/40 transition-colors rounded-sm block"
+          >
+            <div class="card-body py-4 gap-2">
+              <div class="flex items-center justify-between gap-2">
+                <div class="font-bold truncate">{course.title}</div>
+                <.icon name="hero-trophy" class="size-5 text-primary shrink-0" />
+              </div>
+
+              <div class="text-xs text-base-content/50">
+                {ngettext("%{count} team", "%{count} teams", teams_count(board),
+                  count: teams_count(board)
+                )}
+              </div>
+
+              <div :if={leading_team(board)} class="flex items-center justify-between gap-2 text-sm">
+                <span class="truncate">🏆 {leading_team(board).team_name}</span>
+                <span class="font-mono font-bold text-primary shrink-0">
+                  {leading_team(board).total_score}
+                </span>
+              </div>
+            </div>
+          </.link>
         </div>
       </div>
 

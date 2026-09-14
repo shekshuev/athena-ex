@@ -14,7 +14,7 @@ defmodule Athena.Learning.Cohort do
 
   @derive {
     Flop.Schema,
-    filterable: [:name, :description],
+    filterable: [:name, :description, :type],
     sortable: [:name, :inserted_at],
     default_limit: 10,
     default_order: %{

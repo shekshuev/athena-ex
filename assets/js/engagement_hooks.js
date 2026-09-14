@@ -224,3 +224,34 @@ EngagementHooks.VideoTracker = {
     this.el.removeEventListener("timeupdate", this.onTimeUpdate);
   },
 };
+
+// Fires the reserved `image_zoom` event (see `Athena.Engagement.Event`) the
+// moment a student opens the click-to-preview lightbox on an `:image`
+// block's picture (the lightbox itself is plain-JS, see the document-level
+// click listener in app.js - this hook only supplies the telemetry side).
+EngagementHooks.ImageZoomTracker = {
+  mounted() {
+    const blockId = this.el.dataset.blockId;
+    if (!blockId) return;
+
+    this.onClick = () => {
+      if (!engagementTrackingActive()) return;
+      this.pushEvent("engagement_batch", {
+        events: [
+          {
+            block_id: blockId,
+            event_type: "image_zoom",
+            payload: {},
+            occurred_at: new Date().toISOString(),
+          },
+        ],
+      });
+    };
+
+    this.el.addEventListener("click", this.onClick);
+  },
+
+  destroyed() {
+    this.el.removeEventListener("click", this.onClick);
+  },
+};

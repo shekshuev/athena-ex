@@ -77,7 +77,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
         {:ok,
          socket
          |> put_flash(:error, gettext("Access denied or course not found."))
-         |> push_navigate(to: ~p"/teaching/cohorts/#{cohort_id}")}
+         |> push_navigate(to: ~p"/teaching/cohorts")}
     end
   end
 
@@ -188,11 +188,11 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
       >
         <div class="p-4 border-b border-base-200 bg-base-50 shrink-0">
           <.link
-            navigate={~p"/teaching/cohorts/#{@cohort.id}"}
+            navigate={cohort_show_path(@cohort)}
             class="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-base-content/50 hover:text-primary transition-colors mb-2"
           >
             <.icon name="hero-arrow-left" class="size-4" />
-            {gettext("Back to Cohort")}
+            {back_to_cohort_label(@cohort)}
           </.link>
           <h2 class="font-black text-lg truncate">{@course.title}</h2>
           <.badge tone="primary" class="mt-1">{@cohort.name}</.badge>
@@ -213,11 +213,11 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
           <div class="mb-6 flex items-center gap-2">
             <.link
               :if={@view == :students}
-              navigate={~p"/teaching/cohorts/#{@cohort.id}"}
+              navigate={cohort_show_path(@cohort)}
               class="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-base-content/50 hover:text-primary transition-colors"
             >
               <.icon name="hero-arrow-left" class="size-4" />
-              {gettext("Back to Cohort")}
+              {back_to_cohort_label(@cohort)}
             </.link>
             <div class="join">
               <.link
@@ -633,7 +633,28 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
     block_id = Keyword.get(overrides, :block_id, current_block) || ""
     account_id = Keyword.get(overrides, :account_id, current_account) || ""
 
-    ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section_id}&block_id=#{block_id}&account_id=#{account_id}"
+    build_path(cohort, course, section_id, block_id, account_id)
+  end
+
+  # `CohortEngagement` is mounted from both `/teaching/cohorts/:id/
+  # engagement/...` (academic) and `/teaching/teams/:id/engagement/...`
+  # (team) routes, so every link/patch built here must stay on whichever
+  # side the loaded `@cohort.type` belongs to. Each pair of clauses below
+  # keeps the exact same query-string shape as before the split (rather
+  # than a single generic helper that would reorder params via keyword-list
+  # encoding) so existing deep-links/tests keep matching byte-for-byte.
+  defp cohort_show_path(%{type: :team, id: id}), do: ~p"/teaching/teams/#{id}"
+  defp cohort_show_path(%{id: id}), do: ~p"/teaching/cohorts/#{id}"
+
+  defp back_to_cohort_label(%{type: :team}), do: gettext("Back to Team")
+  defp back_to_cohort_label(_cohort), do: gettext("Back to Cohort")
+
+  defp build_path(%{type: :team, id: id}, course, section_id, block_id, account_id) do
+    ~p"/teaching/teams/#{id}/engagement/#{course.id}?section_id=#{section_id}&block_id=#{block_id}&account_id=#{account_id}"
+  end
+
+  defp build_path(%{id: id}, course, section_id, block_id, account_id) do
+    ~p"/teaching/cohorts/#{id}/engagement/#{course.id}?section_id=#{section_id}&block_id=#{block_id}&account_id=#{account_id}"
   end
 
   defp path_context(%{assigns: assigns}), do: path_context(assigns)
@@ -732,7 +753,15 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
 
   defp radar_path(assigns_or_socket, window) do
     {cohort, course, _section, _block, _account} = path_context(assigns_or_socket)
-    ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?view=students&window=#{window}"
+    radar_path(cohort, course, window)
+  end
+
+  defp radar_path(%{type: :team, id: id}, course, window) do
+    ~p"/teaching/teams/#{id}/engagement/#{course.id}?view=students&window=#{window}"
+  end
+
+  defp radar_path(%{id: id}, course, window) do
+    ~p"/teaching/cohorts/#{id}/engagement/#{course.id}?view=students&window=#{window}"
   end
 
   # A dedicated path helper (not routed through `build_path/2`) so changing
@@ -745,8 +774,15 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
   # view, not the block detail view.
   defp course_charts_path(assigns_or_socket, window) do
     {cohort, course, section_id, _block, account_id} = path_context(assigns_or_socket)
+    course_charts_path(cohort, course, section_id, account_id, window)
+  end
 
-    ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section_id || ""}&account_id=#{account_id || ""}&course_window=#{window}"
+  defp course_charts_path(%{type: :team, id: id}, course, section_id, account_id, window) do
+    ~p"/teaching/teams/#{id}/engagement/#{course.id}?section_id=#{section_id || ""}&account_id=#{account_id || ""}&course_window=#{window}"
+  end
+
+  defp course_charts_path(%{id: id}, course, section_id, account_id, window) do
+    ~p"/teaching/cohorts/#{id}/engagement/#{course.id}?section_id=#{section_id || ""}&account_id=#{account_id || ""}&course_window=#{window}"
   end
 
   defp refresh_course_charts(socket) do
@@ -805,8 +841,14 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
 
   defp content_view_path(assigns_or_socket) do
     {cohort, course, _section, _block, _account} = path_context(assigns_or_socket)
-    ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}"
+    content_view_path(cohort, course)
   end
+
+  defp content_view_path(%{type: :team, id: id}, course),
+    do: ~p"/teaching/teams/#{id}/engagement/#{course.id}"
+
+  defp content_view_path(%{id: id}, course),
+    do: ~p"/teaching/cohorts/#{id}/engagement/#{course.id}"
 
   # Deep-links a "Student radar" row straight into the existing "Course
   # radar" block detail view, pre-filtered to this student and already

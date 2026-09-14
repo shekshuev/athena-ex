@@ -202,11 +202,15 @@ defmodule Athena.Learning.Cohorts do
 
   @doc """
   (2b) Can a user add students, assign courses, and change overrides?
-  Requires: "cohorts.update" permission (either owner or co-instructor).
+  Requires the "update" permission for the cohort's own kind - "teams.update"
+  for a `:team` cohort, "cohorts.update" for an `:academic` one - either as
+  owner or co-instructor.
   """
   def can_manage_cohort_processes?(user, cohort) do
-    if Identity.can?(user, "cohorts.update") do
-      if Identity.can?(user, "cohorts.update", cohort) do
+    permission = update_permission(cohort)
+
+    if Identity.can?(user, permission) do
+      if Identity.can?(user, permission, cohort) do
         true
       else
         co_instructor?(user, cohort)
@@ -218,11 +222,15 @@ defmodule Athena.Learning.Cohorts do
 
   @doc """
   (2a) Can a user simply view the cohort and schedule?
-  Requires: "cohorts.read" permission (either owner or co-instructor).
+  Requires the "read" permission for the cohort's own kind - "teams.read"
+  for a `:team` cohort, "cohorts.read" for an `:academic` one - either as
+  owner or co-instructor.
   """
   def can_view_cohort_processes?(user, cohort) do
-    if Identity.can?(user, "cohorts.read") do
-      if Identity.can?(user, "cohorts.read", cohort) do
+    permission = read_permission(cohort)
+
+    if Identity.can?(user, permission) do
+      if Identity.can?(user, permission, cohort) do
         true
       else
         co_instructor?(user, cohort)
@@ -231,6 +239,14 @@ defmodule Athena.Learning.Cohorts do
       false
     end
   end
+
+  @doc false
+  def read_permission(%Cohort{type: :team}), do: "teams.read"
+  def read_permission(%Cohort{}), do: "cohorts.read"
+
+  @doc false
+  def update_permission(%Cohort{type: :team}), do: "teams.update"
+  def update_permission(%Cohort{}), do: "cohorts.update"
 
   @doc false
   defp co_instructor?(user, cohort) do
@@ -244,9 +260,27 @@ defmodule Athena.Learning.Cohorts do
   end
 
   @doc false
+  # Academic cohorts and team cohorts are gated by separate permissions
+  # ("cohorts.read"/"teams.read"), each with its own independent "own_only"
+  # policy - a user can hold either, both, or neither, so the visible set is
+  # the union of whichever per-type conditions actually apply, not a single
+  # permission check for the whole query.
   defp scope_cohort_reads(query, user) do
-    if Identity.can?(user, "cohorts.read") do
-      policies = Map.get(user.role.policies || %{}, "cohorts.read", [])
+    conditions =
+      [{"cohorts.read", :academic}, {"teams.read", :team}]
+      |> Enum.map(fn {permission, type} -> cohort_type_condition(user, permission, type) end)
+      |> Enum.reject(&is_nil/1)
+
+    case conditions do
+      [] -> from c in query, where: false
+      [condition] -> from c in query, where: ^condition
+      [condition_1, condition_2] -> from c in query, where: ^dynamic(^condition_1 or ^condition_2)
+    end
+  end
+
+  defp cohort_type_condition(user, permission, type) do
+    if Identity.can?(user, permission) do
+      policies = Map.get(user.role.policies || %{}, permission, [])
 
       if "own_only" in policies do
         instructor_cohort_ids =
@@ -256,13 +290,14 @@ defmodule Athena.Learning.Cohorts do
             where: i.owner_id == ^user.id,
             select: ci.cohort_id
 
-        from c in query,
-          where: c.owner_id == ^user.id or c.id in subquery(instructor_cohort_ids)
+        dynamic(
+          [c],
+          c.type == ^type and
+            (c.owner_id == ^user.id or c.id in subquery(instructor_cohort_ids))
+        )
       else
-        query
+        dynamic([c], c.type == ^type)
       end
-    else
-      from c in query, where: false
     end
   end
 

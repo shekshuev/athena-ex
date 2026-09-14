@@ -1,10 +1,15 @@
 defmodule AthenaWeb.TeachingLive.CohortDetails do
   @moduledoc """
-  LiveView for viewing a specific cohort and managing its students and courses.
+  LiveView for viewing a specific cohort/team and managing its students/members and courses.
 
   Displays cohort metadata, a list of assigned courses (enrollments), and a
   paginated list of students (memberships). Integrates with slide-over components
   for adding new students and assigning courses.
+
+  Shared by both `/teaching/cohorts/:id` (academic cohorts) and
+  `/teaching/teams/:id` (competition teams) - same schema and context calls,
+  the loaded `@cohort.type` just switches which base path and which copy
+  ("Cohort"/"Team", "Student"/"Member") is used.
   """
   use AthenaWeb, :live_view
 
@@ -12,7 +17,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   alias AthenaWeb.TeachingLive.MembershipFormComponent
   alias AthenaWeb.TeachingLive.EnrollmentFormComponent
 
-  on_mount {AthenaWeb.Hooks.Permission, "cohorts.read"}
+  on_mount {AthenaWeb.Hooks.Permission, ["cohorts.read", "teams.read"]}
 
   @doc """
   Initializes the LiveView by fetching the cohort and its non-paginated enrollments.
@@ -24,17 +29,21 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
 
     case Learning.get_cohort(user, id) do
       {:ok, cohort} ->
-        {:ok, {enrollments, _meta}} =
-          Learning.list_cohort_enrollments(user, id, %{"page_size" => 50})
+        if Learning.can_view_cohort_processes?(user, cohort) do
+          {:ok, {enrollments, _meta}} =
+            Learning.list_cohort_enrollments(user, id, %{"page_size" => 50})
 
-        {:ok,
-         socket
-         |> assign(:cohort, cohort)
-         |> assign(:membership_to_delete, nil)
-         |> assign(:enrollment_to_delete, nil)
-         |> assign(:enrollments_count, length(enrollments))
-         |> stream(:memberships, [])
-         |> stream(:enrollments, enrollments)}
+          {:ok,
+           socket
+           |> assign(:cohort, cohort)
+           |> assign(:membership_to_delete, nil)
+           |> assign(:enrollment_to_delete, nil)
+           |> assign(:enrollments_count, length(enrollments))
+           |> stream(:memberships, [])
+           |> stream(:enrollments, enrollments)}
+        else
+          {:ok, push_navigate(socket, to: index_path(cohort))}
+        end
 
       {:error, :not_found} ->
         {:ok, push_navigate(socket, to: ~p"/teaching/cohorts")}
@@ -61,7 +70,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         {:noreply, socket}
 
       {:error, _meta} ->
-        {:noreply, push_patch(socket, to: ~p"/teaching/cohorts/#{socket.assigns.cohort.id}")}
+        {:noreply, push_patch(socket, to: show_path(socket.assigns.cohort, %{}))}
     end
   end
 
@@ -70,22 +79,36 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   end
 
   defp apply_action(socket, :add_student, _params) do
-    if Learning.can_manage_cohort_processes?(socket.assigns.current_user, socket.assigns.cohort) do
-      assign(socket, page_title: gettext("Add Student to Cohort"))
+    cohort = socket.assigns.cohort
+
+    if Learning.can_manage_cohort_processes?(socket.assigns.current_user, cohort) do
+      title =
+        if cohort.type == :team,
+          do: gettext("Add Member to Team"),
+          else: gettext("Add Student to Cohort")
+
+      assign(socket, page_title: title)
     else
       socket
       |> put_flash(:error, gettext("You don't have permission to add students."))
-      |> push_patch(to: ~p"/teaching/cohorts/#{socket.assigns.cohort.id}")
+      |> push_patch(to: show_path(cohort, %{}))
     end
   end
 
   defp apply_action(socket, :enroll_course, _params) do
-    if Learning.can_manage_cohort_processes?(socket.assigns.current_user, socket.assigns.cohort) do
-      assign(socket, page_title: gettext("Assign Course to Cohort"))
+    cohort = socket.assigns.cohort
+
+    if Learning.can_manage_cohort_processes?(socket.assigns.current_user, cohort) do
+      title =
+        if cohort.type == :team,
+          do: gettext("Assign Course to Team"),
+          else: gettext("Assign Course to Cohort")
+
+      assign(socket, page_title: title)
     else
       socket
       |> put_flash(:error, gettext("Permission denied."))
-      |> push_patch(to: ~p"/teaching/cohorts/#{socket.assigns.cohort.id}")
+      |> push_patch(to: show_path(cohort, %{}))
     end
   end
 
@@ -98,8 +121,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   def handle_event("update_page_size", %{"page_size" => size}, socket) do
     params = build_query_params(socket.assigns, %{"page_size" => size, "page" => 1})
 
-    {:noreply,
-     push_patch(socket, to: ~p"/teaching/cohorts/#{socket.assigns.cohort.id}?#{params}")}
+    {:noreply, push_patch(socket, to: show_path(socket.assigns.cohort, params))}
   end
 
   def handle_event("delete_click", %{"id" => id}, socket) do
@@ -189,13 +211,15 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
     ~H"""
     <div class="space-y-8">
       <div class="flex items-center gap-4">
-        <.button navigate={~p"/teaching/cohorts"} class="btn btn-circle btn-ghost btn-sm">
+        <.button navigate={index_path(@cohort)} class="btn btn-circle btn-ghost btn-sm">
           <.icon name="hero-arrow-left" class="size-5" />
         </.button>
         <div>
           <h1 class="text-2xl font-display font-bold text-base-content">{@cohort.name}</h1>
           <p class="text-base-content/60 text-sm">
-            {gettext("Cohort Dashboard")}
+            {if @cohort.type == :team,
+              do: gettext("Team Dashboard"),
+              else: gettext("Cohort Dashboard")}
           </p>
         </div>
       </div>
@@ -207,7 +231,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
             do: @cohort.description,
             else: "—"}
         </:item>
-        <:item title={gettext("Instructors")}>
+        <:item title={if @cohort.type == :team, do: gettext("Coaches"), else: gettext("Instructors")}>
           <div class="flex flex-wrap gap-2">
             <%= if @cohort.instructors == [] do %>
               <span class="italic opacity-50">{gettext("None assigned")}</span>
@@ -229,9 +253,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
             :if={Learning.can_manage_cohort_processes?(@current_user, @cohort)}
             variant="primary"
             size="sm"
-            patch={
-              ~p"/teaching/cohorts/#{@cohort.id}/enroll_course?#{build_query_params(assigns, %{})}"
-            }
+            patch={enroll_course_path(@cohort, build_query_params(assigns, %{}))}
           >
             <.icon name="hero-book-open" class="size-4" />
             {gettext("Assign Course")}
@@ -261,7 +283,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
                 variant="ghost"
                 size="xs"
                 class="text-primary hover:bg-primary/10"
-                navigate={~p"/teaching/cohorts/#{@cohort.id}/access/#{enrollment.course.id}"}
+                navigate={access_path(@cohort, enrollment.course.id)}
               >
                 <.icon name="hero-key" class="size-4" />
                 <span class="hidden sm:inline">{gettext("Access")}</span>
@@ -272,7 +294,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
                 variant="ghost"
                 size="xs"
                 class="text-primary hover:bg-primary/10"
-                navigate={~p"/teaching/cohorts/#{@cohort.id}/engagement/#{enrollment.course.id}"}
+                navigate={engagement_path(@cohort, enrollment.course.id)}
               >
                 <.icon name="hero-chart-bar" class="size-4" />
                 <span class="hidden sm:inline">{gettext("Engagement")}</span>
@@ -300,23 +322,21 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
 
       <div class="space-y-4">
         <div class="flex justify-between items-center">
-          <h2 class="text-xl font-display font-bold">{gettext("Students")}</h2>
+          <h2 class="text-xl font-display font-bold">
+            {if @cohort.type == :team, do: gettext("Members"), else: gettext("Students")}
+          </h2>
           <.button
             :if={Learning.can_manage_cohort_processes?(@current_user, @cohort)}
             variant="primary"
             size="sm"
-            patch={
-              ~p"/teaching/cohorts/#{@cohort.id}/add_student?#{build_query_params(assigns, %{})}"
-            }
+            patch={add_student_path(@cohort, build_query_params(assigns, %{}))}
           >
             <.icon name="hero-user-plus" class="size-4" />
-            {gettext("Add Student")}
+            {if @cohort.type == :team, do: gettext("Add Member"), else: gettext("Add Student")}
           </.button>
         </div>
 
-        <% path_fn = fn overrides ->
-          ~p"/teaching/cohorts/#{@cohort.id}?#{build_query_params(assigns, overrides)}"
-        end %>
+        <% path_fn = fn overrides -> show_path(@cohort, build_query_params(assigns, overrides)) end %>
 
         <.table id="memberships" rows={@streams.memberships} meta={@meta} path_fn={path_fn}>
           <:col :let={{_id, membership}} label={gettext("Login")}>
@@ -345,7 +365,9 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         <.empty_state
           :if={@meta.total_count == 0}
           icon="hero-users"
-          title={gettext("No students yet")}
+          title={
+            if @cohort.type == :team, do: gettext("No members yet"), else: gettext("No students yet")
+          }
         />
 
         <div class="flex justify-end">
@@ -357,14 +379,14 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         id="membership-slideover"
         show={@live_action == :add_student}
         title={@page_title}
-        on_close={JS.patch(~p"/teaching/cohorts/#{@cohort.id}?#{build_query_params(assigns, %{})}")}
+        on_close={JS.patch(show_path(@cohort, build_query_params(assigns, %{})))}
       >
         <.live_component
           module={MembershipFormComponent}
           id="new-membership"
           cohort_id={@cohort.id}
           current_user={@current_user}
-          patch={~p"/teaching/cohorts/#{@cohort.id}?#{build_query_params(assigns, %{})}"}
+          patch={show_path(@cohort, build_query_params(assigns, %{}))}
         />
       </.slide_over>
 
@@ -372,14 +394,14 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         id="enrollment-slideover"
         show={@live_action == :enroll_course}
         title={@page_title}
-        on_close={JS.patch(~p"/teaching/cohorts/#{@cohort.id}?#{build_query_params(assigns, %{})}")}
+        on_close={JS.patch(show_path(@cohort, build_query_params(assigns, %{})))}
       >
         <.live_component
           module={EnrollmentFormComponent}
           id="new-enrollment"
           cohort_id={@cohort.id}
           current_user={@current_user}
-          patch={~p"/teaching/cohorts/#{@cohort.id}?#{build_query_params(assigns, %{})}"}
+          patch={show_path(@cohort, build_query_params(assigns, %{}))}
         />
       </.slide_over>
 
@@ -411,6 +433,38 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
     </div>
     """
   end
+
+  # Type-aware path helpers - `CohortDetails` is mounted from both
+  # `/teaching/cohorts/:id/...` (academic) and `/teaching/teams/:id/...`
+  # (team) routes, so every link/redirect must stay on whichever side the
+  # loaded `@cohort.type` actually belongs to.
+  defp index_path(%{type: :team}), do: ~p"/teaching/teams"
+  defp index_path(_cohort), do: ~p"/teaching/cohorts"
+
+  defp show_path(%{type: :team, id: id}, query), do: ~p"/teaching/teams/#{id}?#{query}"
+  defp show_path(%{id: id}, query), do: ~p"/teaching/cohorts/#{id}?#{query}"
+
+  defp add_student_path(%{type: :team, id: id}, query),
+    do: ~p"/teaching/teams/#{id}/add_student?#{query}"
+
+  defp add_student_path(%{id: id}, query), do: ~p"/teaching/cohorts/#{id}/add_student?#{query}"
+
+  defp enroll_course_path(%{type: :team, id: id}, query),
+    do: ~p"/teaching/teams/#{id}/enroll_course?#{query}"
+
+  defp enroll_course_path(%{id: id}, query),
+    do: ~p"/teaching/cohorts/#{id}/enroll_course?#{query}"
+
+  defp access_path(%{type: :team, id: id}, course_id),
+    do: ~p"/teaching/teams/#{id}/access/#{course_id}"
+
+  defp access_path(%{id: id}, course_id), do: ~p"/teaching/cohorts/#{id}/access/#{course_id}"
+
+  defp engagement_path(%{type: :team, id: id}, course_id),
+    do: ~p"/teaching/teams/#{id}/engagement/#{course_id}"
+
+  defp engagement_path(%{id: id}, course_id),
+    do: ~p"/teaching/cohorts/#{id}/engagement/#{course_id}"
 
   @doc false
   defp build_query_params(assigns, overrides) do

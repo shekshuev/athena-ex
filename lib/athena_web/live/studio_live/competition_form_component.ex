@@ -1,26 +1,19 @@
-defmodule AthenaWeb.StudioLive.CourseFormComponent do
+defmodule AthenaWeb.StudioLive.CompetitionFormComponent do
   @moduledoc """
-  A LiveComponent for creating and editing course metadata.
+  A LiveComponent for creating and editing competition course metadata.
 
-  Handles the form state for the `Athena.Content.Course` schema. 
-  It automatically assigns the current user as the owner when creating 
-  a new course and delegates database operations to the `Athena.Content` context.
+  A `:type == :competition`-fixed sibling of `AthenaWeb.StudioLive.CourseFormComponent`
+  - same `Athena.Content.Course` changeset and `Athena.Content` context calls,
+  just without the type dropdown (a competition is always a competition here).
   """
   use AthenaWeb, :live_component
 
   alias Athena.Content
   alias Athena.Content.Course
 
-  @doc """
-  Initializes the component state.
-
-  Builds the initial `Ecto.Changeset` from an existing course or an empty struct,
-  and fetches available status options for the select dropdown.
-  """
-  @spec update(map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def update(%{course: course} = assigns, socket) do
-    changeset = Course.changeset(%{course | type: :standard}, %{})
+    changeset = Course.changeset(%{course | type: :competition}, %{})
 
     status_options = [
       {gettext("Draft"), :draft},
@@ -35,23 +28,18 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
      |> assign(:status_options, status_options)}
   end
 
-  @doc """
-  Handles UI validation events.
-  """
-  @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
-          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_event("validate", %{"course" => course_params}, socket) do
     changeset =
       socket.assigns.course
-      |> Course.changeset(Map.put(course_params, "type", "standard"))
+      |> Course.changeset(Map.put(course_params, "type", "competition"))
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, form: to_form(changeset))}
   end
 
   def handle_event("save", %{"course" => course_params}, socket) do
-    course_params = Map.put(course_params, "type", "standard")
+    course_params = Map.put(course_params, "type", "competition")
 
     course_params =
       if socket.assigns.action == :new do
@@ -70,7 +58,7 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
 
         {:noreply,
          socket
-         |> put_flash(:info, gettext("Course updated successfully"))
+         |> put_flash(:info, gettext("Competition updated successfully"))
          |> push_patch(to: socket.assigns.patch)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -85,7 +73,7 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
 
         {:noreply,
          socket
-         |> put_flash(:info, gettext("Course created successfully"))
+         |> put_flash(:info, gettext("Competition created successfully"))
          |> push_patch(to: socket.assigns.patch)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -101,7 +89,7 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
     <div class="h-full flex flex-col">
       <.form
         for={@form}
-        id="course-form"
+        id="competition-form"
         phx-target={@myself}
         phx-change="validate"
         phx-submit="save"
@@ -109,22 +97,22 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
       >
         <div class="flex-1 overflow-y-auto p-6 space-y-6">
           <div class="divider text-xs font-bold uppercase text-base-content/50">
-            {gettext("Course Settings")}
+            {gettext("Competition Settings")}
           </div>
 
           <.input
             field={@form[:title]}
             type="text"
             label={gettext("Title")}
-            placeholder={gettext("e.g. Advanced Elixir Mastery")}
+            placeholder={gettext("e.g. Regional Programming Competition 2026")}
             required
           />
 
           <.input
             field={@form[:code]}
             type="text"
-            label={gettext("Course Code")}
-            placeholder={gettext("e.g. DB-2026, MA-09.05.01-2025-Весна")}
+            label={gettext("Competition Code")}
+            placeholder={gettext("e.g. OLYMP-2026")}
             required={false}
           />
 
@@ -132,7 +120,7 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
             field={@form[:description]}
             type="textarea"
             label={gettext("Description")}
-            placeholder={gettext("Briefly describe what students will learn...")}
+            placeholder={gettext("Briefly describe the competition...")}
             rows="4"
           />
 

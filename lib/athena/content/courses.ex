@@ -21,6 +21,19 @@ defmodule Athena.Content.Courses do
   end
 
   @doc """
+  Every published competition course - deliberately unscoped by user
+  permissions, since a competition's leaderboard is public to any signed-in
+  student (see `AthenaWeb.LearnLive.Leaderboard`), and this is what feeds
+  the "cheer for any team" ticker on the student dashboard.
+  """
+  @spec list_public_competitions() :: [Course.t()]
+  def list_public_competitions do
+    Course
+    |> where([c], c.type == :competition and c.status == :published and is_nil(c.deleted_at))
+    |> Repo.all()
+  end
+
+  @doc """
   Retrieves a list of course IDs accessible to the user.
   Useful for cross-context authorization (e.g., in Learning context).
   """
@@ -100,7 +113,7 @@ defmodule Athena.Content.Courses do
   @spec soft_delete_course(map(), Course.t()) ::
           {:ok, Course.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def soft_delete_course(user, %Course{} = course) do
-    if Identity.can?(user, "courses.delete", course) do
+    if Identity.can?(user, delete_permission(course), course) do
       course
       |> Ecto.Changeset.change(%{deleted_at: DateTime.utc_now(:second)})
       |> Repo.update()
@@ -202,10 +215,12 @@ defmodule Athena.Content.Courses do
   Checks whether the user can edit the course (owner or has the writer role).
   """
   def can_edit_course?(user, course) do
-    if Identity.can?(user, "courses.update", course) do
+    permission = update_permission(course)
+
+    if Identity.can?(user, permission, course) do
       true
     else
-      if Identity.can?(user, "courses.update") do
+      if Identity.can?(user, permission) do
         Repo.exists?(
           from cs in CourseShare,
             where: cs.course_id == ^course.id and cs.account_id == ^user.id and cs.role == :writer
@@ -218,13 +233,43 @@ defmodule Athena.Content.Courses do
 
   @doc false
   defp can_manage_course?(user, course) do
-    Identity.can?(user, "courses.update", course)
+    Identity.can?(user, update_permission(course), course)
   end
 
   @doc false
+  def read_permission(%Course{type: :competition}), do: "competitions.read"
+  def read_permission(%Course{}), do: "courses.read"
+
+  @doc false
+  def update_permission(%Course{type: :competition}), do: "competitions.update"
+  def update_permission(%Course{}), do: "courses.update"
+
+  @doc false
+  def delete_permission(%Course{type: :competition}), do: "competitions.delete"
+  def delete_permission(%Course{}), do: "courses.delete"
+
+  @doc false
+  # Regular courses and competitions are gated by separate permissions
+  # ("courses.read"/"competitions.read"), each with its own independent
+  # "own_only" policy - a user can hold either, both, or neither, so the
+  # visible set is the union of whichever per-type conditions actually
+  # apply, not a single permission check for the whole query.
   defp scope_course_reads(query, user) do
-    if Identity.can?(user, "courses.read") do
-      policies = Map.get(user.role.policies || %{}, "courses.read", [])
+    conditions =
+      [{"courses.read", :standard}, {"competitions.read", :competition}]
+      |> Enum.map(fn {permission, type} -> course_type_condition(user, permission, type) end)
+      |> Enum.reject(&is_nil/1)
+
+    case conditions do
+      [] -> from c in query, where: false
+      [condition] -> from c in query, where: ^condition
+      [condition_1, condition_2] -> from c in query, where: ^dynamic(^condition_1 or ^condition_2)
+    end
+  end
+
+  defp course_type_condition(user, permission, type) do
+    if Identity.can?(user, permission) do
+      policies = Map.get(user.role.policies || %{}, permission, [])
 
       if "own_only" in policies do
         shared_course_ids =
@@ -232,16 +277,14 @@ defmodule Athena.Content.Courses do
             where: cs.account_id == ^user.id,
             select: cs.course_id
 
-        from c in query,
-          where:
-            c.owner_id == ^user.id or
-              c.is_public == true or
-              c.id in subquery(shared_course_ids)
+        dynamic(
+          [c],
+          c.type == ^type and
+            (c.owner_id == ^user.id or c.is_public == true or c.id in subquery(shared_course_ids))
+        )
       else
-        query
+        dynamic([c], c.type == ^type)
       end
-    else
-      from c in query, where: false
     end
   end
 

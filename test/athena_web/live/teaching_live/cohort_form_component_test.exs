@@ -58,8 +58,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponentTest do
       |> form("#cohort-form", %{
         "cohort" => %{
           "name" => "Backend Dev Bootcamp",
-          "description" => "Intensive Elixir course",
-          "type" => "team"
+          "description" => "Intensive Elixir course"
         }
       })
       |> render_submit()
@@ -75,7 +74,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponentTest do
 
       assert cohort.name == "Backend Dev Bootcamp"
       assert cohort.description == "Intensive Elixir course"
-      assert cohort.type == :team
+      assert cohort.type == :academic
 
       assert length(cohort.instructors) == 1
       assert hd(cohort.instructors).id == instructor.id
@@ -105,8 +104,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponentTest do
       lv
       |> form("#cohort-form", %{
         "cohort" => %{
-          "name" => "Updated Cohort Name",
-          "type" => "academic"
+          "name" => "Updated Cohort Name"
         }
       })
       |> render_submit()

@@ -1,7 +1,11 @@
 defmodule AthenaWeb.AccountLive.Profile do
   @moduledoc """
-  Self-service account page: personal info, avatar, password, and (once
-  gamification lands) a personal "Achievements" tab.
+  Account page: `/me` (or `/profile/:id` with the viewer's own id) shows the
+  full self-service view - personal info, avatar, password, and an
+  "Achievements" tab. `/profile/:id` for anyone else shows the same
+  "Achievements" tab plus a read-only identity card (avatar, login, full
+  name) - no edit forms, since those always act on the *viewer's* own
+  account regardless of which profile page they're open on.
   """
   use AthenaWeb, :live_view
 
@@ -50,25 +54,49 @@ defmodule AthenaWeb.AccountLive.Profile do
   end
 
   @impl true
-  def mount(_params, _session, socket) do
-    account = socket.assigns.current_user
-    profile = account.profile || %Profile{}
+  def mount(params, _session, socket) do
+    current_user = socket.assigns.current_user
+    target_id = params["id"] || current_user.id
 
-    socket =
-      socket
-      |> assign(:profile_form, to_form(Profile.changeset(profile, %{}), as: "profile"))
-      |> assign(
-        :password_form,
-        to_form(PasswordForm.changeset(%PasswordForm{}, %{}), as: "password")
-      )
-      |> allow_upload(:avatar,
-        accept: ~w(.jpg .jpeg .png .gif .webp),
-        max_entries: 1,
-        max_file_size: 5 * 1024 * 1024,
-        external: &presign_avatar/2
-      )
+    case resolve_target(current_user, target_id) do
+      {:ok, target} ->
+        own_profile? = target.id == current_user.id
+        profile = current_user.profile || %Profile{}
 
-    {:ok, socket}
+        socket =
+          socket
+          |> assign(:target, target)
+          |> assign(:own_profile?, own_profile?)
+          |> assign(:profile_form, to_form(Profile.changeset(profile, %{}), as: "profile"))
+          |> assign(
+            :password_form,
+            to_form(PasswordForm.changeset(%PasswordForm{}, %{}), as: "password")
+          )
+          |> allow_upload(:avatar,
+            accept: ~w(.jpg .jpeg .png .gif .webp),
+            max_entries: 1,
+            max_file_size: 5 * 1024 * 1024,
+            external: &presign_avatar/2
+          )
+
+        {:ok, socket}
+
+      :error ->
+        {:ok,
+         socket
+         |> put_flash(:error, gettext("Account not found."))
+         |> push_navigate(to: ~p"/dashboard")}
+    end
+  end
+
+  defp resolve_target(current_user, target_id) when target_id == current_user.id,
+    do: {:ok, current_user}
+
+  defp resolve_target(_current_user, target_id) do
+    case Identity.get_account(target_id, preload: [:profile]) do
+      {:ok, account} -> {:ok, account}
+      {:error, :not_found} -> :error
+    end
   end
 
   @impl true
@@ -77,7 +105,7 @@ defmodule AthenaWeb.AccountLive.Profile do
 
     socket =
       if tab == "achievements" do
-        assign_achievements(socket)
+        assign_achievements(socket, socket.assigns.target)
       else
         socket
       end
@@ -85,8 +113,7 @@ defmodule AthenaWeb.AccountLive.Profile do
     {:noreply, assign(socket, :tab, tab)}
   end
 
-  defp assign_achievements(socket) do
-    account = socket.assigns.current_user
+  defp assign_achievements(socket, account) do
     total_xp = Gamification.total_xp(account.id)
     level = Gamification.level_for_xp(total_xp)
     streak = Gamification.streak(account.id)
@@ -97,11 +124,17 @@ defmodule AthenaWeb.AccountLive.Profile do
     |> assign(:level, level)
     |> assign(:streak, streak)
     |> assign(:awards, awards)
-    |> assign(:league, league_widget_data(account))
+    |> assign(:league, league_widget_data(account, socket.assigns.current_user.id))
     |> assign(:show_in_league, show_in_league?(account))
   end
 
-  defp league_widget_data(account) do
+  # `account` is whose league standing we're showing (the profile we're
+  # on); `viewer_id` is who's actually looking. Passing the real viewer
+  # into `visible_standings/2` (rather than always `account.id`) matters
+  # precisely when they differ - it's what makes an opted-out `account`'s
+  # row stay hidden from a stranger's view while still centering the
+  # "sandwich" on the actual viewer's own rank when they share a cohort.
+  defp league_widget_data(account, viewer_id) do
     enrollments = Learning.list_student_enrollments(account.id)
 
     case Enum.find(enrollments, &(&1.cohort_id && &1.cohort.type == :academic)) do
@@ -109,7 +142,7 @@ defmodule AthenaWeb.AccountLive.Profile do
         nil
 
       enrollment ->
-        standings = Gamification.visible_standings(enrollment.cohort_id, account.id)
+        standings = Gamification.visible_standings(enrollment.cohort_id, viewer_id)
         accounts = Identity.get_accounts_map(Enum.map(standings, & &1.account_id))
 
         standings =
@@ -181,8 +214,9 @@ defmodule AthenaWeb.AccountLive.Profile do
         {:noreply,
          socket
          |> assign(:current_user, updated_account)
+         |> assign(:target, updated_account)
          |> assign(:show_in_league, show_in_league?(updated_account))
-         |> assign(:league, league_widget_data(updated_account))}
+         |> assign(:league, league_widget_data(updated_account, updated_account.id))}
 
       {:error, _changeset} ->
         {:noreply, socket}
@@ -308,16 +342,18 @@ defmodule AthenaWeb.AccountLive.Profile do
     <div class="max-w-4xl mx-auto space-y-6">
       <div>
         <h1 class="text-3xl font-display font-black uppercase tracking-tight text-base-content">
-          {gettext("My Account")}
+          {if @own_profile?, do: gettext("My Account"), else: Identity.display_name(@target)}
         </h1>
         <p class="text-base-content/60 font-medium mt-1">
-          {gettext("Manage your personal information, avatar, and security settings.")}
+          {if @own_profile?,
+            do: gettext("Manage your personal information, avatar, and security settings."),
+            else: "@#{@target.login}"}
         </p>
       </div>
 
       <div role="tablist" class="tabs tabs-lift">
         <.link
-          patch={~p"/me?tab=profile"}
+          patch={~p"/profile/#{@target.id}?tab=profile"}
           role="tab"
           class={["tab font-bold", @tab == "profile" && "tab-active"]}
           id="profile-tab-link"
@@ -325,7 +361,7 @@ defmodule AthenaWeb.AccountLive.Profile do
           {gettext("Profile")}
         </.link>
         <.link
-          patch={~p"/me?tab=achievements"}
+          patch={~p"/profile/#{@target.id}?tab=achievements"}
           role="tab"
           class={["tab font-bold", @tab == "achievements" && "tab-active"]}
           id="achievements-tab-link"
@@ -334,7 +370,26 @@ defmodule AthenaWeb.AccountLive.Profile do
         </.link>
       </div>
 
-      <div :if={@tab == "profile"} class="space-y-6">
+      <div :if={@tab == "profile" and !@own_profile?} class="space-y-6">
+        <div class="card bg-base-100 border border-base-300 rounded-sm">
+          <div class="card-body flex-row items-center gap-6">
+            <.avatar
+              src={@target.profile && @target.profile.avatar_url}
+              initials={initials(@target.login)}
+              alt={gettext("Avatar")}
+              size="w-16"
+            />
+            <div class="min-w-0">
+              <div class="font-display font-black text-xl truncate">
+                {Identity.display_name(@target)}
+              </div>
+              <div class="text-sm font-mono text-base-content/50">@{@target.login}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div :if={@tab == "profile" and @own_profile?} class="space-y-6">
         <div class="card bg-base-100 border border-base-300 rounded-sm">
           <div class="card-body">
             <h2 class="font-display font-black uppercase text-sm text-base-content/70 mb-4">
@@ -572,7 +627,7 @@ defmodule AthenaWeb.AccountLive.Profile do
               <h2 class="font-display font-black uppercase text-sm text-base-content/70">
                 {gettext("Weekly League")}
               </h2>
-              <label class="flex items-center gap-2 cursor-pointer">
+              <label :if={@own_profile?} class="flex items-center gap-2 cursor-pointer">
                 <span class="text-xs text-base-content/60">
                   {gettext("Show me to others in the league")}
                 </span>
@@ -586,7 +641,9 @@ defmodule AthenaWeb.AccountLive.Profile do
             </div>
 
             <div :if={!@league} class="text-base-content/50 text-sm">
-              {gettext("Join an academic cohort to see a weekly league here.")}
+              {if @own_profile?,
+                do: gettext("Join an academic cohort to see a weekly league here."),
+                else: gettext("No weekly league to show here.")}
             </div>
 
             <div :if={@league}>
@@ -596,7 +653,7 @@ defmodule AthenaWeb.AccountLive.Profile do
                   :for={entry <- @league.standings}
                   class={[
                     "flex items-center justify-between px-3 py-2 rounded-sm text-sm",
-                    entry.account_id == @current_user.id && "bg-primary/10 font-bold",
+                    entry.account_id == @target.id && "bg-primary/10 font-bold",
                     entry.tier == :top && "border-l-4 border-warning"
                   ]}
                 >

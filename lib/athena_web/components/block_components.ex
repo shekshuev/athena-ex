@@ -125,9 +125,15 @@ defmodule AthenaWeb.BlockComponents do
     <%= if @block.content["url"] do %>
       <figure class="m-0">
         <img
+          id={"image-#{@mode}-#{@block.id}"}
+          phx-hook="ImageZoomTracker"
+          data-block-id={@block.id}
           src={@block.content["url"]}
           alt={@block.content["alt"]}
-          class="rounded-sm w-full object-cover border border-base-200"
+          class={[
+            "rounded-sm w-full object-cover border border-base-200",
+            @mode in [:play, :review] && "js-lightbox-img cursor-zoom-in"
+          ]}
         />
       </figure>
     <% else %>
