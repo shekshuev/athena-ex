@@ -83,6 +83,16 @@
           </.link>
         </li>
         <li>
+          <.link navigate={~p"/announcements"} class="flex items-center">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-megaphone" class="size-6 shrink-0" />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                {gettext("Announcements")}
+              </span>
+            </div>
+          </.link>
+        </li>
+        <li>
           <.link navigate={~p"/messenger"} class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <.icon name="hero-chat-bubble-left-right" class="size-6 shrink-0" />
@@ -226,6 +236,7 @@
         "users.read",
         "roles.read",
         "files.read",
+        "announcements.read",
         "settings.read",
         "gamification.read"
       ]) do %>
@@ -271,6 +282,19 @@
                 <.icon name="hero-server" class="size-6 shrink-0" />
                 <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
                   {gettext("Files")}
+                </span>
+              </div>
+            </.link>
+          </li>
+          <li :if={Identity.can?(@current_user, "announcements.read")}>
+            <.link
+              navigate={~p"/admin/announcements"}
+              class="flex items-center hover:bg-error/10 hover:text-error"
+            >
+              <div class="flex items-center gap-2">
+                <.icon name="hero-megaphone" class="size-6 shrink-0" />
+                <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                  {gettext("Announcements")}
                 </span>
               </div>
             </.link>

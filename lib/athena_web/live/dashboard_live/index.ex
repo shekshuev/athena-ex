@@ -13,7 +13,7 @@ defmodule AthenaWeb.DashboardLive.Index do
   """
   use AthenaWeb, :live_view
 
-  alias Athena.{Learning, Content, Identity, Gamification}
+  alias Athena.{Learning, Content, Identity, Gamification, Announcements}
   alias Athena.Learning.Instructor
 
   @max_dashboard_competitions 5
@@ -43,11 +43,14 @@ defmodule AthenaWeb.DashboardLive.Index do
     public_competitions = load_public_competitions()
     if connected?(socket), do: subscribe_to_leaderboards(public_competitions)
 
+    {:ok, {announcements, _meta}} = Announcements.list_for_viewer(account, %{"page_size" => 5})
+
     {:ok,
      socket
      |> assign(:continue, resolve_continue(last_activity, enrollments))
      |> assign(:courses, courses)
      |> assign(:deadlines, deadlines)
+     |> assign(:announcements, announcements)
      |> assign(:daily_challenge, resolve_daily_challenge(account.id))
      |> assign(:teaching, build_teaching_section(account))
      |> assign(:total_xp, total_xp)
@@ -224,6 +227,33 @@ defmodule AthenaWeb.DashboardLive.Index do
             {@streak.current_weeks}
           </span>
         </.link>
+      </div>
+
+      <div :if={@announcements != []} class="card bg-base-100 border border-base-300 rounded-sm">
+        <div class="card-body gap-3">
+          <div class="flex items-center justify-between">
+            <h2 class="font-display font-black uppercase text-sm text-base-content/70 flex items-center gap-2">
+              <.icon name="hero-megaphone" class="size-5 text-primary" />
+              {gettext("Announcements")}
+            </h2>
+            <.button variant="ghost" size="xs" navigate={~p"/announcements"}>
+              {gettext("View all")}
+            </.button>
+          </div>
+
+          <div
+            :for={announcement <- @announcements}
+            class="border-b border-base-200 last:border-0 pb-3 last:pb-0"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-bold truncate">{announcement.title}</div>
+              <.badge tone={if announcement.scope == :global, do: "primary", else: "neutral"}>
+                {if announcement.scope == :global, do: gettext("Global"), else: gettext("Cohort")}
+              </.badge>
+            </div>
+            <p class="text-sm text-base-content/60 line-clamp-2">{announcement.body}</p>
+          </div>
+        </div>
       </div>
 
       <div

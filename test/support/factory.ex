@@ -6,6 +6,7 @@ defmodule Athena.Factory do
 
   alias Athena.Identity.{Account, Role, Profile}
   alias Athena.Media.{File, Quota}
+  alias Athena.Announcements.Announcement
 
   alias Athena.Content.{
     Course,
@@ -54,6 +55,16 @@ defmodule Athena.Factory do
       first_name: "John",
       last_name: sequence(:last_name, &"Doe #{&1}"),
       owner: build(:account)
+    }
+  end
+
+  def announcement_factory do
+    %Announcement{
+      title: sequence(:title, &"Announcement #{&1}"),
+      body: "This is a test announcement.",
+      scope: :global,
+      cohort_id: nil,
+      author_id: Ecto.UUID.generate()
     }
   end
 

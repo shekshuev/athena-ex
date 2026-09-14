@@ -652,4 +652,63 @@ defmodule Athena.Learning.CohortsTest do
       assert {:ok, _} = Messaging.get_conversation(inst2_account, conversation.id)
     end
   end
+
+  describe "list_instructed_cohort_ids/1 and instructor_of_cohort?/2" do
+    test "returns cohort ids where the account is a listed instructor", %{
+      admin: admin,
+      inst1_account: inst1_account,
+      inst1_profile: inst1_profile
+    } do
+      {:ok, cohort} =
+        Cohorts.create_cohort(admin, %{"name" => "Taught", "instructor_ids" => [inst1_profile.id]})
+
+      {:ok, _other} = Cohorts.create_cohort(admin, %{"name" => "Not taught"})
+
+      assert Cohorts.list_instructed_cohort_ids(inst1_account.id) == [cohort.id]
+      assert Cohorts.instructor_of_cohort?(inst1_account.id, cohort.id)
+      refute Cohorts.instructor_of_cohort?(inst1_account.id, Ecto.UUID.generate())
+    end
+
+    test "returns empty for an account with no instructor profile" do
+      assert Cohorts.list_instructed_cohort_ids(Ecto.UUID.generate()) == []
+    end
+  end
+
+  describe "list_member_cohort_ids/1" do
+    test "returns cohort ids the account is a member of" do
+      student = insert(:account)
+      cohort = insert(:cohort)
+      insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
+      insert(:cohort_membership, cohort_id: insert(:cohort).id)
+
+      assert Cohorts.list_member_cohort_ids(student.id) == [cohort.id]
+    end
+
+    test "returns empty for an account with no memberships" do
+      assert Cohorts.list_member_cohort_ids(Ecto.UUID.generate()) == []
+    end
+  end
+
+  describe "list_postable_cohort_options/1" do
+    test "returns every cohort for an admin bypass account", %{admin: admin} do
+      insert_list(2, :cohort)
+
+      options = Cohorts.list_postable_cohort_options(admin)
+
+      assert length(options) == 2
+    end
+
+    test "returns only instructed cohorts for a non-admin account", %{
+      admin: admin,
+      inst1_account: inst1_account,
+      inst1_profile: inst1_profile
+    } do
+      {:ok, cohort} =
+        Cohorts.create_cohort(admin, %{"name" => "Mine", "instructor_ids" => [inst1_profile.id]})
+
+      {:ok, _other} = Cohorts.create_cohort(admin, %{"name" => "Not mine"})
+
+      assert Cohorts.list_postable_cohort_options(inst1_account) == [{cohort.name, cohort.id}]
+    end
+  end
 end

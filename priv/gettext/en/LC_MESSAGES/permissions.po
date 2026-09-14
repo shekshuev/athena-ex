@@ -47,6 +47,9 @@ msgstr "Engagement"
 msgid "files"
 msgstr "Files"
 
+msgid "announcements"
+msgstr "Announcements"
+
 msgid "create"
 msgstr "Create"
 

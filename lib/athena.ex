@@ -28,6 +28,8 @@ defmodule Athena do
       Content.Policy,
       Media,
       Media.Config,
+      Announcements,
+      Announcements.Announcement,
       Learning,
       Learning.Cohort,
       Learning.CohortMembership,
