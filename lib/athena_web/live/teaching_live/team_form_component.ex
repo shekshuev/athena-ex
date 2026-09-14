@@ -1,23 +1,17 @@
-defmodule AthenaWeb.TeachingLive.CohortFormComponent do
+defmodule AthenaWeb.TeachingLive.TeamFormComponent do
   @moduledoc """
-  A LiveComponent for creating and editing cohorts.
+  A LiveComponent for creating and editing competition teams.
 
-  Features a custom multi-select autocomplete for searching and assigning
-  instructors to the cohort. Delegates database operations to the
-  `Athena.Learning` context.
+  A `:type == :team`-fixed sibling of `AthenaWeb.TeachingLive.CohortFormComponent`
+  - same `Athena.Learning.Cohort` changeset and `Athena.Learning` context calls,
+  just without the type dropdown (a team is always a team here) and with
+  "Team"/"Coach" copy instead of "Cohort"/"Instructor".
   """
   use AthenaWeb, :live_component
 
   alias Athena.Learning
   alias Athena.Learning.Cohort
 
-  @doc """
-  Initializes the component state.
-
-  Extracts already assigned instructors (if editing) into a format suitable
-  for the UI badges, and sets up the initial empty search state.
-  """
-  @spec update(map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def update(%{cohort: cohort} = assigns, socket) do
     selected_instructors = extract_instructors(cohort.instructors)
@@ -25,7 +19,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
     cohort_with_ids = %{
       cohort
       | instructor_ids: Enum.map(selected_instructors, & &1.id),
-        type: :academic
+        type: :team
     }
 
     changeset = Cohort.changeset(cohort_with_ids, %{})
@@ -55,12 +49,6 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
     %{id: inst.id, name: "#{gettext("Unknown")} (#{inst.title})"}
   end
 
-  @doc """
-  Handles UI events: searching instructors, selecting/removing them from the list,
-  and validating/saving the form.
-  """
-  @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
-          {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_event("search_instructors", %{"value" => query}, socket) do
     if String.length(query) >= 2 do
@@ -87,7 +75,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
     params =
       current_params
       |> Map.put("instructor_ids", Enum.map(new_selected, & &1.id))
-      |> Map.put("type", "academic")
+      |> Map.put("type", "team")
 
     changeset =
       socket.assigns.cohort
@@ -110,7 +98,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
     params =
       current_params
       |> Map.put("instructor_ids", Enum.map(new_selected, & &1.id))
-      |> Map.put("type", "academic")
+      |> Map.put("type", "team")
 
     changeset =
       socket.assigns.cohort
@@ -126,14 +114,14 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
   def handle_event("validate", %{"cohort" => cohort_params}, socket) do
     changeset =
       socket.assigns.cohort
-      |> Cohort.changeset(Map.put(cohort_params, "type", "academic"))
+      |> Cohort.changeset(Map.put(cohort_params, "type", "team"))
       |> Map.put(:action, :validate)
 
     {:noreply, assign_form(socket, changeset)}
   end
 
   def handle_event("save", %{"cohort" => cohort_params}, socket) do
-    save_cohort(socket, socket.assigns.action, Map.put(cohort_params, "type", "academic"))
+    save_cohort(socket, socket.assigns.action, Map.put(cohort_params, "type", "team"))
   end
 
   @doc false
@@ -144,7 +132,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
 
         {:noreply,
          socket
-         |> put_flash(:info, gettext("Cohort updated successfully"))
+         |> put_flash(:info, gettext("Team updated successfully"))
          |> push_patch(to: socket.assigns.patch)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -153,7 +141,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
       {:error, :forbidden} ->
         {:noreply,
          socket
-         |> put_flash(:error, gettext("You are not authorized to update this cohort"))
+         |> put_flash(:error, gettext("You are not authorized to update this team"))
          |> push_patch(to: socket.assigns.patch)}
     end
   end
@@ -166,7 +154,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
 
         {:noreply,
          socket
-         |> put_flash(:info, gettext("Cohort created successfully"))
+         |> put_flash(:info, gettext("Team created successfully"))
          |> push_patch(to: socket.assigns.patch)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -175,7 +163,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
       {:error, :forbidden} ->
         {:noreply,
          socket
-         |> put_flash(:error, gettext("You are not authorized to create a cohort"))
+         |> put_flash(:error, gettext("You are not authorized to create a team"))
          |> push_patch(to: socket.assigns.patch)}
     end
   end
@@ -194,7 +182,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
     <div>
       <.form
         for={@form}
-        id="cohort-form"
+        id="team-form"
         phx-target={@myself}
         phx-change="validate"
         phx-submit="save"
@@ -203,8 +191,8 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
         <.input
           field={@form[:name]}
           type="text"
-          label={gettext("Cohort Name")}
-          placeholder="e.g. Autumn Bootcamp 2026"
+          label={gettext("Team Name")}
+          placeholder="e.g. Team Rocket"
         />
 
         <.input
@@ -216,7 +204,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
 
         <div class="form-control w-full relative">
           <label class="label">
-            <span class="label-text font-bold">{gettext("Assign Instructors")}</span>
+            <span class="label-text font-bold">{gettext("Assign Coaches")}</span>
           </label>
 
           <input type="hidden" name="cohort[instructor_ids][]" value="" />

@@ -14,7 +14,7 @@ defmodule AthenaWeb.StudioLive.Builder do
   alias Athena.Execution
   alias Athena.Media.Config, as: MediaConfig
 
-  on_mount {AthenaWeb.Hooks.Permission, "courses.read"}
+  on_mount {AthenaWeb.Hooks.Permission, ["courses.read", "competitions.read"]}
 
   @doc """
   Initializes the LiveView, loading the course, its section tree, and blocks
@@ -99,13 +99,13 @@ defmodule AthenaWeb.StudioLive.Builder do
         {:noreply,
          socket
          |> put_flash(:error, gettext("Your access to this course was revoked."))
-         |> push_navigate(to: ~p"/studio/courses")}
+         |> push_navigate(to: courses_index_path(socket.assigns.course))}
 
       _ ->
         {:noreply,
          socket
          |> put_flash(:error, gettext("This course is no longer available."))
-         |> push_navigate(to: ~p"/studio/courses")}
+         |> push_navigate(to: courses_index_path(socket.assigns.course))}
     end
   end
 
@@ -266,10 +266,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   @impl true
   def handle_event("select_section", %{"id" => id}, socket) do
-    {:noreply,
-     push_patch(socket,
-       to: ~p"/studio/courses/#{socket.assigns.course.id}/builder/sections/#{id}"
-     )}
+    {:noreply, push_patch(socket, to: builder_section_path(socket.assigns.course, id))}
   end
 
   def handle_event("add_section", %{"parent_id" => parent_id}, socket) do
@@ -297,7 +294,7 @@ defmodule AthenaWeb.StudioLive.Builder do
              viewing_parent_id: clean_parent_id
            )
            |> put_flash(:info, gettext("Section added"))
-           |> push_patch(to: ~p"/studio/courses/#{course.id}/builder/sections/#{new_section.id}")}
+           |> push_patch(to: builder_section_path(course, new_section.id))}
 
         {:error, _} ->
           {:noreply, put_flash(socket, :error, gettext("Failed to add section"))}
@@ -377,9 +374,9 @@ defmodule AthenaWeb.StudioLive.Builder do
 
       redirect_path =
         if parent_id do
-          ~p"/studio/courses/#{course.id}/builder/sections/#{parent_id}"
+          builder_section_path(course, parent_id)
         else
-          ~p"/studio/courses/#{course.id}/builder"
+          builder_root_path(course)
         end
 
       {:noreply,
@@ -433,7 +430,7 @@ defmodule AthenaWeb.StudioLive.Builder do
       {:noreply,
        socket
        |> assign(quick_nav_open: false)
-       |> push_patch(to: ~p"/studio/courses/#{socket.assigns.course.id}/builder/sections/#{id}")}
+       |> push_patch(to: builder_section_path(socket.assigns.course, id))}
     else
       {:noreply, assign(socket, quick_nav_open: false)}
     end
@@ -487,8 +484,7 @@ defmodule AthenaWeb.StudioLive.Builder do
     else
       {:noreply,
        push_patch(socket,
-         to:
-           ~p"/studio/courses/#{socket.assigns.course.id}/builder/sections/#{socket.assigns.active_section_id}/blocks/#{id}"
+         to: builder_block_path(socket.assigns.course, socket.assigns.active_section_id, id)
        )}
     end
   end
@@ -497,8 +493,7 @@ defmodule AthenaWeb.StudioLive.Builder do
   def handle_event("deselect_block", _, socket) do
     {:noreply,
      push_patch(socket,
-       to:
-         ~p"/studio/courses/#{socket.assigns.course.id}/builder/sections/#{socket.assigns.active_section_id}"
+       to: builder_section_path(socket.assigns.course, socket.assigns.active_section_id)
      )}
   end
 
@@ -1069,9 +1064,7 @@ defmodule AthenaWeb.StudioLive.Builder do
        socket
        |> put_flash(:info, gettext("Block deleted"))
        |> assign(blocks: updated_blocks, block_to_delete: nil)
-       |> push_patch(
-         to: ~p"/studio/courses/#{course.id}/builder/sections/#{socket.assigns.active_section_id}"
-       )}
+       |> push_patch(to: builder_section_path(course, socket.assigns.active_section_id))}
     else
       {:noreply, socket}
     end
@@ -1340,8 +1333,7 @@ defmodule AthenaWeb.StudioLive.Builder do
            )
            |> put_flash(:info, gettext("Block inserted from library!"))
            |> push_patch(
-             to:
-               ~p"/studio/courses/#{course.id}/builder/sections/#{socket.assigns.active_section_id}/blocks/#{block.id}"
+             to: builder_block_path(course, socket.assigns.active_section_id, block.id)
            )}
 
         {:error, _} ->
@@ -1928,7 +1920,10 @@ defmodule AthenaWeb.StudioLive.Builder do
             "The Course Builder requires a desktop or tablet screen to work comfortably. Please open this page on a larger device."
           )}
         </p>
-        <.link navigate={~p"/studio/courses"} class="btn btn-primary mt-4 w-full min-h-12 h-12">
+        <.link
+          navigate={courses_index_path(@course)}
+          class="btn btn-primary mt-4 w-full min-h-12 h-12"
+        >
           {gettext("Back to Courses")}
         </.link>
       </div>
@@ -2070,7 +2065,11 @@ defmodule AthenaWeb.StudioLive.Builder do
          |> assign(blocks: updated_blocks)
          |> push_patch(
            to:
-             ~p"/studio/courses/#{socket.assigns.course.id}/builder/sections/#{socket.assigns.active_section_id}/blocks/#{block.id}"
+             builder_block_path(
+               socket.assigns.course,
+               socket.assigns.active_section_id,
+               block.id
+             )
          )}
 
       {:error, _} ->
@@ -2296,11 +2295,35 @@ defmodule AthenaWeb.StudioLive.Builder do
     cond do
       course.owner_id == user.id -> :owner
       share = Enum.find(shares, &(&1.account_id == user.id)) -> share.role
-      Identity.can?(user, "courses.update", course) -> :owner
+      Identity.can?(user, Content.update_permission(course), course) -> :owner
       course.is_public -> :reader
       true -> :none
     end
   end
+
+  # `Builder` is mounted from both `/studio/courses/:id/builder/...`
+  # (regular courses) and `/studio/competitions/:id/builder/...`
+  # (competitions), so every redirect/patch built here must stay on
+  # whichever side the loaded `@course.type` belongs to.
+  defp courses_index_path(%{type: :competition}), do: ~p"/studio/competitions"
+  defp courses_index_path(_course), do: ~p"/studio/courses"
+
+  defp builder_root_path(%{type: :competition, id: id}),
+    do: ~p"/studio/competitions/#{id}/builder"
+
+  defp builder_root_path(%{id: id}), do: ~p"/studio/courses/#{id}/builder"
+
+  defp builder_section_path(%{type: :competition, id: id}, section_id),
+    do: ~p"/studio/competitions/#{id}/builder/sections/#{section_id}"
+
+  defp builder_section_path(%{id: id}, section_id),
+    do: ~p"/studio/courses/#{id}/builder/sections/#{section_id}"
+
+  defp builder_block_path(%{type: :competition, id: id}, section_id, block_id),
+    do: ~p"/studio/competitions/#{id}/builder/sections/#{section_id}/blocks/#{block_id}"
+
+  defp builder_block_path(%{id: id}, section_id, block_id),
+    do: ~p"/studio/courses/#{id}/builder/sections/#{section_id}/blocks/#{block_id}"
 
   defp can_edit?(socket), do: socket.assigns.role in [:owner, :writer]
 

@@ -51,8 +51,7 @@ defmodule AthenaWeb.StudioLive.CourseFormComponentTest do
         "course" => %{
           "title" => "Phoenix LiveView Mastery",
           "description" => "Learn how to build interactive apps.",
-          "status" => "draft",
-          "type" => "competition"
+          "status" => "draft"
         }
       })
       |> render_submit()
@@ -69,7 +68,7 @@ defmodule AthenaWeb.StudioLive.CourseFormComponentTest do
       assert course.title == "Phoenix LiveView Mastery"
       assert course.description == "Learn how to build interactive apps."
       assert course.status == :draft
-      assert course.type == :competition
+      assert course.type == :standard
       assert course.owner_id == current_user.id
 
       assert render(lv) =~ "Course created successfully"
@@ -85,8 +84,7 @@ defmodule AthenaWeb.StudioLive.CourseFormComponentTest do
       |> form("#course-form", %{
         "course" => %{
           "title" => "Updated Course Title",
-          "status" => "published",
-          "type" => "standard"
+          "status" => "published"
         }
       })
       |> render_submit()

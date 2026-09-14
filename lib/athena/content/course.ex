@@ -17,7 +17,7 @@ defmodule Athena.Content.Course do
 
   @derive {
     Flop.Schema,
-    filterable: [:title, :status, :owner_id, :code],
+    filterable: [:title, :status, :owner_id, :code, :type],
     sortable: [:title, :status, :code, :inserted_at],
     default_limit: 10,
     default_order: %{

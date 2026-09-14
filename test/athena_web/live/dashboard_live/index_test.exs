@@ -208,7 +208,59 @@ defmodule AthenaWeb.DashboardLive.IndexTest do
 
       assert html =~ "Level 1"
       assert html =~ "15 XP"
-      assert has_element?(lv, ~s{a[href="/me?tab=achievements"]})
+      assert has_element?(lv, ~s{a[href="/profile/#{account.id}?tab=achievements"]})
+    end
+
+    test "does not show the Competitions widget when there are no active public competitions",
+         %{conn: conn} do
+      account = insert(:account)
+      conn = init_test_session(conn, %{"account_id" => account.id})
+
+      {:ok, _lv, html} = live(conn, ~p"/dashboard")
+
+      refute html =~ "Competitions"
+    end
+
+    test "shows any published competition, with its leading team, even one the viewer isn't enrolled in",
+         %{conn: conn} do
+      account = insert(:account)
+      competition = insert(:course, type: :competition, status: :published)
+      team = insert(:cohort, name: "The Outsiders", type: :team)
+      insert(:enrollment, course_id: competition.id, cohort_id: team.id)
+
+      section = insert(:section, course: competition)
+      block = insert(:block, section: section)
+      insert(:submission, block_id: block.id, cohort_id: team.id, score: 42, status: :graded)
+
+      conn = init_test_session(conn, %{"account_id" => account.id})
+      {:ok, lv, html} = live(conn, ~p"/dashboard")
+
+      assert html =~ "Competitions"
+      assert html =~ competition.title
+      assert html =~ "The Outsiders"
+      assert html =~ "42"
+      assert has_element?(lv, ~s{a[href="/learn/courses/#{competition.id}/leaderboard"]})
+    end
+
+    test "the ticker updates in real time on a leaderboard PubSub broadcast", %{conn: conn} do
+      account = insert(:account)
+      competition = insert(:course, type: :competition, status: :published)
+      team = insert(:cohort, name: "Latecomers", type: :team)
+      insert(:enrollment, course_id: competition.id, cohort_id: team.id)
+
+      section = insert(:section, course: competition)
+      block = insert(:block, section: section)
+
+      conn = init_test_session(conn, %{"account_id" => account.id})
+      {:ok, lv, html} = live(conn, ~p"/dashboard")
+
+      assert html =~ "Latecomers"
+      refute html =~ "777"
+
+      insert(:submission, block_id: block.id, cohort_id: team.id, score: 777, status: :graded)
+      send(lv.pid, :update_leaderboard)
+
+      assert render(lv) =~ "777"
     end
   end
 end

@@ -397,7 +397,11 @@ Hooks.TiptapEditor = {
       }),
       ResizableImage.configure({
         inline: false,
-        HTMLAttributes: { class: "rounded-sm my-4 mx-auto" },
+        HTMLAttributes: {
+          class: readOnlyMode
+            ? "rounded-sm my-4 mx-auto js-lightbox-img cursor-zoom-in"
+            : "rounded-sm my-4 mx-auto",
+        },
       }),
       Dialogue,
       DialogueLine.configure({
@@ -1002,6 +1006,28 @@ Hooks.TiptapEditor = {
       }
     };
     document.addEventListener("click", this.handleGlobalClick);
+
+    // Reserved `image_zoom` telemetry (see `Athena.Engagement.Event`) for
+    // the lightbox opened by app.js's document-level click listener on
+    // `.js-lightbox-img` - only these read-only-rendered images carry that
+    // class (see the `ResizableImage` config above), so this never fires in
+    // the editable Builder/Library views.
+    this.handleImageZoom = (e) => {
+      const img = e.target.closest(".js-lightbox-img");
+      if (!img || !isReadOnly || !engagementTrackingActive()) return;
+
+      hook.pushEvent("engagement_batch", {
+        events: [
+          {
+            block_id: blockId,
+            event_type: "image_zoom",
+            payload: {},
+            occurred_at: new Date().toISOString(),
+          },
+        ],
+      });
+    };
+    this.el.addEventListener("click", this.handleImageZoom);
   },
 
   destroyed() {
@@ -1017,6 +1043,7 @@ Hooks.TiptapEditor = {
     }
 
     document.removeEventListener("click", this.handleGlobalClick);
+    this.el.removeEventListener("click", this.handleImageZoom);
   },
 };
 
@@ -1145,6 +1172,25 @@ Uploaders.S3 = function (entries, onViewError) {
     xhr.send(entry.file);
   });
 };
+
+// Click-to-preview lightbox for read-only content images (block-based
+// `:image` blocks and read-only TipTap-rendered images alike, both marked
+// with `.js-lightbox-img`). A single document-level delegated listener
+// rather than a per-hook one, since TipTap's own images live inside a
+// `phx-update="ignore"` container LiveView never re-scans, and delegation
+// means new images (patched in later) work without re-attaching anything.
+document.addEventListener("click", (e) => {
+  const img = e.target.closest(".js-lightbox-img");
+  if (!img) return;
+
+  const lightbox = document.getElementById("lightbox");
+  const lightboxImg = document.getElementById("lightbox-img");
+  if (!lightbox || !lightboxImg) return;
+
+  lightboxImg.src = img.currentSrc || img.src;
+  lightboxImg.alt = img.alt || "";
+  lightbox.showModal();
+});
 
 // Scrolls the open thread either to the bottom (new message just sent/
 // received) or to the "new messages" divider (just opened a conversation

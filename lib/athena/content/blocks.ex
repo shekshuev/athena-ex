@@ -292,19 +292,9 @@ defmodule Athena.Content.Blocks do
   defp can_edit_course?(_user, "library"), do: true
 
   defp can_edit_course?(user, course_id) do
-    has_acl =
-      Course
-      |> where([c], c.id == ^course_id and is_nil(c.deleted_at))
-      |> Identity.scope_query(user, "courses.update")
-      |> Repo.exists?()
-
-    if has_acl do
-      true
-    else
-      Repo.exists?(
-        from cs in Athena.Content.CourseShare,
-          where: cs.course_id == ^course_id and cs.account_id == ^user.id and cs.role == :writer
-      )
+    case Repo.get(Course, course_id) do
+      %Course{deleted_at: nil} = course -> Athena.Content.Courses.can_edit_course?(user, course)
+      _ -> false
     end
   end
 

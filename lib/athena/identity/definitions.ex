@@ -11,6 +11,8 @@ defmodule Athena.Identity.Definitions do
   engagement.create engagement.read engagement.update engagement.delete
   instructors.create instructors.read instructors.update instructors.delete
   cohorts.create cohorts.read cohorts.update cohorts.delete
+  teams.create teams.read teams.update teams.delete
+  competitions.create competitions.read competitions.update competitions.delete
   settings.read settings.update
   gamification.create gamification.read gamification.update gamification.delete
   files.read files.create files.delete

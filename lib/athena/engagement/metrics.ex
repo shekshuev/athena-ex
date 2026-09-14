@@ -213,10 +213,11 @@ defmodule Athena.Engagement.Metrics do
   def student_radar(cohort_id, course_id, opts \\ []) do
     since = Keyword.get(opts, :since, default_since())
     blocks = radar_blocks(course_id, Keyword.get(opts, :section_id))
+    team_id = team_scope_id(cohort_id)
 
     cohort_id
     |> students_in_cohort()
-    |> Enum.map(&student_radar_row(&1, cohort_id, blocks, since))
+    |> Enum.map(&student_radar_row(&1, cohort_id, team_id, blocks, since))
   end
 
   # The full set of student-level flags from `slacking_flags/2` +
@@ -334,9 +335,8 @@ defmodule Athena.Engagement.Metrics do
   since the question is "is anyone active right now", not "how long did
   they stay". `day_of_week` is `Date.day_of_week/1`'s convention (`1` =
   Monday .. `7` = Sunday); the hour bucket is the UTC hour of `occurred_at`
-  - a known simplification (no per-student timezone data is collected), in
-  the same spirit as `student_radar/3`'s documented individual-vs-team
-  progress simplification. Always returns the full 168-cell grid, zeros
+  - a known simplification (no per-student timezone data is collected).
+  Always returns the full 168-cell grid, zeros
   included, so a chart never has to guess whether a missing cell means "no
   data" or "not computed".
   """
@@ -375,9 +375,9 @@ defmodule Athena.Engagement.Metrics do
   `completed` is only checked among students who opened the section at all
   (anyone who never opened it trivially hasn't completed it either), via
   the same `Athena.Learning.completed_block_ids/3` the Player's waterline
-  and `student_radar/3`'s `progress_percent` already rely on - always with
-  `cohort_id: nil` (individual, not team, completion records), the same
-  documented simplification `progress_percent` already makes.
+  and `student_radar/3`'s `progress_percent` already rely on - resolving to
+  the shared team completion record (not an individual one) when
+  `cohort_id` is a `:team` cohort, via `team_scope_id/1`.
   """
   @spec course_funnel(binary(), binary(), keyword()) :: [
           %{
@@ -390,14 +390,15 @@ defmodule Athena.Engagement.Metrics do
         ]
   def course_funnel(cohort_id, course_id, opts \\ []) do
     since = Keyword.get(opts, :since, default_since())
+    team_id = team_scope_id(cohort_id)
 
     course_id
     |> Content.get_course_tree(:all)
     |> flatten_sections()
-    |> Enum.map(&section_funnel(&1, cohort_id, since))
+    |> Enum.map(&section_funnel(&1, cohort_id, team_id, since))
   end
 
-  defp section_funnel(section, cohort_id, since) do
+  defp section_funnel(section, cohort_id, team_id, since) do
     blocks = Content.list_blocks_by_section(section.id, :all)
     block_ids = Enum.map(blocks, & &1.id)
     events = Events.list_events_for_scope(block_ids, cohort_id, since)
@@ -419,7 +420,7 @@ defmodule Athena.Engagement.Metrics do
 
     completed_count =
       Enum.count(opened, fn account_id ->
-        completed_ids = MapSet.new(Learning.completed_block_ids(account_id, section.id, nil))
+        completed_ids = MapSet.new(Learning.completed_block_ids(account_id, section.id, team_id))
         block_ids != [] and Enum.all?(block_ids, &MapSet.member?(completed_ids, &1))
       end)
 
@@ -531,7 +532,7 @@ defmodule Athena.Engagement.Metrics do
   defp radar_blocks(course_id, nil), do: course_blocks(course_id)
   defp radar_blocks(_course_id, section_id), do: Content.list_blocks_by_section(section_id, :all)
 
-  defp student_radar_row(account_id, cohort_id, blocks, since) do
+  defp student_radar_row(account_id, cohort_id, team_id, blocks, since) do
     flagged_blocks =
       blocks
       |> Enum.map(&student_block_flags(&1, cohort_id, account_id, since))
@@ -550,7 +551,7 @@ defmodule Athena.Engagement.Metrics do
 
     %{
       account_id: account_id,
-      progress_percent: progress_percent(account_id, blocks),
+      progress_percent: progress_percent(account_id, team_id, blocks),
       slacking_index: slacking_index,
       struggling_index: struggling_index,
       status: status,
@@ -582,25 +583,40 @@ defmodule Athena.Engagement.Metrics do
   # Whole-course fact, not a windowed behavior - reuses the same
   # `Athena.Learning.completed_block_ids/3` the Player's own waterline
   # already relies on, one section at a time (the course tree has no flat
-  # "all blocks" progress query). Passes `cohort_id: nil` throughout, i.e.
-  # always resolves individual (not team) completion records - correct for
-  # the September pilot's academic cohorts; a team-cohort course would need
-  # its own `team_id` threaded in here.
-  defp progress_percent(_account_id, []), do: 0.0
+  # "all blocks" progress query). `team_id` (from `team_scope_id/1`) is
+  # `nil` for academic cohorts (individual completion records) and the
+  # cohort id itself for `:team` cohorts, matching the shared completion
+  # records `Athena.Learning.Progress.mark_completed/3` writes.
+  defp progress_percent(_account_id, _team_id, []), do: 0.0
 
-  defp progress_percent(account_id, blocks) do
+  defp progress_percent(account_id, team_id, blocks) do
     block_ids = MapSet.new(blocks, & &1.id)
 
     completed_count =
       blocks
       |> Enum.map(& &1.section_id)
       |> Enum.uniq()
-      |> Enum.flat_map(&Learning.completed_block_ids(account_id, &1, nil))
+      |> Enum.flat_map(&Learning.completed_block_ids(account_id, &1, team_id))
       |> Enum.filter(&MapSet.member?(block_ids, &1))
       |> Enum.uniq()
       |> length()
 
     completed_count / MapSet.size(block_ids) * 100
+  end
+
+  # `cohort_id` is `nil` for a self-paced/no-cohort scope, or an
+  # `:academic` cohort's id (individual completion records either way).
+  # Only a `:team` cohort's completion records are keyed by cohort id
+  # (see `Athena.Learning.Progress.mark_completed/3`), so this is the one
+  # place that decides whether a scope's `cohort_id` should also be used as
+  # the `team_id` passed to `Athena.Learning.completed_block_ids/3`.
+  defp team_scope_id(nil), do: nil
+
+  defp team_scope_id(cohort_id) do
+    case Learning.get_cohorts_map([cohort_id]) do
+      %{^cohort_id => %{type: :team}} -> cohort_id
+      _ -> nil
+    end
   end
 
   defp default_since do

@@ -115,13 +115,74 @@ defmodule AthenaWeb.LearnLive.LeaderboardTest do
       refute html =~ "888"
     end
 
-    test "redirects if user has no access to the course", %{conn: conn} do
-      other_course = insert(:course)
+    test "redirects if the course is not a competition", %{conn: conn} do
+      other_course = insert(:course, type: :standard)
 
       {:error, {:live_redirect, %{to: "/learn", flash: flash}}} =
         live(conn, ~p"/learn/courses/#{other_course.id}/leaderboard")
 
       assert flash["error"] == "Access denied."
+    end
+
+    test "redirects if the competition is not published", %{conn: conn} do
+      draft_competition = insert(:course, type: :competition, status: :draft)
+
+      {:error, {:live_redirect, %{to: "/learn", flash: flash}}} =
+        live(conn, ~p"/learn/courses/#{draft_competition.id}/leaderboard")
+
+      assert flash["error"] == "Access denied."
+    end
+
+    test "any signed-in student can view a published competition's leaderboard, even without enrolling",
+         %{conn: conn} do
+      bystander = insert(:account)
+      bystander_conn = init_test_session(conn, %{"account_id" => bystander.id})
+
+      competition = insert(:course, type: :competition, status: :published)
+      team = insert(:cohort, name: "Underdogs", type: :team)
+      insert(:enrollment, course_id: competition.id, cohort_id: team.id)
+
+      {:ok, _lv, html} = live(bystander_conn, ~p"/learn/courses/#{competition.id}/leaderboard")
+
+      assert html =~ "Underdogs"
+    end
+  end
+
+  describe "Team roster" do
+    test "clicking a team shows its members, linking to their profiles", %{
+      conn: conn,
+      course: course
+    } do
+      member = insert(:account, login: "member_one")
+      insert(:profile, owner: member, first_name: "Ada", last_name: "Lovelace")
+
+      team = insert(:cohort, name: "The Hackers", type: :team)
+      insert(:enrollment, course_id: course.id, cohort_id: team.id)
+      insert(:cohort_membership, account_id: member.id, cohort_id: team.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/leaderboard")
+
+      html =
+        lv
+        |> element("tr[phx-value-team_id='#{team.id}']")
+        |> render_click()
+
+      assert html =~ "The Hackers"
+      assert html =~ "Lovelace Ada"
+      assert has_element?(lv, ~s{a[href="/profile/#{member.id}"]})
+    end
+
+    test "closes the team roster modal", %{conn: conn, course: course} do
+      team = insert(:cohort, name: "Closers", type: :team)
+      insert(:enrollment, course_id: course.id, cohort_id: team.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/leaderboard")
+
+      lv |> element("tr[phx-value-team_id='#{team.id}']") |> render_click()
+      assert has_element?(lv, "#team-roster-modal.modal-open")
+
+      html = lv |> element("#team-roster-modal .modal-backdrop") |> render_click()
+      refute html =~ "modal-open"
     end
   end
 

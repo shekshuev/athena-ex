@@ -75,6 +75,7 @@ defmodule AthenaWeb.Router do
       pipe_through :browser
       live "/dashboard", DashboardLive.Index, :index
       live "/me", AccountLive.Profile, :index
+      live "/profile/:id", AccountLive.Profile, :index
       live "/daily-challenge", LearnLive.DailyChallenge, :index
 
       live "/files", FileLive.Index, :index
@@ -119,6 +120,17 @@ defmodule AthenaWeb.Router do
         live "/courses/:id/builder/sections/:section_id/blocks/:block_id",
              Builder,
              :block
+
+        live "/competitions", Competitions, :index
+        live "/competitions/new", Competitions, :new
+        live "/competitions/:id/edit", Competitions, :edit
+
+        live "/competitions/:id/builder", Builder, :index
+        live "/competitions/:id/builder/sections/:section_id", Builder, :section
+
+        live "/competitions/:id/builder/sections/:section_id/blocks/:block_id",
+             Builder,
+             :block
       end
 
       scope "/teaching", TeachingLive do
@@ -131,6 +143,15 @@ defmodule AthenaWeb.Router do
         live "/cohorts/:id/access/:course_id", CohortAccess, :index
         live "/cohorts/:id/engagement/:course_id", CohortEngagement, :index
         live "/courses/:course_id/engagement/compare", CourseEngagementCompare, :index
+
+        live "/teams", Teams, :index
+        live "/teams/new", Teams, :new
+        live "/teams/:id", CohortDetails, :index
+        live "/teams/:id/add_student", CohortDetails, :add_student
+        live "/teams/:id/enroll_course", CohortDetails, :enroll_course
+        live "/teams/:id/edit", Teams, :edit
+        live "/teams/:id/access/:course_id", CohortAccess, :index
+        live "/teams/:id/engagement/:course_id", CohortEngagement, :index
 
         live "/instructors", Instructors, :index
         live "/instructors/new", Instructors, :new

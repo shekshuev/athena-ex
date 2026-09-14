@@ -37,7 +37,7 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompare do
          |> assign(:selected_cohort_ids, [])
          |> assign(:window, "7")
          |> assign(:chart_config, ChartConfig.radar_config(Engagement.radar_axes(), []))
-         |> assign(:page_title, gettext("Compare cohorts: %{course}", course: course.title))}
+         |> assign(:page_title, compare_title(course))}
 
       {:error, _reason} ->
         {:ok,
@@ -46,6 +46,17 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompare do
          |> push_navigate(to: ~p"/teaching/cohorts")}
     end
   end
+
+  defp cohorts_index_path(%{type: :competition}), do: ~p"/teaching/teams"
+  defp cohorts_index_path(_course), do: ~p"/teaching/cohorts"
+
+  defp compare_title(%{type: :competition} = course),
+    do: gettext("Compare teams: %{course}", course: course.title)
+
+  defp compare_title(course), do: gettext("Compare cohorts: %{course}", course: course.title)
+
+  defp back_label(%{type: :competition}), do: gettext("Back to Teams")
+  defp back_label(_course), do: gettext("Back to Cohorts")
 
   @impl true
   def handle_params(params, _url, socket) do
@@ -91,16 +102,16 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompare do
     ~H"""
     <.page_container size="narrow" class="p-4 sm:p-6 lg:p-8">
       <.link
-        navigate={~p"/teaching/cohorts"}
+        navigate={cohorts_index_path(@course)}
         class="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-base-content/50 hover:text-primary transition-colors mb-4"
       >
         <.icon name="hero-arrow-left" class="size-4" />
-        {gettext("Back to Cohorts")}
+        {back_label(@course)}
       </.link>
 
       <div class="mb-6 flex items-center justify-between gap-4">
         <h1 class="text-2xl font-black truncate">
-          {gettext("Compare cohorts: %{course}", course: @course.title)}
+          {compare_title(@course)}
         </h1>
 
         <form phx-change="change_window">
@@ -114,7 +125,7 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompare do
 
       <div class="bg-base-100 border border-base-200 rounded-sm p-4 mb-6">
         <h2 class="text-xs font-black uppercase tracking-widest text-base-content/50 mb-2">
-          {gettext("Cohorts")}
+          {if @course.type == :competition, do: gettext("Teams"), else: gettext("Cohorts")}
         </h2>
         <div class="flex flex-wrap gap-2">
           <.button
@@ -130,7 +141,11 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompare do
           <.empty_state
             :if={@cohorts == []}
             icon="hero-user-group"
-            title={gettext("No cohorts are enrolled in this course yet.")}
+            title={
+              if @course.type == :competition,
+                do: gettext("No teams are enrolled in this course yet."),
+                else: gettext("No cohorts are enrolled in this course yet.")
+            }
           />
         </div>
       </div>
