@@ -58,28 +58,29 @@ defmodule AthenaWeb.AccountLive.Profile do
     current_user = socket.assigns.current_user
     target_id = params["id"] || current_user.id
 
-    with {:ok, target} <- resolve_target(current_user, target_id) do
-      own_profile? = target.id == current_user.id
-      profile = current_user.profile || %Profile{}
+    case resolve_target(current_user, target_id) do
+      {:ok, target} ->
+        own_profile? = target.id == current_user.id
+        profile = current_user.profile || %Profile{}
 
-      socket =
-        socket
-        |> assign(:target, target)
-        |> assign(:own_profile?, own_profile?)
-        |> assign(:profile_form, to_form(Profile.changeset(profile, %{}), as: "profile"))
-        |> assign(
-          :password_form,
-          to_form(PasswordForm.changeset(%PasswordForm{}, %{}), as: "password")
-        )
-        |> allow_upload(:avatar,
-          accept: ~w(.jpg .jpeg .png .gif .webp),
-          max_entries: 1,
-          max_file_size: 5 * 1024 * 1024,
-          external: &presign_avatar/2
-        )
+        socket =
+          socket
+          |> assign(:target, target)
+          |> assign(:own_profile?, own_profile?)
+          |> assign(:profile_form, to_form(Profile.changeset(profile, %{}), as: "profile"))
+          |> assign(
+            :password_form,
+            to_form(PasswordForm.changeset(%PasswordForm{}, %{}), as: "password")
+          )
+          |> allow_upload(:avatar,
+            accept: ~w(.jpg .jpeg .png .gif .webp),
+            max_entries: 1,
+            max_file_size: 5 * 1024 * 1024,
+            external: &presign_avatar/2
+          )
 
-      {:ok, socket}
-    else
+        {:ok, socket}
+
       :error ->
         {:ok,
          socket
