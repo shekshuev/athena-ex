@@ -104,5 +104,22 @@ defmodule AthenaWeb.AdminLive.RoleFormComponentTest do
 
       refute has_element?(lv, "input[name=\"role[policies][roles.read][]\"]")
     end
+
+    test "does not render policy options for files.update", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/admin/roles/new")
+
+      lv
+      |> form("#role-form", %{
+        "role" => %{
+          "name" => "Storage Manager",
+          "permissions" => ["files.read", "files.update"]
+        }
+      })
+      |> render_change()
+
+      assert has_element?(lv, "input[name=\"role[permissions][]\"][value=\"files.update\"]")
+
+      refute has_element?(lv, "input[name=\"role[policies][files.update][]\"]")
+    end
   end
 end

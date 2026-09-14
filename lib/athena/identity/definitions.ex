@@ -15,7 +15,7 @@ defmodule Athena.Identity.Definitions do
   competitions.create competitions.read competitions.update competitions.delete
   settings.read settings.update
   gamification.create gamification.read gamification.update gamification.delete
-  files.read files.create files.delete
+  files.read files.create files.delete files.update
   system.cache
   admin
   """

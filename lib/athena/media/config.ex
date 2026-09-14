@@ -36,6 +36,16 @@ defmodule Athena.Media.Config do
     }
   end
 
+  def upload_settings("personal") do
+    %{
+      accept:
+        ~w(.pdf .doc .docx .xls .xlsx .ppt .pptx .txt .csv .rtf .zip .rar .7z .tar .gz .mp3 .wav .flac .jpg .jpeg .png .gif .webp .svg .mp4 .mov .webm),
+      max_entries: 20,
+      max_size: 500 * @mb,
+      description: gettext("Docs, archives, images, audio, video (Max 500MB each)")
+    }
+  end
+
   def upload_settings("avatar") do
     %{
       accept: ~w(.jpg .jpeg .png .gif .webp),

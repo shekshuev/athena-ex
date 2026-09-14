@@ -5257,3 +5257,182 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "typing…"
 msgstr ""
+
+#: lib/athena_web/live/file_live/index.ex:82
+#, elixir-autogen, elixir-format
+msgid "File not found."
+msgstr ""
+
+#: lib/athena_web/live/file_live/index.ex:104
+#: lib/athena_web/live/admin_live/files.ex:116
+#, elixir-autogen, elixir-format
+msgid "File deleted successfully"
+msgstr ""
+
+#: lib/athena_web/live/file_live/index.ex:112
+#: lib/athena_web/live/admin_live/files.ex:127
+#, elixir-autogen, elixir-format
+msgid "Failed to delete file"
+msgstr ""
+
+#: lib/athena_web/live/file_live/index.ex:131
+#, elixir-autogen, elixir-format
+msgid "Upload failed"
+msgstr ""
+
+#: lib/athena_web/live/file_live/index.ex:172
+#, elixir-autogen, elixir-format
+msgid "Your storage quota is full"
+msgstr ""
+
+#: lib/athena_web/live/file_live/index.ex:182
+#, elixir-autogen, elixir-format
+msgid "Storage used"
+msgstr ""
+
+#: lib/athena_web/live/file_live/index.ex:207
+#: lib/athena_web/live/admin_live/files.ex:224
+#, elixir-autogen, elixir-format
+msgid "Search files..."
+msgstr ""
+
+#: lib/athena_web/live/file_live/index.ex:235
+#: lib/athena_web/live/admin_live/files.ex:275
+#, elixir-autogen, elixir-format
+msgid "Download"
+msgstr ""
+
+#: lib/athena_web/live/file_live/index.ex:261
+#, elixir-autogen, elixir-format
+msgid "No files yet"
+msgstr ""
+
+#: lib/athena_web/live/file_live/index.ex:262
+#, elixir-autogen, elixir-format
+msgid "Upload your first file to get started."
+msgstr ""
+
+#: lib/athena_web/live/file_live/index.ex:280
+#: lib/athena_web/live/admin_live/files.ex:330
+#, elixir-autogen, elixir-format
+msgid "Delete File"
+msgstr ""
+
+#: lib/athena_web/live/file_live/index.ex:281
+#: lib/athena_web/live/admin_live/files.ex:332
+#, elixir-autogen, elixir-format
+msgid "Are you sure you want to delete this file? This action cannot be undone."
+msgstr ""
+
+#: lib/athena_web/live/admin_live/files.ex:94
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to delete files."
+msgstr ""
+
+#: lib/athena_web/live/admin_live/files.ex:139
+#: lib/athena_web/live/admin_live/files.ex:165
+#, elixir-autogen, elixir-format
+msgid "You don't have permission to edit storage quotas."
+msgstr ""
+
+#: lib/athena_web/live/admin_live/files.ex:155
+#, elixir-autogen, elixir-format
+msgid "Storage quota updated successfully"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/files.ex:160
+#, elixir-autogen, elixir-format
+msgid "Failed to update storage quota"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/files.ex:180
+#, elixir-autogen, elixir-format
+msgid "Storage Quotas by Role"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/files.ex:207
+#, elixir-autogen, elixir-format
+msgid "Edit limit"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/files.ex:236
+#, elixir-autogen, elixir-format
+msgid "All contexts"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/files.ex:258
+#, elixir-autogen, elixir-format
+msgid "Context"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/files.ex:267
+#, elixir-autogen, elixir-format
+msgid "Uploaded At"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/files.ex:293
+#, elixir-autogen, elixir-format
+msgid "No files"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/files.ex:294
+#, elixir-autogen, elixir-format
+msgid "No files match the current filters."
+msgstr ""
+
+#: lib/athena_web/live/admin_live/files.ex:304
+#, elixir-autogen, elixir-format
+msgid "Edit Storage Quota"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/files.ex:314
+#, elixir-autogen, elixir-format
+msgid "Storage limit (MB)"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/files.ex:350
+#, elixir-autogen, elixir-format
+msgid "Personal"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/files.ex:352
+#, elixir-autogen, elixir-format
+msgid "Course Material"
+msgstr ""
+
+#: lib/athena_web/live/admin_live/files.ex:353
+#, elixir-autogen, elixir-format
+msgid "Submission"
+msgstr ""
+
+#: lib/athena_web/live/file_live/personal_upload_component.ex:41
+#, elixir-autogen, elixir-format
+msgid "Not enough storage space remaining"
+msgstr ""
+
+#: lib/athena_web/live/file_live/personal_upload_component.ex:152
+#, elixir-autogen, elixir-format
+msgid "Your storage quota is full. Delete some files to upload more."
+msgstr ""
+
+#: lib/athena/media/config.ex:45
+#, elixir-autogen, elixir-format
+msgid "Docs, archives, images, audio, video (Max 500MB each)"
+msgstr ""
+
+#: lib/athena_web/live/file_live/index.ex:128
+#, elixir-autogen, elixir-format
+msgid "1 file uploaded"
+msgid_plural "%{count} files uploaded"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/athena_web/live/file_live/index.ex:137
+#, elixir-autogen, elixir-format
+msgid "%{ok} uploaded, %{failed} failed"
+msgstr ""
+
+#: lib/athena_web/live/file_live/personal_upload_component.ex:107
+#, elixir-autogen, elixir-format
+msgid "%{remaining} remaining"
+msgstr ""

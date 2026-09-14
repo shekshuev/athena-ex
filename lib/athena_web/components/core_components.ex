@@ -247,6 +247,34 @@ defmodule AthenaWeb.CoreComponents do
   end
 
   @doc """
+  Renders an icon representative of a file's MIME type.
+
+  ## Examples
+
+      <.file_type_icon mime_type="application/pdf" class="size-6" />
+  """
+  attr :mime_type, :string, default: nil
+  attr :class, :any, default: "size-6"
+
+  def file_type_icon(assigns) do
+    ~H"""
+    <.icon name={mime_icon(@mime_type)} class={@class} />
+    """
+  end
+
+  defp mime_icon("image/" <> _), do: "hero-photo"
+  defp mime_icon("video/" <> _), do: "hero-film"
+  defp mime_icon("audio/" <> _), do: "hero-musical-note"
+  defp mime_icon("application/pdf"), do: "hero-document-text"
+  defp mime_icon("text/" <> _), do: "hero-document-text"
+
+  defp mime_icon("application/" <> rest)
+       when rest in ~w(zip x-rar-compressed x-7z-compressed x-tar gzip x-gzip),
+       do: "hero-archive-box"
+
+  defp mime_icon(_), do: "hero-document"
+
+  @doc """
   Renders a circular avatar: the given image when `src` is set, otherwise a
   colored circle with centered initials. One shared implementation instead
   of each call site hand-rolling the daisyUI placeholder markup — which
