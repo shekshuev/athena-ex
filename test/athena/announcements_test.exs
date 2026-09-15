@@ -48,7 +48,7 @@ defmodule Athena.AnnouncementsTest do
       assert {:ok, %Announcement{scope: :global}} =
                Announcements.create_announcement(admin, %{
                  "title" => "Global news",
-                 "body" => "Hello everyone",
+                 "body" => tiptap_doc("Hello everyone"),
                  "scope" => "global"
                })
     end
@@ -60,7 +60,7 @@ defmodule Athena.AnnouncementsTest do
       assert {:ok, %Announcement{scope: :cohort, cohort_id: cohort_id}} =
                Announcements.create_announcement(admin, %{
                  "title" => "Cohort news",
-                 "body" => "Hello cohort",
+                 "body" => tiptap_doc("Hello cohort"),
                  "scope" => "cohort",
                  "cohort_id" => other_cohort.id
                })
@@ -75,7 +75,7 @@ defmodule Athena.AnnouncementsTest do
       assert {:ok, %Announcement{}} =
                Announcements.create_announcement(instructor_account, %{
                  "title" => "My cohort news",
-                 "body" => "Hello",
+                 "body" => tiptap_doc("Hello"),
                  "scope" => "cohort",
                  "cohort_id" => my_cohort.id
                })
@@ -88,7 +88,7 @@ defmodule Athena.AnnouncementsTest do
       assert {:error, :forbidden} =
                Announcements.create_announcement(instructor_account, %{
                  "title" => "Not mine",
-                 "body" => "Hello",
+                 "body" => tiptap_doc("Hello"),
                  "scope" => "cohort",
                  "cohort_id" => other_cohort.id
                })
@@ -100,7 +100,7 @@ defmodule Athena.AnnouncementsTest do
       assert {:error, :forbidden} =
                Announcements.create_announcement(instructor_account, %{
                  "title" => "Global attempt",
-                 "body" => "Hello",
+                 "body" => tiptap_doc("Hello"),
                  "scope" => "global"
                })
     end
@@ -112,7 +112,7 @@ defmodule Athena.AnnouncementsTest do
       assert {:error, :forbidden} =
                Announcements.create_announcement(no_perms_account, %{
                  "title" => "Nope",
-                 "body" => "Hello",
+                 "body" => tiptap_doc("Hello"),
                  "scope" => "cohort",
                  "cohort_id" => my_cohort.id
                })
@@ -127,7 +127,7 @@ defmodule Athena.AnnouncementsTest do
       {:ok, announcement} =
         Announcements.create_announcement(instructor_account, %{
           "title" => "Mine",
-          "body" => "Hello",
+          "body" => tiptap_doc("Hello"),
           "scope" => "cohort",
           "cohort_id" => my_cohort.id
         })
@@ -147,7 +147,7 @@ defmodule Athena.AnnouncementsTest do
       {:ok, announcement} =
         Announcements.create_announcement(instructor_account, %{
           "title" => "Mine",
-          "body" => "Hello",
+          "body" => tiptap_doc("Hello"),
           "scope" => "cohort",
           "cohort_id" => my_cohort.id
         })
@@ -165,7 +165,7 @@ defmodule Athena.AnnouncementsTest do
       {:ok, announcement} =
         Announcements.create_announcement(instructor_account, %{
           "title" => "Mine",
-          "body" => "Hello",
+          "body" => tiptap_doc("Hello"),
           "scope" => "cohort",
           "cohort_id" => my_cohort.id
         })
@@ -185,7 +185,7 @@ defmodule Athena.AnnouncementsTest do
       {:ok, announcement} =
         Announcements.create_announcement(instructor_account, %{
           "title" => "Mine",
-          "body" => "Hello",
+          "body" => tiptap_doc("Hello"),
           "scope" => "cohort",
           "cohort_id" => my_cohort.id
         })
@@ -201,7 +201,7 @@ defmodule Athena.AnnouncementsTest do
       {:ok, announcement} =
         Announcements.create_announcement(admin, %{
           "title" => "Not mine",
-          "body" => "Hello",
+          "body" => tiptap_doc("Hello"),
           "scope" => "cohort",
           "cohort_id" => other_cohort.id
         })
@@ -223,14 +223,14 @@ defmodule Athena.AnnouncementsTest do
       {:ok, global} =
         Announcements.create_announcement(admin, %{
           "title" => "Global",
-          "body" => "Hi",
+          "body" => tiptap_doc("Hi"),
           "scope" => "global"
         })
 
       {:ok, mine} =
         Announcements.create_announcement(admin, %{
           "title" => "Mine",
-          "body" => "Hi",
+          "body" => tiptap_doc("Hi"),
           "scope" => "cohort",
           "cohort_id" => my_cohort.id
         })
@@ -238,7 +238,7 @@ defmodule Athena.AnnouncementsTest do
       {:ok, _other} =
         Announcements.create_announcement(admin, %{
           "title" => "Other",
-          "body" => "Hi",
+          "body" => tiptap_doc("Hi"),
           "scope" => "cohort",
           "cohort_id" => other_cohort.id
         })
@@ -255,7 +255,7 @@ defmodule Athena.AnnouncementsTest do
       for i <- 1..7 do
         Announcements.create_announcement(admin, %{
           "title" => "Global #{i}",
-          "body" => "Hi",
+          "body" => tiptap_doc("Hi"),
           "scope" => "global"
         })
       end
@@ -265,6 +265,71 @@ defmodule Athena.AnnouncementsTest do
 
       assert length(announcements) == 5
       assert meta.total_count == 7
+    end
+
+    test "hides an announcement before its starts_at and after its ends_at", %{admin: admin} do
+      student = insert(:account)
+      now = DateTime.utc_now()
+
+      {:ok, not_yet} =
+        Announcements.create_announcement(admin, %{
+          "title" => "Not yet",
+          "body" => tiptap_doc("Hi"),
+          "scope" => "global",
+          "starts_at" => DateTime.add(now, 3600, :second)
+        })
+
+      {:ok, expired} =
+        Announcements.create_announcement(admin, %{
+          "title" => "Expired",
+          "body" => tiptap_doc("Hi"),
+          "scope" => "global",
+          "ends_at" => DateTime.add(now, -3600, :second)
+        })
+
+      {:ok, active} =
+        Announcements.create_announcement(admin, %{
+          "title" => "Active",
+          "body" => tiptap_doc("Hi"),
+          "scope" => "global",
+          "starts_at" => DateTime.add(now, -3600, :second),
+          "ends_at" => DateTime.add(now, 3600, :second)
+        })
+
+      {:ok, {announcements, meta}} = Announcements.list_for_viewer(student, %{})
+
+      ids = Enum.map(announcements, & &1.id)
+      assert meta.total_count == 1
+      assert active.id in ids
+      refute not_yet.id in ids
+      refute expired.id in ids
+    end
+
+    test "shows an announcement with no starts_at/ends_at immediately and indefinitely", %{
+      admin: admin
+    } do
+      student = insert(:account)
+
+      {:ok, announcement} =
+        Announcements.create_announcement(admin, %{
+          "title" => "No window",
+          "body" => tiptap_doc("Hi"),
+          "scope" => "global"
+        })
+
+      {:ok, {announcements, _meta}} = Announcements.list_for_viewer(student, %{})
+      assert Enum.any?(announcements, &(&1.id == announcement.id))
+    end
+  end
+
+  describe "preview_text/1" do
+    test "extracts plain text from a TipTap document" do
+      body = tiptap_doc("Hello world")
+      assert Announcements.preview_text(body) == "Hello world"
+    end
+
+    test "returns an empty string for non-map input" do
+      assert Announcements.preview_text(nil) == ""
     end
   end
 
@@ -277,14 +342,14 @@ defmodule Athena.AnnouncementsTest do
       {:ok, _} =
         Announcements.create_announcement(admin, %{
           "title" => "Global",
-          "body" => "Hi",
+          "body" => tiptap_doc("Hi"),
           "scope" => "global"
         })
 
       {:ok, _} =
         Announcements.create_announcement(admin, %{
           "title" => "Mine",
-          "body" => "Hi",
+          "body" => tiptap_doc("Hi"),
           "scope" => "cohort",
           "cohort_id" => my_cohort.id
         })
@@ -292,7 +357,7 @@ defmodule Athena.AnnouncementsTest do
       {:ok, _} =
         Announcements.create_announcement(admin, %{
           "title" => "Other",
-          "body" => "Hi",
+          "body" => tiptap_doc("Hi"),
           "scope" => "cohort",
           "cohort_id" => other_cohort.id
         })
@@ -310,14 +375,14 @@ defmodule Athena.AnnouncementsTest do
       {:ok, global} =
         Announcements.create_announcement(admin, %{
           "title" => "Global",
-          "body" => "Hi",
+          "body" => tiptap_doc("Hi"),
           "scope" => "global"
         })
 
       {:ok, mine} =
         Announcements.create_announcement(instructor_account, %{
           "title" => "Mine",
-          "body" => "Hi",
+          "body" => tiptap_doc("Hi"),
           "scope" => "cohort",
           "cohort_id" => my_cohort.id
         })
@@ -325,7 +390,7 @@ defmodule Athena.AnnouncementsTest do
       {:ok, _other} =
         Announcements.create_announcement(admin, %{
           "title" => "Other",
-          "body" => "Hi",
+          "body" => tiptap_doc("Hi"),
           "scope" => "cohort",
           "cohort_id" => other_cohort.id
         })
@@ -345,7 +410,7 @@ defmodule Athena.AnnouncementsTest do
       {:ok, _} =
         Announcements.create_announcement(admin, %{
           "title" => "Global",
-          "body" => "Hi",
+          "body" => tiptap_doc("Hi"),
           "scope" => "global"
         })
 

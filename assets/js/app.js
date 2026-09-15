@@ -1087,10 +1087,52 @@ Hooks.Sidebar = {
       attributes: true,
       attributeFilter: ["class"],
     });
+
+    // Navigating between top-level LiveViews (Dashboard -> Files ->
+    // Announcements, etc.) fully remounts this layout — `mounted()` fires
+    // again on every such navigation (not on same-page `push_patch`es like
+    // search/pagination) — so both of the below only need to run once here.
+    this.highlightActiveLink();
+
+    const nav = this.el.querySelector("nav");
+    if (nav) {
+      const savedScroll = sessionStorage.getItem("sidebar-nav-scroll");
+      if (savedScroll) nav.scrollTop = parseInt(savedScroll, 10);
+
+      this.saveScroll = () => {
+        sessionStorage.setItem("sidebar-nav-scroll", nav.scrollTop);
+      };
+      nav.addEventListener("scroll", this.saveScroll);
+    }
+  },
+  highlightActiveLink() {
+    const links = this.el.querySelectorAll("nav a[href]");
+    const currentPath = window.location.pathname;
+    let bestMatch = null;
+    let bestLength = -1;
+
+    links.forEach((link) => {
+      link.classList.remove("menu-active");
+      const linkPath = new URL(link.href, window.location.origin).pathname;
+      const matches =
+        currentPath === linkPath || currentPath.startsWith(`${linkPath}/`);
+
+      if (matches && linkPath.length > bestLength) {
+        bestMatch = link;
+        bestLength = linkPath.length;
+      }
+    });
+
+    if (bestMatch) bestMatch.classList.add("menu-active");
   },
   destroyed() {
     if (this.observer) {
       this.observer.disconnect();
+    }
+
+    const nav = this.el.querySelector("nav");
+    if (nav && this.saveScroll) {
+      nav.removeEventListener("scroll", this.saveScroll);
     }
   },
 };

@@ -689,26 +689,43 @@ defmodule Athena.Learning.CohortsTest do
     end
   end
 
-  describe "list_postable_cohort_options/1" do
-    test "returns every cohort for an admin bypass account", %{admin: admin} do
-      insert_list(2, :cohort)
+  describe "search_postable_cohorts/2" do
+    test "returns matching cohorts for an admin bypass account regardless of instructorship", %{
+      admin: admin
+    } do
+      insert(:cohort, name: "Autumn Bootcamp")
+      insert(:cohort, name: "Spring Bootcamp")
+      insert(:cohort, name: "Unrelated Group")
 
-      options = Cohorts.list_postable_cohort_options(admin)
+      results = Cohorts.search_postable_cohorts(admin, "bootcamp")
 
-      assert length(options) == 2
+      assert length(results) == 2
+      assert Enum.all?(results, &(&1.name =~ "Bootcamp"))
     end
 
-    test "returns only instructed cohorts for a non-admin account", %{
+    test "returns only instructed cohorts matching the query for a non-admin account", %{
       admin: admin,
       inst1_account: inst1_account,
       inst1_profile: inst1_profile
     } do
       {:ok, cohort} =
-        Cohorts.create_cohort(admin, %{"name" => "Mine", "instructor_ids" => [inst1_profile.id]})
+        Cohorts.create_cohort(admin, %{
+          "name" => "Mine Bootcamp",
+          "instructor_ids" => [inst1_profile.id]
+        })
 
-      {:ok, _other} = Cohorts.create_cohort(admin, %{"name" => "Not mine"})
+      {:ok, _other} = Cohorts.create_cohort(admin, %{"name" => "Not Mine Bootcamp"})
 
-      assert Cohorts.list_postable_cohort_options(inst1_account) == [{cohort.name, cohort.id}]
+      assert [found] = Cohorts.search_postable_cohorts(inst1_account, "bootcamp")
+      assert found.id == cohort.id
+    end
+
+    test "caps results at 10" do
+      role = insert(:role, permissions: ["admin"])
+      admin = insert(:account, role: role)
+      insert_list(12, :cohort, name: "Matching Cohort")
+
+      assert length(Cohorts.search_postable_cohorts(admin, "matching")) == 10
     end
   end
 end

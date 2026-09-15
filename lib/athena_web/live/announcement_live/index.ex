@@ -57,16 +57,35 @@ defmodule AthenaWeb.AnnouncementLive.Index do
         <div
           :for={{dom_id, a} <- @streams.announcements}
           id={dom_id}
-          class="bg-base-100 border border-base-300 rounded-lg p-5 space-y-2"
+          class={[
+            "bg-base-100 border rounded-lg p-5 space-y-2",
+            if(a.important, do: "border-2 border-warning", else: "border-base-300")
+          ]}
         >
           <div class="flex items-start justify-between gap-4">
-            <h3 class="font-display font-bold text-lg text-base-content">{a.title}</h3>
-            <.badge tone={if a.scope == :global, do: "primary", else: "neutral"} class="shrink-0">
+            <h3 class="font-display font-bold text-lg text-base-content flex items-center gap-2">
+              <.icon
+                :if={a.important}
+                name="hero-exclamation-triangle-solid"
+                class="size-5 text-warning shrink-0"
+              />
+              {a.title}
+            </h3>
+            <.badge tone={if a.scope == :global, do: "primary", else: "info"} class="shrink-0">
               {if a.scope == :global, do: gettext("Global"), else: cohort_name(@cohorts, a.cohort_id)}
             </.badge>
           </div>
           <p class="text-sm text-base-content/50">{Calendar.strftime(a.inserted_at, "%d.%m.%Y")}</p>
-          <p class="text-base-content/80 whitespace-pre-wrap">{a.body}</p>
+          <div
+            id={"tiptap-view-#{a.id}"}
+            phx-hook="TiptapEditor"
+            data-id={a.id}
+            data-readonly="true"
+            phx-update="ignore"
+            data-content={Jason.encode!(a.body)}
+            class="prose prose-sm sm:prose-base max-w-none text-base-content/80"
+          >
+          </div>
         </div>
       </div>
 
@@ -87,7 +106,8 @@ defmodule AthenaWeb.AnnouncementLive.Index do
   defp cohort_name(cohorts, cohort_id) do
     case Map.get(cohorts, cohort_id) do
       nil -> "—"
-      cohort -> cohort.name
+      %{name: name, type: :team} -> "#{gettext("Team")}: #{name}"
+      %{name: name} -> "#{gettext("Cohort")}: #{name}"
     end
   end
 

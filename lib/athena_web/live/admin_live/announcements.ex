@@ -6,15 +6,13 @@ defmodule AthenaWeb.AdminLive.Announcements do
   An "admin"-bypass account sees every announcement; any other account
   holding `announcements.read` sees only global announcements plus
   announcements for cohorts they instruct (enforced in
-  `Athena.Announcements.list_for_admin/2`, not re-derived here). Handles
-  deletion and integrates with `AnnouncementFormComponent` for creating
-  and editing announcements via a slide-over.
+  `Athena.Announcements.list_for_admin/2`, not re-derived here). Create/edit
+  is a full standalone page (`AnnouncementForm`, not a slide-over — TipTap
+  needs the room); this LiveView only lists and deletes.
   """
   use AthenaWeb, :live_view
 
   alias Athena.{Announcements, Identity, Learning}
-  alias Athena.Announcements.Announcement
-  alias AthenaWeb.AdminLive.AnnouncementFormComponent
 
   on_mount {AthenaWeb.Hooks.Permission, "announcements.read"}
 
@@ -22,7 +20,7 @@ defmodule AthenaWeb.AdminLive.Announcements do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(announcement_to_delete: nil)
+     |> assign(page_title: gettext("Announcements"), announcement_to_delete: nil)
      |> stream(:announcements, [])}
   end
 
@@ -51,49 +49,13 @@ defmodule AthenaWeb.AdminLive.Announcements do
           |> Enum.uniq()
           |> Learning.get_cohorts_map()
 
-        socket =
-          socket
-          |> assign(meta: meta, search: search, owners: owners, cohorts: cohorts)
-          |> stream(:announcements, announcements, reset: true)
-          |> apply_action(socket.assigns.live_action, params)
-
-        {:noreply, socket}
+        {:noreply,
+         socket
+         |> assign(meta: meta, search: search, owners: owners, cohorts: cohorts)
+         |> stream(:announcements, announcements, reset: true)}
 
       {:error, _meta} ->
         {:noreply, push_patch(socket, to: ~p"/admin/announcements")}
-    end
-  end
-
-  defp apply_action(socket, :index, _params) do
-    assign(socket, page_title: gettext("Announcements"), announcement: nil)
-  end
-
-  defp apply_action(socket, :new, _params) do
-    if Identity.can?(socket.assigns.current_user, "announcements.create") do
-      assign(socket, page_title: gettext("Create Announcement"), announcement: %Announcement{})
-    else
-      socket
-      |> put_flash(:error, gettext("You don't have permission to create announcements."))
-      |> push_patch(to: ~p"/admin/announcements")
-    end
-  end
-
-  defp apply_action(socket, :edit, %{"id" => id}) do
-    current_user = socket.assigns.current_user
-
-    case Announcements.get_announcement(id) do
-      %Announcement{} = announcement ->
-        if Identity.can?(current_user, "announcements.update") and
-             Announcements.can_manage?(current_user, announcement) do
-          assign(socket, page_title: gettext("Edit Announcement"), announcement: announcement)
-        else
-          socket
-          |> put_flash(:error, gettext("You don't have permission to edit this announcement."))
-          |> push_patch(to: ~p"/admin/announcements")
-        end
-
-      nil ->
-        push_patch(socket, to: ~p"/admin/announcements")
     end
   end
 
@@ -112,7 +74,7 @@ defmodule AthenaWeb.AdminLive.Announcements do
     current_user = socket.assigns.current_user
 
     case Announcements.get_announcement(id) do
-      %Announcement{} = announcement ->
+      %Announcements.Announcement{} = announcement ->
         if Identity.can?(current_user, "announcements.delete") and
              Announcements.can_manage?(current_user, announcement) do
           {:noreply, assign(socket, announcement_to_delete: announcement)}
@@ -148,7 +110,7 @@ defmodule AthenaWeb.AdminLive.Announcements do
       {:ok, _announcement} ->
         {:noreply,
          socket
-         |> put_flash(:info, gettext("Announcement deleted successfully"))
+         |> put_flash(:success, gettext("Announcement deleted successfully"))
          |> stream_delete(:announcements, announcement)
          |> assign(announcement_to_delete: nil)}
 
@@ -158,11 +120,6 @@ defmodule AthenaWeb.AdminLive.Announcements do
          |> put_flash(:error, gettext("Failed to delete announcement"))
          |> assign(announcement_to_delete: nil)}
     end
-  end
-
-  @impl true
-  def handle_info({AnnouncementFormComponent, {:saved, announcement}}, socket) do
-    {:noreply, stream_insert(socket, :announcements, announcement)}
   end
 
   @impl true
@@ -178,7 +135,7 @@ defmodule AthenaWeb.AdminLive.Announcements do
         </div>
         <.button
           :if={Identity.can?(@current_user, "announcements.create")}
-          patch={~p"/admin/announcements/new?#{build_query_params(assigns, %{})}"}
+          navigate={~p"/admin/announcements/new"}
           class="btn btn-primary"
         >
           <.icon name="hero-plus" class="size-5" />
@@ -211,13 +168,18 @@ defmodule AthenaWeb.AdminLive.Announcements do
 
       <.table id="announcements" rows={@streams.announcements} meta={@meta} path_fn={path_fn}>
         <:col :let={{_id, a}} label={gettext("Title")} sort="title">
-          <span class="font-bold">{a.title}</span>
+          <div class="flex items-center gap-2">
+            <.icon
+              :if={a.important}
+              name="hero-exclamation-triangle-solid"
+              class="size-4 text-warning shrink-0"
+            />
+            <span class="font-bold">{a.title}</span>
+          </div>
         </:col>
         <:col :let={{_id, a}} label={gettext("Audience")}>
-          <.badge tone={if a.scope == :global, do: "primary", else: "neutral"}>
-            {if a.scope == :global,
-              do: gettext("Global"),
-              else: Map.get(@cohorts, a.cohort_id) |> cohort_name()}
+          <.badge tone={if a.scope == :global, do: "primary", else: "info"}>
+            {audience_label(a, @cohorts)}
           </.badge>
         </:col>
         <:col :let={{_id, a}} label={gettext("Author")}>
@@ -230,7 +192,7 @@ defmodule AthenaWeb.AdminLive.Announcements do
           <div class="flex justify-end gap-2">
             <.icon_button
               :if={Identity.can?(@current_user, "announcements.update")}
-              patch={~p"/admin/announcements/#{a.id}/edit?#{build_query_params(assigns, %{})}"}
+              navigate={~p"/admin/announcements/#{a.id}/edit"}
               icon="hero-pencil-square"
               label={gettext("Edit")}
             />
@@ -258,23 +220,6 @@ defmodule AthenaWeb.AdminLive.Announcements do
         <.pagination meta={@meta} path_fn={path_fn} />
       </div>
 
-      <.slide_over
-        id="announcement-slideover"
-        show={@live_action in [:new, :edit]}
-        title={@page_title}
-        on_close={JS.patch(~p"/admin/announcements?#{build_query_params(assigns, %{})}")}
-      >
-        <.live_component
-          :if={@announcement}
-          module={AnnouncementFormComponent}
-          id={@announcement.id || :new}
-          action={@live_action}
-          announcement={@announcement}
-          current_user={@current_user}
-          patch={~p"/admin/announcements?#{build_query_params(assigns, %{})}"}
-        />
-      </.slide_over>
-
       <.modal
         id="delete-announcement-modal"
         show={@announcement_to_delete != nil}
@@ -298,8 +243,15 @@ defmodule AthenaWeb.AdminLive.Announcements do
     end
   end
 
-  defp cohort_name(nil), do: "—"
-  defp cohort_name(cohort), do: cohort.name
+  defp audience_label(%{scope: :global}, _cohorts), do: gettext("Global")
+
+  defp audience_label(%{scope: :cohort, cohort_id: cohort_id}, cohorts) do
+    case Map.get(cohorts, cohort_id) do
+      nil -> "—"
+      %{name: name, type: :team} -> "#{gettext("Team")}: #{name}"
+      %{name: name} -> "#{gettext("Cohort")}: #{name}"
+    end
+  end
 
   @doc false
   defp build_query_params(assigns, overrides) do

@@ -5567,3 +5567,33 @@ msgstr "У вас нет прав на редактирование этого �
 #, elixir-autogen, elixir-format
 msgid "You don't have permission to post to this cohort."
 msgstr "У вас нет прав на публикацию в эту когорту."
+
+#: lib/athena_web/live/admin_live/announcement_form.ex:190
+#, elixir-autogen, elixir-format
+msgid "Back to Announcements"
+msgstr "Назад к объявлениям"
+
+#: lib/athena_web/live/admin_live/announcement_form.ex:240
+#, elixir-autogen, elixir-format
+msgid "Cohort or team"
+msgstr "Когорта или команда"
+
+#: lib/athena_web/live/admin_live/announcement_form.ex:273
+#, elixir-autogen, elixir-format
+msgid "Search by cohort or team name..."
+msgstr "Поиск по названию когорты или команды..."
+
+#: lib/athena_web/live/admin_live/announcement_form.ex:306
+#, elixir-autogen, elixir-format
+msgid "Visible from (optional)"
+msgstr "Видимо с (необязательно)"
+
+#: lib/athena_web/live/admin_live/announcement_form.ex:311
+#, elixir-autogen, elixir-format
+msgid "Visible until (optional)"
+msgstr "Видимо до (необязательно)"
+
+#: lib/athena_web/live/admin_live/announcement_form.ex:315
+#, elixir-autogen, elixir-format
+msgid "Mark as important"
+msgstr "Отметить как важное"

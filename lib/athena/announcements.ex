@@ -10,20 +10,25 @@ defmodule Athena.Announcements do
 
   @doc """
   Audience-scoped, Flop-paginated feed for `user`: global announcements
-  plus announcements for any cohort `user` is a *member* of. Used for
-  both the dashboard widget (call with `%{"page_size" => 5}`) and the
-  full `/announcements` page — a single paginated function rather than a
-  separate unpaginated "latest N" helper, since "latest 5" is just "page
-  1, page_size 5" of the same already-ordered (`default_order:
-  inserted_at desc`) query.
+  plus announcements for any cohort `user` is a *member* of, further
+  restricted to those currently within their visibility window (see
+  `Announcement` moduledoc — `starts_at`/`ends_at`, either or both may be
+  `nil`). Used for both the dashboard widget (call with `%{"page_size" =>
+  5}`) and the full `/announcements` page — a single paginated function
+  rather than a separate unpaginated "latest N" helper, since "latest 5"
+  is just "page 1, page_size 5" of the same already-ordered
+  (`default_order: inserted_at desc`) query.
   """
   @spec list_for_viewer(map(), map()) ::
           {:ok, {[Announcement.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_for_viewer(user, params \\ %{}) do
     member_cohort_ids = Learning.list_member_cohort_ids(user.id)
+    now = DateTime.utc_now()
 
     Announcement
     |> where([a], a.scope == :global or a.cohort_id in ^member_cohort_ids)
+    |> where([a], is_nil(a.starts_at) or a.starts_at <= ^now)
+    |> where([a], is_nil(a.ends_at) or a.ends_at >= ^now)
     |> Flop.validate_and_run(params, for: Announcement)
   end
 
@@ -43,10 +48,10 @@ defmodule Athena.Announcements do
 
   defp scope_admin_query(query, user) do
     cond do
-      "admin" in user.role.permissions ->
+      Identity.can?(user, "admin") ->
         query
 
-      "announcements.read" in user.role.permissions ->
+      Identity.can?(user, "announcements.read") ->
         instructed_ids = Learning.list_instructed_cohort_ids(user.id)
 
         where(
@@ -76,10 +81,10 @@ defmodule Athena.Announcements do
   `Content.Blocks.prepare_media_upload/4`.
   """
   @spec can_manage?(map(), :global | :cohort, String.t() | nil) :: boolean()
-  def can_manage?(user, :global, _cohort_id), do: "admin" in user.role.permissions
+  def can_manage?(user, :global, _cohort_id), do: Identity.can?(user, "admin")
 
   def can_manage?(user, :cohort, cohort_id) do
-    "admin" in user.role.permissions or
+    Identity.can?(user, "admin") or
       (not is_nil(cohort_id) and Learning.instructor_of_cohort?(user.id, cohort_id))
   end
 
@@ -110,7 +115,7 @@ defmodule Athena.Announcements do
 
     if Identity.can?(user, "announcements.create") and can_manage?(user, scope, cohort_id) do
       %Announcement{}
-      |> Announcement.changeset(Map.merge(attrs, %{"author_id" => user.id}))
+      |> Announcement.changeset(attrs |> decode_body() |> Map.put("author_id", user.id))
       |> Repo.insert()
     else
       {:error, :forbidden}
@@ -140,7 +145,7 @@ defmodule Athena.Announcements do
 
     if authorized? do
       announcement
-      |> Announcement.changeset(attrs)
+      |> Announcement.changeset(decode_body(attrs))
       |> Repo.update()
     else
       {:error, :forbidden}
@@ -157,6 +162,39 @@ defmodule Athena.Announcements do
       {:error, :forbidden}
     end
   end
+
+  # The TipTap editor hook posts its JSON document through a hidden form
+  # field as a *string* (`JSON.stringify(editor.getJSON())`), since HTML
+  # form fields are always strings client-side — decode it back into a
+  # map before it reaches the `:map`-typed `body` column/changeset field.
+  defp decode_body(%{"body" => body} = attrs) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, decoded} -> Map.put(attrs, "body", decoded)
+      {:error, _} -> attrs
+    end
+  end
+
+  defp decode_body(attrs), do: attrs
+
+  @doc """
+  Extracts plain text from a TipTap/ProseMirror JSON document, for
+  previews (e.g. the dashboard widget) that don't warrant mounting a full
+  read-only editor instance.
+  """
+  @spec preview_text(map()) :: String.t()
+  def preview_text(body) when is_map(body) do
+    body |> extract_text() |> String.trim()
+  end
+
+  def preview_text(_), do: ""
+
+  defp extract_text(%{"text" => text}) when is_binary(text), do: text
+
+  defp extract_text(%{"content" => children}) when is_list(children) do
+    Enum.map_join(children, " ", &extract_text/1)
+  end
+
+  defp extract_text(_), do: ""
 
   defp normalize_scope(attrs) do
     case attrs["scope"] || attrs[:scope] do

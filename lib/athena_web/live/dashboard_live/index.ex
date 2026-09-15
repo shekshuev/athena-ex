@@ -243,15 +243,27 @@ defmodule AthenaWeb.DashboardLive.Index do
 
           <div
             :for={announcement <- @announcements}
-            class="border-b border-base-200 last:border-0 pb-3 last:pb-0"
+            class={[
+              "border-b border-base-200 last:border-0 pb-3 last:pb-0",
+              announcement.important && "border-l-2 border-l-warning pl-3"
+            ]}
           >
             <div class="flex items-center justify-between gap-2">
-              <div class="font-bold truncate">{announcement.title}</div>
-              <.badge tone={if announcement.scope == :global, do: "primary", else: "neutral"}>
+              <div class="font-bold truncate flex items-center gap-1.5">
+                <.icon
+                  :if={announcement.important}
+                  name="hero-exclamation-triangle-solid"
+                  class="size-4 text-warning shrink-0"
+                />
+                {announcement.title}
+              </div>
+              <.badge tone={if announcement.scope == :global, do: "primary", else: "info"}>
                 {if announcement.scope == :global, do: gettext("Global"), else: gettext("Cohort")}
               </.badge>
             </div>
-            <p class="text-sm text-base-content/60 line-clamp-2">{announcement.body}</p>
+            <p class="text-sm text-base-content/60 line-clamp-2">
+              {Announcements.preview_text(announcement.body)}
+            </p>
           </div>
         </div>
       </div>

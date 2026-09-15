@@ -27,7 +27,7 @@ defmodule AthenaWeb.AdminLive.AnnouncementsTest do
       {:ok, _} =
         Athena.Announcements.create_announcement(admin, %{
           "title" => "Welcome",
-          "body" => "Hello everyone",
+          "body" => tiptap_doc("Hello everyone"),
           "scope" => "global"
         })
 
@@ -41,13 +41,13 @@ defmodule AthenaWeb.AdminLive.AnnouncementsTest do
     test "handles search functionality and maintains params", %{conn: conn, admin: admin} do
       Athena.Announcements.create_announcement(admin, %{
         "title" => "Special Notice",
-        "body" => "Hello",
+        "body" => tiptap_doc("Hello"),
         "scope" => "global"
       })
 
       Athena.Announcements.create_announcement(admin, %{
         "title" => "Common Notice",
-        "body" => "Hello",
+        "body" => tiptap_doc("Hello"),
         "scope" => "global"
       })
 
@@ -67,47 +67,97 @@ defmodule AthenaWeb.AdminLive.AnnouncementsTest do
     test "creates a global announcement", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/admin/announcements/new")
 
+      # The TipTap body is normally set client-side by the JS hook into a
+      # hidden input, which Phoenix.LiveViewTest's DOM-backed `form/3`
+      # override refuses to fake (hidden fields must keep their rendered
+      # value) — so, like this codebase's other TipTap-hidden-input flows
+      # (e.g. player_test.exs's code/answer submissions), scrape the form
+      # with `form/2` (no overrides) and pass the real payload to
+      # `render_submit/2` directly instead, bypassing that DOM check.
       lv
-      |> form("#announcement-form", %{
+      |> form("#announcement-form")
+      |> render_submit(%{
         "announcement" => %{
           "title" => "Brand New",
-          "body" => "Hello there",
+          "body" => Jason.encode!(tiptap_doc("Hello there")),
           "scope" => "global"
         }
       })
-      |> render_submit()
 
-      assert render(lv) =~ "Brand New"
+      assert_redirect(lv, ~p"/admin/announcements")
+      assert Athena.Repo.get_by(Athena.Announcements.Announcement, title: "Brand New")
     end
 
-    test "creates a cohort announcement", %{conn: conn, admin: admin} do
+    test "creates a cohort announcement via the cohort search box", %{conn: conn, admin: admin} do
       {:ok, cohort} = Cohorts.create_cohort(admin, %{"name" => "Bootcamp"})
 
       {:ok, lv, _html} = live(conn, ~p"/admin/announcements/new")
 
-      # scope must be set first so the conditional cohort_id field renders
+      # scope must be set first so the conditional cohort search box renders
       lv
-      |> form("#announcement-form", %{
+      |> form("#announcement-form")
+      |> render_change(%{
         "announcement" => %{
           "title" => "Cohort News",
-          "body" => "Hello cohort",
+          "body" => Jason.encode!(tiptap_doc("Hello cohort")),
           "scope" => "cohort"
         }
       })
-      |> render_change()
 
       lv
-      |> form("#announcement-form", %{
+      |> element("input[phx-keyup='search_cohorts']")
+      |> render_keyup(%{"value" => "Boot"})
+
+      lv
+      |> element("li[phx-value-id='#{cohort.id}']")
+      |> render_click()
+
+      lv
+      |> form("#announcement-form")
+      |> render_submit(%{
         "announcement" => %{
           "title" => "Cohort News",
-          "body" => "Hello cohort",
-          "scope" => "cohort",
-          "cohort_id" => cohort.id
+          "body" => Jason.encode!(tiptap_doc("Hello cohort")),
+          "scope" => "cohort"
         }
       })
-      |> render_submit()
 
-      assert render(lv) =~ "Cohort News"
+      assert_redirect(lv, ~p"/admin/announcements")
+
+      saved = Athena.Repo.get_by(Athena.Announcements.Announcement, title: "Cohort News")
+      assert saved.cohort_id == cohort.id
+    end
+
+    test "edits an existing announcement, including marking it important", %{
+      conn: conn,
+      admin: admin
+    } do
+      {:ok, announcement} =
+        Athena.Announcements.create_announcement(admin, %{
+          "title" => "Original",
+          "body" => tiptap_doc("Hello"),
+          "scope" => "global"
+        })
+
+      {:ok, lv, html} = live(conn, ~p"/admin/announcements/#{announcement.id}/edit")
+      assert html =~ "Edit Announcement"
+
+      lv
+      |> form("#announcement-form")
+      |> render_submit(%{
+        "announcement" => %{
+          "title" => "Updated title",
+          "body" => Jason.encode!(tiptap_doc("Hello")),
+          "scope" => "global",
+          "important" => "true"
+        }
+      })
+
+      assert_redirect(lv, ~p"/admin/announcements")
+
+      updated = Athena.Repo.get!(Athena.Announcements.Announcement, announcement.id)
+      assert updated.title == "Updated title"
+      assert updated.important == true
     end
   end
 
@@ -116,7 +166,7 @@ defmodule AthenaWeb.AdminLive.AnnouncementsTest do
       {:ok, announcement} =
         Athena.Announcements.create_announcement(admin, %{
           "title" => "Doomed",
-          "body" => "Hello",
+          "body" => tiptap_doc("Hello"),
           "scope" => "global"
         })
 
@@ -170,14 +220,14 @@ defmodule AthenaWeb.AdminLive.AnnouncementsTest do
       {:ok, _} =
         Athena.Announcements.create_announcement(admin, %{
           "title" => "Global",
-          "body" => "Hi",
+          "body" => tiptap_doc("Hi"),
           "scope" => "global"
         })
 
       {:ok, _} =
         Athena.Announcements.create_announcement(admin, %{
           "title" => "MineNews",
-          "body" => "Hi",
+          "body" => tiptap_doc("Hi"),
           "scope" => "cohort",
           "cohort_id" => my_cohort.id
         })
@@ -185,7 +235,7 @@ defmodule AthenaWeb.AdminLive.AnnouncementsTest do
       {:ok, _} =
         Athena.Announcements.create_announcement(admin, %{
           "title" => "NotMineNews",
-          "body" => "Hi",
+          "body" => tiptap_doc("Hi"),
           "scope" => "cohort",
           "cohort_id" => other_cohort.id
         })

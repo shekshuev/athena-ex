@@ -543,28 +543,39 @@ defmodule Athena.Learning.Cohorts do
   end
 
   @doc """
-  `{name, id}` options for cohorts `user` may post an announcement to: all
-  cohorts if `user` holds the "admin" bypass, else only cohorts they
-  instruct. Deliberately NOT gated by `cohorts.read`/`teams.read` (an
-  instructor with `announcements.create` but no cohort-management
-  permission must still see their own cohorts here) — mirrors
+  Cohorts matching `query` (by name, case-insensitive substring) that
+  `user` may post an announcement to: every cohort if `user` holds the
+  "admin" bypass, else only cohorts they instruct. Capped at 10 results
+  for autocomplete use — mirrors `Identity.search_accounts/1`'s shape
+  (`MembershipFormComponent`'s "search student by login" box), used here
+  for "search cohort by name" since the plain dropdown got unwieldy once
+  a school has many cohorts.
+
+  Deliberately NOT gated by `cohorts.read`/`teams.read` (an instructor
+  with `announcements.create` but no cohort-management permission must
+  still be able to find their own cohorts here) — mirrors
   `get_cohorts_map/1`'s unscoped-by-design precedent rather than
   `get_cohort_options/1` (which IS gated by `cohorts.read`/`teams.read`
   and is wrong for this purpose).
   """
-  @spec list_postable_cohort_options(map()) :: [{String.t(), String.t()}]
-  def list_postable_cohort_options(user) do
-    base = from(c in Cohort, order_by: [asc: c.name], select: {c.name, c.id})
+  @spec search_postable_cohorts(map(), String.t()) :: [Cohort.t()]
+  def search_postable_cohorts(user, query) when is_binary(query) do
+    base =
+      from(c in Cohort,
+        where: ilike(c.name, ^"%#{query}%"),
+        order_by: [asc: c.name],
+        limit: 10
+      )
 
-    query =
-      if "admin" in user.role.permissions do
+    scoped =
+      if Identity.can?(user, "admin") do
         base
       else
         ids = list_instructed_cohort_ids(user.id)
         where(base, [c], c.id in ^ids)
       end
 
-    Repo.all(query)
+    Repo.all(scoped)
   end
 
   @doc false

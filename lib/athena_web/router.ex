@@ -173,8 +173,8 @@ defmodule AthenaWeb.Router do
         live "/roles/:id/edit", Roles, :edit
         live "/files", Files, :index
         live "/announcements", Announcements, :index
-        live "/announcements/new", Announcements, :new
-        live "/announcements/:id/edit", Announcements, :edit
+        live "/announcements/new", AnnouncementForm, :new
+        live "/announcements/:id/edit", AnnouncementForm, :edit
         live "/settings", Settings, :index
 
         live "/gamification", Gamification, :index

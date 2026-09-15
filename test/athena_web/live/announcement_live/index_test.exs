@@ -35,14 +35,14 @@ defmodule AthenaWeb.AnnouncementLive.IndexTest do
       {:ok, _} =
         Announcements.create_announcement(admin, %{
           "title" => "Global News",
-          "body" => "Hello everyone",
+          "body" => tiptap_doc("Hello everyone"),
           "scope" => "global"
         })
 
       {:ok, _} =
         Announcements.create_announcement(admin, %{
           "title" => "My Cohort News",
-          "body" => "Hello",
+          "body" => tiptap_doc("Hello"),
           "scope" => "cohort",
           "cohort_id" => my_cohort.id
         })
@@ -50,7 +50,7 @@ defmodule AthenaWeb.AnnouncementLive.IndexTest do
       {:ok, _} =
         Announcements.create_announcement(admin, %{
           "title" => "Other Cohort News",
-          "body" => "Hello",
+          "body" => tiptap_doc("Hello"),
           "scope" => "cohort",
           "cohort_id" => other_cohort.id
         })

@@ -61,10 +61,24 @@ defmodule Athena.Factory do
   def announcement_factory do
     %Announcement{
       title: sequence(:title, &"Announcement #{&1}"),
-      body: "This is a test announcement.",
+      body: tiptap_doc("This is a test announcement."),
       scope: :global,
       cohort_id: nil,
-      author_id: Ecto.UUID.generate()
+      author_id: Ecto.UUID.generate(),
+      important: false
+    }
+  end
+
+  @doc """
+  A minimal TipTap/ProseMirror JSON document containing `text` as a
+  single paragraph — `Announcement.body` is jsonb, not plain text.
+  """
+  def tiptap_doc(text) do
+    %{
+      "type" => "doc",
+      "content" => [
+        %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => text}]}
+      ]
     }
   end
 
