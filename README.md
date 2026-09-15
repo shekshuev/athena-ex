@@ -182,7 +182,7 @@ A failed smoke test on one Ubuntu version only blocks that version's tag, not th
 > - `cgroup: host`
 > - Volume mount: `/sys/fs/cgroup:/sys/fs/cgroup:rw`
 >
-> Because isolate runs `--privileged` and shares the host kernel, its behavior is validated on real `ubuntu-22.04`/`ubuntu-24.04` kernels in CI before every release (see CI/CD above) — not just built.
+> Because isolate runs `--privileged` and shares the host kernel, its behavior is validated on real `ubuntu-22.04`/`ubuntu-24.04` kernels in CI before every release (see CI/CD above) — not just built. A third tag, `-u20`, is also published for hosts still on Ubuntu 20.04, but GitHub retired hosted `ubuntu-20.04` Actions runners in 2025, so that tag is only glibc-matched (built from `debian:bullseye`, same glibc 2.31 as Ubuntu 20.04) — it is **not** validated against a real 20.04 kernel in CI. If you deploy it, run the `isolate --init --cg` / `isolate --run --cg` / `isolate --cleanup --cg` smoke test (see the CI workflow) on your actual host first.
 >
 > **On macOS/Windows:** Native execution is not supported — use `docker-compose.dev-runner.yml` or a Linux VM.
 
@@ -197,7 +197,7 @@ setting can't silently boot the wrong thing.
 
 ### Images
 
-Every image is published as two tags, `latest-u22` and `latest-u24` (also versioned as `vX.Y.Z-u22`/`-u24`) — pick the one matching your host's actual Ubuntu version. `docker-compose.prod.yml` picks this via the `IMAGE_OS` variable in `.env` (`u22` or `u24`, defaults to `u24`).
+Every image is published as three tags, `latest-u22`, `latest-u24`, and `latest-u20` (also versioned as `vX.Y.Z-u22`/`-u24`/`-u20`) — pick the one matching your host's actual Ubuntu version. `docker-compose.prod.yml` picks this via the `IMAGE_OS` variable in `.env` (`u22`, `u24`, or `u20`, defaults to `u24`). `u20` is glibc-matched, not kernel-validated in CI — see the isolate note above before using it in production.
 
 | Image | Mix release | What it runs |
 |-------|-------------|---------------|

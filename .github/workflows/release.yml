@@ -7,8 +7,8 @@ on:
 
 jobs:
   docker:
-    name: Build, validate, and push (${{ matrix.variant }} / ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Build, validate, and push (${{ matrix.variant }} / ${{ matrix.target.os_tag }})
+    runs-on: ${{ matrix.target.runner_os }}
     permissions:
       contents: read
       packages: write
@@ -16,7 +16,34 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, ubuntu-24.04]
+        # `runner_os` is the actual GitHub-hosted runner (real kernel the
+        # privileged smoke test below runs against). `os_tag` is the
+        # published image suffix. `debian_version` picks the Debian release
+        # (and therefore glibc) the image itself is built from.
+        #
+        # u22/u24 are real kernel-validated: runner_os and the target Ubuntu
+        # version match, so the smoke test proves isolate's cgroup v2/seccomp
+        # behavior on that exact kernel.
+        #
+        # u20 is NOT kernel-validated: GitHub retired hosted ubuntu-20.04
+        # runners (2025-04-15), so there is no hosted runner left whose real
+        # kernel matches Ubuntu 20.04. u20 instead pins `debian_version` to
+        # bullseye, which ships the same glibc (2.31) as Ubuntu 20.04 —
+        # runs-on is ubuntu-22.04 for lack of a better option, so its smoke
+        # test only proves isolate builds and runs against that glibc, not
+        # that it behaves correctly on a real 20.04 kernel. If you deploy
+        # this tag, validate `isolate --cg` on your actual host yourself
+        # (see README) before trusting it in production.
+        target:
+          - runner_os: ubuntu-22.04
+            os_tag: u22
+            debian_version: bookworm-20260610-slim
+          - runner_os: ubuntu-24.04
+            os_tag: u24
+            debian_version: bookworm-20260610-slim
+          - runner_os: ubuntu-22.04
+            os_tag: u20
+            debian_version: bullseye-20260610-slim
         variant: [web, runner-db, runner-compiled, runner-script]
 
     steps:
@@ -35,27 +62,24 @@ jobs:
             runner-compiled) file=Dockerfile.runner-compiled; suffix=-runner-compiled; isolate=true ;;
             runner-script) file=Dockerfile.runner-script; suffix=-runner-script; isolate=true ;;
           esac
-          case "${{ matrix.os }}" in
-            ubuntu-22.04) os_tag=u22 ;;
-            ubuntu-24.04) os_tag=u24 ;;
-          esac
           echo "file=$file" >> "$GITHUB_OUTPUT"
           echo "suffix=$suffix" >> "$GITHUB_OUTPUT"
           echo "isolate=$isolate" >> "$GITHUB_OUTPUT"
-          echo "os_tag=$os_tag" >> "$GITHUB_OUTPUT"
 
-      # Each os leg publishes its own tags (-u22 / -u24). The two images are
+      # Each leg publishes its own tags (-u22 / -u24 / -u20). The images are
       # not guaranteed identical — isolate is validated against the real
       # kernel it was built on (see the smoke test below), and glibc/kernel
       # behavior can differ between Ubuntu versions — so pin the image tag
-      # that matches your actual deployment target's Ubuntu version.
+      # that matches your actual deployment target's Ubuntu version (u20 is
+      # the exception: it's glibc-matched only, not kernel-validated — see
+      # the matrix comment above).
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}${{ steps.variant.outputs.suffix }}
           flavor: |
-            suffix=-${{ steps.variant.outputs.os_tag }}
+            suffix=-${{ matrix.target.os_tag }}
           tags: |
             type=ref,event=tag
             type=raw,value=latest
@@ -72,12 +96,15 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             COMMIT_SHA=${{ github.sha }}
+            DEBIAN_VERSION=${{ matrix.target.debian_version }}
 
       # This is the actual point of building on ubuntu-22.04 and ubuntu-24.04
       # specifically instead of ubuntu-latest: isolate runs --privileged and
       # shares the host kernel, so its cgroup v2 / seccomp behavior needs to
       # be validated against both real kernels before we publish anything.
-      - name: Privileged isolate smoke test (real ${{ matrix.os }} kernel)
+      # (For the u20 leg this only validates against ubuntu-22.04's kernel —
+      # see the matrix comment above for why.)
+      - name: Privileged isolate smoke test (real ${{ matrix.target.runner_os }} kernel, ${{ matrix.target.os_tag }})
         if: steps.variant.outputs.isolate == 'true'
         run: |
           set -e
@@ -110,7 +137,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push image (${{ matrix.variant }} / ${{ matrix.os }})
+      - name: Push image (${{ matrix.variant }} / ${{ matrix.target.os_tag }})
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -121,6 +148,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             COMMIT_SHA=${{ github.sha }}
+            DEBIAN_VERSION=${{ matrix.target.debian_version }}
 
   release:
     name: Publish GitHub Release

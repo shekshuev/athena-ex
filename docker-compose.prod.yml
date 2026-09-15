@@ -1,10 +1,14 @@
 version: "3.8"
 
 # Images are published per Ubuntu version isolate was built and smoke-tested
-# on (see .github/workflows/release.yml) — set IMAGE_OS in .env to "u22" or
-# "u24" to match the Ubuntu version this host actually runs (defaults to
-# u24). This matters because isolate runs --privileged and shares the host
-# kernel, so its behavior isn't guaranteed portable across kernel versions.
+# on (see .github/workflows/release.yml) — set IMAGE_OS in .env to "u22",
+# "u24", or "u20" to match the Ubuntu version this host actually runs
+# (defaults to u24). This matters because isolate runs --privileged and
+# shares the host kernel, so its behavior isn't guaranteed portable across
+# kernel versions. "u20" is the exception: GitHub no longer offers a hosted
+# ubuntu-20.04 runner, so that tag is only glibc-matched (debian:bullseye,
+# same glibc 2.31 as Ubuntu 20.04), not validated against a real 20.04
+# kernel in CI — smoke-test `isolate --cg` on your host yourself first.
 services:
   athena_web:
     image: ghcr.io/shekshuev/athena-ex-web:latest-${IMAGE_OS:-u24}
