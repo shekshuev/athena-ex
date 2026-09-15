@@ -364,7 +364,7 @@ Hooks.TiptapEditor = {
       Link.configure({ openOnClick: readOnlyMode }),
       Highlight.configure({ multicolor: true }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),
-      Table.configure({ resizable: !readOnlyMode }),
+      Table.configure({ resizable: !readOnlyMode, renderWrapper: true }),
       TableRow,
       TableHeader,
       TableCell,

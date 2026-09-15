@@ -25,6 +25,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       html =
         render_component(CanvasComponent,
           active_section_id: "some-section-id",
+          active_section: %{id: "some-section-id", children: []},
           blocks: [],
           active_block_id: nil,
           mode: :edit,
@@ -32,6 +33,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
           breadcrumbs: []
         )
 
+      assert html =~ "This section is empty"
       assert html =~ "Text"
       assert html =~ "Code"
       assert html =~ "Assessment"
@@ -40,6 +42,49 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       assert html =~ "Image"
       assert html =~ "Video"
       assert html =~ "File"
+    end
+
+    test "shows subsection list instead of empty-state copy when the section has children" do
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "parent-id",
+          active_section: %{
+            id: "parent-id",
+            children: [
+              %{id: "child-1", title: "Week 1"},
+              %{id: "child-2", title: "Week 2"}
+            ]
+          },
+          blocks: [],
+          active_block_id: nil,
+          mode: :edit,
+          characters: [],
+          breadcrumbs: []
+        )
+
+      assert html =~ "Subsections"
+      assert html =~ "Week 1"
+      assert html =~ "Week 2"
+      assert html =~ "Add Subsection"
+      refute html =~ "This section is empty"
+      assert html =~ ~s(phx-value-id="child-1")
+      assert html =~ ~s(phx-value-parent_id="parent-id")
+    end
+
+    test "hides 'Add Subsection' affordance in preview mode" do
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "parent-id",
+          active_section: %{id: "parent-id", children: [%{id: "child-1", title: "Week 1"}]},
+          blocks: [],
+          active_block_id: nil,
+          mode: :preview,
+          characters: [],
+          breadcrumbs: []
+        )
+
+      assert html =~ "Week 1"
+      refute html =~ "Add Subsection"
     end
   end
 
@@ -495,6 +540,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       html =
         render_component(CanvasComponent,
           active_section_id: "sec-1",
+          active_section: nil,
           blocks: [],
           active_block_id: nil,
           mode: :edit,
@@ -514,6 +560,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       html =
         render_component(CanvasComponent,
           active_section_id: "sec-1",
+          active_section: nil,
           blocks: [],
           active_block_id: nil,
           mode: :edit,

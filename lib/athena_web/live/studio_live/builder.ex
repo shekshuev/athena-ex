@@ -1665,6 +1665,7 @@ defmodule AthenaWeb.StudioLive.Builder do
               module={AthenaWeb.StudioLive.Builder.CanvasComponent}
               id="canvas-component"
               blocks={@blocks}
+              active_section={@active_section}
               active_section_id={@active_section_id}
               active_block_id={@active_block_id}
               mode={@block_mode}

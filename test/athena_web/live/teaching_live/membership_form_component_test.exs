@@ -6,7 +6,10 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponentTest do
   alias Athena.Learning
 
   setup %{conn: conn} do
-    role = insert(:role, permissions: ["cohorts.read", "cohorts.update", "users.read"])
+    # Deliberately no "users.read" permission: the cohort search must work
+    # for any instructor who can manage cohorts, without the unrelated
+    # user-management ACL permission.
+    role = insert(:role, permissions: ["cohorts.read", "cohorts.update"])
     account = insert(:account, role: role)
 
     conn = init_test_session(conn, %{"account_id" => account.id})
@@ -65,9 +68,6 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponentTest do
       cohort = insert(:cohort)
       student_account = insert(:account, login: "existing_student")
 
-      {:ok, _membership} =
-        Learning.add_student_to_cohort(current_user, cohort.id, student_account.id)
-
       {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/add_student")
 
       lv
@@ -78,12 +78,56 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponentTest do
       |> element("li", "existing_student")
       |> render_click()
 
+      # Simulate a race: the student gets added to the cohort (by this or
+      # another instructor) between the search/select and this submit.
+      {:ok, _membership} =
+        Learning.add_student_to_cohort(current_user, cohort.id, student_account.id)
+
       html =
         lv
         |> form("#membership-form")
         |> render_submit()
 
       assert html =~ "This student is already in the cohort."
+    end
+
+    test "finds a student by profile name (ФИО) rather than login", %{conn: conn} do
+      cohort = insert(:cohort)
+      student_account = insert(:account, login: "unrelated_login_123")
+      insert(:profile, owner: student_account, first_name: "Иван", last_name: "Петров")
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/add_student")
+
+      html =
+        lv
+        |> element("input[phx-keyup='search_accounts']")
+        |> render_keyup(%{"value" => "Петров"})
+
+      assert html =~ "Петров Иван"
+      assert html =~ "unrelated_login_123"
+    end
+
+    test "does not offer a student who is already a member of the cohort", %{
+      conn: conn,
+      current_user: current_user
+    } do
+      cohort = insert(:cohort)
+      student_account = insert(:account, login: "already_in_cohort")
+
+      {:ok, _membership} =
+        Learning.add_student_to_cohort(current_user, cohort.id, student_account.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/add_student")
+
+      html =
+        lv
+        |> element("input[phx-keyup='search_accounts']")
+        |> render_keyup(%{"value" => "already_in_cohort"})
+
+      # The roster below the search form may legitimately show this login
+      # elsewhere on the page, so assert specifically against the search
+      # result option, not the raw substring.
+      refute html =~ ~s(phx-value-login="already_in_cohort")
     end
   end
 end

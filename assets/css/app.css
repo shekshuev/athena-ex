@@ -275,6 +275,15 @@
       padding: 0.125em 0.25em;
     }
 
+    .tableWrapper {
+      overflow-x: auto;
+      margin: 1.5em 0;
+    }
+
+    .tableWrapper table {
+      margin: 0;
+    }
+
     table {
       border-collapse: collapse;
       table-layout: fixed;
