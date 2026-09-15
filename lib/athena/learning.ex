@@ -9,6 +9,7 @@ defmodule Athena.Learning do
   - `Submissions`: Managing, creating, and retrieving student answers and task submissions.
   - `Progress`: Tracking completed blocks and enforcing access rules (high watermark / retrograde locks).
   - `Evaluator`: Auto-grading and synchronous evaluation of student submissions.
+  - `TestRuns`: Instructor "test run" preview sessions in the course builder.
   """
 
   alias Athena.Learning.{
@@ -19,7 +20,8 @@ defmodule Athena.Learning do
     Progress,
     Evaluator,
     Schedules,
-    DraftCache
+    DraftCache,
+    TestRuns
   }
 
   defdelegate list_instructors(user, params \\ %{}), to: Instructors
@@ -174,7 +176,8 @@ defmodule Athena.Learning do
                 course_id,
                 linear_sections,
                 overrides,
-                cohort_id \\ nil
+                cohort_id \\ nil,
+                opts \\ []
               ),
               to: Progress
 
@@ -187,6 +190,9 @@ defmodule Athena.Learning do
   defdelegate clear_override(user, cohort, course, resource_type, resource_id), to: Schedules
 
   defdelegate subscribe_to_draft_updates(cohort_id, block_id), to: DraftCache
+
+  defdelegate start_test_run(instructor, course_id, section_id), to: TestRuns, as: :start
+  defdelegate cleanup_test_run(test_run_session), to: TestRuns, as: :cleanup
 
   defp notify_submission_subscribers({:ok, submission} = result) do
     Phoenix.PubSub.broadcast(

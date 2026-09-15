@@ -180,8 +180,8 @@ defmodule Athena.Content.Sections do
   Hierarchy is strict: if a parent is hidden, all descendants are hidden too,
   regardless of their own overrides.
   """
-  @spec get_course_tree(String.t(), Account.t() | nil | :all, list()) :: [Section.t()]
-  def get_course_tree(course_id, user_or_mode \\ :all, overrides \\ []) do
+  @spec get_course_tree(String.t(), Account.t() | nil | :all, list(), keyword()) :: [Section.t()]
+  def get_course_tree(course_id, user_or_mode \\ :all, overrides \\ [], opts \\ []) do
     sections =
       Section
       |> where([s], s.course_id == ^course_id)
@@ -193,7 +193,7 @@ defmodule Athena.Content.Sections do
     if user_or_mode == :all do
       full_tree
     else
-      filter_tree_by_visibility(full_tree, user_or_mode, overrides)
+      filter_tree_by_visibility(full_tree, user_or_mode, overrides, opts)
     end
   end
 
@@ -208,23 +208,25 @@ defmodule Athena.Content.Sections do
   end
 
   @doc false
-  defp filter_tree_by_visibility(tree, user, overrides) do
+  defp filter_tree_by_visibility(tree, user, overrides, opts) do
     tree
     |> Enum.filter(fn section ->
-      Athena.Content.Policy.can_view?(user, section, overrides)
+      Athena.Content.Policy.can_view?(user, section, overrides, opts)
     end)
     |> Enum.map(fn section ->
-      filtered_children = filter_tree_by_visibility(section.children || [], user, overrides)
+      filtered_children =
+        filter_tree_by_visibility(section.children || [], user, overrides, opts)
+
       %{section | children: filtered_children}
     end)
   end
 
   @doc false
-  def list_linear_lessons(course_id, user_or_mode \\ :all, overrides \\ []) do
+  def list_linear_lessons(course_id, user_or_mode \\ :all, overrides \\ [], opts \\ []) do
     block_counts = Blocks.count_blocks_by_course(course_id)
 
     course_id
-    |> get_course_tree(user_or_mode, overrides)
+    |> get_course_tree(user_or_mode, overrides, opts)
     |> flatten_and_filter_tree(block_counts)
   end
 

@@ -12,21 +12,21 @@ defmodule Athena.Content.Policy do
   Determines if the given user is authorized to view the item.
   Accepts an optional list of `CohortSchedule` overrides fetched from the Learning context.
   """
-  @spec can_view?(Account.t() | :all | nil, map(), list()) :: boolean()
-  def can_view?(user_or_mode, item, overrides \\ [])
+  @spec can_view?(Account.t() | :all | nil, map(), list(), keyword()) :: boolean()
+  def can_view?(user_or_mode, item, overrides \\ [], opts \\ [])
 
-  def can_view?(:all, _item, _overrides), do: true
+  def can_view?(:all, _item, _overrides, _opts), do: true
 
-  def can_view?(user, item, overrides) do
-    evaluate_visibility(user, item, overrides)
+  def can_view?(user, item, overrides, opts) do
+    evaluate_visibility(user, item, overrides, opts)
   end
 
   @doc false
-  defp evaluate_visibility(user, item, overrides) do
+  defp evaluate_visibility(user, item, overrides, opts) do
     override = find_override(item, overrides)
     effective_visibility = (override && override.visibility) || item.visibility
 
-    handle_visibility(effective_visibility, user, item, override, overrides)
+    handle_visibility(effective_visibility, user, item, override, overrides, opts)
   end
 
   defp find_override(%Block{id: id}, overrides) do
@@ -39,27 +39,36 @@ defmodule Athena.Content.Policy do
 
   defp find_override(_, _overrides), do: nil
 
-  defp handle_visibility(:hidden, _user, _item, _override, _overrides), do: false
+  defp handle_visibility(:hidden, _user, _item, _override, _overrides, _opts), do: false
 
-  defp handle_visibility(:enrolled, _user, _item, _override, _overrides), do: true
+  defp handle_visibility(:enrolled, _user, _item, _override, _overrides, _opts), do: true
 
-  defp handle_visibility(:restricted, _user, item, override, _overrides) do
-    check_rules(item, override)
+  defp handle_visibility(:restricted, _user, item, override, _overrides, opts) do
+    check_rules(item, override, opts)
   end
 
-  defp handle_visibility(:inherit, user, item, _override, overrides) do
+  defp handle_visibility(:inherit, user, item, _override, overrides, opts) do
     section = Repo.get(Section, item.section_id)
-    evaluate_visibility(user, section, overrides)
+    evaluate_visibility(user, section, overrides, opts)
   end
 
   @doc false
-  defp check_rules(item, override) do
+  defp check_rules(item, override, opts) do
     rules = Map.get(item, :access_rules)
 
     unlock_at = if override, do: override.unlock_at, else: rules && rules.unlock_at
     lock_at = if override, do: override.lock_at, else: rules && rules.lock_at
 
-    check_time(unlock_at, lock_at)
+    check_time(unlock_at, lock_at, opts)
+  end
+
+  @doc false
+  defp check_time(unlock_at, lock_at, opts) do
+    if Keyword.get(opts, :ignore_schedule?, false) do
+      true
+    else
+      check_time(unlock_at, lock_at)
+    end
   end
 
   @doc false
