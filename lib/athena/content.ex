@@ -63,6 +63,28 @@ defmodule Athena.Content do
     end
   end
 
+  def duplicate_course(user, course_id, new_title) do
+    case Courses.duplicate_course(user, course_id, new_title) do
+      {:ok, _course} = result ->
+        Phoenix.PubSub.broadcast(Athena.PubSub, "user_courses:#{user.id}", :refresh_courses)
+        result
+
+      error ->
+        error
+    end
+  end
+
+  def retry_course_copy(user, course) do
+    case Courses.retry_course_copy(user, course) do
+      {:ok, _course} = result ->
+        Phoenix.PubSub.broadcast(Athena.PubSub, "user_courses:#{user.id}", :refresh_courses)
+        result
+
+      error ->
+        error
+    end
+  end
+
   defdelegate list_course_shares(course), to: Courses
   defdelegate list_course_workspace_blocks(user, course_id), to: Courses
 
