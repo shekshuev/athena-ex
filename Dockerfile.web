@@ -2,14 +2,17 @@ ARG ELIXIR_VERSION=1.19.5
 ARG OTP_VERSION=27.3.4.10
 ARG DEBIAN_VERSION=bookworm-20260610-slim
 ARG COMMIT_SHA="dev"
+ARG APP_VERSION="dev"
 
 ARG BUILDER_IMAGE="docker.io/hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 ARG RUNNER_IMAGE="docker.io/debian:${DEBIAN_VERSION}"
 
 FROM ${BUILDER_IMAGE} AS builder
 
-ARG COMMIT_SHA 
+ARG COMMIT_SHA
+ARG APP_VERSION
 ENV COMMIT_SHA=$COMMIT_SHA
+ENV APP_VERSION=$APP_VERSION
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends build-essential git curl ca-certificates \

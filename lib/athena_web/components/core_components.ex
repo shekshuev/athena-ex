@@ -1090,8 +1090,19 @@ defmodule AthenaWeb.CoreComponents do
                  end
                end)
 
+  # Docker builds have no .git dir, so this comes from the APP_VERSION
+  # build-arg (set to the pushed tag, e.g. "v0.16.0" — see release.yml).
+  # Outside Docker (dev/test), it falls back to the local tag history.
+  @app_version (if version = System.get_env("APP_VERSION") do
+                  String.trim(version)
+                else
+                  case System.cmd("git", ["describe", "--tags", "--always"], stderr_to_stdout: true) do
+                    {out, 0} -> String.trim(out)
+                    _ -> "dev"
+                  end
+                end)
+
   def app_version do
-    vsn = Application.spec(:athena, :vsn) |> to_string()
-    "v#{vsn} (#{@commit_sha})"
+    "#{@app_version} (#{@commit_sha})"
   end
 end

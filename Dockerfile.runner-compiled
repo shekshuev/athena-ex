@@ -7,7 +7,9 @@ ARG RUNNER_IMAGE="docker.io/debian:${DEBIAN_VERSION}"
 
 FROM ${BUILDER_IMAGE} AS builder
 ARG COMMIT_SHA
+ARG APP_VERSION
 ENV COMMIT_SHA=$COMMIT_SHA
+ENV APP_VERSION=$APP_VERSION
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends build-essential git curl ca-certificates \
