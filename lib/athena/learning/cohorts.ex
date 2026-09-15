@@ -507,6 +507,77 @@ defmodule Athena.Learning.Cohorts do
     |> Repo.all()
   end
 
+  @doc """
+  Cohort ids where `account_id` is a listed instructor (via `CohortInstructor`
+  + `Instructor.owner_id`). Unscoped by `cohorts.read`/`teams.read` — mirrors
+  `co_instructor?/2`'s join, exposed publicly so other contexts can reuse it
+  instead of re-deriving the join.
+  """
+  @spec list_instructed_cohort_ids(String.t()) :: [String.t()]
+  def list_instructed_cohort_ids(account_id) do
+    from(ci in CohortInstructor,
+      join: i in Instructor,
+      on: ci.instructor_id == i.id,
+      where: i.owner_id == ^account_id,
+      select: ci.cohort_id
+    )
+    |> Repo.all()
+  end
+
+  @doc "Is `account_id` a listed instructor of `cohort_id`? Unscoped by ACL."
+  @spec instructor_of_cohort?(String.t(), String.t()) :: boolean()
+  def instructor_of_cohort?(account_id, cohort_id) do
+    cohort_id in list_instructed_cohort_ids(account_id)
+  end
+
+  @doc """
+  Cohort ids `account_id` is a *member* of (student side), via
+  `CohortMembership.account_id`. Unscoped by ACL — mirrors
+  `get_cohorts_map/1`'s "unscoped by design" precedent, since audience
+  scoping for a personal feed must not depend on `cohorts.read`.
+  """
+  @spec list_member_cohort_ids(String.t()) :: [String.t()]
+  def list_member_cohort_ids(account_id) do
+    from(cm in CohortMembership, where: cm.account_id == ^account_id, select: cm.cohort_id)
+    |> Repo.all()
+  end
+
+  @doc """
+  Cohorts matching `query` (by name, case-insensitive substring) that
+  `user` may post an announcement to: every cohort if `user` holds the
+  "admin" bypass, else only cohorts they instruct. Capped at 10 results
+  for autocomplete use — mirrors `Identity.search_accounts/1`'s shape
+  (`MembershipFormComponent`'s "search student by login" box), used here
+  for "search cohort by name" since the plain dropdown got unwieldy once
+  a school has many cohorts.
+
+  Deliberately NOT gated by `cohorts.read`/`teams.read` (an instructor
+  with `announcements.create` but no cohort-management permission must
+  still be able to find their own cohorts here) — mirrors
+  `get_cohorts_map/1`'s unscoped-by-design precedent rather than
+  `get_cohort_options/1` (which IS gated by `cohorts.read`/`teams.read`
+  and is wrong for this purpose).
+  """
+  @spec search_postable_cohorts(map(), String.t()) :: [Cohort.t()]
+  def search_postable_cohorts(user, query) when is_binary(query) do
+    base =
+      from(c in Cohort,
+        where: ilike(c.name, ^"%#{query}%"),
+        order_by: [asc: c.name],
+        limit: 10
+      )
+
+    scoped =
+      if Identity.can?(user, "admin") do
+        base
+      else
+        ids = list_instructed_cohort_ids(user.id)
+        where(base, [c], c.id in ^ids)
+      end
+
+    Repo.all(scoped)
+  end
+
   @doc false
   defp enrich_memberships_with_accounts(%CohortMembership{} = membership) do
     [enriched] = enrich_memberships_with_accounts([membership])

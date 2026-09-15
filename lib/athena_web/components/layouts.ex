@@ -14,6 +14,8 @@ defmodule AthenaWeb.Layouts do
     <div id={@id} aria-live="polite" class="toast toast-bottom toast-end z-[100] p-4 sm:p-6 mb-4">
       <.flash kind={:info} flash={@flash} />
       <.flash kind={:error} flash={@flash} />
+      <.flash kind={:success} flash={@flash} />
+      <.flash kind={:warning} flash={@flash} />
 
       <.flash
         id="client-error"

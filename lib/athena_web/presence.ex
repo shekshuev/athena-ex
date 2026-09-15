@@ -35,5 +35,7 @@ defmodule AthenaWeb.Presence do
     Athena.Identity.touch_last_seen(account_id)
   rescue
     _ -> :ok
+  catch
+    :exit, _ -> :ok
   end
 end

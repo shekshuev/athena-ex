@@ -6,8 +6,13 @@ defmodule Athena.Media do
   import Ecto.Query
   alias Athena.Repo
   alias Athena.Media.{File, Quota}
+  alias Athena.Identity.{Acl, Account, Role}
 
   @default_quota_bytes 100 * 1024 * 1024
+
+  @kb 1024
+  @mb 1024 * 1024
+  @gb 1024 * 1024 * 1024
 
   @doc """
   Retrieves a paginated list of files.
@@ -16,6 +21,79 @@ defmodule Athena.Media do
   def list_files(params \\ %{}) do
     Flop.validate_and_run(File, params, for: File)
   end
+
+  @doc """
+  Retrieves a paginated list of files scoped by the given user's `files.read`
+  permission and policies (e.g. `own_only`).
+  """
+  @spec list_files(map(), map(), keyword()) ::
+          {:ok, {[File.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
+  def list_files(user, params, _opts \\ []) do
+    from(f in File)
+    |> Acl.scope_query(user, "files.read")
+    |> Flop.validate_and_run(params, for: File)
+  end
+
+  @doc """
+  Retrieves a paginated list of a user's own personal files.
+  """
+  @spec list_personal_files(map(), map()) ::
+          {:ok, {[File.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
+  def list_personal_files(user, params \\ %{}) do
+    File
+    |> where([f], f.owner_id == ^user.id and f.context == :personal)
+    |> Flop.validate_and_run(params, for: File)
+  end
+
+  @doc """
+  Formats a byte count as a human-readable string (e.g. "12.4 MB").
+  """
+  @spec format_bytes(integer()) :: String.t()
+  def format_bytes(bytes) when is_integer(bytes) do
+    cond do
+      bytes >= @gb -> "#{Float.round(bytes / @gb, 1)} GB"
+      bytes >= @mb -> "#{Float.round(bytes / @mb, 1)} MB"
+      bytes >= @kb -> "#{Float.round(bytes / @kb, 1)} KB"
+      true -> "#{bytes} B"
+    end
+  end
+
+  @doc """
+  Lists all roles with their storage quota limit and current usage,
+  for the admin storage-quota management panel.
+  """
+  @spec list_role_quotas(map()) :: [%{role: Role.t(), used: integer(), limit: integer()}]
+  def list_role_quotas(user) do
+    if Acl.can?(user, "files.read") do
+      usage_subquery =
+        from f in File,
+          join: a in Account,
+          on: a.id == f.owner_id,
+          where: f.context == :personal,
+          group_by: a.role_id,
+          select: %{role_id: a.role_id, used: sum(f.size)}
+
+      from(r in Role,
+        left_join: u in subquery(usage_subquery),
+        on: u.role_id == r.id,
+        left_join: q in Quota,
+        on: q.role_id == r.id,
+        order_by: r.name,
+        select: %{
+          role: r,
+          used: coalesce(u.used, 0),
+          limit: coalesce(q.limit_bytes, ^@default_quota_bytes)
+        }
+      )
+      |> Repo.all()
+      |> Enum.map(&Map.update!(&1, :used, fn used -> to_integer(used) end))
+    else
+      []
+    end
+  end
+
+  defp to_integer(%Decimal{} = d), do: Decimal.to_integer(d)
+  defp to_integer(int) when is_integer(int), do: int
 
   @doc """
   Sets or updates the storage quota for a role.
@@ -133,6 +211,37 @@ defmodule Athena.Media do
 
     unique_filename = "#{Ecto.UUID.generate()}-#{filename}"
     key = "avatars/#{account_id}/#{unique_filename}"
+
+    case generate_upload_url(bucket, key) do
+      {:ok, presigned_url} ->
+        meta = %{
+          uploader: "S3",
+          url: presigned_url,
+          url_for_saved_entry: "/media/#{key}",
+          bucket: bucket,
+          key: key
+        }
+
+        {:ok, meta}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Prepares a presigned S3 upload for a user's own personal file.
+
+  Any authenticated account may upload to its own personal storage space;
+  the actual quota check happens separately once the file size is known
+  (see `check_quota/3`).
+  """
+  @spec prepare_personal_upload(map(), String.t()) :: {:ok, map()} | {:error, term()}
+  def prepare_personal_upload(user, filename) do
+    bucket = Application.get_env(:athena, Athena.Media)[:bucket] || "athena"
+
+    unique_filename = "#{Ecto.UUID.generate()}-#{filename}"
+    key = "personal/#{user.id}/#{unique_filename}"
 
     case generate_upload_url(bucket, key) do
       {:ok, presigned_url} ->

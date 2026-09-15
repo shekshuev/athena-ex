@@ -79,6 +79,7 @@ defmodule AthenaWeb.Router do
       live "/daily-challenge", LearnLive.DailyChallenge, :index
 
       live "/files", FileLive.Index, :index
+      live "/announcements", AnnouncementLive.Index, :index
 
       live "/messenger", MessengerLive.Index, :index
       live "/messenger/new", MessengerLive.Index, :new
@@ -171,6 +172,9 @@ defmodule AthenaWeb.Router do
         live "/roles/new", Roles, :new
         live "/roles/:id/edit", Roles, :edit
         live "/files", Files, :index
+        live "/announcements", Announcements, :index
+        live "/announcements/new", AnnouncementForm, :new
+        live "/announcements/:id/edit", AnnouncementForm, :edit
         live "/settings", Settings, :index
 
         live "/gamification", Gamification, :index

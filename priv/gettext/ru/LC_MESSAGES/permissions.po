@@ -47,6 +47,9 @@ msgstr "Вовлечённость"
 msgid "files"
 msgstr "Файлы"
 
+msgid "announcements"
+msgstr "Объявления"
+
 msgid "create"
 msgstr "Создание"
 

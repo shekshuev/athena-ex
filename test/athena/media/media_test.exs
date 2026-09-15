@@ -19,6 +19,106 @@ defmodule Athena.MediaTest do
     end
   end
 
+  describe "list_files/3" do
+    test "admin (with \"admin\" permission) sees every file" do
+      admin = insert(:account, role: build(:role, permissions: ["admin"]))
+      insert_list(3, :media_file)
+
+      {:ok, {files, meta}} = Media.list_files(admin, %{})
+
+      assert meta.total_count == 3
+      assert length(files) == 3
+    end
+
+    test "user with own_only policy on files.read only sees their own files" do
+      role =
+        insert(:role, permissions: ["files.read"], policies: %{"files.read" => ["own_only"]})
+
+      user = insert(:account, role: role)
+
+      own_file = insert(:media_file, owner_id: user.id)
+      insert(:media_file)
+
+      {:ok, {files, meta}} = Media.list_files(user, %{})
+
+      assert meta.total_count == 1
+      assert [%File{id: id}] = files
+      assert id == own_file.id
+    end
+
+    test "user without files.read sees nothing" do
+      role = insert(:role, permissions: [])
+      user = insert(:account, role: role)
+
+      insert(:media_file)
+
+      {:ok, {_files, meta}} = Media.list_files(user, %{})
+
+      assert meta.total_count == 0
+    end
+  end
+
+  describe "list_personal_files/2" do
+    test "scopes to the given user's own personal-context files" do
+      user = insert(:account)
+
+      own_personal = insert(:media_file, owner_id: user.id, context: :personal)
+      insert(:media_file, owner_id: user.id, context: :avatar)
+      insert(:media_file, context: :personal)
+
+      {:ok, {files, meta}} = Media.list_personal_files(user, %{})
+
+      assert meta.total_count == 1
+      assert [%File{id: id}] = files
+      assert id == own_personal.id
+    end
+  end
+
+  describe "format_bytes/1" do
+    test "formats sizes across units" do
+      assert Media.format_bytes(500) == "500 B"
+      assert Media.format_bytes(2048) == "2.0 KB"
+      assert Media.format_bytes(5 * 1024 * 1024) == "5.0 MB"
+      assert Media.format_bytes(2 * 1024 * 1024 * 1024) == "2.0 GB"
+    end
+  end
+
+  describe "list_role_quotas/1" do
+    test "returns every role with usage summed across its accounts and quota fallback" do
+      admin = insert(:account, role: build(:role, permissions: ["admin"]))
+
+      role_with_quota = insert(:role)
+      insert(:media_quota, role_id: role_with_quota.id, limit_bytes: 10_000_000)
+      owner_a = insert(:account, role: role_with_quota)
+      owner_b = insert(:account, role: role_with_quota)
+
+      role_without_quota = insert(:role)
+      owner_c = insert(:account, role: role_without_quota)
+
+      insert(:media_file, owner_id: owner_a.id, context: :personal, size: 1_000_000)
+      insert(:media_file, owner_id: owner_b.id, context: :personal, size: 2_000_000)
+      insert(:media_file, owner_id: owner_a.id, context: :avatar, size: 9_000_000)
+      insert(:media_file, owner_id: owner_c.id, context: :personal, size: 500_000)
+
+      results = Media.list_role_quotas(admin)
+
+      quoted = Enum.find(results, &(&1.role.id == role_with_quota.id))
+      assert quoted.used == 3_000_000
+      assert quoted.limit == 10_000_000
+
+      unquoted = Enum.find(results, &(&1.role.id == role_without_quota.id))
+      assert unquoted.used == 500_000
+      assert unquoted.limit == @default_quota_bytes
+    end
+
+    test "returns an empty list for a user without files.read" do
+      role = insert(:role, permissions: [])
+      user = insert(:account, role: role)
+
+      assert Media.list_role_quotas(user) == []
+    end
+  end
+
   describe "Quotas management" do
     test "set_quota/2 should insert new quota" do
       role_id = Ecto.UUID.generate()

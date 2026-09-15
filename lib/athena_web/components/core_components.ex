@@ -43,7 +43,11 @@ defmodule AthenaWeb.CoreComponents do
   attr :id, :string, default: nil, doc: "the optional id of flash container"
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
   attr :title, :string, default: nil
-  attr :kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup"
+
+  attr :kind, :atom,
+    values: [:info, :error, :success, :warning],
+    doc: "used for styling and flash lookup"
+
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
   slot :inner_block, doc: "the optional inner block that renders the flash message"
 
@@ -60,7 +64,9 @@ defmodule AthenaWeb.CoreComponents do
       class={[
         "alert cursor-pointer w-full sm:w-96 transition-all duration-300 flex items-start bg-base-100 border",
         @kind == :info && "border-info text-info",
-        @kind == :error && "border-error text-error"
+        @kind == :error && "border-error text-error",
+        @kind == :success && "border-success text-success",
+        @kind == :warning && "border-warning text-warning"
       ]}
       {@rest}
     >
@@ -72,6 +78,16 @@ defmodule AthenaWeb.CoreComponents do
       <.icon
         :if={@kind == :error}
         name="hero-exclamation-circle-solid"
+        class="h-6 w-6 shrink-0 mt-0.5 opacity-80"
+      />
+      <.icon
+        :if={@kind == :success}
+        name="hero-check-circle-solid"
+        class="h-6 w-6 shrink-0 mt-0.5 opacity-80"
+      />
+      <.icon
+        :if={@kind == :warning}
+        name="hero-exclamation-triangle-solid"
         class="h-6 w-6 shrink-0 mt-0.5 opacity-80"
       />
 
@@ -245,6 +261,34 @@ defmodule AthenaWeb.CoreComponents do
     </span>
     """
   end
+
+  @doc """
+  Renders an icon representative of a file's MIME type.
+
+  ## Examples
+
+      <.file_type_icon mime_type="application/pdf" class="size-6" />
+  """
+  attr :mime_type, :string, default: nil
+  attr :class, :any, default: "size-6"
+
+  def file_type_icon(assigns) do
+    ~H"""
+    <.icon name={mime_icon(@mime_type)} class={@class} />
+    """
+  end
+
+  defp mime_icon("image/" <> _), do: "hero-photo"
+  defp mime_icon("video/" <> _), do: "hero-film"
+  defp mime_icon("audio/" <> _), do: "hero-musical-note"
+  defp mime_icon("application/pdf"), do: "hero-document-text"
+  defp mime_icon("text/" <> _), do: "hero-document-text"
+
+  defp mime_icon("application/" <> rest)
+       when rest in ~w(zip x-rar-compressed x-7z-compressed x-tar gzip x-gzip),
+       do: "hero-archive-box"
+
+  defp mime_icon(_), do: "hero-document"
 
   @doc """
   Renders a circular avatar: the given image when `src` is set, otherwise a

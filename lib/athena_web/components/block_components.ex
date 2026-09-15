@@ -1722,8 +1722,13 @@ defmodule AthenaWeb.BlockComponents do
     """
   end
 
-  @doc false
-  defp tiptap_toolbar(%{mode: :edit} = assigns) do
+  @doc """
+  Renders the floating TipTap formatting toolbar for `mode: :edit`
+  (renders nothing for any other mode). Public so other contexts (e.g.
+  the announcements editor) can reuse the exact same toolbar instead of
+  duplicating it.
+  """
+  def tiptap_toolbar(%{mode: :edit} = assigns) do
     ~H"""
     <div class="fixed-toolbar hidden group-focus-within/tiptap:flex flex-wrap gap-2 bg-base-100 border border-base-300 rounded-sm p-1.5 mb-3 sticky top-2 z-10 items-center">
       <div class="join flex-wrap">
@@ -2041,7 +2046,7 @@ defmodule AthenaWeb.BlockComponents do
     """
   end
 
-  defp tiptap_toolbar(assigns), do: ~H""
+  def tiptap_toolbar(assigns), do: ~H""
 
   @doc false
   defp clean_filename(nil), do: "unknown_file"

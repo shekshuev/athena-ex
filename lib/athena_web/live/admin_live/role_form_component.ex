@@ -217,6 +217,8 @@ defmodule AthenaWeb.AdminLive.RoleFormComponent do
   @doc false
   defp supports_policies?("instructors.read"), do: false
 
+  defp supports_policies?("files.update"), do: false
+
   defp supports_policies?("admin"), do: false
 
   defp supports_policies?(perm) do
