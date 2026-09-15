@@ -214,33 +214,35 @@ defmodule Athena.Content.Courses do
   @spec duplicate_course(map(), String.t(), String.t()) ::
           {:ok, Course.t()} | {:error, Ecto.Changeset.t() | :forbidden | :not_found}
   def duplicate_course(user, course_id, new_title) do
-    with {:ok, source_course} <- get_course(course_id) do
-      if can_edit_course?(user, source_course) do
-        attrs = %{
-          title: new_title,
-          description: source_course.description,
-          type: source_course.type,
-          owner_id: user.id,
-          source_course_id: source_course.id,
-          copy_status: :copying
-        }
+    with {:ok, source_course} <- get_course(course_id),
+         :ok <- check_course_write_rights(user, source_course) do
+      insert_course_copy(user, source_course, new_title)
+    end
+  end
 
-        Ecto.Multi.new()
-        |> Ecto.Multi.insert(:course, duplicate_changeset(attrs))
-        |> Ecto.Multi.run(:job, fn _repo, %{course: new_course} ->
-          %{new_course_id: new_course.id, source_course_id: source_course.id}
-          |> CourseDeepCopy.new()
-          |> Oban.insert()
-        end)
-        |> Repo.transaction()
-        |> case do
-          {:ok, %{course: course}} -> {:ok, course}
-          {:error, :course, changeset, _changes} -> {:error, changeset}
-          {:error, :job, reason, _changes} -> {:error, reason}
-        end
-      else
-        {:error, :forbidden}
-      end
+  @doc false
+  defp insert_course_copy(user, source_course, new_title) do
+    attrs = %{
+      title: new_title,
+      description: source_course.description,
+      type: source_course.type,
+      owner_id: user.id,
+      source_course_id: source_course.id,
+      copy_status: :copying
+    }
+
+    Ecto.Multi.new()
+    |> Ecto.Multi.insert(:course, duplicate_changeset(attrs))
+    |> Ecto.Multi.run(:job, fn _repo, %{course: new_course} ->
+      %{new_course_id: new_course.id, source_course_id: source_course.id}
+      |> CourseDeepCopy.new()
+      |> Oban.insert()
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{course: course}} -> {:ok, course}
+      {:error, :course, changeset, _changes} -> {:error, changeset}
+      {:error, :job, reason, _changes} -> {:error, reason}
     end
   end
 

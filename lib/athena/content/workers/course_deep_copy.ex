@@ -133,15 +133,17 @@ defmodule Athena.Content.Workers.CourseDeepCopy do
 
     with {:ok, key_replacements} <-
            copy_referenced_media(source_course_id, new_course_id, blocks) do
-      Repo.transaction(fn ->
-        Enum.each(blocks, fn block ->
-          insert_copied_block(block, section_id_map, key_replacements)
-        end)
-      end)
-      |> case do
-        {:ok, _} -> :ok
-        {:error, reason} -> {:error, reason}
-      end
+      insert_copied_blocks(blocks, section_id_map, key_replacements)
+    end
+  end
+
+  @doc false
+  defp insert_copied_blocks(blocks, section_id_map, key_replacements) do
+    fn -> Enum.each(blocks, &insert_copied_block(&1, section_id_map, key_replacements)) end
+    |> Repo.transaction()
+    |> case do
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, reason}
     end
   end
 
