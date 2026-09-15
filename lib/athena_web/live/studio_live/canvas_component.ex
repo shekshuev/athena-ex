@@ -28,20 +28,13 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         </span>
       </div>
 
-      <div
+      <.empty_state
         :if={@active_section_id == nil}
-        class="flex-1 flex items-center justify-center"
-      >
-        <div class="text-center">
-          <.icon
-            name="hero-document-magnifying-glass"
-            class="size-16 text-base-content/20 mx-auto mb-4"
-          />
-          <p class="text-base-content/50 font-medium text-lg">
-            {gettext("Select a section from the sidebar to view its blocks.")}
-          </p>
-        </div>
-      </div>
+        icon="hero-document-magnifying-glass"
+        title={gettext("No section selected")}
+        description={gettext("Select a section from the sidebar to view its blocks.")}
+        class="flex-1 flex flex-col items-center justify-center"
+      />
 
       <div :if={@active_section_id != nil} class="flex-1 flex flex-col">
         <div
@@ -50,6 +43,47 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
           data-event-name="reorder_block"
           class="flex flex-col gap-6 flex-1 pb-20"
         >
+          <div
+            :if={@blocks == [] && @active_section && @active_section.children != []}
+            class="mb-2"
+          >
+            <p class="text-xs font-bold text-base-content/50 uppercase tracking-widest mb-3">
+              {gettext("Subsections")}
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                :for={child <- @active_section.children}
+                type="button"
+                phx-click="select_section"
+                phx-value-id={child.id}
+                class="flex items-center gap-3 p-4 border border-base-300 rounded-sm bg-base-100 hover:border-primary hover:text-primary transition-colors text-left"
+              >
+                <.icon name="hero-folder" class="size-6 text-base-content/40 shrink-0" />
+                <span class="font-bold truncate flex-1">{child.title}</span>
+                <.icon name="hero-chevron-right" class="size-4 text-base-content/30 shrink-0" />
+              </button>
+
+              <button
+                :if={@mode == :edit}
+                type="button"
+                phx-click="add_section"
+                phx-value-parent_id={@active_section_id}
+                class="flex items-center justify-center gap-2 p-4 border border-dashed border-base-300 rounded-sm text-base-content/50 hover:border-primary hover:text-primary transition-colors"
+              >
+                <.icon name="hero-plus" class="size-5" />
+                <span class="font-bold">{gettext("Add Subsection")}</span>
+              </button>
+            </div>
+          </div>
+
+          <.empty_state
+            :if={@blocks == [] && (!@active_section || @active_section.children == [])}
+            icon="hero-square-3-stack-3d"
+            title={gettext("This section is empty")}
+            description={gettext("Add your first block below.")}
+            class="py-10"
+          />
+
           <div
             :for={block <- @blocks}
             id={"block-wrapper-#{block.id}"}

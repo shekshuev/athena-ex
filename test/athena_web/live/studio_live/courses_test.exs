@@ -274,6 +274,100 @@ defmodule AthenaWeb.StudioLive.CoursesTest do
     end
   end
 
+  describe "Courses page (Duplicate action)" do
+    test "shows duplicate modal prefilled with a default title on click", %{
+      conn: conn,
+      admin: admin
+    } do
+      course = insert(:course, title: "Databases", owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses")
+
+      html =
+        lv
+        |> element("button[phx-click='duplicate_click'][phx-value-id='#{course.id}']")
+        |> render_click()
+
+      assert html =~ "Duplicate Course: Databases"
+      assert html =~ "Databases (Copy)"
+    end
+
+    test "duplicates a course, inserts the draft row, and shows a copying badge", %{
+      conn: conn,
+      admin: admin
+    } do
+      course = insert(:course, title: "Databases", owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses")
+
+      lv
+      |> element("button[phx-click='duplicate_click'][phx-value-id='#{course.id}']")
+      |> render_click()
+
+      html =
+        lv
+        |> form("#duplicate-course-form", %{"title" => "Databases v2"})
+        |> render_submit()
+
+      assert html =~ "Duplicating course in the background"
+      assert html =~ "Databases v2"
+      assert html =~ "Copying"
+    end
+
+    test "shows a validation error for a too-short title", %{conn: conn, admin: admin} do
+      course = insert(:course, owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses")
+
+      lv
+      |> element("button[phx-click='duplicate_click'][phx-value-id='#{course.id}']")
+      |> render_click()
+
+      html =
+        lv
+        |> form("#duplicate-course-form", %{"title" => "ab"})
+        |> render_submit()
+
+      assert html =~ "title"
+    end
+
+    test "shows a retry button once a copy has failed", %{conn: conn, admin: admin} do
+      source = insert(:course, owner_id: admin.id)
+
+      insert(:course,
+        owner_id: admin.id,
+        title: "Failed Copy",
+        source_course_id: source.id,
+        copy_status: :failed
+      )
+
+      {:ok, _lv, html} = live(conn, ~p"/studio/courses")
+
+      assert html =~ "Copy failed"
+      assert html =~ "retry_duplicate_click"
+    end
+
+    test "does not offer Open Builder while a course is still copying", %{
+      conn: conn,
+      admin: admin
+    } do
+      source = insert(:course, owner_id: admin.id)
+
+      copying =
+        insert(:course,
+          owner_id: admin.id,
+          title: "Still Copying",
+          source_course_id: source.id,
+          copy_status: :copying
+        )
+
+      {:ok, _lv, html} = live(conn, ~p"/studio/courses")
+
+      refute html =~ ~s(href="/studio/courses/#{copying.id}/builder")
+      assert html =~ "Copying in progress"
+    end
+  end
+
   describe "Course Share Component" do
     setup %{conn: conn} do
       role =

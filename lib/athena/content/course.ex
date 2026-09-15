@@ -36,6 +36,9 @@ defmodule Athena.Content.Course do
     field :is_public, :boolean, default: false
     field :code, :string
 
+    field :copy_status, Ecto.Enum, values: [:ready, :copying, :failed], default: :ready
+    belongs_to :source_course, __MODULE__
+
     has_many :sections, Section
     has_many :shares, Athena.Content.CourseShare, on_delete: :delete_all
 

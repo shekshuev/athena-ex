@@ -111,7 +111,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
       {:ok, _lv, html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/add_student?page_size=50")
 
       assert html =~ "Add Student to Cohort"
-      assert html =~ "Search User by Login"
+      assert html =~ "Search Student"
     end
 
     test "should open the assign course slide-over via URL and preserve params", %{

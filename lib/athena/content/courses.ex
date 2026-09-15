@@ -6,6 +6,7 @@ defmodule Athena.Content.Courses do
   import Ecto.Query
   alias Athena.Repo
   alias Athena.Content.{Course, CourseShare, CourseLibraryBlock, LibraryBlock}
+  alias Athena.Content.Workers.CourseDeepCopy
   alias Athena.Identity
 
   @doc """
@@ -198,6 +199,97 @@ defmodule Athena.Content.Courses do
     else
       {:error, :forbidden}
     end
+  end
+
+  @doc """
+  Creates a draft copy of a course (title/description/type only — no
+  sections, blocks, or files yet) and enqueues `CourseDeepCopy` to deep-copy
+  the rest in the background.
+
+  The source course and any cohorts already enrolled in it are left
+  completely untouched: this exists precisely so that a teacher can evolve
+  a course (e.g. add new waterline-blocking tasks) for future cohorts
+  without affecting cohorts who already completed the original.
+  """
+  @spec duplicate_course(map(), String.t(), String.t()) ::
+          {:ok, Course.t()} | {:error, Ecto.Changeset.t() | :forbidden | :not_found}
+  def duplicate_course(user, course_id, new_title) do
+    with {:ok, source_course} <- get_course(course_id),
+         :ok <- check_course_write_rights(user, source_course) do
+      insert_course_copy(user, source_course, new_title)
+    end
+  end
+
+  @doc false
+  defp insert_course_copy(user, source_course, new_title) do
+    attrs = %{
+      title: new_title,
+      description: source_course.description,
+      type: source_course.type,
+      owner_id: user.id,
+      source_course_id: source_course.id,
+      copy_status: :copying
+    }
+
+    Ecto.Multi.new()
+    |> Ecto.Multi.insert(:course, duplicate_changeset(attrs))
+    |> Ecto.Multi.run(:job, fn _repo, %{course: new_course} ->
+      %{new_course_id: new_course.id, source_course_id: source_course.id}
+      |> CourseDeepCopy.new()
+      |> Oban.insert()
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{course: course}} -> {:ok, course}
+      {:error, :course, changeset, _changes} -> {:error, changeset}
+      {:error, :job, reason, _changes} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Re-enqueues `CourseDeepCopy` for a course whose previous copy attempt
+  failed, after clearing out whatever it left behind (see the worker's
+  idempotent cleanup step).
+  """
+  @spec retry_course_copy(map(), Course.t()) ::
+          {:ok, Course.t()} | {:error, :forbidden | :not_failed | any()}
+  def retry_course_copy(user, %Course{copy_status: :failed} = course) do
+    if can_edit_course?(user, course) do
+      Ecto.Multi.new()
+      |> Ecto.Multi.update(:course, Ecto.Changeset.change(course, copy_status: :copying))
+      |> Ecto.Multi.run(:job, fn _repo, %{course: updated_course} ->
+        %{new_course_id: updated_course.id, source_course_id: updated_course.source_course_id}
+        |> CourseDeepCopy.new()
+        |> Oban.insert()
+      end)
+      |> Repo.transaction()
+      |> case do
+        {:ok, %{course: updated_course}} -> {:ok, updated_course}
+        {:error, :course, changeset, _changes} -> {:error, changeset}
+        {:error, :job, reason, _changes} -> {:error, reason}
+      end
+    else
+      {:error, :forbidden}
+    end
+  end
+
+  def retry_course_copy(_user, %Course{}), do: {:error, :not_failed}
+
+  @doc false
+  defp duplicate_changeset(attrs) do
+    %Course{}
+    |> Ecto.Changeset.cast(attrs, [
+      :title,
+      :description,
+      :type,
+      :owner_id,
+      :source_course_id,
+      :copy_status
+    ])
+    |> Ecto.Changeset.put_change(:status, :draft)
+    |> Ecto.Changeset.validate_required([:title, :type, :owner_id, :source_course_id])
+    |> Ecto.Changeset.validate_length(:title, min: 3, max: 255)
+    |> Ecto.Changeset.unique_constraint(:title, name: :courses_title_index)
   end
 
   @doc """

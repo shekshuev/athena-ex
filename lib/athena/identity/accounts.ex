@@ -13,6 +13,7 @@ defmodule Athena.Identity.Accounts do
   import Ecto.Query
   alias Athena.{Repo, Identity, Media, Workers}
   alias Athena.Identity.{Account, Acl, Profile}
+  alias Athena.Learning.CohortMembership
 
   @doc """
   Retrieves a paginated list of accounts with optional preloads.
@@ -439,20 +440,49 @@ defmodule Athena.Identity.Accounts do
   """
   @spec search_messageable_accounts(Account.t(), String.t(), integer()) :: [Account.t()]
   def search_messageable_accounts(current_user, query, limit \\ 10) do
+    query
+    |> open_account_search_query()
+    |> where([a], a.id != ^current_user.id)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  @doc """
+  Searches active, non-deleted accounts by login OR profile name
+  (first/last/patronymic), for the open "add student to cohort" flow.
+  Accounts already belonging to the given cohort are excluded.
+
+  Deliberately open like `search_messageable_accounts/3` above: looking a
+  user up is harmless, only the mutation is permission-gated (see
+  `Athena.Learning.add_student_to_cohort/3`, which still requires
+  `"cohorts.update"`/`"teams.update"` and is unaffected by this function).
+  """
+  @spec search_addable_cohort_accounts(String.t(), String.t(), integer()) :: [Account.t()]
+  def search_addable_cohort_accounts(cohort_id, query, limit \\ 10) do
+    member_ids =
+      from(m in CohortMembership, where: m.cohort_id == ^cohort_id, select: m.account_id)
+
+    query
+    |> open_account_search_query()
+    |> where([a], a.id not in subquery(member_ids))
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  @doc false
+  defp open_account_search_query(query) do
     term = "%#{query}%"
 
     from(a in Account,
       left_join: p in Profile,
       on: p.owner_id == a.id,
-      where: a.status == :active and is_nil(a.deleted_at) and a.id != ^current_user.id,
+      where: a.status == :active and is_nil(a.deleted_at),
       where:
         ilike(a.login, ^term) or ilike(p.first_name, ^term) or ilike(p.last_name, ^term) or
           ilike(p.patronymic, ^term),
       order_by: [asc: a.login],
-      limit: ^limit,
       preload: [profile: p]
     )
-    |> Repo.all()
   end
 
   @doc """

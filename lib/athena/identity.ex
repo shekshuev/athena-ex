@@ -30,6 +30,7 @@ defmodule Athena.Identity do
   defdelegate get_accounts_map(ids), to: Accounts
   defdelegate search_accounts_by_login(user, query, limit), to: Accounts
   defdelegate search_messageable_accounts(user, query, limit \\ 10), to: Accounts
+  defdelegate search_addable_cohort_accounts(cohort_id, query, limit \\ 10), to: Accounts
   defdelegate touch_last_seen(account_id), to: Accounts
   defdelegate display_name(account), to: Accounts
   defdelegate force_change_password(account, attrs), to: Accounts

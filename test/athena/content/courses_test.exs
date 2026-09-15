@@ -3,6 +3,7 @@ defmodule Athena.Content.CoursesTest do
 
   alias Athena.Content.Courses
   alias Athena.Content.Course
+  alias Athena.Content.Workers.CourseDeepCopy
   import Athena.Factory
 
   setup do
@@ -538,6 +539,71 @@ defmodule Athena.Content.CoursesTest do
       course: course
     } do
       assert {:error, :not_found} = Courses.list_course_workspace_blocks(hacker, course.id)
+    end
+  end
+
+  describe "duplicate_course/3" do
+    test "creates a draft copy and enqueues a CourseDeepCopy job", %{admin: admin} do
+      source = insert(:course, title: "Databases", description: "Original desc", type: :standard)
+
+      assert {:ok, %Course{} = copy} = Courses.duplicate_course(admin, source.id, "Databases v2")
+
+      assert copy.id != source.id
+      assert copy.title == "Databases v2"
+      assert copy.description == "Original desc"
+      assert copy.type == :standard
+      assert copy.status == :draft
+      assert copy.owner_id == admin.id
+      assert copy.source_course_id == source.id
+      assert copy.copy_status == :copying
+      assert is_nil(copy.code)
+
+      assert_enqueued(
+        worker: CourseDeepCopy,
+        args: %{new_course_id: copy.id, source_course_id: source.id}
+      )
+    end
+
+    test "instructor can duplicate their own course", %{instructor: instructor} do
+      source = insert(:course, owner_id: instructor.id)
+
+      assert {:ok, copy} = Courses.duplicate_course(instructor, source.id, "My Copy")
+      assert copy.owner_id == instructor.id
+    end
+
+    test "returns forbidden if instructor does not own or edit the course", %{
+      instructor: instructor,
+      other_instructor: other
+    } do
+      source = insert(:course, owner_id: other.id)
+
+      assert {:error, :forbidden} = Courses.duplicate_course(instructor, source.id, "Stolen")
+    end
+
+    test "returns not_found for a non-existent source course", %{admin: admin} do
+      assert {:error, :not_found} =
+               Courses.duplicate_course(admin, Ecto.UUID.generate(), "Ghost")
+    end
+
+    test "returns a changeset error for an invalid new title", %{admin: admin} do
+      source = insert(:course)
+
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               Courses.duplicate_course(admin, source.id, "ab")
+
+      assert "should be at least 3 character(s)" in errors_on(changeset).title
+    end
+
+    test "does not affect cohorts enrolled in the source course", %{admin: admin} do
+      source = insert(:course)
+      cohort = insert(:cohort)
+      insert(:enrollment, course_id: source.id, cohort_id: cohort.id, account_id: nil)
+
+      assert {:ok, copy} = Courses.duplicate_course(admin, source.id, "New Version")
+
+      assert copy.id != source.id
+      assert {:ok, reloaded_source} = Courses.get_course(source.id)
+      assert reloaded_source.title == source.title
     end
   end
 

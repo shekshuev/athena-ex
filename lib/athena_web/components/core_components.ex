@@ -1096,7 +1096,9 @@ defmodule AthenaWeb.CoreComponents do
   @app_version (if version = System.get_env("APP_VERSION") do
                   String.trim(version)
                 else
-                  case System.cmd("git", ["describe", "--tags", "--always"], stderr_to_stdout: true) do
+                  case System.cmd("git", ["describe", "--tags", "--always"],
+                         stderr_to_stdout: true
+                       ) do
                     {out, 0} -> String.trim(out)
                     _ -> "dev"
                   end

@@ -2,9 +2,11 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
   @moduledoc """
   A LiveComponent for adding a student to a cohort.
 
-  Features a real-time autocomplete search for user accounts by login.
-  Delegates database operations to the `Athena.Learning` context
-  and account searching to the `Athena.Identity` context.
+  Features a real-time autocomplete search for user accounts by login or
+  profile name (ФИО). The search itself is intentionally open, like the
+  messenger's — see `Athena.Identity.Accounts.search_addable_cohort_accounts/3`
+  — while adding the selected student to the cohort remains gated by the
+  `"cohorts.update"`/`"teams.update"` permission in `Athena.Learning`.
   """
   use AthenaWeb, :live_component
 
@@ -35,12 +37,7 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
   @impl true
   def handle_event("search_accounts", %{"value" => query}, socket) do
     if String.length(query) >= 2 do
-      flop_params = %{
-        "filters" => %{"0" => %{"field" => "login", "op" => "ilike_and", "value" => query}},
-        "page_size" => 10
-      }
-
-      {:ok, {accounts, _}} = Identity.list_accounts(socket.assigns.current_user, flop_params)
+      accounts = Identity.search_addable_cohort_accounts(socket.assigns.cohort_id, query, 10)
       {:noreply, assign(socket, search_query: query, search_results: accounts)}
     else
       {:noreply, assign(socket, search_query: query, search_results: [])}
@@ -109,7 +106,7 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
       <form id="membership-form" phx-submit="save" phx-target={@myself} class="flex flex-col gap-6">
         <div class="form-control w-full relative">
           <label class="label">
-            <span class="label-text font-bold">{gettext("Search User by Login")}</span>
+            <span class="label-text font-bold">{gettext("Search Student")}</span>
           </label>
 
           <%= if @selected_account do %>
@@ -136,7 +133,7 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
                 phx-keyup="search_accounts"
                 phx-target={@myself}
                 class={["input input-bordered w-full", @error_msg && "input-error"]}
-                placeholder={gettext("Type at least 2 characters...")}
+                placeholder={gettext("Search by name or username...")}
                 autocomplete="off"
                 phx-debounce="300"
                 autofocus
@@ -157,9 +154,17 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponent do
                   phx-target={@myself}
                   phx-value-id={acc.id}
                   phx-value-login={acc.login}
-                  class="p-3 hover:bg-primary/10 hover:text-primary cursor-pointer border-b border-base-100 last:border-0 font-medium transition-colors"
+                  class="flex items-center gap-3 p-3 hover:bg-primary/10 hover:text-primary cursor-pointer border-b border-base-100 last:border-0 transition-colors"
                 >
-                  {acc.login}
+                  <.avatar
+                    initials={String.slice(Identity.display_name(acc), 0..1)}
+                    size="w-8"
+                    text_size="text-xs"
+                  />
+                  <div class="min-w-0">
+                    <div class="font-bold truncate">{Identity.display_name(acc)}</div>
+                    <div class="text-sm opacity-60 truncate">@{acc.login}</div>
+                  </div>
                 </li>
               <% end %>
             </ul>
