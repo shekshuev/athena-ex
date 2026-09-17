@@ -7,7 +7,9 @@ defmodule AthenaWeb.Hooks.Auth do
   """
   import Phoenix.LiveView
   import Phoenix.Component
-  alias Athena.Identity
+  alias Athena.{Identity, Repo}
+  alias Athena.Identity.Account
+  alias Athena.Learning.TestRunSession
 
   @doc """
   Main entry point for authentication hooks.
@@ -15,6 +17,13 @@ defmodule AthenaWeb.Hooks.Auth do
   Supports:
   - `:default` - Mounts the current user from session.
   - `:require_authenticated_user` - Redirects to login if user is missing.
+  - `:test_run` - Mounts the ephemeral test-run account instead of the real
+    session user, for `AthenaWeb.LearnLive.Player` when nested inside the
+    course builder's "test run" modal (see `Athena.Learning.TestRuns`). A
+    no-op for every other mount, since it only acts when
+    `session["test_run_id"]` is present — which never happens for a real
+    student's own `session`, only for the signed session LiveView's own
+    `live_render/3` mints server-side.
   """
   @spec on_mount(atom(), map(), map(), Phoenix.LiveView.Socket.t()) ::
           {:cont, Phoenix.LiveView.Socket.t()} | {:halt, Phoenix.LiveView.Socket.t()}
@@ -53,6 +62,25 @@ defmodule AthenaWeb.Hooks.Auth do
       {:halt, redirect(socket, to: "/auth/login")}
     end
   end
+
+  def on_mount(:test_run, _params, %{"test_run_id" => session_id}, socket) do
+    with %TestRunSession{status: :active} = test_run_session <-
+           Repo.get(TestRunSession, session_id),
+         :gt <- DateTime.compare(test_run_session.expires_at, DateTime.utc_now()),
+         %{status: :active} = account <- Repo.get(Account, test_run_session.ephemeral_account_id) do
+      {:cont,
+       assign(socket,
+         current_user: account,
+         test_run: true,
+         test_run_course_id: test_run_session.course_id,
+         test_run_section_id: test_run_session.section_id
+       )}
+    else
+      _ -> {:cont, socket}
+    end
+  end
+
+  def on_mount(:test_run, _params, _session, socket), do: {:cont, socket}
 
   def on_mount(:ensure_password_changed, _params, _session, socket) do
     if socket.assigns.current_user && socket.assigns.current_user.must_change_password do

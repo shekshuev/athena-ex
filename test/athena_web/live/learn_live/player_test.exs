@@ -1009,6 +1009,57 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       refute html =~ "Checking..."
     end
 
+    test "after a wrong submission, typing new code updates the editor's value instead of sticking to the old submission's code",
+         %{conn: conn, course: course, user: user} do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :code, content: %{"language" => "python3"})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      lv
+      |> form("#code-form-#{block.id}")
+      |> render_submit(%{"block_id" => block.id, "answer" => %{"code" => "AAAWRONGCODE"}})
+
+      wrong_submission =
+        insert(:submission,
+          account_id: user.id,
+          block_id: block.id,
+          status: :wrong_answer,
+          score: 0,
+          content: %{
+            "code" => "AAAWRONGCODE",
+            "execution_results" => [
+              %{"status" => "wrong_answer", "time" => 0.1, "is_hidden" => false}
+            ]
+          }
+        )
+
+      send(lv.pid, {:submission_updated, wrong_submission})
+      assert render(lv) =~ "AAAWRONGCODE"
+
+      # The student edits the code (`phx-change="save_draft"` on the form,
+      # mirroring what the CodeEditor hook fires on every keystroke). A
+      # `submission` now exists for this block (the wrong attempt above), so
+      # `extract_code_answer/4` must prefer this fresh draft over that
+      # submission's own (stale) code, or the hidden input the browser
+      # actually submits on the next click would still hold "AAAWRONGCODE".
+      html =
+        lv
+        |> form("#code-form-#{block.id}")
+        |> render_change(%{"block_id" => block.id, "answer" => %{"code" => "BBBRIGHTCODE"}})
+
+      assert html =~ "BBBRIGHTCODE"
+      refute html =~ "AAAWRONGCODE"
+
+      # And submitting now actually sends the new code, not the old one.
+      lv
+      |> form("#code-form-#{block.id}")
+      |> render_submit(%{"block_id" => block.id, "answer" => %{"code" => "BBBRIGHTCODE"}})
+
+      second_submission = :sys.get_state(lv.pid).socket.assigns.submissions[block.id]
+      assert second_submission.content["code"] == "BBBRIGHTCODE"
+    end
+
     test "respects hidden test cases and masks their details", %{
       conn: conn,
       course: course,

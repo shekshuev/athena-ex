@@ -56,6 +56,29 @@ defmodule Athena.Content.PolicyTest do
       assert Policy.can_view?(user, future_block) == false
       assert Policy.can_view?(user, expired_block) == false
     end
+
+    test "ignore_schedule?: true bypasses unlock_at/lock_at but not :hidden visibility", %{
+      user: user
+    } do
+      now = DateTime.utc_now()
+      future = DateTime.add(now, 1, :day)
+      past = DateTime.add(now, -1, :day)
+
+      future_block =
+        insert(:block, visibility: :restricted, access_rules: %AccessRules{unlock_at: future})
+
+      expired_block =
+        insert(:block, visibility: :restricted, access_rules: %AccessRules{lock_at: past})
+
+      hidden_block = insert(:block, visibility: :hidden)
+
+      assert Policy.can_view?(user, future_block, [], ignore_schedule?: true) == true
+      assert Policy.can_view?(user, expired_block, [], ignore_schedule?: true) == true
+      assert Policy.can_view?(user, hidden_block, [], ignore_schedule?: true) == false
+
+      assert Policy.can_view?(user, future_block, [], ignore_schedule?: false) == false
+      assert Policy.can_view?(user, future_block) == false
+    end
   end
 
   describe "can_view?/3" do

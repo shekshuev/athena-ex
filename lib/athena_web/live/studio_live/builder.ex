@@ -12,6 +12,7 @@ defmodule AthenaWeb.StudioLive.Builder do
   alias Athena.Content.Block
   alias Athena.Identity
   alias Athena.Execution
+  alias Athena.Learning
   alias Athena.Media.Config, as: MediaConfig
 
   on_mount {AthenaWeb.Hooks.Permission, ["courses.read", "competitions.read"]}
@@ -65,7 +66,8 @@ defmodule AthenaWeb.StudioLive.Builder do
          running_tests: %{},
          hide_mobile_nav: true,
          characters: Content.characters_for_picker(socket.assigns.current_user),
-         show_character_modal: false
+         show_character_modal: false,
+         test_run_session: nil
        )}
     else
       _ ->
@@ -74,6 +76,23 @@ defmodule AthenaWeb.StudioLive.Builder do
          |> put_flash(:error, gettext("You don't have access to this course."))
          |> push_navigate(to: ~p"/studio/courses")}
     end
+  end
+
+  @doc """
+  Best-effort cleanup if the builder LiveView goes away (tab closed, crash,
+  navigation) while a test run is still open — the modal's own "close"
+  handler is the normal path, this is the backstop for when that never
+  fires. `Athena.Learning.Workers.TestRunCleanup`'s cron sweep is the real
+  backstop for cases even this can't catch (a killed BEAM node, a network
+  partition that never delivers the socket's close).
+  """
+  @impl true
+  def terminate(_reason, socket) do
+    if session = socket.assigns[:test_run_session] do
+      Learning.cleanup_test_run(session)
+    end
+
+    :ok
   end
 
   def handle_info(:refresh_tree, socket) do
@@ -446,6 +465,33 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   def handle_event("cancel_move", _, socket) do
     {:noreply, assign(socket, moving_section_id: nil)}
+  end
+
+  def handle_event("start_test_run", %{"section_id" => section_id}, socket) do
+    if can_edit?(socket) do
+      case Learning.start_test_run(
+             socket.assigns.current_user,
+             socket.assigns.course.id,
+             section_id
+           ) do
+        {:ok, test_run_session} ->
+          {:noreply, assign(socket, test_run_session: test_run_session)}
+
+        {:error, _reason} ->
+          {:noreply,
+           put_flash(socket, :error, gettext("Could not start a test run for this section."))}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("close_test_run", _, socket) do
+    if session = socket.assigns[:test_run_session] do
+      Learning.cleanup_test_run(session)
+    end
+
+    {:noreply, assign(socket, test_run_session: nil)}
   end
 
   def handle_event("move_section", %{"target_id" => target_id}, socket) do
@@ -1664,7 +1710,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             <.live_component
               module={AthenaWeb.StudioLive.Builder.CanvasComponent}
               id="canvas-component"
-              blocks={@blocks}
+              blocks={if @test_run_session, do: [], else: @blocks}
               active_section={@active_section}
               active_section_id={@active_section_id}
               active_block_id={@active_block_id}
@@ -1720,6 +1766,36 @@ defmodule AthenaWeb.StudioLive.Builder do
           on_cancel={JS.push("cancel_character_modal")}
         />
       </.modal>
+
+      <div
+        :if={@test_run_session}
+        id="test-run-modal"
+        class="fixed inset-0 z-60 flex flex-col bg-base-200"
+      >
+        <div class="flex items-center gap-3 px-4 py-3 bg-base-100 border-b border-base-300 shrink-0">
+          <.icon name="hero-play-circle" class="size-5 text-primary" />
+          <span class="font-bold">{gettext("Test run")}</span>
+          <span class="text-sm text-base-content/60">
+            {gettext(
+              "Playing as a throwaway test student. Scheduling (unlock/lock dates) is ignored; nothing here is saved once you close this window."
+            )}
+          </span>
+          <button
+            type="button"
+            phx-click="close_test_run"
+            class="btn btn-sm btn-ghost ml-auto"
+          >
+            <.icon name="hero-x-mark" class="size-4" />
+            {gettext("Close")}
+          </button>
+        </div>
+        <div class="flex-1 overflow-y-auto">
+          {live_render(@socket, AthenaWeb.LearnLive.Player,
+            id: "test-run-player-#{@test_run_session.id}",
+            session: %{"test_run_id" => @test_run_session.id}
+          )}
+        </div>
+      </div>
 
       <.modal
         :if={@moving_section_id}

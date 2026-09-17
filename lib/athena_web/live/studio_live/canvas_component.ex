@@ -26,6 +26,18 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
             {crumb.title}
           </button>
         </span>
+
+        <button
+          :if={@mode == :edit && @active_section_id}
+          type="button"
+          phx-click="start_test_run"
+          phx-value-section_id={@active_section_id}
+          class="btn btn-sm btn-outline ml-auto"
+          title={gettext("Play through this section as a test student")}
+        >
+          <.icon name="hero-play-circle" class="size-4" />
+          {gettext("Test run")}
+        </button>
       </div>
 
       <.empty_state

@@ -394,11 +394,16 @@ defmodule AthenaWeb.BlockComponents do
       present?(live_answer) ->
         do_extract_code(live_answer)
 
-      present?(submission) and present?(do_extract_code(submission)) ->
-        do_extract_code(submission)
-
+      # A draft means the student has typed something new since their last
+      # submission (submitting clears the draft, so one only exists again
+      # once they've edited past that point) — it must win over `submission`,
+      # or every resubmit after the first would silently re-send the
+      # *previous* attempt's code instead of what's currently in the editor.
       present?(draft) ->
         do_extract_code(draft)
+
+      present?(submission) and present?(do_extract_code(submission)) ->
+        do_extract_code(submission)
 
       true ->
         nil
@@ -477,20 +482,33 @@ defmodule AthenaWeb.BlockComponents do
 
     live_answer = Map.get(assigns.answers || %{}, assigns.block.id)
 
-    if present?(live_answer) do
-      if is_struct(live_answer, Athena.Learning.Submission) do
-        extract_from_submission(live_answer, q_type, answer_type)
-      else
-        live_answer
-      end
-    else
-      sub_answer = extract_from_submission(assigns[:submission], q_type, answer_type)
+    # Drafts only make sense to show while the block is actually editable
+    # (`:play`) — in `:review`/other modes there's nothing to resubmit, so
+    # the last submission's own answer is always what should be shown,
+    # matching `compute_code_for_mode/5`'s equivalent mode gate for code
+    # blocks.
+    draft = if assigns.mode == :play, do: assigns[:draft]
+    draft_answer = extract_from_draft(draft, q_type, answer_type)
 
-      if present?(sub_answer) do
-        sub_answer
-      else
-        extract_from_draft(assigns[:draft], q_type, answer_type)
-      end
+    cond do
+      present?(live_answer) ->
+        if is_struct(live_answer, Athena.Learning.Submission) do
+          extract_from_submission(live_answer, q_type, answer_type)
+        else
+          live_answer
+        end
+
+      # A draft means the student has typed something new since their last
+      # submission (submitting clears the draft, so one only exists again
+      # once they've edited past that point) — it must win over the last
+      # submission's own answer, or every resubmit after the first would
+      # silently re-send the *previous* attempt's answer instead of what's
+      # currently in the form.
+      present?(draft_answer) ->
+        draft_answer
+
+      true ->
+        extract_from_submission(assigns[:submission], q_type, answer_type)
     end
   end
 

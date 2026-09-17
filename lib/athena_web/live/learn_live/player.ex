@@ -12,6 +12,8 @@ defmodule AthenaWeb.LearnLive.Player do
   """
   use AthenaWeb, :live_view
 
+  on_mount {AthenaWeb.Hooks.Auth, :test_run}
+
   alias Athena.Content
   alias Athena.Content.Policy
   alias Athena.Engagement
@@ -23,26 +25,52 @@ defmodule AthenaWeb.LearnLive.Player do
   Initializes the player, checks course access, and validates that the student
   has reached the requested section. Redirects to a safe zone if access is blocked.
   """
-  @spec mount(map(), map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
+  @spec mount(map() | :not_mounted_at_router, map(), Phoenix.LiveView.Socket.t()) ::
+          {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
+  # Nested `live_render/3` mounts (the builder's "test run" modal) never go
+  # through the router, so `params` arrives as the literal atom
+  # `:not_mounted_at_router` instead of a map — `course_id`/`section_id` come
+  # from the test-run session itself (stashed onto the socket by
+  # `AthenaWeb.Hooks.Auth`'s `:test_run` on_mount hook) rather than the URL.
+  def mount(:not_mounted_at_router, _session, %{assigns: %{test_run: true}} = socket) do
+    mount_player(
+      %{"section_id" => socket.assigns.test_run_section_id},
+      socket.assigns.test_run_course_id,
+      socket
+    )
+  end
+
   def mount(%{"id" => course_id} = params, _session, socket) do
+    mount_player(params, course_id, socket)
+  end
+
+  @doc false
+  defp mount_player(params, course_id, socket) do
     user = socket.assigns.current_user
+    test_run? = !!socket.assigns[:test_run]
+    socket = assign(socket, :test_run, test_run?)
+    opts = [ignore_schedule?: test_run?]
 
-    with true <- Learning.has_access?(user.id, course_id),
+    with true <- test_run? || Learning.has_access?(user.id, course_id),
          {:ok, course} <- Content.get_course(course_id) do
-      cohort = Learning.get_user_cohort_for_course(user.id, course_id)
-
-      cohort_id = if cohort, do: cohort.id, else: nil
-      team_id = if cohort && cohort.type == :team, do: cohort.id, else: nil
+      {cohort, cohort_id, team_id} = resolve_cohort_info(user.id, course_id)
 
       if connected?(socket), do: subscribe_to_topics(course_id, team_id, user.id)
 
       overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
-      linear_lessons = Content.list_linear_lessons(course_id, user, overrides)
+      linear_lessons = Content.list_linear_lessons(course_id, user, overrides, opts)
       block_counts = Content.count_blocks_by_course(course_id)
 
       accessible_ids =
-        Learning.accessible_section_ids(user, course_id, linear_lessons, overrides, team_id)
+        Learning.accessible_section_ids(
+          user,
+          course_id,
+          linear_lessons,
+          overrides,
+          team_id,
+          opts
+        )
 
       first_lesson = List.first(linear_lessons)
       first_lesson_id = if first_lesson, do: first_lesson.id, else: nil
@@ -56,7 +84,8 @@ defmodule AthenaWeb.LearnLive.Player do
           team_id: team_id,
           block_counts: block_counts,
           engagement_session_id: Ecto.UUID.generate(),
-          nudges_enabled: !!(cohort && cohort.nudges_enabled)
+          nudges_enabled: !!(cohort && cohort.nudges_enabled),
+          opts: opts
         }
 
         setup_player_state(socket, course, section_id, linear_lessons, accessible_ids, ctx)
@@ -71,6 +100,15 @@ defmodule AthenaWeb.LearnLive.Player do
         {:ok,
          push_navigate(socket |> put_flash(:error, gettext("Access denied.")), to: ~p"/learn")}
     end
+  end
+
+  @doc false
+  defp resolve_cohort_info(user_id, course_id) do
+    cohort = Learning.get_user_cohort_for_course(user_id, course_id)
+    cohort_id = cohort && cohort.id
+    team_id = if cohort && cohort.type == :team, do: cohort.id
+
+    {cohort, cohort_id, team_id}
   end
 
   @doc false
@@ -92,11 +130,11 @@ defmodule AthenaWeb.LearnLive.Player do
 
     blocks =
       Content.list_blocks_by_section(section_id, :all)
-      |> Enum.filter(&Content.can_view?(ctx.user, &1, ctx.overrides))
+      |> Enum.filter(&Content.can_view?(ctx.user, &1, ctx.overrides, ctx.opts))
       |> Enum.sort_by(& &1.order)
 
     completed_ids = Learning.completed_block_ids(ctx.user.id, section_id, ctx.team_id)
-    tree = Content.get_course_tree(course.id, ctx.user, ctx.overrides)
+    tree = Content.get_course_tree(course.id, ctx.user, ctx.overrides, ctx.opts)
 
     current_index = Enum.find_index(linear_lessons, fn s -> s.id == section_id end)
 
@@ -207,6 +245,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
     new_completed_ids = [block_id | socket.assigns.completed_ids]
     linear_lessons = socket.assigns.linear_lessons
+    opts = [ignore_schedule?: !!socket.assigns[:test_run]]
 
     accessible_ids =
       Learning.accessible_section_ids(
@@ -214,7 +253,8 @@ defmodule AthenaWeb.LearnLive.Player do
         socket.assigns.course.id,
         linear_lessons,
         socket.assigns.overrides,
-        team_id
+        team_id,
+        opts
       )
 
     current_index = Enum.find_index(linear_lessons, fn s -> s.id == socket.assigns.section.id end)
@@ -1213,6 +1253,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
     new_completed_ids = [block_id | socket.assigns.completed_ids]
     linear_lessons = socket.assigns.linear_lessons
+    opts = [ignore_schedule?: !!socket.assigns[:test_run]]
 
     accessible_ids =
       Learning.accessible_section_ids(
@@ -1220,7 +1261,8 @@ defmodule AthenaWeb.LearnLive.Player do
         socket.assigns.course.id,
         linear_lessons,
         socket.assigns.overrides,
-        team_id
+        team_id,
+        opts
       )
 
     current_index =
@@ -1260,23 +1302,24 @@ defmodule AthenaWeb.LearnLive.Player do
     team_id = socket.assigns.team_id
     current_section_id = socket.assigns.section.id
 
+    opts = [ignore_schedule?: !!socket.assigns[:test_run]]
     overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
-    linear_lessons = Content.list_linear_lessons(course_id, user, overrides)
+    linear_lessons = Content.list_linear_lessons(course_id, user, overrides, opts)
     block_counts = Content.count_blocks_by_course(course_id)
 
     accessible_ids =
-      Learning.accessible_section_ids(user, course_id, linear_lessons, overrides, team_id)
+      Learning.accessible_section_ids(user, course_id, linear_lessons, overrides, team_id, opts)
 
     if current_section_id in accessible_ids do
       blocks =
         Content.list_blocks_by_section(current_section_id, :all)
-        |> Enum.filter(&Content.can_view?(user, &1, overrides))
+        |> Enum.filter(&Content.can_view?(user, &1, overrides, opts))
         |> Enum.sort_by(& &1.order)
 
       completed_ids = Learning.completed_block_ids(user.id, current_section_id, team_id)
       submissions = Learning.get_latest_submissions(user.id, Enum.map(blocks, & &1.id), team_id)
 
-      tree = Content.get_course_tree(course_id, user, overrides)
+      tree = Content.get_course_tree(course_id, user, overrides, opts)
 
       current_index = Enum.find_index(linear_lessons, fn s -> s.id == current_section_id end)
       next_section = Enum.at(linear_lessons, current_index + 1)
@@ -1566,6 +1609,7 @@ defmodule AthenaWeb.LearnLive.Player do
       >
         <div class="flex items-center justify-between mb-12 border-b border-base-200 pb-6">
           <a
+            :if={!@test_run}
             href={"/learn/courses/#{@course.id}"}
             class="inline-flex items-center gap-2 text-sm font-medium text-base-content/50 hover:text-base-content transition-colors"
           >
@@ -1574,7 +1618,7 @@ defmodule AthenaWeb.LearnLive.Player do
           </a>
 
           <div class="flex items-center gap-2">
-            <%= if @prev_section_id do %>
+            <%= if !@test_run && @prev_section_id do %>
               <.link
                 navigate={~p"/learn/courses/#{@course.id}/play/#{@prev_section_id}"}
                 class="btn btn-ghost btn-sm btn-square text-base-content/70 hover:text-primary"
@@ -1584,6 +1628,7 @@ defmodule AthenaWeb.LearnLive.Player do
             <% end %>
 
             <button
+              :if={!@test_run}
               phx-click="open_course_map"
               class="btn btn-ghost btn-sm text-base-content/70 hover:text-primary"
             >
@@ -1591,7 +1636,7 @@ defmodule AthenaWeb.LearnLive.Player do
               <span class="hidden sm:inline">{gettext("Course Map")}</span>
             </button>
 
-            <%= if @next_section_id && all_blocks_completed?(@visible_blocks, @completed_ids) do %>
+            <%= if !@test_run && @next_section_id && all_blocks_completed?(@visible_blocks, @completed_ids) do %>
               <.link
                 navigate={~p"/learn/courses/#{@course.id}/play/#{@next_section_id}"}
                 class="btn btn-ghost btn-sm btn-square text-base-content/70 hover:text-primary"
@@ -1652,7 +1697,6 @@ defmodule AthenaWeb.LearnLive.Player do
                       block={block}
                       mode={mode}
                       submission={submission}
-                      answers={@submissions}
                       draft={Map.get(@drafts || %{}, block.id)}
                       attempts_count={attempts}
                       user_id={@current_user.id}
@@ -1717,7 +1761,6 @@ defmodule AthenaWeb.LearnLive.Player do
                         block={block}
                         mode={mode}
                         submission={submission}
-                        answers={@submissions}
                         draft={Map.get(@drafts || %{}, block.id)}
                         attempts_count={attempts}
                       />
@@ -1777,7 +1820,7 @@ defmodule AthenaWeb.LearnLive.Player do
         </div>
 
         <div
-          :if={all_blocks_completed?(@visible_blocks, @completed_ids)}
+          :if={!@test_run && all_blocks_completed?(@visible_blocks, @completed_ids)}
           class="mt-10 pt-5 animate-in fade-in slide-in-from-bottom-8 duration-1000"
         >
           <%= if @next_section_id do %>
@@ -1792,6 +1835,13 @@ defmodule AthenaWeb.LearnLive.Player do
               {gettext("Back to Syllabus")}
             </.link>
           <% end %>
+        </div>
+
+        <div
+          :if={@test_run && all_blocks_completed?(@visible_blocks, @completed_ids)}
+          class="mt-10 pt-5 animate-in fade-in slide-in-from-bottom-8 duration-1000 text-sm text-base-content/60"
+        >
+          {gettext("Section complete. Cross-section navigation isn't available in a test run.")}
         </div>
 
         <.modal

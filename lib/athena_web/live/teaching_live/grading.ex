@@ -25,6 +25,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
      |> assign(:blocks, %{})
      |> assign(:has_submissions, false)
      |> assign(:cohort_options, cohort_options)
+     |> assign(:delete_target, nil)
      |> stream(:submissions, [])}
   end
 
@@ -117,6 +118,50 @@ defmodule AthenaWeb.TeachingLive.Grading do
   def handle_event("clear_block_filter", _params, socket) do
     query_params = build_query_params(socket.assigns, %{"block_id" => "", "page" => 1})
     {:noreply, push_patch(socket, to: ~p"/teaching/grading?#{query_params}")}
+  end
+
+  def handle_event("open_delete_modal", %{"id" => id}, socket) do
+    submission = Learning.get_submission!(socket.assigns.current_user, id)
+    {:noreply, assign(socket, :delete_target, submission)}
+  end
+
+  def handle_event("close_delete_modal", _, socket) do
+    {:noreply, assign(socket, :delete_target, nil)}
+  end
+
+  def handle_event("confirm_delete_submission", _params, socket) do
+    sub = socket.assigns.delete_target
+
+    case Learning.delete_submission_with_rollback(socket.assigns.current_user, sub) do
+      {:ok, _deleted_sub} ->
+        if sub.cohort_id do
+          Phoenix.PubSub.broadcast(
+            Athena.PubSub,
+            "team_progress:#{sub.cohort_id}",
+            :team_progress_updated
+          )
+        else
+          Phoenix.PubSub.broadcast(
+            Athena.PubSub,
+            "user_progress:#{sub.account_id}",
+            :user_progress_updated
+          )
+        end
+
+        query_params = build_query_params(socket.assigns, %{})
+
+        {:noreply,
+         socket
+         |> assign(:delete_target, nil)
+         |> load_submissions(query_params)
+         |> put_flash(:info, gettext("Submission deleted and progress rolled back!"))}
+
+      {:error, _} ->
+        {:noreply,
+         socket
+         |> assign(:delete_target, nil)
+         |> put_flash(:error, gettext("Failed to delete submission."))}
+    end
   end
 
   defp build_flop_filters(status, login, cohort_id, date_from, date_to, has_cheats, block_id) do
@@ -419,6 +464,16 @@ defmodule AthenaWeb.TeachingLive.Grading do
                   class="size-4"
                 />
               </.link>
+
+              <button
+                type="button"
+                phx-click="open_delete_modal"
+                phx-value-id={sub.id}
+                class="btn btn-sm btn-ghost btn-square text-base-content/50 hover:text-error"
+                title={gettext("Delete Submission")}
+              >
+                <.icon name="hero-trash" class="size-4" />
+              </button>
             </div>
           </:action>
         </.table>
@@ -427,6 +482,22 @@ defmodule AthenaWeb.TeachingLive.Grading do
       <div class="flex justify-end mt-4">
         <.pagination :if={@has_submissions} meta={@meta} path_fn={path_fn} />
       </div>
+
+      <.modal
+        :if={@delete_target}
+        id="delete-submission-modal"
+        show={true}
+        title={gettext("Delete Submission")}
+        description={
+          gettext(
+            "Are you sure? This will delete the submission and may lock the next lesson part for the student."
+          )
+        }
+        confirm_label={gettext("Delete & Rollback")}
+        danger={true}
+        on_cancel={JS.push("close_delete_modal")}
+        on_confirm={JS.push("confirm_delete_submission")}
+      />
     </.page_container>
     """
   end

@@ -381,10 +381,18 @@ defmodule Athena.Learning.Progress do
           String.t(),
           [Section.t()],
           list(),
-          String.t() | nil
+          String.t() | nil,
+          keyword()
         ) :: [String.t()]
-  def accessible_section_ids(user, _course_id, linear_sections, overrides \\ [], cohort_id \\ nil) do
-    gate_blocks = get_gate_blocks(linear_sections, user, overrides)
+  def accessible_section_ids(
+        user,
+        _course_id,
+        linear_sections,
+        overrides \\ [],
+        cohort_id \\ nil,
+        opts \\ []
+      ) do
+    gate_blocks = get_gate_blocks(linear_sections, user, overrides, opts)
     completed_ids = fetch_completed_gate_ids(gate_blocks, user, cohort_id)
 
     uncompleted_gates_by_section =
@@ -394,20 +402,29 @@ defmodule Athena.Learning.Progress do
 
     {accessible_reversed, _blocked?} =
       Enum.reduce(linear_sections, {[], false}, fn section, acc_state ->
-        process_section(section, acc_state, user, overrides, uncompleted_gates_by_section)
+        process_section(section, acc_state, user, overrides, uncompleted_gates_by_section, opts)
       end)
 
     Enum.reverse(accessible_reversed)
   end
 
-  defp get_gate_blocks(linear_sections, user, overrides) do
+  @doc """
+  Returns every "gate" block (a block whose `completion_rule` blocks the
+  waterline) across `linear_sections` that `user` can currently view.
+
+  Exposed (not `defp`) so `Athena.Learning.TestRuns` can pre-seed the gate
+  blocks of the sections *before* a test-run's target section as already
+  completed, without duplicating this filtering logic.
+  """
+  @spec get_gate_blocks([Section.t()], map(), list(), keyword()) :: [Content.Block.t()]
+  def get_gate_blocks(linear_sections, user, overrides \\ [], opts \\ []) do
     linear_sections
     |> Enum.map(& &1.id)
     |> Content.list_blocks_by_section_ids()
     |> Enum.filter(fn block ->
       block.completion_rule &&
         block.completion_rule.type != :none &&
-        Content.can_view?(user, block, overrides)
+        Content.can_view?(user, block, overrides, opts)
     end)
   end
 
@@ -433,11 +450,18 @@ defmodule Athena.Learning.Progress do
   end
 
   @doc false
-  defp process_section(section, {acc, blocked?}, user, overrides, uncompleted_gates_by_section) do
+  defp process_section(
+         section,
+         {acc, blocked?},
+         user,
+         overrides,
+         uncompleted_gates_by_section,
+         opts
+       ) do
     reset_waterline? = get_reset_waterline(section, overrides)
     current_blocked? = if reset_waterline?, do: false, else: blocked?
 
-    can_view? = Content.Policy.can_view?(user, section, overrides)
+    can_view? = Content.Policy.can_view?(user, section, overrides, opts)
     has_uncompleted? = Map.has_key?(uncompleted_gates_by_section, section.id)
 
     new_acc =
