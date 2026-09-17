@@ -54,10 +54,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
     with true <- test_run? || Learning.has_access?(user.id, course_id),
          {:ok, course} <- Content.get_course(course_id) do
-      cohort = Learning.get_user_cohort_for_course(user.id, course_id)
-
-      cohort_id = if cohort, do: cohort.id, else: nil
-      team_id = if cohort && cohort.type == :team, do: cohort.id, else: nil
+      {cohort, cohort_id, team_id} = resolve_cohort_info(user.id, course_id)
 
       if connected?(socket), do: subscribe_to_topics(course_id, team_id, user.id)
 
@@ -103,6 +100,15 @@ defmodule AthenaWeb.LearnLive.Player do
         {:ok,
          push_navigate(socket |> put_flash(:error, gettext("Access denied.")), to: ~p"/learn")}
     end
+  end
+
+  @doc false
+  defp resolve_cohort_info(user_id, course_id) do
+    cohort = Learning.get_user_cohort_for_course(user_id, course_id)
+    cohort_id = cohort && cohort.id
+    team_id = if cohort && cohort.type == :team, do: cohort.id
+
+    {cohort, cohort_id, team_id}
   end
 
   @doc false
@@ -1691,7 +1697,6 @@ defmodule AthenaWeb.LearnLive.Player do
                       block={block}
                       mode={mode}
                       submission={submission}
-                      answers={@submissions}
                       draft={Map.get(@drafts || %{}, block.id)}
                       attempts_count={attempts}
                       user_id={@current_user.id}
@@ -1756,7 +1761,6 @@ defmodule AthenaWeb.LearnLive.Player do
                         block={block}
                         mode={mode}
                         submission={submission}
-                        answers={@submissions}
                         draft={Map.get(@drafts || %{}, block.id)}
                         attempts_count={attempts}
                       />

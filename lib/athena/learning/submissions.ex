@@ -16,7 +16,8 @@ defmodule Athena.Learning.Submissions do
     Instructor,
     CohortInstructor,
     Progress,
-    DraftCache
+    DraftCache,
+    TestRunSession
   }
 
   alias Athena.Content.{Block, Section, TicketUsage}
@@ -67,11 +68,17 @@ defmodule Athena.Learning.Submissions do
 
   @doc false
   defp scope_submissions(query, user, permission) do
+    test_run_account_ids = from(t in TestRunSession, select: t.ephemeral_account_id)
+
     query =
       query
       |> where([s], s.status != :draft)
       |> where([s], is_nil(s.parent_submission_id))
       |> where([s], fragment("?->>'is_test_run' IS NULL", s.content))
+      # Instructor "test run" sessions (`Athena.Learning.TestRuns`) submit as a
+      # throwaway account that gets purged shortly after — no point surfacing
+      # that scratch data in the grading list before it's cleaned up.
+      |> where([s], s.account_id not in subquery(test_run_account_ids))
 
     cond do
       "admin" in user.role.permissions ->

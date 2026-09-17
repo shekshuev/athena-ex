@@ -1710,7 +1710,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             <.live_component
               module={AthenaWeb.StudioLive.Builder.CanvasComponent}
               id="canvas-component"
-              blocks={@blocks}
+              blocks={if @test_run_session, do: [], else: @blocks}
               active_section={@active_section}
               active_section_id={@active_section_id}
               active_block_id={@active_block_id}

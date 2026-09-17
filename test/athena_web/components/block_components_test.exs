@@ -1777,6 +1777,42 @@ defmodule AthenaWeb.BlockComponentsTest do
       refute html =~ "# draft"
     end
 
+    test "code block in :play mode prefers a fresh draft over the previous (already-graded) submission" do
+      block = insert(:block, type: :code, content: %{"language" => "python"})
+      draft = %{"type" => :code, "code" => "# new attempt"}
+
+      submission = %Athena.Learning.Submission{
+        content: %{"code" => "# old wrong attempt", "type" => "code"},
+        status: :wrong_answer,
+        score: 0
+      }
+
+      assigns = %{block: block, draft: draft, submission: submission}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} submission={@submission} draft={@draft} />
+        """)
+
+      assert html =~ "# new attempt"
+      refute html =~ "# old wrong attempt"
+    end
+
+    test "quiz_question in :play mode prefers a fresh draft over the previous (already-graded) submission" do
+      block = insert(:block, type: :quiz_question, content: %{"question_type" => "open"})
+      draft = %{"type" => :quiz_question, "text_answer" => "New attempt"}
+      submission = %{content: %{"text_answer" => "Old wrong attempt"}}
+      assigns = %{block: block, draft: draft, submission: submission}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:play} submission={@submission} draft={@draft} />
+        """)
+
+      assert html =~ "New attempt"
+      refute html =~ "Old wrong attempt"
+    end
+
     test "file_assignment merges draft file_urls into pending_urls" do
       block = insert(:block, type: :file_assignment, content: %{"max_files" => 3})
 

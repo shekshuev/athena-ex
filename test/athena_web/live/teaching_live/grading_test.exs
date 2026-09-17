@@ -283,6 +283,83 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
     end
   end
 
+  describe "Grading page (Test-run submissions)" do
+    test "excludes submissions made by an instructor's test-run session", %{conn: conn} do
+      real_student = insert(:account, login: "real_student")
+      test_run_account = insert(:account, login: "__test_run_ghost")
+      block = insert(:block)
+
+      insert(:submission, account_id: real_student.id, block_id: block.id, status: :needs_review)
+
+      insert(:submission,
+        account_id: test_run_account.id,
+        block_id: block.id,
+        status: :needs_review
+      )
+
+      insert(:test_run_session, ephemeral_account_id: test_run_account.id)
+
+      {:ok, _lv, html} = live(conn, ~p"/teaching/grading")
+
+      assert html =~ "real_student"
+      refute html =~ "__test_run_ghost"
+    end
+  end
+
+  describe "Grading page (Delete submission)" do
+    setup %{conn: conn} do
+      role = insert(:role, permissions: ["grading.read", "grading.update"])
+      grader = insert(:account, role: role)
+      conn = init_test_session(conn, %{"account_id" => grader.id})
+      %{conn: conn, grader: grader}
+    end
+
+    test "deletes a submission after confirming the modal", %{conn: conn} do
+      student = insert(:account, login: "to_be_forgotten")
+      block = insert(:block)
+
+      submission =
+        insert(:submission, account_id: student.id, block_id: block.id, status: :needs_review)
+
+      {:ok, lv, html} = live(conn, ~p"/teaching/grading")
+      assert html =~ "to_be_forgotten"
+      refute html =~ "delete-submission-modal"
+
+      html =
+        lv
+        |> element("button[phx-click='open_delete_modal'][phx-value-id='#{submission.id}']")
+        |> render_click()
+
+      assert html =~ "delete-submission-modal"
+      assert html =~ "Delete &amp; Rollback"
+
+      html =
+        lv
+        |> element("#delete-submission-modal button", "Delete & Rollback")
+        |> render_click()
+
+      refute html =~ "to_be_forgotten"
+      refute Athena.Repo.get(Athena.Learning.Submission, submission.id)
+    end
+
+    test "closing the modal without confirming keeps the submission", %{conn: conn} do
+      student = insert(:account, login: "still_here")
+      block = insert(:block)
+      submission = insert(:submission, account_id: student.id, block_id: block.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading")
+
+      lv
+      |> element("button[phx-click='open_delete_modal'][phx-value-id='#{submission.id}']")
+      |> render_click()
+
+      html = lv |> element("#delete-submission-modal button", "Cancel") |> render_click()
+
+      assert html =~ "still_here"
+      assert Athena.Repo.get(Athena.Learning.Submission, submission.id)
+    end
+  end
+
   describe "Permissions & ACL" do
     test "should redirect if user lacks grading.read permission", %{conn: conn} do
       role = insert(:role, permissions: [])

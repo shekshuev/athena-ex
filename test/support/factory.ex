@@ -28,7 +28,8 @@ defmodule Athena.Factory do
     CohortSchedule,
     CohortMembership,
     CohortInstructor,
-    BlockProgress
+    BlockProgress,
+    TestRunSession
   }
 
   alias Athena.Messaging.{Conversation, ConversationParticipant, Message, MessageMention}
@@ -204,6 +205,17 @@ defmodule Athena.Factory do
       account_id: Ecto.UUID.generate(),
       block_id: Ecto.UUID.generate(),
       status: :completed
+    }
+  end
+
+  def test_run_session_factory do
+    %TestRunSession{
+      course_id: Ecto.UUID.generate(),
+      section_id: Ecto.UUID.generate(),
+      instructor_account_id: Ecto.UUID.generate(),
+      ephemeral_account_id: Ecto.UUID.generate(),
+      status: :active,
+      expires_at: DateTime.utc_now() |> DateTime.add(1800, :second) |> DateTime.truncate(:second)
     }
   end
 
