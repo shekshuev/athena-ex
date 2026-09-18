@@ -227,7 +227,7 @@ defmodule AthenaWeb.AdminLive.RoleFormComponent do
     if List.last(parts) == "create" do
       false
     else
-      List.first(parts) in ~w(users courses library grading enrollments instructors cohorts files)
+      List.first(parts) in ~w(users courses library grading enrollments instructors cohorts files mcp)
     end
   end
 end

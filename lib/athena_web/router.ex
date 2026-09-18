@@ -16,8 +16,8 @@ defmodule AthenaWeb.Router do
     plug :put_layout, html: {AthenaWeb.Layouts, :app}
   end
 
-  pipeline :api do
-    plug :accepts, ["json"]
+  pipeline :mcp do
+    plug AthenaWeb.Plugs.FetchCurrentUserFromToken
   end
 
   scope "/", AthenaWeb do
@@ -40,6 +40,12 @@ defmodule AthenaWeb.Router do
     pipe_through :browser
 
     get "/cohorts/:id/engagement/:course_id/export.csv", EngagementExportController, :download
+  end
+
+  scope "/mcp" do
+    pipe_through :mcp
+
+    forward "/", EMCP.Transport.StreamableHTTP, server: AthenaWeb.MCP.Server
   end
 
   live_session :public,
@@ -176,6 +182,8 @@ defmodule AthenaWeb.Router do
         live "/announcements/new", AnnouncementForm, :new
         live "/announcements/:id/edit", AnnouncementForm, :edit
         live "/settings", Settings, :index
+
+        live "/tokens", ApiTokens, :index
 
         live "/gamification", Gamification, :index
         live "/gamification/new", Gamification, :new

@@ -9,6 +9,8 @@ defmodule Athena.Application do
 
   @impl true
   def start(_type, _args) do
+    :ok = EMCP.SessionStore.ETS.init()
+
     server_role = Application.get_env(:athena, :server_role)
     runner_family = Application.get_env(:athena, :runner_family)
 

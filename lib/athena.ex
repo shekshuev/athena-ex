@@ -18,6 +18,8 @@ defmodule Athena do
       Identity.Roles,
       Identity.Definitions,
       Identity.Profile,
+      Identity.ApiTokens,
+      Identity.ApiToken,
       Content,
       Content.Block,
       Content.LibraryBlock,

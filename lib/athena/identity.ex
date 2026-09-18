@@ -3,7 +3,7 @@ defmodule Athena.Identity do
   Public API for Identity module
   """
 
-  alias Athena.Identity.{Accounts, Roles, Account, Acl}
+  alias Athena.Identity.{Accounts, Roles, Account, Acl, ApiTokens}
 
   defdelegate list_accounts(user, params \\ %{}, opts \\ []), to: Accounts
   defdelegate get_account(id, opts \\ []), to: Accounts
@@ -45,4 +45,10 @@ defmodule Athena.Identity do
   defdelegate can?(user, permission, resource \\ nil), to: Acl
   defdelegate can_any?(user, permissions), to: Acl
   defdelegate scope_query(query, user, permission), to: Acl
+
+  defdelegate generate_token(account, attrs), to: ApiTokens
+  defdelegate authenticate_token(raw_token), to: ApiTokens
+  defdelegate revoke_token(user, token), to: ApiTokens
+  defdelegate list_tokens(user, params \\ %{}), to: ApiTokens
+  defdelegate get_token(id), to: ApiTokens
 end

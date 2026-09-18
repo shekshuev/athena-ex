@@ -238,7 +238,8 @@
         "files.read",
         "announcements.read",
         "settings.read",
-        "gamification.read"
+        "gamification.read",
+        "mcp.tokens.read"
       ]) do %>
         <div class="py-4 overflow-hidden">
           <div class="h-px bg-base-300 w-full"></div>
@@ -308,6 +309,19 @@
                 <.icon name="hero-cog-8-tooth" class="size-6 shrink-0" />
                 <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
                   {gettext("System Settings")}
+                </span>
+              </div>
+            </.link>
+          </li>
+          <li :if={Identity.can?(@current_user, "mcp.tokens.read")}>
+            <.link
+              navigate={~p"/admin/tokens"}
+              class="flex items-center hover:bg-error/10 hover:text-error"
+            >
+              <div class="flex items-center gap-2">
+                <.icon name="hero-key" class="size-6 shrink-0" />
+                <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                  {gettext("MCP Tokens")}
                 </span>
               </div>
             </.link>

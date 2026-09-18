@@ -18,6 +18,7 @@ defmodule Athena.Identity.Definitions do
   files.read files.create files.delete files.update
   announcements.create announcements.read announcements.update announcements.delete
   system.cache
+  mcp.tokens.create mcp.tokens.read mcp.tokens.delete
   admin
   """
 

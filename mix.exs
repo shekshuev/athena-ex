@@ -102,7 +102,8 @@ defmodule Athena.MixProject do
       {:hackney, "~> 1.18"},
       {:sweet_xml, "~> 0.7"},
       {:ecto_ltree, "~> 0.3.0"},
-      {:libcluster, "~> 3.5.0"}
+      {:libcluster, "~> 3.5.0"},
+      {:emcp, "~> 0.3"}
     ]
   end
 
