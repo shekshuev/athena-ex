@@ -50,7 +50,7 @@ defmodule AthenaWeb.LearnLive.Player do
     user = socket.assigns.current_user
     test_run? = !!socket.assigns[:test_run]
     socket = assign(socket, :test_run, test_run?)
-    opts = [ignore_schedule?: test_run?]
+    opts = [ignore_schedule?: test_run?, ignore_visibility?: test_run?]
 
     with true <- test_run? || Learning.has_access?(user.id, course_id),
          {:ok, course} <- Content.get_course(course_id) do
@@ -245,7 +245,10 @@ defmodule AthenaWeb.LearnLive.Player do
 
     new_completed_ids = [block_id | socket.assigns.completed_ids]
     linear_lessons = socket.assigns.linear_lessons
-    opts = [ignore_schedule?: !!socket.assigns[:test_run]]
+    opts = [
+      ignore_schedule?: !!socket.assigns[:test_run],
+      ignore_visibility?: !!socket.assigns[:test_run]
+    ]
 
     accessible_ids =
       Learning.accessible_section_ids(
@@ -1253,7 +1256,10 @@ defmodule AthenaWeb.LearnLive.Player do
 
     new_completed_ids = [block_id | socket.assigns.completed_ids]
     linear_lessons = socket.assigns.linear_lessons
-    opts = [ignore_schedule?: !!socket.assigns[:test_run]]
+    opts = [
+      ignore_schedule?: !!socket.assigns[:test_run],
+      ignore_visibility?: !!socket.assigns[:test_run]
+    ]
 
     accessible_ids =
       Learning.accessible_section_ids(
@@ -1302,7 +1308,10 @@ defmodule AthenaWeb.LearnLive.Player do
     team_id = socket.assigns.team_id
     current_section_id = socket.assigns.section.id
 
-    opts = [ignore_schedule?: !!socket.assigns[:test_run]]
+    opts = [
+      ignore_schedule?: !!socket.assigns[:test_run],
+      ignore_visibility?: !!socket.assigns[:test_run]
+    ]
     overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
     linear_lessons = Content.list_linear_lessons(course_id, user, overrides, opts)
     block_counts = Content.count_blocks_by_course(course_id)

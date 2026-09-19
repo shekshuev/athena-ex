@@ -477,6 +477,14 @@ defmodule AthenaWeb.StudioLive.Builder do
         {:ok, test_run_session} ->
           {:noreply, assign(socket, test_run_session: test_run_session)}
 
+        {:error, :section_not_playable} ->
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             gettext("This section has no content to test run yet. Add some blocks first.")
+           )}
+
         {:error, _reason} ->
           {:noreply,
            put_flash(socket, :error, gettext("Could not start a test run for this section."))}

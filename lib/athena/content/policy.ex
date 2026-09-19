@@ -11,6 +11,12 @@ defmodule Athena.Content.Policy do
   @doc """
   Determines if the given user is authorized to view the item.
   Accepts an optional list of `CohortSchedule` overrides fetched from the Learning context.
+
+  `opts[:ignore_visibility?]` bypasses every visibility rule (`:hidden`,
+  `:enrolled`, `:restricted`) the same way `:all` mode does, without having
+  to swap out the real user/account — used by the builder's "Test run"
+  player so an instructor can preview a section they've hidden or
+  access-restricted from real students.
   """
   @spec can_view?(Account.t() | :all | nil, map(), list(), keyword()) :: boolean()
   def can_view?(user_or_mode, item, overrides \\ [], opts \\ [])
@@ -18,7 +24,11 @@ defmodule Athena.Content.Policy do
   def can_view?(:all, _item, _overrides, _opts), do: true
 
   def can_view?(user, item, overrides, opts) do
-    evaluate_visibility(user, item, overrides, opts)
+    if Keyword.get(opts, :ignore_visibility?, false) do
+      true
+    else
+      evaluate_visibility(user, item, overrides, opts)
+    end
   end
 
   @doc false
