@@ -31,24 +31,19 @@ defmodule Athena.Execution.VerifierTest do
     sql_query_challenge = %CodeChallenge{
       language: "sql",
       time_limit: 2.0,
-      body: %{
-        "evaluation_mode" => "query_result",
-        "setup_sql" =>
-          "CREATE TABLE users (id INT, name TEXT); INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob');",
-        "solution_sql" => "SELECT * FROM users ORDER BY id;"
-      }
+      evaluation_mode: "query_result",
+      setup_sql:
+        "CREATE TABLE users (id INT, name TEXT); INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob');",
+      solution_code: "SELECT * FROM users ORDER BY id;"
     }
 
     sql_state_challenge = %CodeChallenge{
       language: "sql",
       time_limit: 2.0,
-      body: %{
-        "evaluation_mode" => "state_verification",
-        "setup_sql" =>
-          "CREATE TABLE items (id INT, active BOOL); INSERT INTO items VALUES (1, false);",
-        "check_sql" =>
-          "SELECT CASE WHEN count(*) = 0 THEN 'OK' ELSE 'Not all active' END FROM items WHERE NOT active;"
-      }
+      evaluation_mode: "state_verification",
+      setup_sql: "CREATE TABLE items (id INT, active BOOL); INSERT INTO items VALUES (1, false);",
+      check_sql:
+        "SELECT CASE WHEN count(*) = 0 THEN 'OK' ELSE 'Not all active' END FROM items WHERE NOT active;"
     }
 
     %{

@@ -1436,7 +1436,8 @@ defmodule AthenaWeb.StudioLive.Builder do
       }
 
       case Content.create_library_block(socket.assigns.current_user, attrs) do
-        {:ok, _lib_block} ->
+        {:ok, lib_block} ->
+          Content.pin_library_block(socket.assigns.current_user, course.id, lib_block.id)
           Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
 
           {:noreply,
@@ -1519,15 +1520,7 @@ defmodule AthenaWeb.StudioLive.Builder do
   def handle_event("run_instructor_test", %{"id" => block_id}, socket) do
     with true <- can_edit?(socket),
          block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == block_id)) do
-      lang = block.content["language"]
-
-      code =
-        if lang == "sql" do
-          get_in(block.content, ["body", "solution_sql"]) || block.content["solution_code"] || ""
-        else
-          block.content["solution_code"] || ""
-        end
-
+      code = block.content["solution_code"] || ""
       test_cases = block.content["test_cases"] || []
 
       dispatch_test_run(socket, block, code, test_cases)

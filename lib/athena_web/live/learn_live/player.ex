@@ -245,6 +245,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
     new_completed_ids = [block_id | socket.assigns.completed_ids]
     linear_lessons = socket.assigns.linear_lessons
+
     opts = [
       ignore_schedule?: !!socket.assigns[:test_run],
       ignore_visibility?: !!socket.assigns[:test_run]
@@ -452,11 +453,12 @@ defmodule AthenaWeb.LearnLive.Player do
   @impl true
   def handle_event("run_code", %{"block_id" => block_id}, socket) do
     block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
-    draft = Map.get(socket.assigns.drafts || %{}, block_id, %{})
+    draft = Map.get(socket.assigns.drafts || %{}, block_id)
+    submission = Map.get(socket.assigns.submissions || %{}, block_id)
 
     socket = emit_engagement_event(socket, block_id, :code_run_attempt)
 
-    do_run_code(socket, block, draft)
+    do_run_code(socket, block, draft, submission)
   end
 
   def handle_event(
@@ -848,10 +850,16 @@ defmodule AthenaWeb.LearnLive.Player do
   defp parse_occurred_at(iso8601) when is_binary(iso8601), do: DateTime.from_iso8601(iso8601)
   defp parse_occurred_at(_), do: :error
 
-  defp do_run_code(socket, nil, _draft), do: {:noreply, socket}
+  defp do_run_code(socket, nil, _draft, _submission), do: {:noreply, socket}
 
-  defp do_run_code(socket, %{type: :code} = block, draft) do
-    code = extract_code_from_draft(draft)
+  defp do_run_code(socket, %{type: :code} = block, draft, submission) do
+    # Same fallback chain the editor is actually rendered with
+    # (`compute_code_for_mode/5`, mode `:play`): draft, then last submission,
+    # then the block's initial/template code. Reading only `draft` here used
+    # to mean "Run" silently no-op'd (or flashed on a nested test-run player
+    # with no visible flash outlet) whenever the student hadn't yet *edited*
+    # a block that already had a submission or template code showing.
+    code = compute_code_for_mode(:play, block, draft, %{}, submission)
 
     cond do
       String.trim(code) == "" ->
@@ -863,9 +871,7 @@ defmodule AthenaWeb.LearnLive.Player do
       true ->
         case Learning.test_code(socket.assigns.current_user, block, code) do
           {:ok, _draft} ->
-            new_drafts =
-              Map.put(socket.assigns.drafts || %{}, block.id, Map.get(draft, "content", draft))
-
+            new_drafts = Map.put(socket.assigns.drafts || %{}, block.id, %{"code" => code})
             {:noreply, assign(socket, :drafts, new_drafts)}
 
           {:error, _} ->
@@ -874,18 +880,7 @@ defmodule AthenaWeb.LearnLive.Player do
     end
   end
 
-  defp do_run_code(socket, _block, _draft), do: {:noreply, socket}
-
-  defp extract_code_from_draft(%{"code" => c}) when is_binary(c) and c != "", do: c
-  defp extract_code_from_draft(%{"text_answer" => t}) when is_binary(t) and t != "", do: t
-
-  defp extract_code_from_draft(%{"content" => %{"code" => c}}) when is_binary(c) and c != "",
-    do: c
-
-  defp extract_code_from_draft(%{"content" => %{"text_answer" => t}})
-       when is_binary(t) and t != "", do: t
-
-  defp extract_code_from_draft(_), do: ""
+  defp do_run_code(socket, _block, _draft, _submission), do: {:noreply, socket}
 
   @doc false
   defp build_file_submission_attrs(block_id, assigns, file_urls) do
@@ -1256,6 +1251,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
     new_completed_ids = [block_id | socket.assigns.completed_ids]
     linear_lessons = socket.assigns.linear_lessons
+
     opts = [
       ignore_schedule?: !!socket.assigns[:test_run],
       ignore_visibility?: !!socket.assigns[:test_run]
@@ -1312,6 +1308,7 @@ defmodule AthenaWeb.LearnLive.Player do
       ignore_schedule?: !!socket.assigns[:test_run],
       ignore_visibility?: !!socket.assigns[:test_run]
     ]
+
     overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
     linear_lessons = Content.list_linear_lessons(course_id, user, overrides, opts)
     block_counts = Content.count_blocks_by_course(course_id)

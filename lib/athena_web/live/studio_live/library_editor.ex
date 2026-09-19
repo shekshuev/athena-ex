@@ -564,9 +564,8 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
       content_map = normalize_content(block.content || %{})
 
       if content_map["language"] == "sql" do
-        body = content_map["body"] || %{}
-        code = body["solution_sql"] || ""
-        dispatch_sql_test_run(socket, block, code, body)
+        code = content_map["solution_code"] || ""
+        dispatch_sql_test_run(socket, block, code, content_map)
       else
         code = content_map["solution_code"] || ""
         test_cases = content_map["test_cases"] || []
@@ -666,21 +665,13 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
   end
 
   defp build_updated_content(%{type: :code} = block, parsed) do
-    content_map = normalize_content(block.content || %{})
-
-    if content_map["language"] == "sql" do
-      body = Map.get(content_map, "body")
-      body_map = if is_map(body), do: body, else: %{}
-      Map.put(content_map, "body", Map.put(body_map, "description", parsed))
-    else
-      Map.put(content_map, "body", parsed)
-    end
+    block.content |> normalize_content() |> Map.put("body", parsed)
   end
 
   defp build_updated_content(_block, parsed), do: parsed
 
-  defp dispatch_sql_test_run(socket, block, code, body) do
-    mode = body["evaluation_mode"] || "query_result"
+  defp dispatch_sql_test_run(socket, block, code, content_map) do
+    mode = content_map["evaluation_mode"] || "query_result"
 
     if mode == "query_result" and String.trim(code) == "" do
       {:noreply,
@@ -1165,10 +1156,8 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                       <%= if @block.content["language"] == "sql" do %>
                         <.input
                           type="select"
-                          name="library_block[content][body][evaluation_mode]"
-                          value={
-                            get_in(@block.content, ["body", "evaluation_mode"]) || "query_result"
-                          }
+                          name="library_block[content][evaluation_mode]"
+                          value={@block.content["evaluation_mode"] || "query_result"}
                           label={gettext("Evaluation Mode")}
                           options={[
                             {gettext("Query Result"), "query_result"},

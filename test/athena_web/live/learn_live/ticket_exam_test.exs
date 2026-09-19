@@ -11,16 +11,17 @@ defmodule AthenaWeb.LearnLive.TicketExamTest do
     insert(:enrollment, account_id: user.id, course_id: course.id)
     section = insert(:section, course: course)
 
-    case Process.whereis(Athena.PG) do
-      nil -> :pg.start_link(Athena.PG)
-      _pid -> :ok
-    end
-
-    Enum.each([:db, :compiled, :script], &:pg.join(Athena.PG, {:code_runners, &1}, self()))
-
-    on_exit(fn ->
-      Enum.each([:db, :compiled, :script], &:pg.leave(Athena.PG, {:code_runners, &1}, self()))
-    end)
+    # `Execution.runner_available?/1` and `pick_runner/1` already find a
+    # working runner without any of this: the test env's `server_role` is
+    # "all" (config/test.exs), so `Athena.Execution.TaskSupervisor` starts
+    # and registers itself for every language family at application boot,
+    # for the whole suite's lifetime. Registering a second, test-scoped
+    # runner here used to be actively harmful once a test let code execution
+    # run for real: `:pg.get_members/2` returns members in no particular
+    # order, so a *different*, concurrently-running test could randomly pick
+    # this test's runner via `Enum.random/1` - and since that runner was
+    # only ever meant to live as long as this one test, it (and any task
+    # still running under it) died the moment this test exited.
 
     %{conn: conn, user: user, course: course, section: section}
   end

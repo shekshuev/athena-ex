@@ -70,21 +70,28 @@ defmodule Athena.Learning.TestRuns do
     if Enum.any?(linear_sections, &(&1.id == section_id)) do
       {:ok, section_id}
     else
-      course_id
-      |> Content.get_course_tree(:all)
-      |> find_section_node(section_id)
-      |> case do
-        nil ->
-          {:error, :forbidden}
+      resolve_playable_descendant(course_id, section_id, linear_sections)
+    end
+  end
 
-        node ->
-          descendant_ids = MapSet.new(collect_section_ids(node))
+  @doc false
+  defp resolve_playable_descendant(course_id, section_id, linear_sections) do
+    course_id
+    |> Content.get_course_tree(:all)
+    |> find_section_node(section_id)
+    |> case do
+      nil -> {:error, :forbidden}
+      node -> find_playable_descendant(node, linear_sections)
+    end
+  end
 
-          case Enum.find(linear_sections, &MapSet.member?(descendant_ids, &1.id)) do
-            nil -> {:error, :section_not_playable}
-            playable -> {:ok, playable.id}
-          end
-      end
+  @doc false
+  defp find_playable_descendant(node, linear_sections) do
+    descendant_ids = MapSet.new(collect_section_ids(node))
+
+    case Enum.find(linear_sections, &MapSet.member?(descendant_ids, &1.id)) do
+      nil -> {:error, :section_not_playable}
+      playable -> {:ok, playable.id}
     end
   end
 

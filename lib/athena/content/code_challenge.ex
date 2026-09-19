@@ -18,7 +18,10 @@ defmodule Athena.Content.CodeChallenge do
              :solution_code,
              :test_cases,
              :body,
-             :max_attempts
+             :max_attempts,
+             :setup_sql,
+             :check_sql,
+             :evaluation_mode
            ]}
 
   @type t :: %__MODULE__{
@@ -29,7 +32,10 @@ defmodule Athena.Content.CodeChallenge do
           initial_code: String.t(),
           solution_code: String.t(),
           body: map(),
-          test_cases: [TestCase.t()]
+          test_cases: [TestCase.t()],
+          setup_sql: String.t(),
+          check_sql: String.t(),
+          evaluation_mode: String.t()
         }
 
   @primary_key false
@@ -41,7 +47,17 @@ defmodule Athena.Content.CodeChallenge do
 
     field :initial_code, :string, default: ""
     field :solution_code, :string, default: ""
+
+    # Holds the block's rich-text instructions doc (same role `body` plays
+    # for every other block type) - it must never be reused to also carry
+    # SQL sandbox config, or editing the instructions wipes that config out.
     field :body, :map, default: %{}
+
+    # SQL-only sandbox config, kept as top-level fields (not nested inside
+    # `body`) precisely so they can't collide with the instructions doc.
+    field :setup_sql, :string, default: ""
+    field :check_sql, :string, default: ""
+    field :evaluation_mode, :string, default: "query_result"
 
     embeds_many :test_cases, TestCase, on_replace: :delete
   end
@@ -60,7 +76,10 @@ defmodule Athena.Content.CodeChallenge do
       :initial_code,
       :solution_code,
       :body,
-      :max_attempts
+      :max_attempts,
+      :setup_sql,
+      :check_sql,
+      :evaluation_mode
     ])
     |> cast_embed(:test_cases, with: &TestCase.changeset/2)
     |> validate_required([:language, :time_limit, :memory_limit])
@@ -72,16 +91,15 @@ defmodule Athena.Content.CodeChallenge do
 
   defp maybe_validate_sql_body(changeset) do
     if get_field(changeset, :language) == "sql" do
-      body = get_field(changeset, :body) || %{}
-      mode = Map.get(body, "evaluation_mode") || "query_result"
+      mode = get_field(changeset, :evaluation_mode) || "query_result"
 
       if mode in ["query_result", "state_verification"] do
         changeset
       else
         add_error(
           changeset,
-          :body,
-          "evaluation_mode must be 'query_result' or 'state_verification'"
+          :evaluation_mode,
+          "must be 'query_result' or 'state_verification'"
         )
       end
     else

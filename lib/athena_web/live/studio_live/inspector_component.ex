@@ -546,8 +546,8 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
               <%= if @block.content["language"] == "sql" do %>
                 <.input
                   type="select"
-                  name="block[content][body][evaluation_mode]"
-                  value={get_in(@block.content, ["body", "evaluation_mode"]) || "query_result"}
+                  name="block[content][evaluation_mode]"
+                  value={@block.content["evaluation_mode"] || "query_result"}
                   label={gettext("Evaluation Mode")}
                   options={[
                     {gettext("Query Result"), "query_result"},

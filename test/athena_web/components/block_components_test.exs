@@ -292,19 +292,17 @@ defmodule AthenaWeb.BlockComponentsTest do
             "language" => "sql",
             "initial_code" => "SELECT * FROM users;",
             "body" => %{
-              "description" => %{
-                "type" => "doc",
-                "content" => [
-                  %{
-                    "type" => "paragraph",
-                    "content" => [%{"type" => "text", "text" => "Find all users"}]
-                  }
-                ]
-              },
-              "evaluation_mode" => "query_result",
-              "setup_sql" => "CREATE TABLE users (id INT);",
-              "solution_sql" => "SELECT * FROM users;"
-            }
+              "type" => "doc",
+              "content" => [
+                %{
+                  "type" => "paragraph",
+                  "content" => [%{"type" => "text", "text" => "Find all users"}]
+                }
+              ]
+            },
+            "evaluation_mode" => "query_result",
+            "setup_sql" => "CREATE TABLE users (id INT);",
+            "solution_code" => "SELECT * FROM users;"
           }
         )
 
@@ -314,13 +312,11 @@ defmodule AthenaWeb.BlockComponentsTest do
           content: %{
             "language" => "sql",
             "initial_code" => "UPDATE users SET active = true;",
-            "body" => %{
-              "description" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
-              "evaluation_mode" => "state_verification",
-              "setup_sql" => "CREATE TABLE users (id INT, active BOOL);",
-              "check_sql" =>
-                "SELECT CASE WHEN count(*) = 0 THEN 'OK' ELSE 'Err' END FROM users WHERE NOT active;"
-            }
+            "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+            "evaluation_mode" => "state_verification",
+            "setup_sql" => "CREATE TABLE users (id INT, active BOOL);",
+            "check_sql" =>
+              "SELECT CASE WHEN count(*) = 0 THEN 'OK' ELSE 'Err' END FROM users WHERE NOT active;"
           }
         )
 

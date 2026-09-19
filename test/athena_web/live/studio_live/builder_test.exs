@@ -3,7 +3,8 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
   import Phoenix.LiveViewTest
 
   import Athena.Factory
-  alias Athena.Content
+  alias Athena.{Content, Repo}
+  alias Athena.Content.{LibraryBlock, CourseLibraryBlock}
 
   setup %{conn: conn} do
     role = insert(:role, permissions: ["courses.update", "admin"])
@@ -1232,6 +1233,115 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
     end
   end
 
+  describe "Test Run - code execution inside the nested player" do
+    test "clicking Run on a SQL block inside a live Test Run actually executes it", %{
+      conn: conn,
+      course: course,
+      admin: admin
+    } do
+      {:ok, section} =
+        Content.create_section(admin, %{"title" => "SQL Lesson", "course_id" => course.id})
+
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "code",
+          "section_id" => section.id,
+          "content" => %{
+            "language" => "sql",
+            "time_limit" => 2.0,
+            "evaluation_mode" => "query_result",
+            "setup_sql" =>
+              "CREATE TABLE users (id INT, name TEXT); INSERT INTO users VALUES (1, 'Alice');",
+            "solution_code" => "SELECT * FROM users ORDER BY id;"
+          }
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> element("button[phx-click='start_test_run']")
+      |> render_click()
+
+      assert render(lv) =~ "Test run"
+
+      session = Repo.one!(Athena.Learning.TestRunSession)
+      player = find_live_child(lv, "test-run-player-#{session.id}")
+      assert player
+
+      player
+      |> form("#code-form-#{block.id}")
+      |> render_change(%{
+        "block_id" => block.id,
+        "answer" => %{"code" => "SELECT * FROM users ORDER BY id;"}
+      })
+
+      player
+      |> element("button[phx-click='run_code'][phx-value-block_id='#{block.id}']")
+      |> render_click()
+
+      assert [job] = Oban.Testing.all_enqueued(worker: Athena.Execution.TestWorker, repo: Repo)
+      assert :ok = Oban.Testing.perform_job(Athena.Execution.TestWorker, job.args, repo: Repo)
+
+      assert render(player) =~ "ACCEPTED"
+    end
+
+    test "clicking Run inside a Test Run works immediately, without editing the pre-filled code first",
+         %{conn: conn, course: course, admin: admin} do
+      # This is the exact bug report: an instructor opens Test Run, the code
+      # editor already shows the block's `initial_code`, and clicking Run
+      # right away silently did nothing - `do_run_code/4` only looked at
+      # `socket.assigns.drafts`, which stays empty until the student (or
+      # instructor) actually edits the code. Worse, on a nested Test Run
+      # player there's no flash outlet, so the "Please write some code
+      # first!" error wasn't even visible - it just looked broken.
+      {:ok, section} =
+        Content.create_section(admin, %{"title" => "SQL Lesson", "course_id" => course.id})
+
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "code",
+          "section_id" => section.id,
+          "content" => %{
+            "language" => "sql",
+            "time_limit" => 2.0,
+            "evaluation_mode" => "query_result",
+            "initial_code" => "SELECT * FROM users ORDER BY id;",
+            "setup_sql" =>
+              "CREATE TABLE users (id INT, name TEXT); INSERT INTO users VALUES (1, 'Alice');",
+            "solution_code" => "SELECT * FROM users ORDER BY id;"
+          }
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> element("button[phx-click='start_test_run']")
+      |> render_click()
+
+      session = Repo.one!(Athena.Learning.TestRunSession)
+      player = find_live_child(lv, "test-run-player-#{session.id}")
+      assert player
+
+      # No form/render_change here - Run is clicked with zero prior edits.
+      player
+      |> element("button[phx-click='run_code'][phx-value-block_id='#{block.id}']")
+      |> render_click()
+
+      assert [job] = Oban.Testing.all_enqueued(worker: Athena.Execution.TestWorker, repo: Repo)
+      assert :ok = Oban.Testing.perform_job(Athena.Execution.TestWorker, job.args, repo: Repo)
+
+      assert render(player) =~ "ACCEPTED"
+    end
+  end
+
   describe "Builder ACL & Security" do
     test "kicks out a user who does not own the course", %{conn: conn} do
       sneaky_role =
@@ -1476,5 +1586,345 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       refute html =~ child.title
       assert html =~ parent.title
     end
+  end
+
+  describe "Save to Library - preserves every content field, per block type" do
+    setup %{course: course, admin: admin} do
+      {:ok, section} =
+        Content.create_section(admin, %{
+          "title" => "Library Fidelity Lesson",
+          "course_id" => course.id
+        })
+
+      %{section: section}
+    end
+
+    test "text block: the whole tiptap doc round-trips untouched", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      content = %{
+        "type" => "doc",
+        "content" => [
+          %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => "Hello world"}]}
+        ]
+      }
+
+      block = insert(:block, type: :text, section: section, content: content)
+      lib = save_block_to_library(conn, course, section, block, "Text Template")
+
+      assert lib.content == content
+    end
+
+    test "image block: url and alt survive", %{conn: conn, course: course, section: section} do
+      content = %{"url" => "https://cdn.example.com/img.png", "alt" => "A cat"}
+      block = insert(:block, type: :image, section: section, content: content)
+      lib = save_block_to_library(conn, course, section, block, "Image Template")
+
+      assert lib.content["url"] == "https://cdn.example.com/img.png"
+      assert lib.content["alt"] == "A cat"
+    end
+
+    test "video block: url, poster_url and controls survive", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      content = %{
+        "url" => "https://cdn.example.com/vid.mp4",
+        "poster_url" => "https://cdn.example.com/poster.png",
+        "controls" => true
+      }
+
+      block = insert(:block, type: :video, section: section, content: content)
+      lib = save_block_to_library(conn, course, section, block, "Video Template")
+
+      assert lib.content["url"] == "https://cdn.example.com/vid.mp4"
+      assert lib.content["poster_url"] == "https://cdn.example.com/poster.png"
+      assert lib.content["controls"] == true
+    end
+
+    test "attachment block: description doc and files survive", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      content = %{
+        "description" => %{
+          "type" => "doc",
+          "content" => [
+            %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => "Read this"}]}
+          ]
+        },
+        "files" => [%{"url" => "https://cdn.example.com/f.pdf", "name" => "f.pdf"}]
+      }
+
+      block = insert(:block, type: :attachment, section: section, content: content)
+      lib = save_block_to_library(conn, course, section, block, "Attachment Template")
+
+      assert lib.content["description"] == content["description"]
+      assert lib.content["files"] == content["files"]
+    end
+
+    test "file_assignment block: max_files and instructions body survive", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      content = %{
+        "max_files" => 3,
+        "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]}
+      }
+
+      block = insert(:block, type: :file_assignment, section: section, content: content)
+      lib = save_block_to_library(conn, course, section, block, "File Assignment Template")
+
+      assert lib.content["max_files"] == 3
+      assert lib.content["body"] == content["body"]
+    end
+
+    test "quiz_question block: options, pairs and every scalar field survive", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      content = %{
+        "question_type" => "matching",
+        "answer_type" => "plain_text",
+        "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+        "correct_answer" => "flag{ignored-for-matching}",
+        "case_sensitive" => true,
+        "max_attempts" => 3,
+        "general_explanation" => "Because reasons",
+        "options" => [
+          %{
+            "id" => Ecto.UUID.generate(),
+            "text" => %{"type" => "doc", "content" => []},
+            "is_correct" => true,
+            "explanation" => "yes"
+          },
+          %{
+            "id" => Ecto.UUID.generate(),
+            "text" => %{"type" => "doc", "content" => []},
+            "is_correct" => false,
+            "explanation" => "no"
+          }
+        ],
+        "pairs" => [
+          %{
+            "id" => Ecto.UUID.generate(),
+            "left" => %{"type" => "doc", "content" => []},
+            "right" => %{"type" => "doc", "content" => []}
+          },
+          %{
+            "id" => Ecto.UUID.generate(),
+            "left" => %{"type" => "doc", "content" => []},
+            "right" => %{"type" => "doc", "content" => []}
+          }
+        ]
+      }
+
+      block = insert(:block, type: :quiz_question, section: section, content: content)
+      lib = save_block_to_library(conn, course, section, block, "Quiz Question Template")
+
+      assert lib.content["question_type"] == "matching"
+      assert lib.content["answer_type"] == "plain_text"
+      assert lib.content["body"] == content["body"]
+      assert lib.content["correct_answer"] == "flag{ignored-for-matching}"
+      assert lib.content["case_sensitive"] == true
+      assert lib.content["max_attempts"] == 3
+      assert lib.content["general_explanation"] == "Because reasons"
+      assert length(lib.content["options"]) == 2
+      assert Enum.map(lib.content["options"], & &1["is_correct"]) == [true, false]
+      assert Enum.map(lib.content["options"], & &1["explanation"]) == ["yes", "no"]
+      assert length(lib.content["pairs"]) == 2
+    end
+
+    test "quiz_exam block: slots and every tag/limit field survive", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      content = %{
+        "count" => 5,
+        "time_limit" => 600,
+        "allowed_blur_attempts" => 2,
+        "mandatory_tags" => ["core"],
+        "include_tags" => ["bonus"],
+        "exclude_tags" => ["deprecated"],
+        "slots" => [%{"id" => "slot-1", "count" => 2, "tags" => ["arrays"]}]
+      }
+
+      block = insert(:block, type: :quiz_exam, section: section, content: content)
+      lib = save_block_to_library(conn, course, section, block, "Quiz Exam Template")
+
+      assert lib.content["count"] == 5
+      assert lib.content["time_limit"] == 600
+      assert lib.content["allowed_blur_attempts"] == 2
+      assert lib.content["mandatory_tags"] == ["core"]
+      assert lib.content["include_tags"] == ["bonus"]
+      assert lib.content["exclude_tags"] == ["deprecated"]
+      assert [%{"id" => "slot-1", "count" => 2, "tags" => ["arrays"]}] = lib.content["slots"]
+    end
+
+    test "ticket_exam block: slots and limit fields survive", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      content = %{
+        "time_limit" => 1200,
+        "allowed_blur_attempts" => 1,
+        "slots" => [%{"id" => "slot-1", "tags" => ["sql"]}]
+      }
+
+      block = insert(:block, type: :ticket_exam, section: section, content: content)
+      lib = save_block_to_library(conn, course, section, block, "Ticket Exam Template")
+
+      assert lib.content["time_limit"] == 1200
+      assert lib.content["allowed_blur_attempts"] == 1
+      assert [%{"id" => "slot-1", "tags" => ["sql"]}] = lib.content["slots"]
+    end
+
+    test "code block (non-sql): initial/solution code, test cases and limits survive", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      content = %{
+        "language" => "python3",
+        "time_limit" => 3.5,
+        "memory_limit" => 131_072,
+        "max_attempts" => 5,
+        "initial_code" => "def solve():\n    pass",
+        "solution_code" => "def solve():\n    return 42",
+        "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+        "test_cases" => [
+          %{"input" => "1", "expected_output" => "2", "is_hidden" => false, "weight" => 50},
+          %{"input" => "2", "expected_output" => "3", "is_hidden" => true, "weight" => 50}
+        ]
+      }
+
+      block = insert(:block, type: :code, section: section, content: content)
+      lib = save_block_to_library(conn, course, section, block, "Code Template")
+
+      assert lib.content["language"] == "python3"
+      assert lib.content["time_limit"] == 3.5
+      assert lib.content["memory_limit"] == 131_072
+      assert lib.content["max_attempts"] == 5
+      assert lib.content["initial_code"] == "def solve():\n    pass"
+      assert lib.content["solution_code"] == "def solve():\n    return 42"
+      assert lib.content["body"] == content["body"]
+      assert length(lib.content["test_cases"]) == 2
+      assert Enum.map(lib.content["test_cases"], & &1["weight"]) == [50, 50]
+    end
+
+    test "code block (sql): setup/check SQL and evaluation mode survive a description edit and the library copy",
+         %{conn: conn, course: course, section: section, admin: admin} do
+      content = %{
+        "language" => "sql",
+        "time_limit" => 2.5,
+        "max_attempts" => 2,
+        "solution_code" => "SELECT * FROM users ORDER BY id;",
+        "setup_sql" => "CREATE TABLE users (id INT, name TEXT);",
+        "check_sql" => "SELECT 'OK';",
+        "evaluation_mode" => "state_verification",
+        "body" => %{
+          "type" => "doc",
+          "content" => [
+            %{
+              "type" => "paragraph",
+              "content" => [%{"type" => "text", "text" => "Original instructions"}]
+            }
+          ]
+        }
+      }
+
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "code",
+          "section_id" => section.id,
+          "content" => content
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']")
+      |> render_click()
+
+      # Regression guard: editing the block's rich-text instructions used to
+      # wipe the SQL sandbox config, because both were stored under the same
+      # `content["body"]` key (see Athena.Content.CodeChallenge).
+      new_instructions = %{
+        "type" => "doc",
+        "content" => [
+          %{
+            "type" => "paragraph",
+            "content" => [%{"type" => "text", "text" => "Edited instructions"}]
+          }
+        ]
+      }
+
+      render_hook(lv, "update_content", %{"id" => block.id, "content" => new_instructions})
+
+      {:ok, edited_block} = Content.get_block(block.id)
+      assert edited_block.content["body"] == new_instructions
+      assert edited_block.content["setup_sql"] == "CREATE TABLE users (id INT, name TEXT);"
+      assert edited_block.content["check_sql"] == "SELECT 'OK';"
+      assert edited_block.content["solution_code"] == "SELECT * FROM users ORDER BY id;"
+      assert edited_block.content["evaluation_mode"] == "state_verification"
+
+      lv |> element("button[phx-click='open_save_library_modal']") |> render_click()
+
+      lv
+      |> form("#save-library-modal form", %{"title" => "SQL Code Template", "tags_string" => ""})
+      |> render_submit()
+
+      lib = Repo.get_by!(LibraryBlock, title: "SQL Code Template")
+
+      assert lib.content["language"] == "sql"
+      assert lib.content["setup_sql"] == "CREATE TABLE users (id INT, name TEXT);"
+      assert lib.content["check_sql"] == "SELECT 'OK';"
+      assert lib.content["solution_code"] == "SELECT * FROM users ORDER BY id;"
+      assert lib.content["evaluation_mode"] == "state_verification"
+      assert lib.content["body"] == new_instructions
+    end
+
+    test "saving a block to the library also pins it to the course's own library", %{
+      conn: conn,
+      course: course,
+      section: section
+    } do
+      block = insert(:block, type: :text, section: section, content: %{"text" => "Pin me"})
+      lib = save_block_to_library(conn, course, section, block, "Auto-Pinned Template")
+
+      assert Repo.get_by(CourseLibraryBlock, course_id: course.id, library_block_id: lib.id)
+    end
+  end
+
+  defp save_block_to_library(conn, course, section, block, title) do
+    {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+    lv
+    |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+    |> render_click()
+
+    lv
+    |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']")
+    |> render_click()
+
+    lv |> element("button[phx-click='open_save_library_modal']") |> render_click()
+
+    lv
+    |> form("#save-library-modal form", %{"title" => title, "tags_string" => ""})
+    |> render_submit()
+
+    Repo.get_by!(LibraryBlock, title: title)
   end
 end
