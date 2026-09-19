@@ -24,9 +24,7 @@ defmodule Athena.Content.CompletionRule do
   defp validate_type_requirements(changeset) do
     case get_field(changeset, :type) do
       :button ->
-        validate_required(changeset, [:button_text],
-          message: dgettext_noop("errors", "can't be blank for button type")
-        )
+        changeset
 
       :pass_auto_grade ->
         changeset
