@@ -260,6 +260,52 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert blocks == []
     end
 
+    test "copies a block, inserting the duplicate immediately after it", %{
+      conn: conn,
+      course: course,
+      section: section,
+      admin: admin
+    } do
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "text",
+          "section_id" => section.id,
+          "content" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
+          "visibility" => "hidden"
+        })
+
+      {:ok, other} =
+        Content.create_block(admin, %{
+          "type" => "text",
+          "section_id" => section.id,
+          "content" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]}
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']") |> render_click()
+
+      lv
+      |> element("button[phx-click='copy_block'][phx-value-id='#{block.id}']")
+      |> render_click()
+
+      blocks = Content.list_blocks_by_section(section.id)
+      assert length(blocks) == 3
+
+      [first, copy, last] = blocks
+      assert first.id == block.id
+      assert last.id == other.id
+
+      refute copy.id == block.id
+      assert copy.type == :text
+      assert copy.content == block.content
+      assert copy.visibility == :hidden
+    end
+
     test "adds an image block to active section", %{conn: conn, course: course, section: section} do
       {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
 

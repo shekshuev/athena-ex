@@ -11,7 +11,6 @@ defmodule AthenaWeb.MessengerLive.MessageComponent do
 
   attr :message, :map, required: true
   attr :own, :boolean, required: true
-  attr :show_sender, :boolean, default: false
   attr :myself, :any, default: nil
 
   @doc """
@@ -25,11 +24,27 @@ defmodule AthenaWeb.MessengerLive.MessageComponent do
   """
   def message_bubble(assigns) do
     ~H"""
-    <div class={["flex gap-2 group", @own && "flex-row-reverse"]}>
+    <div class={["flex gap-2 group items-end", @own && "flex-row-reverse"]}>
+      <.link :if={@message.account} navigate={~p"/profile/#{@message.account_id}"} class="shrink-0">
+        <.avatar
+          src={@message.account.profile && @message.account.profile.avatar_url}
+          initials={initials(@message.account.login)}
+          size="w-7"
+          text_size="text-[10px]"
+        />
+      </.link>
+
       <div class="max-w-[75%] min-w-0">
-        <div :if={@show_sender && !@own} class="text-xs font-bold text-base-content/60 mb-0.5 px-1">
-          {@message.account && Identity.display_name(@message.account)}
-        </div>
+        <.link
+          :if={@message.account}
+          navigate={~p"/profile/#{@message.account_id}"}
+          class={[
+            "block text-xs font-bold text-base-content/60 mb-0.5 px-1 hover:text-primary truncate",
+            @own && "text-right"
+          ]}
+        >
+          {Identity.display_name(@message.account)}
+        </.link>
 
         <div
           id={"msg-edit-#{@message.id}"}
@@ -160,4 +175,7 @@ defmodule AthenaWeb.MessengerLive.MessageComponent do
   end
 
   defp highlighted_body(%{body: body}), do: body
+
+  defp initials(nil), do: "?"
+  defp initials(login) when is_binary(login), do: login |> String.slice(0, 2) |> String.upcase()
 end

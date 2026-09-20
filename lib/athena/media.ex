@@ -5,7 +5,7 @@ defmodule Athena.Media do
 
   import Ecto.Query
   alias Athena.Repo
-  alias Athena.Media.{File, Quota}
+  alias Athena.Media.{File, FileShare, Quota}
   alias Athena.Identity.{Acl, Account, Role}
 
   @default_quota_bytes 100 * 1024 * 1024
@@ -44,6 +44,108 @@ defmodule Athena.Media do
     |> where([f], f.owner_id == ^user.id and f.context == :personal)
     |> Flop.validate_and_run(params, for: File)
   end
+
+  @doc """
+  Retrieves a paginated list of files other accounts have shared with the
+  given user, plus every other account's public personal file — i.e. what
+  a Google-Drive-style "Shared with me" tab shows. Never includes the
+  user's own files, even if they share one of them with themselves.
+  """
+  @spec list_shared_with_me_files(map(), map()) ::
+          {:ok, {[File.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
+  def list_shared_with_me_files(user, params \\ %{}) do
+    shared_file_ids =
+      from(s in FileShare, where: s.account_id == ^user.id, select: s.media_file_id)
+
+    File
+    |> where([f], f.context == :personal and f.owner_id != ^user.id)
+    |> where([f], f.is_public == true or f.id in subquery(shared_file_ids))
+    |> Flop.validate_and_run(params, for: File)
+  end
+
+  @doc """
+  Shares a personal file with another account. Only the file's owner may
+  share it. Upserts so re-sharing with the same account is a no-op rather
+  than a unique-constraint error.
+  """
+  @spec share_file(map(), File.t(), String.t()) ::
+          {:ok, FileShare.t()}
+          | {:error, Ecto.Changeset.t() | :forbidden | :cannot_share_with_owner}
+  def share_file(user, %File{} = file, account_id) do
+    cond do
+      account_id == file.owner_id ->
+        {:error, :cannot_share_with_owner}
+
+      not owns_file?(user, file) ->
+        {:error, :forbidden}
+
+      true ->
+        %FileShare{}
+        |> FileShare.changeset(%{media_file_id: file.id, account_id: account_id})
+        |> Repo.insert(
+          on_conflict: [set: [updated_at: DateTime.utc_now(:second)]],
+          conflict_target: [:media_file_id, :account_id]
+        )
+    end
+  end
+
+  @doc """
+  Revokes a previously granted share. Only the file's owner may revoke it.
+  """
+  @spec revoke_file_share(map(), File.t(), String.t()) :: {:ok, :revoked} | {:error, :forbidden}
+  def revoke_file_share(user, %File{} = file, account_id) do
+    if owns_file?(user, file) do
+      from(s in FileShare, where: s.media_file_id == ^file.id and s.account_id == ^account_id)
+      |> Repo.delete_all()
+
+      {:ok, :revoked}
+    else
+      {:error, :forbidden}
+    end
+  end
+
+  @doc """
+  Toggles whether a personal file is visible to every account (`is_public`).
+  Only the file's owner may change it.
+  """
+  @spec toggle_file_public(map(), File.t(), boolean()) ::
+          {:ok, File.t()} | {:error, Ecto.Changeset.t() | :forbidden}
+  def toggle_file_public(user, %File{} = file, is_public) when is_boolean(is_public) do
+    if owns_file?(user, file) do
+      file |> Ecto.Changeset.change(%{is_public: is_public}) |> Repo.update()
+    else
+      {:error, :forbidden}
+    end
+  end
+
+  @doc """
+  Lists the accounts a file has been explicitly shared with.
+  """
+  @spec list_file_shares(File.t()) :: [%{account_id: String.t()}]
+  def list_file_shares(%File{} = file) do
+    Repo.all(
+      from s in FileShare, where: s.media_file_id == ^file.id, select: %{account_id: s.account_id}
+    )
+  end
+
+  @doc """
+  Returns the subset of `file_ids` that have been explicitly shared with at
+  least one other account — one query for a whole grid of files, so the
+  "My files" list can show a "Shared" badge without an N+1.
+  """
+  @spec list_shared_file_ids([String.t()]) :: MapSet.t(String.t())
+  def list_shared_file_ids([]), do: MapSet.new()
+
+  def list_shared_file_ids(file_ids) do
+    FileShare
+    |> where([s], s.media_file_id in ^file_ids)
+    |> select([s], s.media_file_id)
+    |> distinct(true)
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
+  defp owns_file?(user, %File{owner_id: owner_id}), do: user.id == owner_id
 
   @doc """
   Formats a byte count as a human-readable string (e.g. "12.4 MB").
@@ -200,6 +302,28 @@ defmodule Athena.Media do
   def get_file(id), do: Repo.get(File, id)
 
   @doc """
+  Retrieves a single file by its S3 key.
+  """
+  @spec get_file_by_key(String.t()) :: File.t() | nil
+  def get_file_by_key(key), do: Repo.get_by(File, key: key)
+
+  @doc """
+  Whether `account_id` may download a `:personal` file: its owner, anyone
+  it's been explicitly shared with, or anyone at all if it's public.
+
+  Scoped to `context: :personal` on purpose - other media contexts
+  (avatars, course materials, submissions) have their own, separate access
+  expectations and are unaffected by personal-file sharing.
+  """
+  @spec can_download_personal_file?(String.t(), File.t()) :: boolean()
+  def can_download_personal_file?(account_id, %File{context: :personal} = file) do
+    file.owner_id == account_id or file.is_public or
+      Repo.exists?(
+        from s in FileShare, where: s.media_file_id == ^file.id and s.account_id == ^account_id
+      )
+  end
+
+  @doc """
   Prepares a presigned S3 upload for a user's own avatar.
 
   Unlike course material uploads, this is not scoped by course/section
@@ -289,7 +413,7 @@ defmodule Athena.Media do
   """
   @spec delete_file_by_key(String.t()) :: {:ok, File.t() | nil} | {:error, term()}
   def delete_file_by_key(key) do
-    case Repo.get_by(File, key: key) do
+    case get_file_by_key(key) do
       %File{} = file -> delete_file(file)
       nil -> {:ok, nil}
     end

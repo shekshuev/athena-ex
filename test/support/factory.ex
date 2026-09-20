@@ -5,7 +5,7 @@ defmodule Athena.Factory do
   use ExMachina.Ecto, repo: Athena.Repo
 
   alias Athena.Identity.{Account, Role, Profile}
-  alias Athena.Media.{File, Quota}
+  alias Athena.Media.{File, FileShare, Quota}
   alias Athena.Announcements.Announcement
 
   alias Athena.Content.{
@@ -99,6 +99,13 @@ defmodule Athena.Factory do
       size: 1024 * 1024,
       context: :personal,
       owner_id: Ecto.UUID.generate()
+    }
+  end
+
+  def file_share_factory do
+    %FileShare{
+      media_file: build(:media_file),
+      account_id: Ecto.UUID.generate()
     }
   end
 

@@ -116,6 +116,35 @@ defmodule Athena.Content.Blocks do
   end
 
   @doc """
+  Duplicates a block, inserting the copy immediately after the original in
+  the same section. Carries over content, visibility, and the three policy
+  embeds (access_rules/completion_rule/engagement_rule) as-is; per-student
+  data (progress, submissions, engagement stats) is keyed by block id and
+  is never attached to a `Block` association, so a plain field copy can't
+  drag any of it along.
+  """
+  @spec duplicate_block(map(), Block.t()) ::
+          {:ok, Block.t()} | {:error, Ecto.Changeset.t() | :forbidden}
+  def duplicate_block(user, %Block{} = block) do
+    attrs = %{
+      "type" => block.type,
+      "content" => block.content,
+      "visibility" => block.visibility,
+      "access_rules" => embed_to_map(block.access_rules),
+      "completion_rule" => embed_to_map(block.completion_rule),
+      "engagement_rule" => embed_to_map(block.engagement_rule),
+      "section_id" => block.section_id,
+      "after_id" => block.id
+    }
+
+    create_block(user, attrs)
+  end
+
+  @doc false
+  defp embed_to_map(nil), do: nil
+  defp embed_to_map(%_{} = embed), do: Map.from_struct(embed)
+
+  @doc """
   Updates an existing block's content or type.
   """
   @spec update_block(map(), Block.t(), map()) ::

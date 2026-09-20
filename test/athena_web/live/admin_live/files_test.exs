@@ -26,6 +26,17 @@ defmodule AthenaWeb.AdminLive.FilesTest do
       assert html =~ file.original_name
     end
 
+    test "the download link keeps the key's slashes literal instead of %2F-encoding them", %{
+      conn: conn
+    } do
+      file = insert(:media_file, original_name: "report.pdf")
+
+      {:ok, _lv, html} = live(conn, ~p"/admin/files")
+
+      refute html =~ "%2F"
+      assert html =~ ~s(href="/media/#{file.key}")
+    end
+
     test "handles search functionality and maintains params", %{conn: conn} do
       insert(:media_file, original_name: "special_report.pdf")
       insert(:media_file, original_name: "common_notes.txt")

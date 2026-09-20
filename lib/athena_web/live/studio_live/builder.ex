@@ -598,6 +598,39 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
+  def handle_event("copy_block", %{"id" => id}, socket) do
+    with true <- can_edit?(socket),
+         block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == id)) do
+      case Content.duplicate_block(socket.assigns.current_user, block) do
+        {:ok, copy} ->
+          updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
+
+          Phoenix.PubSub.broadcast(
+            Athena.PubSub,
+            "builder:#{socket.assigns.course.id}",
+            :refresh_tree
+          )
+
+          {:noreply,
+           socket
+           |> assign(blocks: updated_blocks)
+           |> push_patch(
+             to:
+               builder_block_path(
+                 socket.assigns.course,
+                 socket.assigns.active_section_id,
+                 copy.id
+               )
+           )}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, gettext("Failed to duplicate block"))}
+      end
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
   def handle_event("add_text_block", params, socket) do
     if can_edit?(socket) do
       attrs = %{

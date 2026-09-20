@@ -270,7 +270,7 @@ defmodule AthenaWeb.AdminLive.Files do
         <:action :let={{_id, file}}>
           <div class="flex justify-end gap-2">
             <.icon_button
-              href={~p"/media/#{file.key}"}
+              href={~p"/media/#{String.split(file.key, "/")}"}
               icon="hero-arrow-down-tray"
               label={gettext("Download")}
             />

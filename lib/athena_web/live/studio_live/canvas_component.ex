@@ -383,6 +383,17 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       >
         <.icon name="hero-bookmark-square" class="size-5" />
       </.button>
+
+      <.button
+        id={"inline-copy-block-#{@after_id}"}
+        phx-hook="TippyTooltip"
+        data-tippy-content={gettext("Duplicate this block")}
+        phx-click="copy_block"
+        phx-value-id={@after_id}
+        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary"
+      >
+        <.icon name="hero-square-2-stack" class="size-5" />
+      </.button>
     </div>
     """
   end
