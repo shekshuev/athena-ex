@@ -35,6 +35,7 @@ defmodule Athena.Media.File do
     field :context, Ecto.Enum, values: [:personal, :avatar, :course_material, :submission]
 
     field :owner_id, :binary_id
+    field :is_public, :boolean, default: false
 
     timestamps(type: :utc_datetime)
   end

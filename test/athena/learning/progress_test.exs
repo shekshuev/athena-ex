@@ -182,6 +182,20 @@ defmodule Athena.Learning.ProgressTest do
       assert s3.id in new_accessible
     end
 
+    test "excludes a section hidden from students, unless opts requests ignore_visibility?",
+         %{user: user} do
+      course = insert(:course)
+      s1 = insert(:section, course: course, visibility: :hidden)
+
+      accessible = Progress.accessible_section_ids(user, course.id, [s1])
+      refute s1.id in accessible
+
+      accessible_for_test_run =
+        Progress.accessible_section_ids(user, course.id, [s1], [], nil, ignore_visibility?: true)
+
+      assert s1.id in accessible_for_test_run
+    end
+
     test "grants access to a section if it has reset_waterline: true, ignoring previous locked gates",
          %{user: user} do
       course = insert(:course)

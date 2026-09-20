@@ -698,11 +698,9 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
           content: %{
             "language" => "sql",
             "time_limit" => 2.0,
-            "body" => %{
-              "evaluation_mode" => "state_verification",
-              "setup_sql" => "CREATE TABLE users (id INT);",
-              "check_sql" => "SELECT 'OK';"
-            }
+            "evaluation_mode" => "state_verification",
+            "setup_sql" => "CREATE TABLE users (id INT);",
+            "check_sql" => "SELECT 'OK';"
           },
           owner_id: admin.id
         )
@@ -713,20 +711,18 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
         "block" => %{
           "id" => block.id,
           "content" => %{
-            "body" => %{
-              "setup_sql" => "CREATE TABLE users (id INT, active BOOL);"
-            }
+            "setup_sql" => "CREATE TABLE users (id INT, active BOOL);"
           }
         }
       })
 
       {:ok, updated} = Content.get_library_block(block.id)
-      assert updated.content["body"]["evaluation_mode"] == "state_verification"
-      assert updated.content["body"]["setup_sql"] == "CREATE TABLE users (id INT, active BOOL);"
-      assert updated.content["body"]["check_sql"] == "SELECT 'OK';"
+      assert updated.content["evaluation_mode"] == "state_verification"
+      assert updated.content["setup_sql"] == "CREATE TABLE users (id INT, active BOOL);"
+      assert updated.content["check_sql"] == "SELECT 'OK';"
     end
 
-    test "updates Tiptap description without wiping SQL configs in body", %{
+    test "updates Tiptap description without wiping SQL config fields", %{
       conn: conn,
       admin: admin
     } do
@@ -735,11 +731,9 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
           type: :code,
           content: %{
             "language" => "sql",
-            "body" => %{
-              "evaluation_mode" => "query_result",
-              "setup_sql" => "CREATE TABLE t (id INT);",
-              "solution_sql" => "SELECT * FROM t;"
-            }
+            "evaluation_mode" => "query_result",
+            "setup_sql" => "CREATE TABLE t (id INT);",
+            "solution_code" => "SELECT * FROM t;"
           },
           owner_id: admin.id
         )
@@ -759,13 +753,13 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       render_hook(lv, "update_content", %{"content" => new_desc})
 
       {:ok, updated} = Content.get_library_block(block.id)
-      assert updated.content["body"]["description"] == new_desc
-      assert updated.content["body"]["evaluation_mode"] == "query_result"
-      assert updated.content["body"]["setup_sql"] == "CREATE TABLE t (id INT);"
-      assert updated.content["body"]["solution_sql"] == "SELECT * FROM t;"
+      assert updated.content["body"] == new_desc
+      assert updated.content["evaluation_mode"] == "query_result"
+      assert updated.content["setup_sql"] == "CREATE TABLE t (id INT);"
+      assert updated.content["solution_code"] == "SELECT * FROM t;"
     end
 
-    test "run_instructor_test validates solution_sql presence for query_result mode", %{
+    test "run_instructor_test validates solution_code presence for query_result mode", %{
       conn: conn,
       admin: admin
     } do
@@ -774,11 +768,9 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
           type: :code,
           content: %{
             "language" => "sql",
-            "body" => %{
-              "evaluation_mode" => "query_result",
-              "setup_sql" => "CREATE TABLE t (id INT);",
-              "solution_sql" => ""
-            }
+            "evaluation_mode" => "query_result",
+            "setup_sql" => "CREATE TABLE t (id INT);",
+            "solution_code" => ""
           },
           owner_id: admin.id
         )

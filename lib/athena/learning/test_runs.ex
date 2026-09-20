@@ -51,12 +51,62 @@ defmodule Athena.Learning.TestRuns do
     with {:ok, course} <- Content.get_course(instructor, course_id),
          true <- Content.can_edit_course?(instructor, course),
          linear_sections <- Content.list_linear_lessons(course_id, :all),
-         true <- Enum.any?(linear_sections, &(&1.id == section_id)) do
-      do_start(instructor, course, section_id, linear_sections)
+         {:ok, target_section_id} <-
+           resolve_playable_section(course_id, section_id, linear_sections) do
+      do_start(instructor, course, target_section_id, linear_sections)
     else
       false -> {:error, :forbidden}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  # A "folder" section (subsections but no blocks of its own, shown collapsed
+  # in the builder canvas behind a Subsections grid) never appears in
+  # `linear_sections` itself. Rather than reject it outright, resolve it to
+  # the first playable descendant so "Test run" works from a collapsed
+  # section too.
+  @doc false
+  defp resolve_playable_section(course_id, section_id, linear_sections) do
+    if Enum.any?(linear_sections, &(&1.id == section_id)) do
+      {:ok, section_id}
+    else
+      resolve_playable_descendant(course_id, section_id, linear_sections)
+    end
+  end
+
+  @doc false
+  defp resolve_playable_descendant(course_id, section_id, linear_sections) do
+    course_id
+    |> Content.get_course_tree(:all)
+    |> find_section_node(section_id)
+    |> case do
+      nil -> {:error, :forbidden}
+      node -> find_playable_descendant(node, linear_sections)
+    end
+  end
+
+  @doc false
+  defp find_playable_descendant(node, linear_sections) do
+    descendant_ids = MapSet.new(collect_section_ids(node))
+
+    case Enum.find(linear_sections, &MapSet.member?(descendant_ids, &1.id)) do
+      nil -> {:error, :section_not_playable}
+      playable -> {:ok, playable.id}
+    end
+  end
+
+  @doc false
+  defp find_section_node(nodes, section_id) do
+    Enum.find_value(nodes, fn node ->
+      if node.id == section_id, do: node, else: find_section_node(node.children || [], section_id)
+    end)
+  end
+
+  @doc false
+  defp collect_section_ids(node) do
+    Enum.reduce(node.children || [], [node.id], fn child, acc ->
+      acc ++ collect_section_ids(child)
+    end)
   end
 
   @doc false
@@ -115,7 +165,7 @@ defmodule Athena.Learning.TestRuns do
 
   defp seed_prior_gate_completions(account, prior_sections) do
     prior_sections
-    |> Progress.get_gate_blocks(account, [])
+    |> Progress.get_gate_blocks(account, [], ignore_schedule?: true, ignore_visibility?: true)
     |> Enum.each(fn block ->
       %BlockProgress{}
       |> BlockProgress.changeset(%{

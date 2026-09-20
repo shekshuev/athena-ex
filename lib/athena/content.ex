@@ -149,6 +149,9 @@ defmodule Athena.Content do
 
   def create_block(user, attrs), do: Blocks.create_block(user, attrs) |> notify_subscribers()
 
+  def duplicate_block(user, block),
+    do: Blocks.duplicate_block(user, block) |> notify_subscribers()
+
   def update_block(user, block, attrs),
     do: Blocks.update_block(user, block, attrs) |> notify_subscribers()
 

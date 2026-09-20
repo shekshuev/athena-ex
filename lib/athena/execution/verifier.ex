@@ -27,8 +27,7 @@ defmodule Athena.Execution.Verifier do
       SqlRunner.execute_in_sandbox(box_id, setup_sql, fn conn ->
         case to_string(eval_mode) do
           "query_result" ->
-            solution_sql = get_challenge_field(challenge, :solution_sql)
-            evaluate_sql_query_result(conn, code, solution_sql, time_limit)
+            evaluate_sql_query_result(conn, code, challenge.solution_code, time_limit)
 
           "state_verification" ->
             check_sql = get_challenge_field(challenge, :check_sql)

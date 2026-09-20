@@ -5,6 +5,11 @@ defmodule AthenaWeb.MessengerLive.ComposerComponent do
   event, offers `@mention` autocomplete in cohort chats, and posts the
   message on submit.
 
+  Enter sends the message; Shift+Enter inserts a newline (handled by the
+  `ComposerKeydown` JS hook, which also drives the mention dropdown's
+  keyboard navigation so Enter never races between "pick this suggestion"
+  and "send the raw @partial text").
+
   Mention detection only looks at the end of the current text (no
   caret-position tracking) — an accepted v1 simplification.
   """
@@ -25,6 +30,7 @@ defmodule AthenaWeb.MessengerLive.ComposerComponent do
      |> assign_new(:body, fn -> "" end)
      |> assign_new(:last_typing_broadcast_at, fn -> nil end)
      |> assign_new(:mention_suggestions, fn -> [] end)
+     |> assign_new(:highlighted_mention_index, fn -> 0 end)
      |> assign_new(:selected_mentions, fn -> [] end)
      |> assign_new(:participants, fn -> load_participants(assigns.conversation) end)}
   end
@@ -39,19 +45,25 @@ defmodule AthenaWeb.MessengerLive.ComposerComponent do
   end
 
   def handle_event("pick_mention", %{"account_id" => account_id}, socket) do
-    case Enum.find(socket.assigns.participants, &(&1.id == account_id)) do
-      nil ->
-        {:noreply, socket}
+    {:noreply, pick_mention(socket, account_id)}
+  end
 
-      account ->
-        name = Identity.display_name(account)
-        new_body = Regex.replace(@mention_regex, socket.assigns.body, "@" <> name <> " ")
+  def handle_event("move_highlight", %{"direction" => direction}, socket) do
+    count = length(socket.assigns.mention_suggestions)
 
-        {:noreply,
-         socket
-         |> assign(:body, new_body)
-         |> assign(:mention_suggestions, [])
-         |> update(:selected_mentions, &[{account_id, "@" <> name} | &1])}
+    if count == 0 do
+      {:noreply, socket}
+    else
+      delta = if direction == "down", do: 1, else: -1
+      new_index = Integer.mod(socket.assigns.highlighted_mention_index + delta, count)
+      {:noreply, assign(socket, :highlighted_mention_index, new_index)}
+    end
+  end
+
+  def handle_event("select_highlighted_mention", _params, socket) do
+    case Enum.at(socket.assigns.mention_suggestions, socket.assigns.highlighted_mention_index) do
+      nil -> {:noreply, socket}
+      account -> {:noreply, pick_mention(socket, account.id)}
     end
   end
 
@@ -88,6 +100,23 @@ defmodule AthenaWeb.MessengerLive.ComposerComponent do
 
   defp load_participants(_conversation), do: []
 
+  defp pick_mention(socket, account_id) do
+    case Enum.find(socket.assigns.participants, &(&1.id == account_id)) do
+      nil ->
+        socket
+
+      account ->
+        name = Identity.display_name(account)
+        new_body = Regex.replace(@mention_regex, socket.assigns.body, "@" <> name <> " ")
+
+        socket
+        |> assign(:body, new_body)
+        |> assign(:mention_suggestions, [])
+        |> assign(:highlighted_mention_index, 0)
+        |> update(:selected_mentions, &[{account_id, "@" <> name} | &1])
+    end
+  end
+
   defp update_mention_suggestions(socket, body) do
     if socket.assigns.conversation.kind == :cohort do
       case mention_query(body) do
@@ -101,7 +130,9 @@ defmodule AthenaWeb.MessengerLive.ComposerComponent do
             |> Enum.filter(&matches_query?(&1, query))
             |> Enum.take(5)
 
-          assign(socket, :mention_suggestions, suggestions)
+          socket
+          |> assign(:mention_suggestions, suggestions)
+          |> assign(:highlighted_mention_index, 0)
       end
     else
       socket
@@ -151,10 +182,16 @@ defmodule AthenaWeb.MessengerLive.ComposerComponent do
           :if={@mention_suggestions != []}
           class="absolute bottom-full mb-1 left-0 z-10 w-full max-w-xs bg-base-100 border border-base-300 rounded-box shadow-lg max-h-48 overflow-y-auto"
         >
-          <li :for={account <- @mention_suggestions}>
+          <li :for={{account, index} <- Enum.with_index(@mention_suggestions)}>
             <button
               type="button"
-              class="w-full text-left px-3 py-2 hover:bg-base-200 text-sm flex items-center justify-between gap-2"
+              class={[
+                "w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2",
+                if(index == @highlighted_mention_index,
+                  do: "bg-base-200",
+                  else: "hover:bg-base-200"
+                )
+              ]}
               phx-click="pick_mention"
               phx-value-account_id={account.id}
               phx-target={@myself}
@@ -169,8 +206,11 @@ defmodule AthenaWeb.MessengerLive.ComposerComponent do
           name="body"
           id={"#{@id}-input"}
           rows="1"
+          phx-hook="ComposerKeydown"
+          phx-target={@myself}
+          data-suggestions-open={to_string(@mention_suggestions != [])}
           class="textarea textarea-bordered w-full resize-none"
-          placeholder={gettext("Write a message...")}
+          placeholder={gettext("Write a message... (Enter to send, Shift+Enter for a new line)")}
           maxlength={Message.max_length()}
           phx-debounce="300"
         >{@body}</textarea>

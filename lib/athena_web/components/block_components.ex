@@ -374,15 +374,25 @@ defmodule AthenaWeb.BlockComponents do
     Map.get(content_map, "execution_results") || Map.get(content_map, :execution_results) || []
   end
 
-  defp compute_code_for_mode(:edit, block, _draft, _answers, _submission),
+  @doc """
+  Resolves the code that should currently be showing/running for a `:code`
+  block: a live collaborator's in-progress answer, else the student's own
+  draft, else their last submission, else the block's initial/template code.
+
+  Exposed (not `defp`) so `AthenaWeb.LearnLive.Player`'s "Run" handler can
+  resolve the same code the editor is actually rendered with, instead of
+  only checking for a draft (which silently treated "the student hasn't
+  edited the pre-filled/previously-submitted code yet" as "no code at all").
+  """
+  def compute_code_for_mode(:edit, block, _draft, _answers, _submission),
     do: block.content["initial_code"] || ""
 
-  defp compute_code_for_mode(:play, block, draft, answers, submission) do
+  def compute_code_for_mode(:play, block, draft, answers, submission) do
     extract_code_answer(block.id, answers, submission, draft) ||
       block.content["initial_code"] || ""
   end
 
-  defp compute_code_for_mode(_other_mode, block, _draft, answers, submission) do
+  def compute_code_for_mode(_other_mode, block, _draft, answers, submission) do
     extract_code_answer(block.id, answers, submission, nil) ||
       block.content["initial_code"] || ""
   end
@@ -1522,7 +1532,7 @@ defmodule AthenaWeb.BlockComponents do
             <input type="hidden" name="block[id]" value={@block.id} />
 
             <%= if @block.content["language"] == "sql" do %>
-              <% mode = get_in(@block.content, ["body", "evaluation_mode"]) || "query_result" %>
+              <% mode = @block.content["evaluation_mode"] || "query_result" %>
 
               <div class="mb-6 relative">
                 <label class="label">
@@ -1533,8 +1543,8 @@ defmodule AthenaWeb.BlockComponents do
                 <input
                   type="hidden"
                   id={"setup-sql-input-#{@block.id}"}
-                  name="block[content][body][setup_sql]"
-                  value={get_in(@block.content, ["body", "setup_sql"])}
+                  name="block[content][setup_sql]"
+                  value={@block.content["setup_sql"]}
                 />
                 <div class="overflow-hidden rounded-sm border border-base-300 bg-base-200 dark:bg-[#282c34]">
                   <div
@@ -1542,7 +1552,7 @@ defmodule AthenaWeb.BlockComponents do
                     phx-hook="CodeEditor"
                     data-language="sql"
                     data-readonly="false"
-                    data-code={get_in(@block.content, ["body", "setup_sql"]) || ""}
+                    data-code={@block.content["setup_sql"] || ""}
                     data-input-id={"setup-sql-input-#{@block.id}"}
                     phx-update="ignore"
                     class="w-full text-sm font-mono outline-none"
@@ -1560,11 +1570,8 @@ defmodule AthenaWeb.BlockComponents do
                 <input
                   type="hidden"
                   id={"solution-sql-input-#{@block.id}"}
-                  name="block[content][body][solution_sql]"
-                  value={
-                    get_in(@block.content, ["body", "solution_sql"]) ||
-                      @block.content["solution_code"]
-                  }
+                  name="block[content][solution_code]"
+                  value={@block.content["solution_code"]}
                 />
                 <div class="overflow-hidden rounded-sm border border-base-300 bg-base-200 dark:bg-[#282c34]">
                   <div
@@ -1572,10 +1579,7 @@ defmodule AthenaWeb.BlockComponents do
                     phx-hook="CodeEditor"
                     data-language="sql"
                     data-readonly="false"
-                    data-code={
-                      get_in(@block.content, ["body", "solution_sql"]) ||
-                        @block.content["solution_code"] || ""
-                    }
+                    data-code={@block.content["solution_code"] || ""}
                     data-input-id={"solution-sql-input-#{@block.id}"}
                     phx-update="ignore"
                     class="w-full text-sm font-mono outline-none"
@@ -1593,8 +1597,8 @@ defmodule AthenaWeb.BlockComponents do
                 <input
                   type="hidden"
                   id={"check-sql-input-#{@block.id}"}
-                  name="block[content][body][check_sql]"
-                  value={get_in(@block.content, ["body", "check_sql"])}
+                  name="block[content][check_sql]"
+                  value={@block.content["check_sql"]}
                 />
                 <div class="overflow-hidden rounded-sm border border-base-300 bg-base-200 dark:bg-[#282c34]">
                   <div
@@ -1602,7 +1606,7 @@ defmodule AthenaWeb.BlockComponents do
                     phx-hook="CodeEditor"
                     data-language="sql"
                     data-readonly="false"
-                    data-code={get_in(@block.content, ["body", "check_sql"]) || ""}
+                    data-code={@block.content["check_sql"] || ""}
                     data-input-id={"check-sql-input-#{@block.id}"}
                     phx-update="ignore"
                     class="w-full text-sm font-mono outline-none"

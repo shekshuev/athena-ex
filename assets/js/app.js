@@ -49,6 +49,7 @@ import topbar from "../vendor/topbar";
 import { Dialogue, DialogueLine, insertDialogue } from "./tiptap/dialogue";
 import { ChartsHooks } from "./charts_hooks";
 import { EngagementHooks, engagementTrackingActive } from "./engagement_hooks";
+import { MessengerHooks } from "./messenger_hooks";
 
 const lowlight = createLowlight(common);
 
@@ -103,6 +104,7 @@ const Hooks = {};
 
 Object.assign(Hooks, EngagementHooks);
 Object.assign(Hooks, ChartsHooks);
+Object.assign(Hooks, MessengerHooks);
 
 Hooks.TippyTooltip = {
   mounted() {

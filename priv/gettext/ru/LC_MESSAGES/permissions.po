@@ -39,16 +39,13 @@ msgid "instructors"
 msgstr "Преподаватели"
 
 msgid "cohorts"
-msgstr "Учебные потоки"
+msgstr "Учебные группы"
 
 msgid "engagement"
 msgstr "Вовлечённость"
 
 msgid "files"
 msgstr "Файлы"
-
-msgid "announcements"
-msgstr "Объявления"
 
 msgid "create"
 msgstr "Создание"

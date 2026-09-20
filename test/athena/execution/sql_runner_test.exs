@@ -126,14 +126,12 @@ defmodule Athena.Execution.SqlRunnerTest do
       challenge = %CodeChallenge{
         language: "sql",
         time_limit: 2.0,
-        body: %{
-          "evaluation_mode" => "query_result",
-          "setup_sql" => """
-          CREATE TABLE products (id INT PRIMARY KEY, name TEXT, price INT);
-          INSERT INTO products VALUES (1, 'Laptop', 1000), (2, 'Mouse', 25);
-          """,
-          "solution_sql" => "SELECT name, price FROM products WHERE price > 50;"
-        }
+        evaluation_mode: "query_result",
+        setup_sql: """
+        CREATE TABLE products (id INT PRIMARY KEY, name TEXT, price INT);
+        INSERT INTO products VALUES (1, 'Laptop', 1000), (2, 'Mouse', 25);
+        """,
+        solution_code: "SELECT name, price FROM products WHERE price > 50;"
       }
 
       student_sql = "SELECT name, price FROM products WHERE price > 50;"
@@ -157,14 +155,12 @@ defmodule Athena.Execution.SqlRunnerTest do
       challenge = %CodeChallenge{
         language: "sql",
         time_limit: 2.0,
-        body: %{
-          "evaluation_mode" => "query_result",
-          "setup_sql" => """
-          CREATE TABLE users (id INT PRIMARY KEY, age INT);
-          INSERT INTO users VALUES (1, 20), (2, 30), (3, 40);
-          """,
-          "solution_sql" => "SELECT id, age FROM users ORDER BY age ASC;"
-        }
+        evaluation_mode: "query_result",
+        setup_sql: """
+        CREATE TABLE users (id INT PRIMARY KEY, age INT);
+        INSERT INTO users VALUES (1, 20), (2, 30), (3, 40);
+        """,
+        solution_code: "SELECT id, age FROM users ORDER BY age ASC;"
       }
 
       student_sql = "SELECT id, age FROM users ORDER BY age DESC;"
@@ -181,19 +177,17 @@ defmodule Athena.Execution.SqlRunnerTest do
       challenge = %CodeChallenge{
         language: "sql",
         time_limit: 2.0,
-        body: %{
-          "evaluation_mode" => "state_verification",
-          "setup_sql" => """
-          CREATE TABLE accounts (id INT PRIMARY KEY, status TEXT);
-          INSERT INTO accounts VALUES (1, 'pending'), (2, 'pending'), (3, 'active');
-          """,
-          "check_sql" => """
-          SELECT CASE
-            WHEN COUNT(*) = 3 THEN 'OK'
-            ELSE 'Expected all accounts to be active'
-          END FROM accounts WHERE status = 'active';
-          """
-        }
+        evaluation_mode: "state_verification",
+        setup_sql: """
+        CREATE TABLE accounts (id INT PRIMARY KEY, status TEXT);
+        INSERT INTO accounts VALUES (1, 'pending'), (2, 'pending'), (3, 'active');
+        """,
+        check_sql: """
+        SELECT CASE
+          WHEN COUNT(*) = 3 THEN 'OK'
+          ELSE 'Expected all accounts to be active'
+        END FROM accounts WHERE status = 'active';
+        """
       }
 
       student_sql = "UPDATE accounts SET status = 'active';"
@@ -219,14 +213,12 @@ defmodule Athena.Execution.SqlRunnerTest do
       challenge = %CodeChallenge{
         language: "sql",
         time_limit: 2.0,
-        body: %{
-          "evaluation_mode" => "query_result",
-          "setup_sql" => """
-          CREATE TABLE products (id INT PRIMARY KEY, name TEXT, price INT);
-          INSERT INTO products VALUES (1, 'Laptop', 1000), (2, 'Mouse', 25);
-          """,
-          "solution_sql" => "SELECT name FROM products WHERE price > 500;"
-        }
+        evaluation_mode: "query_result",
+        setup_sql: """
+        CREATE TABLE products (id INT PRIMARY KEY, name TEXT, price INT);
+        INSERT INTO products VALUES (1, 'Laptop', 1000), (2, 'Mouse', 25);
+        """,
+        solution_code: "SELECT name FROM products WHERE price > 500;"
       }
 
       student_sql = "SELECT name FROM products;"
@@ -251,14 +243,12 @@ defmodule Athena.Execution.SqlRunnerTest do
       challenge = %CodeChallenge{
         language: "sql",
         time_limit: 2.0,
-        body: %{
-          "evaluation_mode" => "query_result",
-          "setup_sql" => """
-          CREATE TABLE users (id INT PRIMARY KEY, name TEXT, age INT);
-          INSERT INTO users VALUES (1, 'Alice', 25);
-          """,
-          "solution_sql" => "SELECT name, age FROM users;"
-        }
+        evaluation_mode: "query_result",
+        setup_sql: """
+        CREATE TABLE users (id INT PRIMARY KEY, name TEXT, age INT);
+        INSERT INTO users VALUES (1, 'Alice', 25);
+        """,
+        solution_code: "SELECT name, age FROM users;"
       }
 
       student_sql = "SELECT name FROM users;"
@@ -275,19 +265,17 @@ defmodule Athena.Execution.SqlRunnerTest do
       challenge = %CodeChallenge{
         language: "sql",
         time_limit: 2.0,
-        body: %{
-          "evaluation_mode" => "state_verification",
-          "setup_sql" => """
-          CREATE TABLE accounts (id INT PRIMARY KEY, status TEXT);
-          INSERT INTO accounts VALUES (1, 'pending'), (2, 'pending'), (3, 'pending');
-          """,
-          "check_sql" => """
-          SELECT CASE
-            WHEN COUNT(*) = 3 THEN 'OK'
-            ELSE 'Expected 3 active accounts, got ' || COUNT(*)
-          END FROM accounts WHERE status = 'active';
-          """
-        }
+        evaluation_mode: "state_verification",
+        setup_sql: """
+        CREATE TABLE accounts (id INT PRIMARY KEY, status TEXT);
+        INSERT INTO accounts VALUES (1, 'pending'), (2, 'pending'), (3, 'pending');
+        """,
+        check_sql: """
+        SELECT CASE
+          WHEN COUNT(*) = 3 THEN 'OK'
+          ELSE 'Expected 3 active accounts, got ' || COUNT(*)
+        END FROM accounts WHERE status = 'active';
+        """
       }
 
       student_sql = "UPDATE accounts SET status = 'active' WHERE id = 1;"
@@ -311,11 +299,9 @@ defmodule Athena.Execution.SqlRunnerTest do
       challenge = %CodeChallenge{
         language: "sql",
         time_limit: 2.0,
-        body: %{
-          "evaluation_mode" => "query_result",
-          "setup_sql" => "CREATE TABLE users (id INT);",
-          "solution_sql" => "SELECT * FROM users;"
-        }
+        evaluation_mode: "query_result",
+        setup_sql: "CREATE TABLE users (id INT);",
+        solution_code: "SELECT * FROM users;"
       }
 
       student_sql = "SELEEEECT * FROM users;"
@@ -333,11 +319,9 @@ defmodule Athena.Execution.SqlRunnerTest do
       challenge = %CodeChallenge{
         language: "sql",
         time_limit: 2.0,
-        body: %{
-          "evaluation_mode" => "query_result",
-          "setup_sql" => "CREATE TABLE users (id INT);",
-          "solution_sql" => "SELECT * FROM users;"
-        }
+        evaluation_mode: "query_result",
+        setup_sql: "CREATE TABLE users (id INT);",
+        solution_code: "SELECT * FROM users;"
       }
 
       student_sql = "SELECT * FROM non_existent_table;"
@@ -355,11 +339,9 @@ defmodule Athena.Execution.SqlRunnerTest do
       challenge = %CodeChallenge{
         language: "sql",
         time_limit: 2.0,
-        body: %{
-          "evaluation_mode" => "query_result",
-          "setup_sql" => "CREATE TABLE numbers (val INT); INSERT INTO numbers VALUES (10);",
-          "solution_sql" => "SELECT val FROM numbers;"
-        }
+        evaluation_mode: "query_result",
+        setup_sql: "CREATE TABLE numbers (val INT); INSERT INTO numbers VALUES (10);",
+        solution_code: "SELECT val FROM numbers;"
       }
 
       student_sql = "SELECT val / 0 FROM numbers;"
@@ -379,11 +361,9 @@ defmodule Athena.Execution.SqlRunnerTest do
       challenge = %CodeChallenge{
         language: "sql",
         time_limit: 0.2,
-        body: %{
-          "evaluation_mode" => "query_result",
-          "setup_sql" => "CREATE TABLE dummy (id INT);",
-          "solution_sql" => "SELECT 1;"
-        }
+        evaluation_mode: "query_result",
+        setup_sql: "CREATE TABLE dummy (id INT);",
+        solution_code: "SELECT 1;"
       }
 
       student_sql = "SELECT pg_sleep(2);"
@@ -401,11 +381,9 @@ defmodule Athena.Execution.SqlRunnerTest do
       challenge = %CodeChallenge{
         language: "sql",
         time_limit: 0.2,
-        body: %{
-          "evaluation_mode" => "query_result",
-          "setup_sql" => "CREATE TABLE dummy (id INT);",
-          "solution_sql" => "SELECT 1;"
-        }
+        evaluation_mode: "query_result",
+        setup_sql: "CREATE TABLE dummy (id INT);",
+        solution_code: "SELECT 1;"
       }
 
       student_sql = """
@@ -432,11 +410,9 @@ defmodule Athena.Execution.SqlRunnerTest do
       challenge = %CodeChallenge{
         language: "sql",
         time_limit: 2.0,
-        body: %{
-          "evaluation_mode" => "query_result",
-          "setup_sql" => "CREATE TABLE loot (content TEXT);",
-          "solution_sql" => "SELECT 1;"
-        }
+        evaluation_mode: "query_result",
+        setup_sql: "CREATE TABLE loot (content TEXT);",
+        solution_code: "SELECT 1;"
       }
 
       student_sql = "COPY loot FROM '/etc/passwd';"
@@ -456,11 +432,9 @@ defmodule Athena.Execution.SqlRunnerTest do
       challenge = %CodeChallenge{
         language: "sql",
         time_limit: 2.0,
-        body: %{
-          "evaluation_mode" => "query_result",
-          "setup_sql" => "CREATE TABLE cmd_out (output TEXT);",
-          "solution_sql" => "SELECT 1;"
-        }
+        evaluation_mode: "query_result",
+        setup_sql: "CREATE TABLE cmd_out (output TEXT);",
+        solution_code: "SELECT 1;"
       }
 
       student_sql = "COPY cmd_out FROM PROGRAM 'id';"
@@ -478,11 +452,9 @@ defmodule Athena.Execution.SqlRunnerTest do
       challenge = %CodeChallenge{
         language: "sql",
         time_limit: 2.0,
-        body: %{
-          "evaluation_mode" => "query_result",
-          "setup_sql" => "CREATE TABLE dummy (id INT);",
-          "solution_sql" => "SELECT 1;"
-        }
+        evaluation_mode: "query_result",
+        setup_sql: "CREATE TABLE dummy (id INT);",
+        solution_code: "SELECT 1;"
       }
 
       student_sql = "SELECT datname FROM pg_database WHERE datname = 'postgres';"
@@ -498,11 +470,9 @@ defmodule Athena.Execution.SqlRunnerTest do
       challenge = %CodeChallenge{
         language: "sql",
         time_limit: 0.2,
-        body: %{
-          "evaluation_mode" => "query_result",
-          "setup_sql" => "CREATE TABLE dummy (id INT);",
-          "solution_sql" => "SELECT 1;"
-        }
+        evaluation_mode: "query_result",
+        setup_sql: "CREATE TABLE dummy (id INT);",
+        solution_code: "SELECT 1;"
       }
 
       student_sql = "SET statement_timeout = 0; SELECT pg_sleep(2);"
@@ -519,11 +489,9 @@ defmodule Athena.Execution.SqlRunnerTest do
       challenge = %CodeChallenge{
         language: "sql",
         time_limit: 0.2,
-        body: %{
-          "evaluation_mode" => "query_result",
-          "setup_sql" => "CREATE TABLE dummy (id INT);",
-          "solution_sql" => "SELECT 1;"
-        }
+        evaluation_mode: "query_result",
+        setup_sql: "CREATE TABLE dummy (id INT);",
+        solution_code: "SELECT 1;"
       }
 
       student_sql = """

@@ -1,5 +1,6 @@
 defmodule AthenaWeb.LearnLive.PlayerTest do
   use AthenaWeb.ConnCase, async: true
+  use Oban.Testing, repo: Athena.Repo
   import Phoenix.LiveViewTest
 
   import Athena.Factory
@@ -13,17 +14,17 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
     course = insert(:course)
     insert(:enrollment, account_id: user.id, course_id: course.id)
 
-    case Process.whereis(Athena.PG) do
-      nil -> :pg.start_link(Athena.PG)
-      _pid -> :ok
-    end
-
-    Enum.each([:db, :compiled, :script], &:pg.join(Athena.PG, {:code_runners, &1}, self()))
-
-    on_exit(fn ->
-      Enum.each([:db, :compiled, :script], &:pg.leave(Athena.PG, {:code_runners, &1}, self()))
-    end)
-
+    # `Execution.runner_available?/1` and `pick_runner/1` already find a
+    # working runner without any of this: the test env's `server_role` is
+    # "all" (config/test.exs), so `Athena.Execution.TaskSupervisor` starts
+    # and registers itself for every language family at application boot,
+    # for the whole suite's lifetime. Registering a second, test-scoped
+    # runner here used to be actively harmful once a test let code execution
+    # run for real: `:pg.get_members/2` returns members in no particular
+    # order, so a *different*, concurrently-running test could randomly pick
+    # this test's runner via `Enum.random/1` - and since that runner was
+    # only ever meant to live as long as this one test, it (and any task
+    # still running under it) died the moment this test exited.
     %{conn: conn, user: user, course: course}
   end
 
@@ -1149,6 +1150,211 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       send(lv.pid, {:submission_updated, good_sub})
 
       assert render(lv) =~ "Waterfall Content"
+    end
+  end
+
+  describe "Run button - real end-to-end execution (no mocks)" do
+    test "clicking Run on a SQL block actually executes it via the Oban worker and reports the real result",
+         %{conn: conn, course: course, user: user} do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :code,
+          content: %{
+            "language" => "sql",
+            "time_limit" => 2.0,
+            "evaluation_mode" => "query_result",
+            "setup_sql" =>
+              "CREATE TABLE users (id INT, name TEXT); INSERT INTO users VALUES (1, 'Alice');",
+            "solution_code" => "SELECT * FROM users ORDER BY id;"
+          }
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      render_hook(lv, "save_draft", %{
+        "block_id" => block.id,
+        "answer" => %{"code" => "SELECT * FROM users ORDER BY id;"}
+      })
+
+      render_hook(lv, "run_code", %{"block_id" => block.id})
+
+      assert [job] = all_enqueued(worker: Athena.Execution.TestWorker)
+      assert :ok = perform_job(Athena.Execution.TestWorker, job.args)
+
+      html = render(lv)
+      assert html =~ "ACCEPTED" or html =~ "accepted"
+
+      draft =
+        Athena.Repo.get_by!(Athena.Learning.Submission, block_id: block.id, account_id: user.id)
+
+      assert [%{"status" => "accepted"}] = draft.content["execution_results"]
+    end
+
+    test "clicking Run on a SQL block reports a wrong_answer when the query doesn't match", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :code,
+          content: %{
+            "language" => "sql",
+            "time_limit" => 2.0,
+            "evaluation_mode" => "query_result",
+            "setup_sql" =>
+              "CREATE TABLE users (id INT, name TEXT); INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob');",
+            "solution_code" => "SELECT * FROM users ORDER BY id;"
+          }
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      render_hook(lv, "save_draft", %{
+        "block_id" => block.id,
+        "answer" => %{"code" => "SELECT * FROM users WHERE id = 1;"}
+      })
+
+      render_hook(lv, "run_code", %{"block_id" => block.id})
+
+      assert [job] = all_enqueued(worker: Athena.Execution.TestWorker)
+      assert :ok = perform_job(Athena.Execution.TestWorker, job.args)
+
+      draft =
+        Athena.Repo.get_by!(Athena.Learning.Submission, block_id: block.id, account_id: user.id)
+
+      assert [%{"status" => "wrong_answer"}] = draft.content["execution_results"]
+    end
+
+    test "clicking Run does not consume a formal attempt or leave a graded submission behind", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :code,
+          content: %{
+            "language" => "sql",
+            "time_limit" => 2.0,
+            "evaluation_mode" => "query_result",
+            "setup_sql" => "CREATE TABLE t (id INT); INSERT INTO t VALUES (1);",
+            "solution_code" => "SELECT * FROM t;"
+          }
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      render_hook(lv, "save_draft", %{
+        "block_id" => block.id,
+        "answer" => %{"code" => "SELECT * FROM t;"}
+      })
+
+      render_hook(lv, "run_code", %{"block_id" => block.id})
+
+      assert [job] = all_enqueued(worker: Athena.Execution.TestWorker)
+      assert :ok = perform_job(Athena.Execution.TestWorker, job.args)
+
+      submissions = Athena.Learning.get_latest_submissions(user.id, [block.id], nil)
+      refute Map.has_key?(submissions, block.id)
+
+      draft =
+        Athena.Repo.get_by!(Athena.Learning.Submission, block_id: block.id, account_id: user.id)
+
+      assert draft.status == :draft
+    end
+
+    test "clicking Run before ever touching the editor still runs the block's pre-filled template code",
+         %{conn: conn, course: course, user: user} do
+      # Regression test: `do_run_code/4` used to read `socket.assigns.drafts`
+      # only, which is empty until the student actually types (fires
+      # `save_draft`). The editor itself falls back to `initial_code` when
+      # there's no draft/submission yet, so a student (or an instructor in a
+      # Test Run) who hits Run immediately - without editing the code that's
+      # already showing - got a silent "Please write some code first!" (and
+      # on a nested Test Run player, no visible flash outlet at all, so it
+      # looked like Run did nothing).
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :code,
+          content: %{
+            "language" => "sql",
+            "time_limit" => 2.0,
+            "evaluation_mode" => "query_result",
+            "initial_code" => "SELECT * FROM users ORDER BY id;",
+            "setup_sql" =>
+              "CREATE TABLE users (id INT, name TEXT); INSERT INTO users VALUES (1, 'Alice');",
+            "solution_code" => "SELECT * FROM users ORDER BY id;"
+          }
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      render_hook(lv, "run_code", %{"block_id" => block.id})
+
+      assert [job] = all_enqueued(worker: Athena.Execution.TestWorker)
+      assert :ok = perform_job(Athena.Execution.TestWorker, job.args)
+
+      draft =
+        Athena.Repo.get_by!(Athena.Learning.Submission, block_id: block.id, account_id: user.id)
+
+      assert [%{"status" => "accepted"}] = draft.content["execution_results"]
+    end
+
+    test "clicking Run before editing re-runs the student's last submitted code, not an empty answer",
+         %{conn: conn, course: course, user: user} do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :code,
+          content: %{
+            "language" => "sql",
+            "time_limit" => 2.0,
+            "evaluation_mode" => "query_result",
+            "setup_sql" =>
+              "CREATE TABLE users (id INT, name TEXT); INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob');",
+            "solution_code" => "SELECT * FROM users ORDER BY id;"
+          }
+        )
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :wrong_answer,
+        score: 0,
+        content: %{"code" => "SELECT * FROM users WHERE id = 1;"}
+      )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      render_hook(lv, "run_code", %{"block_id" => block.id})
+
+      assert [job] = all_enqueued(worker: Athena.Execution.TestWorker)
+      assert :ok = perform_job(Athena.Execution.TestWorker, job.args)
+
+      draft =
+        Athena.Repo.get_by!(Athena.Learning.Submission,
+          block_id: block.id,
+          account_id: user.id,
+          status: :draft
+        )
+
+      assert draft.content["code"] == "SELECT * FROM users WHERE id = 1;"
+      assert [%{"status" => "wrong_answer"}] = draft.content["execution_results"]
     end
   end
 

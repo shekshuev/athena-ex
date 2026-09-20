@@ -15,28 +15,58 @@ defmodule AthenaWeb.MediaController do
   Intercepts requests to private media, verifies authentication,
   generates a temporary presigned URL, and redirects the client to the S3 object.
 
-  Returns `403 Forbidden` if the user is not authenticated in the session.
+  Returns `403 Forbidden` if the user is not authenticated in the session,
+  or if the key belongs to a `:personal` file the caller isn't the owner
+  of, doesn't have shared with them, and isn't public (see
+  `Media.can_download_personal_file?/2`). Every other media context
+  (avatars, course materials, submissions) keeps its previous behavior:
+  reachable by any authenticated account, since their access is already
+  governed elsewhere (enrollment gates what a student ever sees a course
+  material's URL at all, etc.) - personal files have no such prior gate,
+  which is exactly what made them downloadable by key alone before.
   Returns `404 Not Found` if the presigned URL generation fails.
   """
   @spec download(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def download(conn, %{"path" => path_list}) do
-    if get_session(conn, "account_id") do
-      key = Enum.join(path_list, "/")
-      bucket = Application.get_env(:athena, Athena.Media)[:bucket] || "athena"
+    case get_session(conn, "account_id") do
+      nil ->
+        forbidden(conn)
 
-      case Media.generate_download_url(bucket, key) do
-        {:ok, presigned_url} ->
-          redirect(conn, external: presigned_url)
+      account_id ->
+        key = Enum.join(path_list, "/")
 
-        {:error, _reason} ->
-          conn
-          |> put_status(:not_found)
-          |> text("Media not found")
-      end
-    else
-      conn
-      |> put_status(:forbidden)
-      |> text("Forbidden")
+        if authorized?(account_id, key) do
+          serve(conn, key)
+        else
+          forbidden(conn)
+        end
     end
+  end
+
+  defp authorized?(account_id, key) do
+    case Media.get_file_by_key(key) do
+      %{context: :personal} = file -> Media.can_download_personal_file?(account_id, file)
+      _ -> true
+    end
+  end
+
+  defp serve(conn, key) do
+    bucket = Application.get_env(:athena, Athena.Media)[:bucket] || "athena"
+
+    case Media.generate_download_url(bucket, key) do
+      {:ok, presigned_url} ->
+        redirect(conn, external: presigned_url)
+
+      {:error, _reason} ->
+        conn
+        |> put_status(:not_found)
+        |> text("Media not found")
+    end
+  end
+
+  defp forbidden(conn) do
+    conn
+    |> put_status(:forbidden)
+    |> text("Forbidden")
   end
 end

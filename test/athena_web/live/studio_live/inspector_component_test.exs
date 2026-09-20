@@ -430,11 +430,9 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
           content: %{
             "language" => "sql",
             "time_limit" => 2.0,
-            "body" => %{
-              "evaluation_mode" => "query_result",
-              "setup_sql" => "CREATE TABLE users (id INT);",
-              "solution_sql" => "SELECT * FROM users;"
-            }
+            "evaluation_mode" => "query_result",
+            "setup_sql" => "CREATE TABLE users (id INT);",
+            "solution_code" => "SELECT * FROM users;"
           }
       }
 
@@ -451,7 +449,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "Evaluation Mode"
       assert html =~ "Query Result"
       assert html =~ "State Verification"
-      assert html =~ ~s(name="block[content][body][evaluation_mode]")
+      assert html =~ ~s(name="block[content][evaluation_mode]")
 
       assert html =~ "Time Limit (s)"
       assert html =~ ~s(name="block[content][time_limit]")

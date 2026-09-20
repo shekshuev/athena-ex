@@ -9,18 +9,24 @@ defmodule AthenaWeb.FileLive.Index do
   use AthenaWeb, :live_view
 
   alias Athena.Media
-  alias AthenaWeb.FileLive.PersonalUploadComponent
+  alias AthenaWeb.FileLive.{FileShareComponent, PersonalUploadComponent}
 
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(show_upload: false, file_to_delete: nil)
+     |> assign(
+       show_upload: false,
+       file_to_delete: nil,
+       file_to_share: nil,
+       shared_file_ids: MapSet.new()
+     )
      |> stream(:files, [])}
   end
 
   @impl true
   def handle_params(params, _url, socket) do
+    tab = if Map.get(params, "tab") == "shared", do: :shared, else: :mine
     search = Map.get(params, "search", "")
 
     flop_params =
@@ -32,18 +38,34 @@ defmodule AthenaWeb.FileLive.Index do
         params
       end
 
-    case Media.list_personal_files(socket.assigns.current_user, flop_params) do
+    result =
+      case tab do
+        :mine -> Media.list_personal_files(socket.assigns.current_user, flop_params)
+        :shared -> Media.list_shared_with_me_files(socket.assigns.current_user, flop_params)
+      end
+
+    case result do
       {:ok, {files, meta}} ->
         {:noreply,
          socket
-         |> assign(meta: meta, search: search)
+         |> assign(meta: meta, search: search, tab: tab)
          |> assign_usage()
+         |> assign_shared_file_ids(tab, files)
          |> stream(:files, files, reset: true)}
 
       {:error, _meta} ->
         {:noreply, push_patch(socket, to: ~p"/files")}
     end
   end
+
+  # Only the "mine" tab shows the "Shared" badge - files on the "shared"
+  # tab already aren't the viewer's own, sharing status isn't relevant there.
+  defp assign_shared_file_ids(socket, :mine, files) do
+    ids = Media.list_shared_file_ids(Enum.map(files, & &1.id))
+    assign(socket, :shared_file_ids, ids)
+  end
+
+  defp assign_shared_file_ids(socket, :shared, _files), do: socket
 
   defp assign_usage(socket) do
     %{id: id, role_id: role_id} = socket.assigns.current_user
@@ -88,6 +110,25 @@ defmodule AthenaWeb.FileLive.Index do
     {:noreply, assign(socket, file_to_delete: nil)}
   end
 
+  def handle_event("share_click", %{"id" => id}, socket) do
+    current_user = socket.assigns.current_user
+
+    case Media.get_file(id) do
+      %{owner_id: owner_id} = file when owner_id == current_user.id ->
+        {:noreply, assign(socket, file_to_share: file)}
+
+      _ ->
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("File not found."))
+         |> assign(file_to_share: nil)}
+    end
+  end
+
+  def handle_event("cancel_share", _params, socket) do
+    {:noreply, assign(socket, file_to_share: nil)}
+  end
+
   def handle_event("confirm_delete", _params, %{assigns: %{file_to_delete: nil}} = socket) do
     {:noreply, socket}
   end
@@ -112,6 +153,39 @@ defmodule AthenaWeb.FileLive.Index do
          |> put_flash(:error, gettext("Failed to delete file"))
          |> assign(file_to_delete: nil)}
     end
+  end
+
+  @impl true
+  def handle_info({FileShareComponent, {:updated, updated_file}}, socket) do
+    {:noreply,
+     socket
+     |> assign(file_to_share: updated_file)
+     |> stream_insert(:files, updated_file)}
+  end
+
+  @impl true
+  def handle_info({FileShareComponent, {:shares_changed, file_id, has_shares?}}, socket) do
+    ids =
+      if has_shares? do
+        MapSet.put(socket.assigns.shared_file_ids, file_id)
+      else
+        MapSet.delete(socket.assigns.shared_file_ids, file_id)
+      end
+
+    socket = assign(socket, :shared_file_ids, ids)
+
+    # `phx-update="stream"` only patches the DOM for actual stream
+    # operations (insert/delete/reset) - a plain assign change like the one
+    # above doesn't reach an already-rendered card's markup on its own, so
+    # the affected file has to be re-inserted into the stream to pick up
+    # the new "Shared" badge.
+    socket =
+      case socket.assigns[:file_to_share] do
+        %{id: ^file_id} = file -> stream_insert(socket, :files, file)
+        _ -> socket
+      end
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -151,6 +225,7 @@ defmodule AthenaWeb.FileLive.Index do
          socket
          |> assign(meta: meta, show_upload: false)
          |> assign_usage()
+         |> assign_shared_file_ids(:mine, files)
          |> stream(:files, files, reset: true)}
 
       {:error, _meta} ->
@@ -168,6 +243,7 @@ defmodule AthenaWeb.FileLive.Index do
           <p class="text-base-content/60">{gettext("Your personal storage space.")}</p>
         </div>
         <.button
+          :if={@tab == :mine}
           type="button"
           variant="primary"
           phx-click="open_upload"
@@ -179,7 +255,7 @@ defmodule AthenaWeb.FileLive.Index do
         </.button>
       </div>
 
-      <div class="bg-base-100 border border-base-300 rounded-lg p-4">
+      <div :if={@tab == :mine} class="bg-base-100 border border-base-300 rounded-lg p-4">
         <div class="flex justify-between text-sm font-bold mb-2">
           <span>{gettext("Storage used")}</span>
           <span class="text-base-content/70">
@@ -193,6 +269,23 @@ defmodule AthenaWeb.FileLive.Index do
           >
           </div>
         </div>
+      </div>
+
+      <div role="tablist" class="tabs tabs-boxed w-fit">
+        <.link
+          navigate={~p"/files"}
+          role="tab"
+          class={["tab", @tab == :mine && "tab-active"]}
+        >
+          {gettext("My files")}
+        </.link>
+        <.link
+          navigate={~p"/files?tab=shared"}
+          role="tab"
+          class={["tab", @tab == :shared && "tab-active"]}
+        >
+          {gettext("Shared with me")}
+        </.link>
       </div>
 
       <div class="flex gap-4">
@@ -232,11 +325,20 @@ defmodule AthenaWeb.FileLive.Index do
             </div>
             <div class="flex gap-1">
               <.icon_button
-                href={~p"/media/#{file.key}"}
+                href={~p"/media/#{String.split(file.key, "/")}"}
                 icon="hero-arrow-down-tray"
                 label={gettext("Download")}
               />
               <.icon_button
+                :if={@tab == :mine}
+                type="button"
+                phx-click="share_click"
+                phx-value-id={file.id}
+                icon="hero-share"
+                label={gettext("Share")}
+              />
+              <.icon_button
+                :if={@tab == :mine}
                 type="button"
                 phx-click="delete_click"
                 phx-value-id={file.id}
@@ -247,8 +349,20 @@ defmodule AthenaWeb.FileLive.Index do
             </div>
           </div>
           <div class="min-w-0">
-            <div class="text-sm font-bold text-base-content truncate" title={file.original_name}>
-              {file.original_name}
+            <div class="flex items-center gap-1.5 min-w-0">
+              <div class="text-sm font-bold text-base-content truncate" title={file.original_name}>
+                {file.original_name}
+              </div>
+              <.badge :if={file.is_public} tone="primary" class="shrink-0">
+                {gettext("Public")}
+              </.badge>
+              <.badge
+                :if={!file.is_public && MapSet.member?(@shared_file_ids, file.id)}
+                tone="secondary"
+                class="shrink-0"
+              >
+                {gettext("Shared")}
+              </.badge>
             </div>
             <div class="text-xs font-medium text-base-content/50 uppercase tracking-wider">
               {Media.format_bytes(file.size)} · {Calendar.strftime(file.inserted_at, "%d.%m.%Y")}
@@ -288,6 +402,25 @@ defmodule AthenaWeb.FileLive.Index do
         on_cancel={JS.push("cancel_delete")}
         on_confirm={JS.push("confirm_delete")}
       />
+
+      <.modal
+        id="share-file-modal"
+        show={@file_to_share != nil}
+        title={
+          gettext("Share File: %{name}",
+            name: if(@file_to_share, do: @file_to_share.original_name, else: "")
+          )
+        }
+        on_cancel={JS.push("cancel_share")}
+      >
+        <.live_component
+          :if={@file_to_share}
+          module={FileShareComponent}
+          id={"share-#{@file_to_share.id}"}
+          file={@file_to_share}
+          current_user={@current_user}
+        />
+      </.modal>
     </.page_container>
     """
   end
@@ -318,6 +451,7 @@ defmodule AthenaWeb.FileLive.Index do
       |> Enum.map(&to_string/1)
 
     %{
+      "tab" => if(assigns.tab == :shared, do: "shared", else: nil),
       "search" => assigns.search,
       "page" => meta.current_page,
       "page_size" => meta.page_size,

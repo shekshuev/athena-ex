@@ -477,6 +477,14 @@ defmodule AthenaWeb.StudioLive.Builder do
         {:ok, test_run_session} ->
           {:noreply, assign(socket, test_run_session: test_run_session)}
 
+        {:error, :section_not_playable} ->
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             gettext("This section has no content to test run yet. Add some blocks first.")
+           )}
+
         {:error, _reason} ->
           {:noreply,
            put_flash(socket, :error, gettext("Could not start a test run for this section."))}
@@ -585,6 +593,39 @@ defmodule AthenaWeb.StudioLive.Builder do
       )
 
       {:noreply, assign(socket, blocks: updated_blocks)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("copy_block", %{"id" => id}, socket) do
+    with true <- can_edit?(socket),
+         block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == id)) do
+      case Content.duplicate_block(socket.assigns.current_user, block) do
+        {:ok, copy} ->
+          updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
+
+          Phoenix.PubSub.broadcast(
+            Athena.PubSub,
+            "builder:#{socket.assigns.course.id}",
+            :refresh_tree
+          )
+
+          {:noreply,
+           socket
+           |> assign(blocks: updated_blocks)
+           |> push_patch(
+             to:
+               builder_block_path(
+                 socket.assigns.course,
+                 socket.assigns.active_section_id,
+                 copy.id
+               )
+           )}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, gettext("Failed to duplicate block"))}
+      end
     else
       _ -> {:noreply, socket}
     end
@@ -1428,7 +1469,8 @@ defmodule AthenaWeb.StudioLive.Builder do
       }
 
       case Content.create_library_block(socket.assigns.current_user, attrs) do
-        {:ok, _lib_block} ->
+        {:ok, lib_block} ->
+          Content.pin_library_block(socket.assigns.current_user, course.id, lib_block.id)
           Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
 
           {:noreply,
@@ -1511,15 +1553,7 @@ defmodule AthenaWeb.StudioLive.Builder do
   def handle_event("run_instructor_test", %{"id" => block_id}, socket) do
     with true <- can_edit?(socket),
          block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == block_id)) do
-      lang = block.content["language"]
-
-      code =
-        if lang == "sql" do
-          get_in(block.content, ["body", "solution_sql"]) || block.content["solution_code"] || ""
-        else
-          block.content["solution_code"] || ""
-        end
-
+      code = block.content["solution_code"] || ""
       test_cases = block.content["test_cases"] || []
 
       dispatch_test_run(socket, block, code, test_cases)

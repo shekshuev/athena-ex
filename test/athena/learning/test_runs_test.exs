@@ -40,6 +40,28 @@ defmodule Athena.Learning.TestRunsTest do
       assert {:error, :forbidden} = TestRuns.start(instructor, course.id, Ecto.UUID.generate())
     end
 
+    test "redirects a collapsed folder section (no blocks of its own) to its first playable subsection",
+         %{instructor: instructor} do
+      course = insert(:course)
+      folder = insert(:section, course: course)
+      lesson = insert(:section, course: course, parent_id: folder.id)
+      insert(:block, section: lesson)
+
+      assert {:ok, %TestRunSession{} = session} = TestRuns.start(instructor, course.id, folder.id)
+
+      assert session.section_id == lesson.id
+    end
+
+    test "rejects a folder section whose subsections are all empty too", %{
+      instructor: instructor
+    } do
+      course = insert(:course)
+      folder = insert(:section, course: course)
+      insert(:section, course: course, parent_id: folder.id)
+
+      assert {:error, :section_not_playable} = TestRuns.start(instructor, course.id, folder.id)
+    end
+
     test "seeds prior gate blocks as completed and unlocks the target section for a fresh ephemeral account",
          %{instructor: instructor} do
       course = insert(:course)
