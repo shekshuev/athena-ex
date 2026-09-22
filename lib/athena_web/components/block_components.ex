@@ -32,17 +32,18 @@ defmodule AthenaWeb.BlockComponents do
     <div class={wrapper_classes(@mode, @active)}>
       <%= case @block.type do %>
         <% :text -> %>
-          <.render_text block={@block} mode={@mode} characters={@characters} />
+          <.render_text block={@block} mode={@mode} active={@active} characters={@characters} />
         <% :image -> %>
           <.render_image block={@block} mode={@mode} />
         <% :video -> %>
           <.render_video block={@block} mode={@mode} />
         <% :attachment -> %>
-          <.render_attachment block={@block} mode={@mode} />
+          <.render_attachment block={@block} mode={@mode} active={@active} />
         <% :code -> %>
           <.render_code
             block={@block}
             mode={@mode}
+            active={@active}
             answers={@answers}
             submission={@submission}
             attempts_count={@attempts_count}
@@ -53,6 +54,7 @@ defmodule AthenaWeb.BlockComponents do
           <.render_quiz_question
             block={@block}
             mode={@mode}
+            active={@active}
             answers={@answers}
             submission={@submission}
             attempts_count={@attempts_count}
@@ -70,6 +72,7 @@ defmodule AthenaWeb.BlockComponents do
           <.render_file_assignment
             block={@block}
             mode={@mode}
+            active={@active}
             submission={@submission}
             pending_file_urls={@pending_file_urls}
             draft={@draft}
@@ -102,13 +105,18 @@ defmodule AthenaWeb.BlockComponents do
 
   defp render_text(assigns) do
     ~H"""
-    <div class="editor-wrapper group/tiptap relative outline-none" tabindex="-1">
-      <.tiptap_toolbar mode={@mode} />
+    <div
+      id={"editor-wrapper-#{@mode}-#{@block.id}"}
+      class="editor-wrapper group/tiptap relative outline-none"
+      tabindex="-1"
+    >
+      <.tiptap_toolbar mode={@mode} block_id={@block.id} />
       <div
         id={"tiptap-#{@mode}-#{@block.id}-#{if @mode != :edit, do: :erlang.phash2(@block.content), else: "static"}"}
         phx-hook="TiptapEditor"
         data-id={@block.id}
         data-readonly={to_string(@mode != :edit)}
+        data-active={to_string(@active)}
         phx-update="ignore"
         data-on-change="update_content"
         data-content={Jason.encode!(@block.content)}
@@ -169,8 +177,12 @@ defmodule AthenaWeb.BlockComponents do
   defp render_attachment(assigns) do
     ~H"""
     <div class="space-y-4">
-      <div class="editor-wrapper group/tiptap relative outline-none" tabindex="-1">
-        <.tiptap_toolbar mode={@mode} />
+      <div
+        id={"editor-wrapper-#{@mode}-#{@block.id}"}
+        class="editor-wrapper group/tiptap relative outline-none"
+        tabindex="-1"
+      >
+        <.tiptap_toolbar mode={@mode} block_id={@block.id} />
         <div
           :if={@block.content["description"]}
           id={"tiptap-desc-#{@mode}-#{@block.id}-#{if @mode != :edit, do: :erlang.phash2(@block.content["description"]), else: "static"}"}
@@ -178,6 +190,7 @@ defmodule AthenaWeb.BlockComponents do
           data-on-change="update_content"
           data-id={@block.id}
           data-readonly={to_string(@mode != :edit)}
+          data-active={to_string(@active)}
           phx-update="ignore"
           data-content={Jason.encode!(@block.content["description"])}
           class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed mb-4"
@@ -231,14 +244,19 @@ defmodule AthenaWeb.BlockComponents do
 
     ~H"""
     <div class="relative w-full">
-      <div class="editor-wrapper group/tiptap relative outline-none mb-6" tabindex="-1">
-        <.tiptap_toolbar mode={@mode} />
+      <div
+        id={"editor-wrapper-#{@mode}-#{@block.id}"}
+        class="editor-wrapper group/tiptap relative outline-none mb-6"
+        tabindex="-1"
+      >
+        <.tiptap_toolbar mode={@mode} block_id={@block.id} />
         <div
           id={"tiptap-code-#{@mode}-#{@block.id}"}
           phx-hook="TiptapEditor"
           data-on-change="update_content"
           data-id={@block.id}
           data-readonly={to_string(@mode != :edit)}
+          data-active={to_string(@active)}
           phx-update="ignore"
           data-content={Jason.encode!(@block.content["body"] || %{})}
           class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed"
@@ -450,14 +468,19 @@ defmodule AthenaWeb.BlockComponents do
 
     ~H"""
     <div class="relative">
-      <div class="editor-wrapper group/tiptap relative outline-none" tabindex="-1">
-        <.tiptap_toolbar mode={@mode} />
+      <div
+        id={"editor-wrapper-#{@mode}-#{@block.id}"}
+        class="editor-wrapper group/tiptap relative outline-none"
+        tabindex="-1"
+      >
+        <.tiptap_toolbar mode={@mode} block_id={@block.id} />
         <div
           id={"tiptap-quiz-#{@mode}-#{@block.id}-#{if @mode != :edit, do: :erlang.phash2(@block.content["body"]), else: "static"}"}
           phx-hook="TiptapEditor"
           data-on-change="update_content"
           data-id={@block.id}
           data-readonly={to_string(@mode != :edit)}
+          data-active={to_string(@active)}
           phx-update="ignore"
           data-content={Jason.encode!(@block.content["body"] || %{})}
           class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed mb-6"
@@ -881,7 +904,7 @@ defmodule AthenaWeb.BlockComponents do
         phx-debounce="500"
       />
       <div class="editor-wrapper group/tiptap relative outline-none" tabindex="-1">
-        <.tiptap_toolbar mode={:edit} />
+        <.tiptap_toolbar mode={:edit} block_id={@block.id} />
         <div
           id={"tiptap-open-answer-#{@mode}-#{@block.id}-#{if @mode == :review, do: :erlang.phash2(@initial_content), else: "static"}"}
           phx-hook="TiptapEditor"
@@ -1086,14 +1109,18 @@ defmodule AthenaWeb.BlockComponents do
 
     ~H"""
     <div class="space-y-6">
-      <div class="editor-wrapper group/tiptap relative outline-none">
-        <.tiptap_toolbar mode={@mode} />
+      <div
+        id={"editor-wrapper-#{@mode}-#{@block.id}"}
+        class="editor-wrapper group/tiptap relative outline-none"
+      >
+        <.tiptap_toolbar mode={@mode} block_id={@block.id} />
         <div
           id={"tiptap-body-#{@mode}-#{@block.id}-#{if @mode != :edit, do: :erlang.phash2(@body_content), else: "static"}"}
           phx-hook="TiptapEditor"
           data-on-change="update_content"
           data-id={@block.id}
           data-readonly={to_string(@mode != :edit)}
+          data-active={to_string(@active)}
           phx-update="ignore"
           data-content={Jason.encode!(@body_content)}
           class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed"
@@ -1273,10 +1300,11 @@ defmodule AthenaWeb.BlockComponents do
                         <input type="hidden" name={"options[#{index}][id]"} value={opt["id"]} />
 
                         <div
+                          id={"editor-wrapper-option-#{@block.id}-#{opt["id"]}"}
                           class="editor-wrapper group/tiptap relative outline-none w-full"
                           tabindex="-1"
                         >
-                          <.tiptap_toolbar mode={:edit} />
+                          <.tiptap_toolbar mode={:edit} block_id={"option-#{@block.id}-#{opt["id"]}"} />
                           <input
                             type="hidden"
                             id={"option-text-#{@block.id}-#{opt["id"]}"}
@@ -1354,10 +1382,14 @@ defmodule AthenaWeb.BlockComponents do
                           </span>
                         </label>
                         <div
+                          id={"editor-wrapper-pair-left-#{@block.id}-#{pair["id"]}"}
                           class="editor-wrapper group/tiptap relative outline-none w-full"
                           tabindex="-1"
                         >
-                          <.tiptap_toolbar mode={:edit} />
+                          <.tiptap_toolbar
+                            mode={:edit}
+                            block_id={"pair-left-#{@block.id}-#{pair["id"]}"}
+                          />
                           <input
                             type="hidden"
                             id={"pair-left-#{@block.id}-#{pair["id"]}"}
@@ -1393,10 +1425,14 @@ defmodule AthenaWeb.BlockComponents do
                           </span>
                         </label>
                         <div
+                          id={"editor-wrapper-pair-right-#{@block.id}-#{pair["id"]}"}
                           class="editor-wrapper group/tiptap relative outline-none w-full"
                           tabindex="-1"
                         >
-                          <.tiptap_toolbar mode={:edit} />
+                          <.tiptap_toolbar
+                            mode={:edit}
+                            block_id={"pair-right-#{@block.id}-#{pair["id"]}"}
+                          />
                           <input
                             type="hidden"
                             id={"pair-right-#{@block.id}-#{pair["id"]}"}
@@ -1751,10 +1787,28 @@ defmodule AthenaWeb.BlockComponents do
   duplicating it.
   """
   def tiptap_toolbar(%{mode: :edit} = assigns) do
-    assigns = assign(assigns, :cm_languages, Execution.cm_languages())
+    assigns =
+      assigns
+      |> assign(:cm_languages, Execution.cm_languages())
+      |> assign_new(:block_id, fn -> nil end)
 
     ~H"""
-    <div class="fixed-toolbar hidden group-focus-within/tiptap:flex flex-wrap gap-2 bg-base-100 border border-base-300 rounded-sm p-1.5 mb-3 sticky top-2 z-10 items-center">
+    <%!--
+      This toolbar sits beside a `phx-update="ignore"` sibling (the actual
+      Tiptap editor) that's keyed by a stable, block-scoped `id` and is
+      therefore always correctly re-matched by morphdom on a reorder. This
+      div has no analogous identity of its own by default: on a reorder,
+      morphdom can walk two blocks' *toolbars* - structurally identical,
+      unkeyed - right past each other, so block A's toolbar DOM node (and
+      the click handler `TiptapEditor` bound to it) ends up nested under
+      block B, and vice versa, even though each editor and each wrapper
+      stays correctly matched to its own block. `id` here gives it the
+      same keyed match its sibling already gets.
+    --%>
+    <div
+      id={@block_id && "tiptap-toolbar-#{@mode}-#{@block_id}"}
+      class="fixed-toolbar hidden group-focus-within/tiptap:flex flex-wrap gap-2 bg-base-100 border border-base-300 rounded-sm p-1.5 mb-3 sticky top-2 z-10 items-center"
+    >
       <div class="join flex-wrap">
         <button
           type="button"

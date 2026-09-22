@@ -231,6 +231,61 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert hd(blocks).type == :text
     end
 
+    test "reordering blocks keeps the selected block's editor marked active by id, not by position",
+         %{conn: conn, course: course, section: section, admin: admin} do
+      # Regression test for a reported bug: select block A (editable at
+      # every position since the canvas keeps every block's TiptapEditor
+      # live), move it down past B, then A's own editor - not B's, and not
+      # "whichever editor is now first" - must be the one the client
+      # actually focuses. `data-active` is what `Hooks.TiptapEditor` reads
+      # to decide which block to focus (see assets/js/app.js); it must
+      # track the block's `id`, never its list position.
+      {:ok, block_a} =
+        Content.create_block(admin, %{
+          "type" => "text",
+          "section_id" => section.id,
+          "content" => %{"type" => "doc", "content" => []}
+        })
+
+      {:ok, block_b} =
+        Content.create_block(admin, %{
+          "type" => "text",
+          "section_id" => section.id,
+          "content" => %{"type" => "doc", "content" => []}
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> element("div[phx-click='select_block'][phx-value-id='#{block_a.id}']")
+      |> render_click()
+
+      lv
+      |> element("button[phx-click='move_block_down'][phx-value-id='#{block_a.id}']")
+      |> render_click()
+
+      assert Content.list_blocks_by_section(section.id) |> Enum.map(& &1.id) ==
+               [block_b.id, block_a.id]
+
+      html = render(lv)
+
+      assert has_element?(
+               lv,
+               ~s([id^="tiptap-edit-#{block_a.id}"][data-active="true"])
+             )
+
+      assert has_element?(
+               lv,
+               ~s([id^="tiptap-edit-#{block_b.id}"][data-active="false"])
+             )
+
+      refute html =~ ~s([id^="tiptap-edit-#{block_b.id}"][data-active="true"])
+    end
+
     test "deletes a block via modal", %{
       conn: conn,
       course: course,

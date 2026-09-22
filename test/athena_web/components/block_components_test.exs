@@ -27,6 +27,35 @@ defmodule AthenaWeb.BlockComponentsTest do
       assert html =~ "border-2"
     end
 
+    test "the toolbar and its editor-wrapper carry stable, block-scoped ids in :edit mode", %{
+      block: block
+    } do
+      # Regression test: on the Builder canvas every block renders its own
+      # always-live TiptapEditor + toolbar simultaneously, and reordering
+      # blocks (see `AthenaWeb.StudioLive.Builder`) re-renders this
+      # comprehension. The editor itself is `phx-update="ignore"` and was
+      # already correctly re-keyed by morphdom via its own id - but its
+      # sibling toolbar had none, so on a reorder two blocks' *toolbar* DOM
+      # nodes (and whichever click handler was bound to each) would swap
+      # places even though each editor and wrapper stayed correctly
+      # matched to its own block (confirmed via a live browser repro).
+      # Both the toolbar and its wrapper must carry an id derived from the
+      # block's own id so morphdom keys them the same way.
+      other_block = insert(:block, type: :text, content: %{"text" => "Other block"})
+      assigns = %{block: block, other_block: other_block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:edit} active={true} />
+        <.content_block block={@other_block} mode={:edit} active={false} />
+        """)
+
+      assert html =~ ~s(id="editor-wrapper-edit-#{block.id}")
+      assert html =~ ~s(id="tiptap-toolbar-edit-#{block.id}")
+      assert html =~ ~s(id="editor-wrapper-edit-#{other_block.id}")
+      assert html =~ ~s(id="tiptap-toolbar-edit-#{other_block.id}")
+    end
+
     test "renders text block in :play mode", %{block: block} do
       assigns = %{block: block}
 

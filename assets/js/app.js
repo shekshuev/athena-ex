@@ -290,6 +290,23 @@ Hooks.Sortable = {
   mounted() {
     const eventName = this.el.dataset.eventName || "reorder";
 
+    // Chrome buttons here (move up/down, add-content, ...) can sit next to
+    // per-item content that's itself a live, focusable TiptapEditor (the
+    // Builder canvas keeps every block simultaneously editable). A plain
+    // <button> click steals browser focus by default, which silently
+    // blurs whatever block the user was typing/selected in - the block
+    // still *looks* selected, but the next toolbar action (e.g. inserting
+    // a dialogue speaker) lands wherever focus actually ended up instead.
+    // Mirrors the same mousedown-preventDefault guard `TiptapEditor` already
+    // applies to its own toolbar buttons, for the same reason. Deliberately
+    // scoped to `button` only (not `.drag-handle`) so SortableJS's own
+    // mousedown-driven drag detection is untouched.
+    this.handleMousedown = (e) => {
+      if (e.target.closest(".editor-wrapper")) return;
+      if (e.target.closest("button")) e.preventDefault();
+    };
+    this.el.addEventListener("mousedown", this.handleMousedown);
+
     this.sortable = new Sortable(this.el, {
       animation: 150,
       handle: ".drag-handle",
@@ -304,8 +321,23 @@ Hooks.Sortable = {
       },
     });
   },
+  updated() {
+    // Reordering the list (this hook's own `updated()`, since its child
+    // count/order changed) blurs the *active* block's editor to <body> in
+    // real browsers - morphdom repositions that block's `phx-update=ignore`
+    // node without patching any of its own attributes/content (nothing
+    // about it actually changed, only its position did), so *its own*
+    // TiptapEditor hook never gets an `updated()` call to react to. This is
+    // the one place that reliably fires after every reorder, so it's on
+    // this hook to nudge the active editor to refocus itself.
+    const active = this.el.querySelector('[data-active="true"]');
+    if (active && !active.contains(document.activeElement)) {
+      active.dispatchEvent(new CustomEvent("tiptap:refocus-active"));
+    }
+  },
   destroyed() {
     if (this.sortable) this.sortable.destroy();
+    this.el.removeEventListener("mousedown", this.handleMousedown);
   },
 };
 
@@ -1021,6 +1053,45 @@ Hooks.TiptapEditor = {
       });
     };
     this.el.addEventListener("click", this.handleImageZoom);
+
+    // Selecting a block in the Builder/Library canvas only sets
+    // `active_block_id` server-side (a border highlight) - every block's
+    // TiptapEditor is mounted and live simultaneously, and the fixed
+    // toolbar's visibility/behavior is driven purely by real DOM focus
+    // (`.editor-wrapper`'s `:focus-within`, see `tiptap_toolbar`). Without
+    // this, "selecting" block A while focus is still inside block B leaves
+    // B's toolbar the one actually visible/interactive, so an action like
+    // inserting a dialogue line lands on B even though A looks selected.
+    if (this.el.dataset.active === "true" && !isReadOnly) {
+      this.editor.commands.focus("end");
+    }
+
+    // Reordering the active block (up/down button, or drag - see
+    // `Hooks.Sortable`) blurs it to <body> in real browsers: morphdom
+    // repositions this `phx-update=ignore` node without patching any of
+    // its own attributes/content (nothing about it changed, only its
+    // position did), so *this* hook's own `updated()` never runs for a
+    // pure reorder - `Hooks.Sortable` is the one place a reorder reliably
+    // fires an update, and it dispatches this event at the active block
+    // to ask it to restore its own focus.
+    this.handleRefocusActive = () => {
+      if (this.editor && this.editor.isEditable) {
+        this.editor.commands.focus("end");
+      }
+    };
+    this.el.addEventListener("tiptap:refocus-active", this.handleRefocusActive);
+  },
+
+  updated() {
+    const isActive = this.el.dataset.active === "true";
+    if (
+      isActive &&
+      this.editor &&
+      this.editor.isEditable &&
+      !this.el.contains(document.activeElement)
+    ) {
+      this.editor.commands.focus("end");
+    }
   },
 
   destroyed() {
@@ -1037,6 +1108,9 @@ Hooks.TiptapEditor = {
 
     document.removeEventListener("click", this.handleGlobalClick);
     this.el.removeEventListener("click", this.handleImageZoom);
+    if (this.handleRefocusActive) {
+      this.el.removeEventListener("tiptap:refocus-active", this.handleRefocusActive);
+    }
   },
 };
 
