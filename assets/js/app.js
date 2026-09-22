@@ -713,6 +713,40 @@ Hooks.TiptapEditor = {
       },
     });
 
+    // A copy button on rendered (read-only) code blocks - the Player,
+    // grading review, cohort-access preview, etc. Only wired for readonly
+    // content: the editable canvas already has its own code-block toolbar,
+    // and this content never changes post-mount here (`phx-update=ignore`),
+    // so a single pass at mount is enough - no `updated()` hook needed.
+    if (isReadOnly) {
+      this.el.querySelectorAll("pre > code").forEach((codeEl) => {
+        const pre = codeEl.parentElement;
+        pre.classList.add("relative");
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.title = "Copy code";
+        button.className =
+          "absolute top-2 right-2 p-1.5 rounded-sm bg-base-100/90 hover:bg-base-100 border border-base-300 text-base-content/60 hover:text-primary shadow-xs transition-colors cursor-pointer";
+        button.innerHTML = '<span class="hero-document-duplicate size-4"></span>';
+
+        button.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          navigator.clipboard.writeText(codeEl.textContent || "").then(() => {
+            button.innerHTML = '<span class="hero-check size-4"></span>';
+            clearTimeout(button._resetTimeout);
+            button._resetTimeout = setTimeout(() => {
+              button.innerHTML =
+                '<span class="hero-document-duplicate size-4"></span>';
+            }, 1500);
+          });
+        });
+
+        pre.appendChild(button);
+      });
+    }
+
     if (!isReadOnly) {
       const wrapper = this.el.closest(".editor-wrapper");
       const toolbar = wrapper ? wrapper.querySelector(".fixed-toolbar") : null;
