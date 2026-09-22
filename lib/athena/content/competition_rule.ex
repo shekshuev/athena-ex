@@ -27,6 +27,13 @@ defmodule Athena.Content.CompletionRule do
         changeset
 
       :pass_auto_grade ->
+        changeset =
+          if is_nil(get_field(changeset, :min_score)) do
+            put_change(changeset, :min_score, 100)
+          else
+            changeset
+          end
+
         changeset
         |> validate_required([:min_score],
           message: dgettext_noop("errors", "can't be blank for auto-grade")
