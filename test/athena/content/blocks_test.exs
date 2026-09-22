@@ -233,6 +233,50 @@ defmodule Athena.Content.BlocksTest do
     end
   end
 
+  describe "move_block/3" do
+    test "moves a block to a different section and appends it at the end", %{
+      admin: admin,
+      course: course,
+      section: s
+    } do
+      other_section = insert(:section, course: course)
+      existing = insert(:block, section: other_section, order: 1000)
+
+      block = insert(:block, section: s, order: 1000)
+
+      assert {:ok, moved} = Blocks.move_block(admin, block, other_section.id)
+      assert moved.section_id == other_section.id
+      assert moved.order > existing.order
+
+      assert Blocks.list_blocks_by_section(s.id) == []
+
+      assert Enum.map(Blocks.list_blocks_by_section(other_section.id), & &1.id) ==
+               [existing.id, moved.id]
+    end
+
+    test "returns forbidden if user lacks edit rights", %{student: student, section: s} do
+      block = insert(:block, section: s)
+      other_section = insert(:section, course: s.course)
+
+      assert {:error, :forbidden} = Blocks.move_block(student, block, other_section.id)
+    end
+
+    test "prevents IDOR: user cannot move a block into a section of a different course", %{
+      instructor: instructor,
+      other_instructor: other
+    } do
+      c1 = insert(:course, owner_id: instructor.id)
+      s1 = insert(:section, course: c1)
+      block = insert(:block, section: s1)
+
+      c2 = insert(:course, owner_id: other.id)
+      s2 = insert(:section, course: c2)
+
+      assert {:error, :forbidden} = Blocks.move_block(instructor, block, s2.id)
+      assert {:error, :forbidden} = Blocks.move_block(other, block, s2.id)
+    end
+  end
+
   describe "reorder_block/3" do
     test "should change order field when moving between blocks", %{admin: admin, section: s} do
       _b1 = insert(:block, section: s, order: 1000)

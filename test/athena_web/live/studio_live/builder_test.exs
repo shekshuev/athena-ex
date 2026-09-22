@@ -495,6 +495,39 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert Enum.at(blocks_after, 1).id == block2.id
     end
 
+    test "moves a block to a different section via modal", %{
+      conn: conn,
+      course: course,
+      section: section,
+      admin: admin
+    } do
+      {:ok, other_section} =
+        Content.create_section(admin, %{"title" => "Target Section", "course_id" => course.id})
+
+      {:ok, block} = Content.create_block(admin, %{"type" => "text", "section_id" => section.id})
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']")
+      |> render_click()
+
+      lv |> element("button[phx-click='open_move_block_modal']") |> render_click()
+
+      lv
+      |> element("button[phx-click='move_block'][phx-value-target_id='#{other_section.id}']")
+      |> render_click()
+
+      {:ok, updated_block} = Content.get_block(block.id)
+      assert updated_block.section_id == other_section.id
+      assert Content.list_blocks_by_section(section.id) == []
+      assert Enum.map(Content.list_blocks_by_section(other_section.id), & &1.id) == [block.id]
+    end
+
     test "deselects block via click-away", %{
       conn: conn,
       course: course,

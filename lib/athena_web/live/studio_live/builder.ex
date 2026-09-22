@@ -51,6 +51,7 @@ defmodule AthenaWeb.StudioLive.Builder do
          uploading_media_type: nil,
          viewing_parent_id: nil,
          moving_section_id: nil,
+         moving_block_id: nil,
          quick_nav_open: false,
          section_to_delete: nil,
          block_to_delete: nil,
@@ -467,6 +468,18 @@ defmodule AthenaWeb.StudioLive.Builder do
     {:noreply, assign(socket, moving_section_id: nil)}
   end
 
+  def handle_event("open_move_block_modal", %{"id" => id}, socket) do
+    if can_edit?(socket) do
+      {:noreply, assign(socket, moving_block_id: id)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("cancel_move_block", _, socket) do
+    {:noreply, assign(socket, moving_block_id: nil)}
+  end
+
   def handle_event("start_test_run", %{"section_id" => section_id}, socket) do
     if can_edit?(socket) do
       case Learning.start_test_run(
@@ -528,6 +541,34 @@ defmodule AthenaWeb.StudioLive.Builder do
       end
     else
       {:noreply, socket}
+    end
+  end
+
+  def handle_event("move_block", %{"target_id" => target_id}, socket) do
+    course = socket.assigns.course
+    block_id = socket.assigns.moving_block_id
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
+    with true <- can_edit?(socket),
+         true <- not is_nil(block),
+         {:ok, _} <- Content.move_block(socket.assigns.current_user, block, target_id) do
+      updated_blocks = Content.list_blocks_by_section(socket.assigns.active_section_id)
+      Phoenix.PubSub.broadcast(Athena.PubSub, "builder:#{course.id}", :refresh_tree)
+
+      {:noreply,
+       socket
+       |> assign(blocks: updated_blocks, moving_block_id: nil)
+       |> put_flash(:info, gettext("Moved successfully"))
+       |> push_patch(to: builder_section_path(course, socket.assigns.active_section_id))}
+    else
+      {:error, _} ->
+        {:noreply,
+         socket
+         |> assign(moving_block_id: nil)
+         |> put_flash(:error, gettext("Could not move this block."))}
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
@@ -1854,6 +1895,22 @@ defmodule AthenaWeb.StudioLive.Builder do
       </.modal>
 
       <.modal
+        :if={@moving_block_id}
+        id="move-block-modal"
+        show={true}
+        title={gettext("Move to...")}
+        on_cancel={JS.push("cancel_move_block")}
+      >
+        <div class="max-h-[60vh] overflow-y-auto -mx-6 px-6 py-2">
+          <.folder_tree_options
+            sections={@sections}
+            moving_section_id={@active_section_id}
+            event="move_block"
+          />
+        </div>
+      </.modal>
+
+      <.modal
         :if={@quick_nav_open}
         id="quick-nav-modal"
         show={true}
@@ -2080,17 +2137,26 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   @doc """
   Recursive component to render a folder tree for the Move To modal.
-  """
-  def folder_tree_options(assigns) do
-    assigns = assign_new(assigns, :level, fn -> 0 end)
 
+  Shared by the section and block "Move to..." modals - `event` picks
+  which `phx-click` a row fires (`move_section` or `move_block`);
+  `moving_section_id` is the id to exclude from the list, which for the
+  block modal is the block's *current* section (not a section actually
+  being moved).
+  """
+  attr :sections, :list, required: true
+  attr :moving_section_id, :string, default: nil
+  attr :event, :string, default: "move_section"
+  attr :level, :integer, default: 0
+
+  def folder_tree_options(assigns) do
     ~H"""
     <div class="space-y-0.5">
       <div :for={section <- @sections}>
         <%= if section.id != @moving_section_id do %>
           <.button
             type="button"
-            phx-click="move_section"
+            phx-click={@event}
             phx-value-target_id={section.id}
             class="w-full justify-start px-3 py-2 hover:bg-base-200 rounded-sm flex items-center gap-2 text-sm transition-colors group bg-transparent border-none text-base-content font-normal"
             style={"padding-left: #{(@level * 1.5) + 0.75}rem;"}
@@ -2106,6 +2172,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             :if={section.children != []}
             sections={section.children}
             moving_section_id={@moving_section_id}
+            event={@event}
             level={@level + 1}
           />
         <% end %>
