@@ -158,6 +158,9 @@ defmodule Athena.Content do
   def reorder_block(user, block, new_order),
     do: Blocks.reorder_block(user, block, new_order) |> notify_subscribers()
 
+  def move_block(user, block, new_section_id),
+    do: Blocks.move_block(user, block, new_section_id) |> notify_subscribers()
+
   def delete_block(user, block), do: Blocks.delete_block(user, block) |> notify_subscribers()
 
   def attach_media_to_block(user, block, meta, file_info),

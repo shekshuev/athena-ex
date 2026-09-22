@@ -809,6 +809,16 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
 
         <.button
           type="button"
+          phx-click="open_move_block_modal"
+          phx-value-id={@block.id}
+          class="btn btn-outline w-full"
+        >
+          <.icon name="hero-folder-arrow-down" class="size-4" />
+          {gettext("Move To...")}
+        </.button>
+
+        <.button
+          type="button"
           phx-click="delete_block_click"
           phx-value-id={@block.id}
           class="btn btn-error btn-outline w-full"

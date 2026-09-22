@@ -231,6 +231,61 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert hd(blocks).type == :text
     end
 
+    test "reordering blocks keeps the selected block's editor marked active by id, not by position",
+         %{conn: conn, course: course, section: section, admin: admin} do
+      # Regression test for a reported bug: select block A (editable at
+      # every position since the canvas keeps every block's TiptapEditor
+      # live), move it down past B, then A's own editor - not B's, and not
+      # "whichever editor is now first" - must be the one the client
+      # actually focuses. `data-active` is what `Hooks.TiptapEditor` reads
+      # to decide which block to focus (see assets/js/app.js); it must
+      # track the block's `id`, never its list position.
+      {:ok, block_a} =
+        Content.create_block(admin, %{
+          "type" => "text",
+          "section_id" => section.id,
+          "content" => %{"type" => "doc", "content" => []}
+        })
+
+      {:ok, block_b} =
+        Content.create_block(admin, %{
+          "type" => "text",
+          "section_id" => section.id,
+          "content" => %{"type" => "doc", "content" => []}
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> element("div[phx-click='select_block'][phx-value-id='#{block_a.id}']")
+      |> render_click()
+
+      lv
+      |> element("button[phx-click='move_block_down'][phx-value-id='#{block_a.id}']")
+      |> render_click()
+
+      assert Content.list_blocks_by_section(section.id) |> Enum.map(& &1.id) ==
+               [block_b.id, block_a.id]
+
+      html = render(lv)
+
+      assert has_element?(
+               lv,
+               ~s([id^="tiptap-edit-#{block_a.id}"][data-active="true"])
+             )
+
+      assert has_element?(
+               lv,
+               ~s([id^="tiptap-edit-#{block_b.id}"][data-active="false"])
+             )
+
+      refute html =~ ~s([id^="tiptap-edit-#{block_b.id}"][data-active="true"])
+    end
+
     test "deletes a block via modal", %{
       conn: conn,
       course: course,
@@ -438,6 +493,39 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       blocks_after = Content.list_blocks_by_section(section.id)
       assert Enum.at(blocks_after, 0).id == block1.id
       assert Enum.at(blocks_after, 1).id == block2.id
+    end
+
+    test "moves a block to a different section via modal", %{
+      conn: conn,
+      course: course,
+      section: section,
+      admin: admin
+    } do
+      {:ok, other_section} =
+        Content.create_section(admin, %{"title" => "Target Section", "course_id" => course.id})
+
+      {:ok, block} = Content.create_block(admin, %{"type" => "text", "section_id" => section.id})
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']")
+      |> render_click()
+
+      lv |> element("button[phx-click='open_move_block_modal']") |> render_click()
+
+      lv
+      |> element("button[phx-click='move_block'][phx-value-target_id='#{other_section.id}']")
+      |> render_click()
+
+      {:ok, updated_block} = Content.get_block(block.id)
+      assert updated_block.section_id == other_section.id
+      assert Content.list_blocks_by_section(section.id) == []
+      assert Enum.map(Content.list_blocks_by_section(other_section.id), & &1.id) == [block.id]
     end
 
     test "deselects block via click-away", %{
@@ -1333,6 +1421,65 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert :ok = Oban.Testing.perform_job(Athena.Execution.TestWorker, job.args, repo: Repo)
 
       assert render(player) =~ "ACCEPTED"
+    end
+
+    test "a Test Run never writes engagement_events rows for its ephemeral account", %{
+      conn: conn,
+      course: course,
+      admin: admin
+    } do
+      # `Athena.Learning.TestRuns.cleanup/1` purges submissions, progress,
+      # and gamification rows for the ephemeral test-run account, but does
+      # not (and structurally cannot cheaply) purge `engagement_events` -
+      # so the Player must simply never write them while `@test_run` is set,
+      # instead of leaving orphaned telemetry behind after every preview.
+      {:ok, section} =
+        Content.create_section(admin, %{"title" => "SQL Lesson", "course_id" => course.id})
+
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "code",
+          "section_id" => section.id,
+          "content" => %{
+            "language" => "sql",
+            "time_limit" => 2.0,
+            "evaluation_mode" => "query_result",
+            "setup_sql" =>
+              "CREATE TABLE users (id INT, name TEXT); INSERT INTO users VALUES (1, 'Alice');",
+            "solution_code" => "SELECT * FROM users ORDER BY id;"
+          }
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> element("button[phx-click='start_test_run']")
+      |> render_click()
+
+      session = Repo.one!(Athena.Learning.TestRunSession)
+      player = find_live_child(lv, "test-run-player-#{session.id}")
+      assert player
+
+      player
+      |> form("#code-form-#{block.id}")
+      |> render_change(%{
+        "block_id" => block.id,
+        "answer" => %{"code" => "SELECT * FROM users ORDER BY id;"}
+      })
+
+      player
+      |> element("button[phx-click='run_code'][phx-value-block_id='#{block.id}']")
+      |> render_click()
+
+      assert [job] = Oban.Testing.all_enqueued(worker: Athena.Execution.TestWorker, repo: Repo)
+      assert :ok = Oban.Testing.perform_job(Athena.Execution.TestWorker, job.args, repo: Repo)
+
+      refute has_element?(player, "[phx-hook='EngagementTracker']")
+      assert Repo.aggregate(Athena.Engagement.Event, :count, :id) == 0
     end
 
     test "clicking Run inside a Test Run works immediately, without editing the pre-filled code first",

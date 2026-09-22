@@ -27,6 +27,35 @@ defmodule AthenaWeb.BlockComponentsTest do
       assert html =~ "border-2"
     end
 
+    test "the toolbar and its editor-wrapper carry stable, block-scoped ids in :edit mode", %{
+      block: block
+    } do
+      # Regression test: on the Builder canvas every block renders its own
+      # always-live TiptapEditor + toolbar simultaneously, and reordering
+      # blocks (see `AthenaWeb.StudioLive.Builder`) re-renders this
+      # comprehension. The editor itself is `phx-update="ignore"` and was
+      # already correctly re-keyed by morphdom via its own id - but its
+      # sibling toolbar had none, so on a reorder two blocks' *toolbar* DOM
+      # nodes (and whichever click handler was bound to each) would swap
+      # places even though each editor and wrapper stayed correctly
+      # matched to its own block (confirmed via a live browser repro).
+      # Both the toolbar and its wrapper must carry an id derived from the
+      # block's own id so morphdom keys them the same way.
+      other_block = insert(:block, type: :text, content: %{"text" => "Other block"})
+      assigns = %{block: block, other_block: other_block}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:edit} active={true} />
+        <.content_block block={@other_block} mode={:edit} active={false} />
+        """)
+
+      assert html =~ ~s(id="editor-wrapper-edit-#{block.id}")
+      assert html =~ ~s(id="tiptap-toolbar-edit-#{block.id}")
+      assert html =~ ~s(id="editor-wrapper-edit-#{other_block.id}")
+      assert html =~ ~s(id="tiptap-toolbar-edit-#{other_block.id}")
+    end
+
     test "renders text block in :play mode", %{block: block} do
       assigns = %{block: block}
 
@@ -281,6 +310,29 @@ defmodule AthenaWeb.BlockComponentsTest do
       refute html =~ "ring-primary"
       assert html =~ "mb-10"
     end
+
+    test "passes the character catalog through to its editor, like :text blocks do", %{
+      block: block
+    } do
+      # Regression test: the toolbar's "Insert dialogue" speaker picker
+      # reads `data-characters` on the block's own TiptapEditor element
+      # (see `Hooks.TiptapEditor` in assets/js/app.js). Only `render_text`
+      # ever received `@characters` from `content_block/1`, so every other
+      # block type's dialogue picker silently rendered with an empty
+      # character list.
+      characters = [%{id: "c1", name: "Alice", avatarUrl: nil, color: "#ef4444"}]
+      assigns = %{block: block, characters: characters}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:edit} active={true} characters={@characters} />
+        """)
+
+      escaped =
+        Jason.encode!(characters) |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+
+      assert html =~ "data-characters=\"#{escaped}\""
+    end
   end
 
   describe "content_block/1 :code (sql)" do
@@ -441,6 +493,23 @@ defmodule AthenaWeb.BlockComponentsTest do
       assert html =~ "tiptap-player-opt-#{block.id}-o1"
       assert html =~ "phx-hook=\"TiptapEditor\""
       assert html =~ "data-readonly=\"true\""
+    end
+
+    test "passes the character catalog through to its body editor, like :text blocks do", %{
+      block: block
+    } do
+      characters = [%{id: "c1", name: "Alice", avatarUrl: nil, color: "#ef4444"}]
+      assigns = %{block: block, characters: characters}
+
+      html =
+        rendered_to_string(~H"""
+        <.content_block block={@block} mode={:edit} active={true} characters={@characters} />
+        """)
+
+      escaped =
+        Jason.encode!(characters) |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+
+      assert html =~ "data-characters=\"#{escaped}\""
     end
 
     test "renders active inputs and preserves student answers in :play mode", %{block: block} do

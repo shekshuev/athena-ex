@@ -166,6 +166,41 @@ defmodule Athena.Content.Blocks do
   end
 
   @doc """
+  Moves a block to a different section, appending it to the end.
+
+  The block-level equivalent of `Sections.update_section/3`'s parent_id
+  change: blocks don't nest, so there's no ltree path to recompute, just a
+  fresh `order` at the end of the destination section (via
+  `calculate_next_order/1`, the same gap-of-1024 scheme `create_block/2`
+  uses). Forbids moving across courses, mirroring
+  `Sections.validate_parent_course/2` - the Builder's "Move to" modal only
+  ever offers same-course sections as targets, but this shouldn't rely on
+  the caller alone to guarantee that.
+  """
+  @spec move_block(map(), Block.t(), String.t()) ::
+          {:ok, Block.t()} | {:error, Ecto.Changeset.t() | :forbidden}
+  def move_block(user, %Block{} = block, new_section_id) do
+    with true <- can_edit_section?(user, block.section_id),
+         true <- can_edit_section?(user, new_section_id),
+         true <- same_course?(block.section_id, new_section_id) do
+      block
+      |> Ecto.Changeset.change(%{
+        section_id: new_section_id,
+        order: calculate_next_order(new_section_id)
+      })
+      |> Repo.update()
+    else
+      _ -> {:error, :forbidden}
+    end
+  end
+
+  defp same_course?(section_id, section_id), do: true
+
+  defp same_course?(section_id_a, section_id_b) do
+    Repo.get(Section, section_id_a).course_id == Repo.get(Section, section_id_b).course_id
+  end
+
+  @doc """
   Reorders a block by moving it to a new index within its section.
   Calculates the gap-based order automatically.
   """

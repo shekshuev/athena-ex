@@ -13,6 +13,7 @@ defmodule Athena.Execution do
   defdelegate options, to: LanguageConfig
   defdelegate default_language, to: LanguageConfig
   defdelegate cm_lang(lang), to: LanguageConfig
+  defdelegate cm_languages, to: LanguageConfig
 
   @doc """
   Returns whether a runner node able to execute the given language is

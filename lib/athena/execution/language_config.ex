@@ -71,22 +71,38 @@ defmodule Athena.Execution.LanguageConfig do
   """
   def default_language, do: "python3"
 
+  # {backend language identifier, CodeMirror mode, display label}
+  @cm_languages [
+    {"python3", "python", "Python"},
+    {"cpp", "cpp", "C++"},
+    {"java", "java", "Java"},
+    {"go", "go", "Go"},
+    {"rust", "rust", "Rust"},
+    {"php", "php", "PHP"},
+    {"javascript", "javascript", "JS"},
+    {"sql", "sql", "SQL"},
+    {"html", "html", "HTML"},
+    {"css", "css", "CSS"},
+    {"xml", "xml", "XML"},
+    {"json", "json", "JSON"},
+    {"markdown", "markdown", "MD"},
+    {"yaml", "yaml", "YAML"}
+  ]
+
   @doc """
   Maps backend language identifiers to CodeMirror language modes.
   """
-  def cm_lang("cpp"), do: "cpp"
-  def cm_lang("python3"), do: "python"
-  def cm_lang("java"), do: "java"
-  def cm_lang("go"), do: "go"
-  def cm_lang("rust"), do: "rust"
-  def cm_lang("php"), do: "php"
-  def cm_lang("javascript"), do: "javascript"
-  def cm_lang("sql"), do: "sql"
-  def cm_lang("html"), do: "html"
-  def cm_lang("css"), do: "css"
-  def cm_lang("xml"), do: "xml"
-  def cm_lang("json"), do: "json"
-  def cm_lang("markdown"), do: "markdown"
-  def cm_lang("yaml"), do: "yaml"
+  @spec cm_lang(String.t()) :: String.t()
+  for {backend_id, cm_mode, _label} <- @cm_languages do
+    def cm_lang(unquote(backend_id)), do: unquote(cm_mode)
+  end
+
   def cm_lang(_), do: "python"
+
+  @doc """
+  Returns `{cm_mode, label}` pairs for every supported CodeMirror language,
+  for UI pickers such as the Tiptap code-block language switcher.
+  """
+  @spec cm_languages() :: [{String.t(), String.t()}]
+  def cm_languages, do: Enum.map(@cm_languages, fn {_id, cm_mode, label} -> {cm_mode, label} end)
 end

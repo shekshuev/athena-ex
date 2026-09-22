@@ -507,19 +507,24 @@ defmodule AthenaWeb.LearnLive.Player do
 
   def handle_event("engagement_batch", %{"events" => events}, socket) do
     section_id = socket.assigns.section.id
-    user = socket.assigns.current_user
 
     normalized =
       events
       |> Enum.map(&normalize_engagement_event(&1, section_id))
       |> Enum.reject(&is_nil/1)
 
-    Engagement.record_events(
-      user.id,
-      socket.assigns.cohort_id,
-      socket.assigns.engagement_session_id,
-      normalized
-    )
+    # A builder "test run" plays through as a throwaway ephemeral account
+    # (see `Athena.Learning.TestRuns`) that `TestRuns.cleanup/1` never
+    # scrubs from `engagement_events` - so instructors previewing a course
+    # must never write real telemetry rows in the first place.
+    unless socket.assigns.test_run do
+      Engagement.record_events(
+        socket.assigns.current_user.id,
+        socket.assigns.cohort_id,
+        socket.assigns.engagement_session_id,
+        normalized
+      )
+    end
 
     socket = Enum.reduce(normalized, socket, &maybe_nudge/2)
 
@@ -724,20 +729,22 @@ defmodule AthenaWeb.LearnLive.Player do
   # only ever need to supply the block, type, and payload.
   @doc false
   defp emit_engagement_event(socket, block_id, event_type, payload \\ %{}) do
-    Engagement.record_events(
-      socket.assigns.current_user.id,
-      socket.assigns.cohort_id,
-      socket.assigns.engagement_session_id,
-      [
-        %{
-          block_id: block_id,
-          section_id: socket.assigns.section.id,
-          event_type: event_type,
-          payload: payload,
-          occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
-        }
-      ]
-    )
+    unless socket.assigns.test_run do
+      Engagement.record_events(
+        socket.assigns.current_user.id,
+        socket.assigns.cohort_id,
+        socket.assigns.engagement_session_id,
+        [
+          %{
+            block_id: block_id,
+            section_id: socket.assigns.section.id,
+            event_type: event_type,
+            payload: payload,
+            occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
+          }
+        ]
+      )
+    end
 
     socket
   end
@@ -748,25 +755,27 @@ defmodule AthenaWeb.LearnLive.Player do
   # timestamp, instead of two separate round trips.
   @doc false
   defp emit_engagement_events(socket, block_id, event_types) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    unless socket.assigns.test_run do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-    events =
-      Enum.map(event_types, fn event_type ->
-        %{
-          block_id: block_id,
-          section_id: socket.assigns.section.id,
-          event_type: event_type,
-          payload: %{},
-          occurred_at: now
-        }
-      end)
+      events =
+        Enum.map(event_types, fn event_type ->
+          %{
+            block_id: block_id,
+            section_id: socket.assigns.section.id,
+            event_type: event_type,
+            payload: %{},
+            occurred_at: now
+          }
+        end)
 
-    Engagement.record_events(
-      socket.assigns.current_user.id,
-      socket.assigns.cohort_id,
-      socket.assigns.engagement_session_id,
-      events
-    )
+      Engagement.record_events(
+        socket.assigns.current_user.id,
+        socket.assigns.cohort_id,
+        socket.assigns.engagement_session_id,
+        events
+      )
+    end
 
     socket
   end
@@ -1610,7 +1619,7 @@ defmodule AthenaWeb.LearnLive.Player do
     <.page_container size="narrow" class="py-10 pb-32">
       <div
         id="engagement-tracker"
-        phx-hook="EngagementTracker"
+        phx-hook={if @test_run, do: nil, else: "EngagementTracker"}
         data-session-id={@engagement_session_id}
       >
         <div class="flex items-center justify-between mb-12 border-b border-base-200 pb-6">
