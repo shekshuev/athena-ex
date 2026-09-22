@@ -126,13 +126,23 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
         |> refresh_metrics()
         |> refresh_trend()
         |> refresh_histogram()
-        |> refresh_course_charts()
+        |> maybe_refresh_course_charts()
 
       {:noreply, socket}
     else
       {:noreply, assign(socket, :view, :content)}
     end
   end
+
+  # The course-wide charts (`refresh_course_charts/1`) are only rendered on
+  # the section/course-radar view, never on the block-detail sub-view (see
+  # the `@active_block` split in the template) - recomputing them while a
+  # block is selected was pure waste, and the main source of the query
+  # storm on every block click.
+  defp maybe_refresh_course_charts(%{assigns: %{active_block: nil}} = socket),
+    do: refresh_course_charts(socket)
+
+  defp maybe_refresh_course_charts(socket), do: socket
 
   @impl true
   def handle_event("change_student", %{"account_id" => account_id}, socket) do
