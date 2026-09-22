@@ -1751,6 +1751,8 @@ defmodule AthenaWeb.BlockComponents do
   duplicating it.
   """
   def tiptap_toolbar(%{mode: :edit} = assigns) do
+    assigns = assign(assigns, :cm_languages, Execution.cm_languages())
+
     ~H"""
     <div class="fixed-toolbar hidden group-focus-within/tiptap:flex flex-wrap gap-2 bg-base-100 border border-base-300 rounded-sm p-1.5 mb-3 sticky top-2 z-10 items-center">
       <div class="join flex-wrap">
@@ -1951,20 +1953,9 @@ defmodule AthenaWeb.BlockComponents do
           </div>
           <ul class="dropdown-content menu p-1 shadow-lg bg-base-100 rounded-sm w-36 text-xs border border-base-300 max-h-60 overflow-y-auto">
             <li><a data-lang="auto">Auto</a></li>
-            <li><a data-lang="python">Python</a></li>
-            <li><a data-lang="cpp">C++</a></li>
-            <li><a data-lang="java">Java</a></li>
-            <li><a data-lang="go">Go</a></li>
-            <li><a data-lang="rust">Rust</a></li>
-            <li><a data-lang="php">PHP</a></li>
-            <li><a data-lang="javascript">JS</a></li>
-            <li><a data-lang="sql">SQL</a></li>
-            <li><a data-lang="html">HTML</a></li>
-            <li><a data-lang="css">CSS</a></li>
-            <li><a data-lang="xml">XML</a></li>
-            <li><a data-lang="json">JSON</a></li>
-            <li><a data-lang="markdown">MD</a></li>
-            <li><a data-lang="yaml">YAML</a></li>
+            <li :for={{cm_mode, label} <- @cm_languages}>
+              <a data-lang={cm_mode}>{label}</a>
+            </li>
           </ul>
         </div>
         <button

@@ -440,8 +440,12 @@ Hooks.TiptapEditor = {
 
           const label = langControl.querySelector(".current-lang-label");
           if (label) {
-            label.textContent =
-              currentLang === "python3" ? "Python" : currentLang.toUpperCase();
+            const langItem = langControl.querySelector(
+              `[data-lang="${currentLang}"]`,
+            );
+            label.textContent = langItem
+              ? langItem.textContent
+              : currentLang.toUpperCase();
           }
         } else {
           langControl.classList.add("hidden");
@@ -904,19 +908,6 @@ Hooks.TiptapEditor = {
             return;
           }
 
-          if (e.target.tagName.toLowerCase() === "select") {
-            const action = e.target.dataset.action;
-            const value = e.target.value;
-            const chain = this.editor.chain().focus();
-          }
-
-          if (action === "set-lang") {
-            chain
-              .updateAttributes("codeBlock", {
-                language: value === "auto" ? null : value,
-              })
-              .run();
-          }
         });
 
         toolbar.addEventListener("mousedown", (e) => {
