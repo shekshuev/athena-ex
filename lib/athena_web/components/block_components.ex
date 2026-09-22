@@ -38,12 +38,13 @@ defmodule AthenaWeb.BlockComponents do
         <% :video -> %>
           <.render_video block={@block} mode={@mode} />
         <% :attachment -> %>
-          <.render_attachment block={@block} mode={@mode} active={@active} />
+          <.render_attachment block={@block} mode={@mode} active={@active} characters={@characters} />
         <% :code -> %>
           <.render_code
             block={@block}
             mode={@mode}
             active={@active}
+            characters={@characters}
             answers={@answers}
             submission={@submission}
             attempts_count={@attempts_count}
@@ -55,6 +56,7 @@ defmodule AthenaWeb.BlockComponents do
             block={@block}
             mode={@mode}
             active={@active}
+            characters={@characters}
             answers={@answers}
             submission={@submission}
             attempts_count={@attempts_count}
@@ -73,6 +75,7 @@ defmodule AthenaWeb.BlockComponents do
             block={@block}
             mode={@mode}
             active={@active}
+            characters={@characters}
             submission={@submission}
             pending_file_urls={@pending_file_urls}
             draft={@draft}
@@ -193,6 +196,7 @@ defmodule AthenaWeb.BlockComponents do
           data-active={to_string(@active)}
           phx-update="ignore"
           data-content={Jason.encode!(@block.content["description"])}
+          data-characters={Jason.encode!(@characters)}
           class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed mb-4"
         >
         </div>
@@ -259,6 +263,7 @@ defmodule AthenaWeb.BlockComponents do
           data-active={to_string(@active)}
           phx-update="ignore"
           data-content={Jason.encode!(@block.content["body"] || %{})}
+          data-characters={Jason.encode!(@characters)}
           class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed"
         >
         </div>
@@ -483,6 +488,7 @@ defmodule AthenaWeb.BlockComponents do
           data-active={to_string(@active)}
           phx-update="ignore"
           data-content={Jason.encode!(@block.content["body"] || %{})}
+          data-characters={Jason.encode!(@characters)}
           class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed mb-6"
         >
         </div>
@@ -1123,6 +1129,7 @@ defmodule AthenaWeb.BlockComponents do
           data-active={to_string(@active)}
           phx-update="ignore"
           data-content={Jason.encode!(@body_content)}
+          data-characters={Jason.encode!(@characters)}
           class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed"
         >
         </div>
