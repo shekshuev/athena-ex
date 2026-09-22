@@ -1335,6 +1335,65 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert render(player) =~ "ACCEPTED"
     end
 
+    test "a Test Run never writes engagement_events rows for its ephemeral account", %{
+      conn: conn,
+      course: course,
+      admin: admin
+    } do
+      # `Athena.Learning.TestRuns.cleanup/1` purges submissions, progress,
+      # and gamification rows for the ephemeral test-run account, but does
+      # not (and structurally cannot cheaply) purge `engagement_events` -
+      # so the Player must simply never write them while `@test_run` is set,
+      # instead of leaving orphaned telemetry behind after every preview.
+      {:ok, section} =
+        Content.create_section(admin, %{"title" => "SQL Lesson", "course_id" => course.id})
+
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "code",
+          "section_id" => section.id,
+          "content" => %{
+            "language" => "sql",
+            "time_limit" => 2.0,
+            "evaluation_mode" => "query_result",
+            "setup_sql" =>
+              "CREATE TABLE users (id INT, name TEXT); INSERT INTO users VALUES (1, 'Alice');",
+            "solution_code" => "SELECT * FROM users ORDER BY id;"
+          }
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> element("button[phx-click='start_test_run']")
+      |> render_click()
+
+      session = Repo.one!(Athena.Learning.TestRunSession)
+      player = find_live_child(lv, "test-run-player-#{session.id}")
+      assert player
+
+      player
+      |> form("#code-form-#{block.id}")
+      |> render_change(%{
+        "block_id" => block.id,
+        "answer" => %{"code" => "SELECT * FROM users ORDER BY id;"}
+      })
+
+      player
+      |> element("button[phx-click='run_code'][phx-value-block_id='#{block.id}']")
+      |> render_click()
+
+      assert [job] = Oban.Testing.all_enqueued(worker: Athena.Execution.TestWorker, repo: Repo)
+      assert :ok = Oban.Testing.perform_job(Athena.Execution.TestWorker, job.args, repo: Repo)
+
+      refute has_element?(player, "[phx-hook='EngagementTracker']")
+      assert Repo.aggregate(Athena.Engagement.Event, :count, :id) == 0
+    end
+
     test "clicking Run inside a Test Run works immediately, without editing the pre-filled code first",
          %{conn: conn, course: course, admin: admin} do
       # This is the exact bug report: an instructor opens Test Run, the code
