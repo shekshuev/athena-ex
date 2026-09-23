@@ -4054,7 +4054,7 @@ msgstr "Режим оценки"
 #: lib/athena_web/components/block_components.ex:2238
 #, elixir-autogen, elixir-format
 msgid "Expected Output"
-msgstr "Ожилаемый вывод"
+msgstr "Ожидаемый вывод"
 
 #: lib/athena_web/live/studio_live/course_enrollment_component.ex:150
 #, elixir-autogen, elixir-format

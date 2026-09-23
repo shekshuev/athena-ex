@@ -57,6 +57,92 @@ const ResizableImage = ImageResize.extend({
   name: "image",
 });
 
+// `navigator.clipboard` only exists in secure contexts (https/localhost),
+// so fall back to the legacy execCommand path elsewhere.
+const copyToClipboard = (text) => {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text);
+  }
+
+  return new Promise((resolve, reject) => {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const ok = document.execCommand("copy");
+    textarea.remove();
+    ok ? resolve() : reject(new Error("copy failed"));
+  });
+};
+
+const COPY_ICON = '<span class="hero-document-duplicate size-4"></span>';
+const COPIED_ICON = '<span class="hero-check size-4 text-success"></span>';
+
+// Code block with a copy button rendered through a node view, so
+// ProseMirror owns the button instead of wiping out (or parsing) a node
+// injected into its DOM afterwards. Works in both editable and read-only
+// editors; the serialized HTML is unchanged.
+const CodeBlockWithCopy = CodeBlockLowlight.extend({
+  addNodeView() {
+    return ({ node }) => {
+      let currentNode = node;
+      const languageClassPrefix = this.options.languageClassPrefix;
+
+      const dom = document.createElement("pre");
+      dom.className = "relative group/code";
+
+      const code = document.createElement("code");
+      const setLanguage = (language) => {
+        code.className = language ? `${languageClassPrefix}${language}` : "";
+      };
+      setLanguage(node.attrs.language);
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.title = "Copy code";
+      button.contentEditable = "false";
+      button.className =
+        "absolute top-2 right-2 p-1.5 rounded-sm bg-white/5 hover:bg-white/15 border border-white/10 text-white/60 hover:text-white opacity-60 group-hover/code:opacity-100 transition cursor-pointer";
+      button.innerHTML = COPY_ICON;
+
+      button.addEventListener("mousedown", (e) => e.preventDefault());
+      button.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        copyToClipboard(currentNode.textContent)
+          .then(() => {
+            button.innerHTML = COPIED_ICON;
+            clearTimeout(button._resetTimeout);
+            button._resetTimeout = setTimeout(() => {
+              button.innerHTML = COPY_ICON;
+            }, 1500);
+          })
+          .catch(() => {});
+      });
+
+      dom.append(code, button);
+
+      return {
+        dom,
+        contentDOM: code,
+        update: (updatedNode) => {
+          if (updatedNode.type !== currentNode.type) return false;
+          currentNode = updatedNode;
+          setLanguage(updatedNode.attrs.language);
+          return true;
+        },
+        stopEvent: (event) => button.contains(event.target),
+        ignoreMutation: (mutation) =>
+          button.contains(mutation.target) ||
+          (mutation.type === "attributes" && mutation.target === code),
+      };
+    };
+  },
+});
+
 const safeUUID = () => {
   if (
     typeof window !== "undefined" &&
@@ -393,7 +479,7 @@ Hooks.TiptapEditor = {
     const getTiptapExtensions = (readOnlyMode) => [
       StarterKit.configure({ codeBlock: false }),
       SmartSpacer,
-      CodeBlockLowlight.configure({ lowlight }),
+      CodeBlockWithCopy.configure({ lowlight }),
       Underline,
       Link.configure({ openOnClick: readOnlyMode }),
       Highlight.configure({ multicolor: true }),
@@ -712,40 +798,6 @@ Hooks.TiptapEditor = {
         if (!isReadOnly) updateToolbarState(editor);
       },
     });
-
-    // A copy button on rendered (read-only) code blocks - the Player,
-    // grading review, cohort-access preview, etc. Only wired for readonly
-    // content: the editable canvas already has its own code-block toolbar,
-    // and this content never changes post-mount here (`phx-update=ignore`),
-    // so a single pass at mount is enough - no `updated()` hook needed.
-    if (isReadOnly) {
-      this.el.querySelectorAll("pre > code").forEach((codeEl) => {
-        const pre = codeEl.parentElement;
-        pre.classList.add("relative");
-
-        const button = document.createElement("button");
-        button.type = "button";
-        button.title = "Copy code";
-        button.className =
-          "absolute top-2 right-2 p-1.5 rounded-sm bg-base-100/90 hover:bg-base-100 border border-base-300 text-base-content/60 hover:text-primary shadow-xs transition-colors cursor-pointer";
-        button.innerHTML = '<span class="hero-document-duplicate size-4"></span>';
-
-        button.addEventListener("click", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          navigator.clipboard.writeText(codeEl.textContent || "").then(() => {
-            button.innerHTML = '<span class="hero-check size-4"></span>';
-            clearTimeout(button._resetTimeout);
-            button._resetTimeout = setTimeout(() => {
-              button.innerHTML =
-                '<span class="hero-document-duplicate size-4"></span>';
-            }, 1500);
-          });
-        });
-
-        pre.appendChild(button);
-      });
-    }
 
     if (!isReadOnly) {
       const wrapper = this.el.closest(".editor-wrapper");
