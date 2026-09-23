@@ -101,6 +101,7 @@ defmodule Athena.Learning do
   end
 
   defdelegate get_latest_submissions(account_id, block_ids, cohort_id \\ nil), to: Submissions
+  defdelegate get_feedback_map(account_id, block_ids, cohort_id \\ nil), to: Submissions
   defdelegate get_submission!(user, id), to: Submissions
   defdelegate get_team_leaderboard(course_id), to: Submissions
   defdelegate list_group_submissions_for_block(cohort_id, block_id), to: Submissions

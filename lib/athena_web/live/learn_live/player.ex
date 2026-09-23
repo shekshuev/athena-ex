@@ -149,6 +149,9 @@ defmodule AthenaWeb.LearnLive.Player do
     attempts =
       Learning.count_attempts(ctx.user.id, Enum.map(blocks, & &1.id), ctx.team_id)
 
+    feedback_map =
+      Learning.get_feedback_map(ctx.user.id, Enum.map(blocks, & &1.id), ctx.team_id)
+
     drafts = load_drafts(ctx.user.id, Enum.map(blocks, & &1.id), ctx.team_id)
 
     pending_file_urls = load_pending_file_urls(blocks, drafts)
@@ -180,6 +183,7 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:course_map_open, false)
       |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
       |> assign(:submissions, submissions)
+      |> assign(:feedback_map, feedback_map)
       |> assign(:attempts_map, attempts)
       |> assign(:drafts, drafts)
       |> assign(:overrides, ctx.overrides)
@@ -1223,6 +1227,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
       completed_ids = Learning.completed_block_ids(user.id, current_section_id, team_id)
       submissions = Learning.get_latest_submissions(user.id, Enum.map(blocks, & &1.id), team_id)
+      feedback_map = Learning.get_feedback_map(user.id, Enum.map(blocks, & &1.id), team_id)
 
       tree = Content.get_course_tree(course_id, user, overrides, opts)
 
@@ -1239,6 +1244,7 @@ defmodule AthenaWeb.LearnLive.Player do
        |> assign(:blocks, blocks)
        |> assign(:completed_ids, completed_ids)
        |> assign(:submissions, submissions)
+       |> assign(:feedback_map, feedback_map)
        |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
        |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
        |> assign(:overrides, overrides)
@@ -1279,7 +1285,10 @@ defmodule AthenaWeb.LearnLive.Player do
     submissions = Map.put(socket.assigns.submissions, submission.block_id, submission)
     block = Enum.find(socket.assigns.blocks, &(&1.id == submission.block_id))
 
-    socket = assign(socket, submissions: submissions)
+    socket =
+      socket
+      |> assign(submissions: submissions)
+      |> refresh_block_feedback(submission.block_id)
 
     socket =
       if Learning.block_solved?(block, submission) do
@@ -1498,6 +1507,24 @@ defmodule AthenaWeb.LearnLive.Player do
     assign(socket, :drafts, new_drafts)
   end
 
+  # Re-reads feedback for one block after a grading broadcast, so a comment
+  # the instructor just left appears without a reload.
+  defp refresh_block_feedback(socket, block_id) do
+    feedback_map = socket.assigns[:feedback_map] || %{}
+
+    feedback_map =
+      case Learning.get_feedback_map(
+             socket.assigns.current_user.id,
+             [block_id],
+             socket.assigns.team_id
+           ) do
+        %{^block_id => entry} -> Map.put(feedback_map, block_id, entry)
+        _ -> Map.delete(feedback_map, block_id)
+      end
+
+    assign(socket, :feedback_map, feedback_map)
+  end
+
   @doc "Renders the interactive course player UI."
   @spec render(map()) :: Phoenix.LiveView.Rendered.t()
   @impl true
@@ -1604,23 +1631,6 @@ defmodule AthenaWeb.LearnLive.Player do
                       user_id={@current_user.id}
                     />
 
-                    <div
-                      :if={submission && submission.feedback not in [nil, ""]}
-                      class={[
-                        "mt-4 mb-4 rounded-sm text-sm",
-                        submission.status == :rejected &&
-                          "text-error",
-                        submission.status != :rejected &&
-                          "text-info"
-                      ]}
-                    >
-                      <strong class="flex items-center gap-1 mb-2">
-                        <.icon name="hero-chat-bubble-bottom-center-text" class="size-4" />
-                        {gettext("Instructor Feedback")}
-                      </strong>
-                      <p class="whitespace-pre-wrap leading-relaxed">{submission.feedback}</p>
-                    </div>
-
                     <div class="mt-6 flex items-center justify-between">
                       <button
                         type="submit"
@@ -1713,6 +1723,12 @@ defmodule AthenaWeb.LearnLive.Player do
                 <% _ -> %>
                   <.content_block block={block} mode={:play} />
               <% end %>
+
+              <.instructor_feedback
+                :if={Map.has_key?(@feedback_map || %{}, block.id)}
+                id={"instructor-feedback-#{block.id}"}
+                entry={Map.fetch!(@feedback_map, block.id)}
+              />
 
               <div :if={gate?(block)} class="mt-8">
                 <.render_gate block={block} is_completed={block.id in @completed_ids} />
@@ -1842,6 +1858,52 @@ defmodule AthenaWeb.LearnLive.Player do
           level={@level + 1}
         />
       </div>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :entry, :map, required: true
+
+  defp instructor_feedback(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class={[
+        "mt-6 rounded-sm border-l-2 px-4 py-3 text-sm",
+        @entry.status == :rejected && "border-error bg-error/5",
+        @entry.status != :rejected && "border-info bg-info/5"
+      ]}
+    >
+      <div class={[
+        "flex items-center gap-2 mb-2 font-bold",
+        @entry.status == :rejected && "text-error",
+        @entry.status != :rejected && "text-info"
+      ]}>
+        <.icon name="hero-chat-bubble-bottom-center-text" class="size-4" />
+        {gettext("Instructor Feedback")}
+      </div>
+
+      <p :if={@entry.feedback} class="whitespace-pre-wrap leading-relaxed text-base-content/80">
+        {@entry.feedback}
+      </p>
+
+      <ul :if={@entry.questions != []} class={["space-y-2", @entry.feedback && "mt-3"]}>
+        <li
+          :for={q <- @entry.questions}
+          class="rounded-sm bg-base-100/60 border border-base-300 px-3 py-2"
+        >
+          <div class="flex items-center justify-between gap-2 mb-1 text-xs font-bold uppercase tracking-widest text-base-content/50">
+            <span>
+              {if q.number,
+                do: gettext("Question %{number}", number: q.number),
+                else: gettext("Question")}
+            </span>
+            <span>{q.score || 0} / 100</span>
+          </div>
+          <p class="whitespace-pre-wrap leading-relaxed text-base-content/80">{q.feedback}</p>
+        </li>
+      </ul>
     </div>
     """
   end

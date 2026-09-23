@@ -166,7 +166,7 @@ msgid "You don't have permission to access this page."
 msgstr ""
 
 ## From Ecto.Changeset.cast/4
-#: lib/athena/content/competition_rule.ex:32
+#: lib/athena/content/competition_rule.ex:39
 #, elixir-autogen, elixir-format, fuzzy
 msgid "can't be blank for auto-grade"
 msgstr ""

@@ -162,7 +162,7 @@ msgstr ""
 msgid "You don't have permission to access this page."
 msgstr ""
 
-#: lib/athena/content/competition_rule.ex:32
+#: lib/athena/content/competition_rule.ex:39
 #, elixir-autogen, elixir-format
 msgid "can't be blank for auto-grade"
 msgstr ""

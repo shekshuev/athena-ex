@@ -301,6 +301,90 @@ defmodule Athena.Learning.Submissions do
   end
 
   @doc """
+  Collects instructor feedback per block for the student-facing player.
+
+  Picked independently of `get_latest_submissions/3`: that one prefers the
+  highest score, so a rejected (score 0) or re-graded older attempt carrying
+  the instructor's comment would never surface. Here, per block, the most
+  recently updated attempt that has feedback — its own, or on any of its
+  exam question children — wins.
+
+  Returns `%{block_id => %{feedback: String.t() | nil, status: atom(),
+  questions: [%{number: pos_integer(), feedback: String.t(), score: integer()}]}}`.
+  """
+  @spec get_feedback_map(String.t(), [String.t()], String.t() | nil) :: %{String.t() => map()}
+  def get_feedback_map(account_id, block_ids, cohort_id \\ nil)
+
+  def get_feedback_map(_account_id, [], _cohort_id), do: %{}
+
+  def get_feedback_map(account_id, block_ids, cohort_id) do
+    children_with_feedback =
+      from c in Submission,
+        where:
+          c.parent_submission_id == parent_as(:sub).id and not is_nil(c.feedback) and
+            c.feedback != "",
+        select: 1
+
+    parents =
+      from(s in Submission, as: :sub)
+      |> where([s], s.block_id in ^block_ids and s.status != :draft)
+      |> where([s], is_nil(s.parent_submission_id))
+      |> where([s], fragment("?->>'is_test_run' IS NULL", s.content))
+      |> where_owner(account_id, cohort_id)
+      |> where(
+        [s],
+        (not is_nil(s.feedback) and s.feedback != "") or exists(subquery(children_with_feedback))
+      )
+      |> distinct([s], s.block_id)
+      |> order_by([s], [s.block_id, desc: s.updated_at, desc: s.inserted_at])
+      |> Repo.all()
+
+    children_by_parent =
+      from(c in Submission,
+        where:
+          c.parent_submission_id in ^Enum.map(parents, & &1.id) and not is_nil(c.feedback) and
+            c.feedback != ""
+      )
+      |> Repo.all()
+      |> Enum.group_by(& &1.parent_submission_id)
+
+    Map.new(parents, fn parent ->
+      children = Map.get(children_by_parent, parent.id, [])
+
+      {parent.block_id,
+       %{
+         feedback: if(parent.feedback in [nil, ""], do: nil, else: parent.feedback),
+         status: parent.status,
+         questions: question_feedback(parent, children)
+       }}
+    end)
+  end
+
+  defp where_owner(query, _account_id, cohort_id) when not is_nil(cohort_id),
+    do: where(query, [s], s.cohort_id == ^cohort_id)
+
+  defp where_owner(query, account_id, nil),
+    do: where(query, [s], s.account_id == ^account_id and is_nil(s.cohort_id))
+
+  # Orders child feedback by the question's position in the attempt, so the
+  # student can match "Question 3" to what they saw in the exam.
+  defp question_feedback(_parent, []), do: []
+
+  defp question_feedback(parent, children) do
+    order =
+      (parent.content["questions"] || [])
+      |> Enum.map(fn q -> q["id"] || q[:id] end)
+      |> Enum.with_index(1)
+      |> Map.new()
+
+    children
+    |> Enum.map(fn c ->
+      %{number: Map.get(order, c.block_id), feedback: c.feedback, score: c.score}
+    end)
+    |> Enum.sort_by(&(&1.number || 999_999))
+  end
+
+  @doc """
   Generates a leaderboard for a specific competition course.
   Calculates the sum of the max scores per block for each team.
   Ties are broken by the timestamp of the latest submission.
