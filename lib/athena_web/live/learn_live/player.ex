@@ -510,7 +510,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
     normalized =
       events
-      |> Enum.map(&normalize_engagement_event(&1, section_id))
+      |> Enum.map(&Engagement.normalize_event(&1, section_id))
       |> Enum.reject(&is_nil/1)
 
     # A builder "test run" plays through as a throwaway ephemeral account
@@ -825,39 +825,6 @@ defmodule AthenaWeb.LearnLive.Player do
 
   defp video_skip_ratio_threshold,
     do: Keyword.get(engagement_config(), :video_skip_ratio_threshold, 0.3)
-
-  @doc false
-  defp normalize_engagement_event(event, section_id) do
-    with block_id when is_binary(block_id) <- event["block_id"],
-         {:ok, event_type} <- parse_engagement_event_type(event["event_type"]),
-         {:ok, occurred_at, _offset} <- parse_occurred_at(event["occurred_at"]) do
-      %{
-        block_id: block_id,
-        section_id: section_id,
-        event_type: event_type,
-        payload: event["payload"] || %{},
-        occurred_at: DateTime.truncate(occurred_at, :second)
-      }
-    else
-      _ -> nil
-    end
-  end
-
-  @doc false
-  defp parse_engagement_event_type(type) when is_binary(type) do
-    Engagement.Event.event_types()
-    |> Enum.find(&(Atom.to_string(&1) == type))
-    |> case do
-      nil -> :error
-      atom -> {:ok, atom}
-    end
-  end
-
-  defp parse_engagement_event_type(_), do: :error
-
-  @doc false
-  defp parse_occurred_at(iso8601) when is_binary(iso8601), do: DateTime.from_iso8601(iso8601)
-  defp parse_occurred_at(_), do: :error
 
   defp do_run_code(socket, nil, _draft, _submission), do: {:noreply, socket}
 

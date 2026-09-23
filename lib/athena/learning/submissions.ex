@@ -13,6 +13,7 @@ defmodule Athena.Learning.Submissions do
     Submission,
     Enrollment,
     Cohort,
+    CohortMembership,
     Instructor,
     CohortInstructor,
     Progress,
@@ -371,6 +372,42 @@ defmodule Athena.Learning.Submissions do
         ]
 
     Repo.all(query)
+  end
+
+  @doc """
+  For every member of an academic cohort, returns their most recent
+  top-level (non-child) submission for a given block, keyed by
+  `account_id` - `nil` for members who haven't started yet. Used by
+  `AthenaWeb.TeachingLive.GradingMonitor` to build its group-wide
+  cheating-monitor table.
+
+  Deliberately does not filter on `s.cohort_id` - see the note on
+  `Athena.Learning.Enrollments.get_academic_cohort_for_course/2`:
+  `Submission.cohort_id` is only ever populated for `:team` cohorts, so
+  "this group's submissions" has to be found by joining the group's
+  members (`CohortMembership`) to their submissions directly.
+  """
+  @spec list_group_submissions_for_block(binary(), binary()) :: %{
+          binary() => Submission.t() | nil
+        }
+  def list_group_submissions_for_block(cohort_id, block_id) do
+    member_ids_query =
+      from cm in CohortMembership, where: cm.cohort_id == ^cohort_id, select: cm.account_id
+
+    submissions_by_account =
+      from(s in Submission,
+        where:
+          s.block_id == ^block_id and s.account_id in subquery(member_ids_query) and
+            is_nil(s.parent_submission_id),
+        distinct: s.account_id,
+        order_by: [asc: s.account_id, desc: s.inserted_at]
+      )
+      |> Repo.all()
+      |> Map.new(&{&1.account_id, &1})
+
+    member_ids_query
+    |> Repo.all()
+    |> Map.new(&{&1, Map.get(submissions_by_account, &1)})
   end
 
   @doc """

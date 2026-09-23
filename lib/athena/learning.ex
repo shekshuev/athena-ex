@@ -64,6 +64,7 @@ defmodule Athena.Learning do
   defdelegate list_account_enrollments(user, course_id), to: Enrollments
   defdelegate has_access?(account_id, course_id), to: Enrollments
   defdelegate get_user_cohort_for_course(account_id, course_id), to: Enrollments
+  defdelegate get_academic_cohort_for_course(account_id, course_id), to: Enrollments
 
   defdelegate list_submissions(user, params \\ %{}), to: Submissions
   defdelegate get_submission(account_id, block_id, cohort_id \\ nil), to: Submissions
@@ -102,6 +103,7 @@ defmodule Athena.Learning do
   defdelegate get_latest_submissions(account_id, block_ids, cohort_id \\ nil), to: Submissions
   defdelegate get_submission!(user, id), to: Submissions
   defdelegate get_team_leaderboard(course_id), to: Submissions
+  defdelegate list_group_submissions_for_block(cohort_id, block_id), to: Submissions
   defdelegate delete_submission_with_rollback(user, submission), to: Submissions
   defdelegate count_attempts(account_id, block_ids, cohort_id), to: Submissions
   defdelegate save_draft(user, block_id, content, cohort_id \\ nil), to: Submissions

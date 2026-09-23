@@ -10,7 +10,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   """
   use AthenaWeb, :live_view
 
-  alias Athena.{Content, Learning}
+  alias Athena.{Content, Engagement, Learning}
   import AthenaWeb.BlockComponents
 
   @impl true
@@ -18,6 +18,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     user = socket.assigns.current_user
     cohort = Learning.get_user_cohort_for_course(user.id, course_id)
     team_id = if cohort && cohort.type == :team, do: cohort.id, else: nil
+    cohort_id = cohort && cohort.id
 
     return_to = Map.get(params, "return_to", ~p"/learn/courses/#{course_id}/play")
 
@@ -33,7 +34,16 @@ defmodule AthenaWeb.LearnLive.TicketExam do
              time_limit_sec,
              block.content
            ) do
-      handle_exam_mount(socket, block, submission, course_id, team_id, time_limit_sec, return_to)
+      handle_exam_mount(
+        socket,
+        block,
+        submission,
+        course_id,
+        team_id,
+        cohort_id,
+        time_limit_sec,
+        return_to
+      )
     else
       _ ->
         {:ok,
@@ -43,15 +53,42 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     end
   end
 
-  defp handle_exam_mount(socket, block, submission, course_id, team_id, time_limit_sec, return_to) do
+  defp handle_exam_mount(
+         socket,
+         block,
+         submission,
+         course_id,
+         team_id,
+         cohort_id,
+         time_limit_sec,
+         return_to
+       ) do
     if DateTime.compare(DateTime.utc_now(), submission.expires_at) == :gt do
       {:ok, submit_and_exit(socket, submission, course_id, :time_limit_exceeded)}
     else
-      setup_exam_state(socket, block, submission, course_id, team_id, time_limit_sec, return_to)
+      setup_exam_state(
+        socket,
+        block,
+        submission,
+        course_id,
+        team_id,
+        cohort_id,
+        time_limit_sec,
+        return_to
+      )
     end
   end
 
-  defp setup_exam_state(socket, block, submission, course_id, team_id, time_limit_sec, return_to) do
+  defp setup_exam_state(
+         socket,
+         block,
+         submission,
+         course_id,
+         team_id,
+         cohort_id,
+         time_limit_sec,
+         return_to
+       ) do
     questions = hydrate_questions(submission.content["questions"] || [])
     child_subs = Learning.get_child_submissions(submission.id)
     pending_urls = build_pending_urls(child_subs)
@@ -70,6 +107,8 @@ defmodule AthenaWeb.LearnLive.TicketExam do
       |> assign(
         course_id: course_id,
         team_id: team_id,
+        cohort_id: cohort_id,
+        engagement_session_id: Ecto.UUID.generate(),
         block: block,
         submission: submission,
         questions: questions,
@@ -374,6 +413,34 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     end
   end
 
+  def handle_event("engagement_batch", %{"events" => events}, socket) do
+    section_id = socket.assigns.block.section_id
+
+    normalized =
+      events
+      |> Enum.map(&Engagement.normalize_event(&1, section_id))
+      |> Enum.reject(&is_nil/1)
+
+    Engagement.record_events(
+      socket.assigns.current_user.id,
+      socket.assigns.cohort_id,
+      socket.assigns.engagement_session_id,
+      normalized
+    )
+
+    normalized
+    |> Enum.filter(&(&1.event_type in Engagement.proctoring_tracked_event_types()))
+    |> case do
+      [] ->
+        :ok
+
+      proctoring_events ->
+        Engagement.report_proctoring_events(socket.assigns.submission.id, proctoring_events)
+    end
+
+    {:noreply, socket}
+  end
+
   defp execute_run_code(socket, block_id) do
     submission_to_run = resolve_submission_for_run(socket, block_id)
 
@@ -530,7 +597,12 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   @impl true
   def render(assigns) do
     ~H"""
-    <div id="ticket-container" class="flex flex-col min-h-screen">
+    <div
+      id="engagement-tracker"
+      phx-hook="EngagementTracker"
+      data-session-id={@engagement_session_id}
+      class="flex flex-col min-h-screen"
+    >
       <header class="bg-base-100 border-b border-base-300">
         <.page_container size="wide" class="px-4 sm:px-6 lg:px-8">
           <div class="flex items-center justify-between h-16">
@@ -594,7 +666,12 @@ defmodule AthenaWeb.LearnLive.TicketExam do
       <main class="flex-1 bg-base-100 py-8 px-4 sm:px-6 lg:px-8">
         <div class="max-w-4xl mx-auto">
           <%= if @current_question do %>
-            <div class="bg-base-100 border border-base-300 rounded-sm">
+            <div
+              id={"ticket-question-wrapper-#{@current_question.id}"}
+              data-block-id={@current_question.id}
+              data-block-type={@current_question.type}
+              class="bg-base-100 border border-base-300 rounded-sm"
+            >
               <div class="flex items-center gap-3 p-6 border-b border-base-300">
                 <div class="size-10 bg-primary text-primary-content font-black rounded-sm flex items-center justify-center text-lg">
                   {@current_index + 1}
@@ -627,6 +704,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
                         submission={Map.get(@child_submissions, @current_question.id)}
                         pending_file_urls={@pending_file_urls}
                         user_id={@current_user.id}
+                        proctoring={true}
                       />
                     </form>
                   <% :code -> %>
@@ -907,8 +985,21 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   defp submit_and_exit(socket, submission, course_id, reason) do
     initial_status = if reason == :time_limit_exceeded, do: "time_limit_exceeded", else: "pending"
 
+    block = Map.get(socket.assigns, :block)
+    allowed_blur_attempts = (block && block.content["allowed_blur_attempts"]) || 3
+
+    proctoring_fields =
+      submission.id
+      |> Engagement.finalize_proctoring()
+      |> Engagement.proctoring_content_fields(allowed_blur_attempts)
+
+    updated_content = Map.merge(submission.content || %{}, proctoring_fields)
+
     {:ok, pending_sub} =
-      Learning.system_update_submission(submission, %{"status" => initial_status})
+      Learning.system_update_submission(submission, %{
+        "status" => initial_status,
+        "content" => updated_content
+      })
 
     final_sub =
       if initial_status == "pending" do

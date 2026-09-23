@@ -160,6 +160,7 @@ defmodule AthenaWeb.Router do
 
         live "/grading", Grading, :index
         live "/grading/:id", GradingDetail
+        live "/grading/:id/monitor", GradingMonitor
 
         live "/sprints", Sprints, :index
       end

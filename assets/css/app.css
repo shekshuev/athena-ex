@@ -787,3 +787,8 @@
 .cm-editor .cm-dropCursor {
   border-left-width: 2px !important;
 }
+
+.no-copy-guard {
+  user-select: none;
+  -webkit-user-select: none;
+}

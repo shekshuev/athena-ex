@@ -400,4 +400,28 @@ defmodule Athena.Learning.Enrollments do
 
     Repo.one(query)
   end
+
+  @doc """
+  Same as `get_user_cohort_for_course/2`, but only ever returns an
+  `:academic`-type cohort (a normal class/group), never a `:team`. Used by
+  `AthenaWeb.TeachingLive.GradingMonitor` to resolve "this student's
+  group" - `Athena.Learning.Submission.cohort_id` is only ever populated
+  for `:team` cohorts (competitions), so finding a student's academic
+  group always has to go through `CohortMembership` directly, exactly like
+  `get_user_cohort_for_course/2` does.
+  """
+  def get_academic_cohort_for_course(user_id, course_id) do
+    query =
+      from c in Cohort,
+        join: cm in CohortMembership,
+        on: cm.cohort_id == c.id,
+        join: e in Enrollment,
+        on: e.cohort_id == c.id,
+        where:
+          cm.account_id == ^user_id and e.course_id == ^course_id and e.status == :active and
+            c.type == :academic,
+        limit: 1
+
+    Repo.one(query)
+  end
 end

@@ -15,9 +15,14 @@ defmodule Athena.Engagement do
   - `BlockStats`: warm, incrementally-updated per-(cohort, block) running
     statistics, used both for nudge decisions and for live dashboard reads -
     without ever issuing a query per incoming event.
+  - `ProctoringMonitor`: warm, per-exam-attempt academic-integrity signal
+    counts (focus loss, PrintScreen, copy/cut attempts), accumulated in
+    memory during a timed `quiz_exam`/`ticket_exam` attempt.
+  - `Proctoring`: turns `ProctoringMonitor` counts into the risk-level
+    fields persisted on a submission, and the summary read back out of them.
   """
 
-  alias Athena.Engagement.{Events, BlockStats, Metrics}
+  alias Athena.Engagement.{Events, BlockStats, Metrics, Proctoring, ProctoringMonitor}
 
   @doc """
   Records one batch of raw events reported by a single Player session, then
@@ -40,6 +45,26 @@ defmodule Athena.Engagement do
 
   defdelegate get_session_timeline(account_id, session_id), to: Events
   defdelegate list_events_for_scope(block_ids, cohort_id \\ nil), to: Events
+  defdelegate normalize_event(raw_event, section_id), to: Events
+
+  @doc "The event types `report_proctoring_events/2` actually accumulates - used by callers to filter a batch before forwarding."
+  defdelegate proctoring_tracked_event_types(), to: ProctoringMonitor, as: :tracked_event_types
+
+  @doc "Fire-and-forget: accumulates already-normalized proctoring events for one exam attempt."
+  defdelegate report_proctoring_events(submission_id, events),
+    to: ProctoringMonitor,
+    as: :report_events
+
+  @doc "Reads the final accumulated counts for one exam attempt and stops accumulating."
+  defdelegate finalize_proctoring(submission_id), to: ProctoringMonitor, as: :finalize
+
+  @doc "Builds the `cheat_count`/`proctoring` fields to merge into a `Submission.content` map."
+  defdelegate proctoring_content_fields(counts, allowed_blur_attempts),
+    to: Proctoring,
+    as: :build_content_fields
+
+  @doc "Risk-level summary of a submission's proctoring data, or `nil` if it has none."
+  defdelegate proctoring_summary(content), to: Proctoring, as: :summary
 
   defdelegate get_metrics(scope), to: Metrics
   defdelegate funnel(block_id, cohort_id \\ nil), to: Metrics

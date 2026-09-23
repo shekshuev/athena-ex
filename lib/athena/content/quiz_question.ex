@@ -74,6 +74,14 @@ defmodule Athena.Content.QuizQuestion do
     embeds_many :pairs, Pair
 
     field :general_explanation, :string
+
+    # Opt-in, default off. When true and the block is rendered in :play
+    # mode, the question prompt is drawn onto a <canvas> as plain text
+    # instead of the normal (selectable, copyable) rich-text editor - see
+    # `AthenaWeb.BlockComponents.render_quiz_question/1`. Loses rich
+    # formatting (bold, embedded images, tables, math) in exchange for
+    # leaving no selectable prompt text in the DOM.
+    field :render_prompt_as_image, :boolean, default: false
   end
 
   @type t :: %__MODULE__{
@@ -85,7 +93,8 @@ defmodule Athena.Content.QuizQuestion do
           options: [Option.t()] | nil,
           pairs: [Pair.t()] | nil,
           max_attempts: integer() | nil,
-          general_explanation: String.t() | nil
+          general_explanation: String.t() | nil,
+          render_prompt_as_image: boolean()
         }
 
   def changeset(schema, attrs) do
@@ -97,7 +106,8 @@ defmodule Athena.Content.QuizQuestion do
       :correct_answer,
       :case_sensitive,
       :general_explanation,
-      :max_attempts
+      :max_attempts,
+      :render_prompt_as_image
     ])
     |> cast_embed(:options, with: &Option.changeset/2)
     |> cast_embed(:pairs, with: &Pair.changeset/2)

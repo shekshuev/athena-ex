@@ -110,7 +110,21 @@ defmodule Athena.Engagement.Event do
     # windows from raw dwell time so "away from keyboard" is never counted
     # as "reading" or "stuck".
     :idle_start,
-    :idle_end
+    :idle_end,
+
+    # Academic-integrity signals, `quiz_exam`/`ticket_exam` only.
+    # `printscreen_attempt` fires on a `keydown` for the Windows
+    # `PrintScreen` key - macOS screenshot shortcuts (Cmd+Shift+3/4/5) are
+    # OS-level and invisible to any web page, so this only ever catches the
+    # Windows case. `copy_attempt`/`cut_attempt` fire on a native
+    # `copy`/`cut` DOM event inside a container explicitly marked
+    # no-copy (the question prompt) - the container also blocks the native
+    # action, so these mean "the student tried anyway", not that any text
+    # was actually captured. See `Athena.Engagement.ProctoringMonitor` for
+    # how these get turned into a live risk indicator during an attempt.
+    :printscreen_attempt,
+    :copy_attempt,
+    :cut_attempt
   ]
 
   @derive {

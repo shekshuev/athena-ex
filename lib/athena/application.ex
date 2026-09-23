@@ -61,6 +61,9 @@ defmodule Athena.Application do
       Supervisor.child_spec({Cachex, name: :draft_cache}, id: :draft_cache),
       {Registry, keys: :unique, name: Athena.Engagement.BlockStatsRegistry},
       {DynamicSupervisor, name: Athena.Engagement.BlockStatsSupervisor, strategy: :one_for_one},
+      {Registry, keys: :unique, name: Athena.Engagement.ProctoringMonitorRegistry},
+      {DynamicSupervisor,
+       name: Athena.Engagement.ProctoringMonitorSupervisor, strategy: :one_for_one},
       AthenaWeb.Endpoint
     ]
 

@@ -300,6 +300,22 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                 phx-debounce="300"
               />
 
+              <div class="mt-2">
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="hidden" name="block[content][render_prompt_as_image]" value="false" />
+                  <input
+                    type="checkbox"
+                    name="block[content][render_prompt_as_image]"
+                    value="true"
+                    checked={@block.content["render_prompt_as_image"]}
+                    class="checkbox checkbox-sm checkbox-primary mt-0.5"
+                  />
+                  <span class="label-text">
+                    {gettext("Render prompt as image (blocks copy/select, drops formatting)")}
+                  </span>
+                </label>
+              </div>
+
               <%= if @block.content["question_type"] == "exact_match" do %>
                 <div class="mt-2">
                   <label class="flex items-center gap-2 cursor-pointer">

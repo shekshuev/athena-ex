@@ -121,6 +121,16 @@ EngagementHooks.EngagementTracker = {
     };
     document.addEventListener("visibilitychange", this.handleVisibilityChange);
 
+    // PrintScreen keydown - Windows only. macOS screenshot shortcuts
+    // (Cmd+Shift+3/4/5) are OS-level and invisible to any web page JS, so
+    // this can never catch those - see Athena.Engagement.Event.
+    this.handleKeyDown = (e) => {
+      if (e.key === "PrintScreen") {
+        this.enqueue(this.currentBlockId, "printscreen_attempt");
+      }
+    };
+    document.addEventListener("keydown", this.handleKeyDown);
+
     // Idle detection - distinct from tab_hidden: the tab can stay focused
     // and in view while the student has simply stepped away, which
     // tab_hidden alone would never catch. Any mouse/keyboard/scroll
@@ -164,6 +174,7 @@ EngagementHooks.EngagementTracker = {
     this.flush();
     if (this.observer) this.observer.disconnect();
     document.removeEventListener("visibilitychange", this.handleVisibilityChange);
+    document.removeEventListener("keydown", this.handleKeyDown);
     window.removeEventListener("beforeunload", this.handleBeforeUnload);
     for (const eventName of this.idleActivityEvents || []) {
       window.removeEventListener(eventName, this.resetIdleTimer);
@@ -255,3 +266,123 @@ EngagementHooks.ImageZoomTracker = {
     this.el.removeEventListener("click", this.onClick);
   },
 };
+
+// Blocks copy/cut/right-click on a question-prompt container (raises the
+// bar against a quick Ctrl+C, not bulletproof - a determined student can
+// still retype, screenshot, or use devtools) and reports the attempts as
+// `copy_attempt`/`cut_attempt` telemetry. Only ever mounted on exam pages
+// (`quiz_exam`/`ticket_exam`) - see `AthenaWeb.BlockComponents.
+// render_quiz_question/1`. Right-click is blocked as a UX deterrent only
+// and is not logged - by itself it doesn't prove anything was copied, and
+// counting it would just add noise to the risk indicator.
+EngagementHooks.NoCopyGuard = {
+  mounted() {
+    const blockId = this.el.dataset.blockId || this.el.closest("[data-block-id]")?.dataset.blockId;
+
+    const report = (eventType) => {
+      if (!blockId || !engagementTrackingActive()) return;
+      this.pushEvent("engagement_batch", {
+        events: [
+          {
+            block_id: blockId,
+            event_type: eventType,
+            payload: {},
+            occurred_at: new Date().toISOString(),
+          },
+        ],
+      });
+    };
+
+    this.onCopy = (e) => {
+      e.preventDefault();
+      report("copy_attempt");
+    };
+    this.onCut = (e) => {
+      e.preventDefault();
+      report("cut_attempt");
+    };
+    this.onContextMenu = (e) => e.preventDefault();
+
+    this.el.addEventListener("copy", this.onCopy);
+    this.el.addEventListener("cut", this.onCut);
+    this.el.addEventListener("contextmenu", this.onContextMenu);
+  },
+
+  destroyed() {
+    this.el.removeEventListener("copy", this.onCopy);
+    this.el.removeEventListener("cut", this.onCut);
+    this.el.removeEventListener("contextmenu", this.onContextMenu);
+  },
+};
+
+// Draws the `data-text` plain-text prompt onto a <canvas> instead of
+// leaving it as selectable DOM text - the opt-in `render_prompt_as_image`
+// toggle on `quiz_question`/`quiz_exam` questions. Recomputed on every
+// mount (never stale), but loses rich formatting (bold, embedded images,
+// tables, math) - the prompt is flattened to plain text server-side
+// before it ever reaches this hook (see `extract_plain_text/1` in
+// `AthenaWeb.BlockComponents`).
+EngagementHooks.PromptCanvas = {
+  mounted() {
+    this.draw();
+    this.onResize = () => this.draw();
+    window.addEventListener("resize", this.onResize);
+  },
+
+  draw() {
+    const canvas = this.el.querySelector("canvas");
+    if (!canvas) return;
+
+    const text = this.el.dataset.text || "";
+    const lineHeight = 28;
+    const fontSize = 17;
+    const padding = 4;
+    const dpr = window.devicePixelRatio || 1;
+    const cssWidth = this.el.clientWidth || 640;
+
+    const ctx = canvas.getContext("2d");
+    ctx.font = `${fontSize}px ui-sans-serif, system-ui, sans-serif`;
+
+    const wrapped = text.split("\n").flatMap((paragraph) => wrapLine(ctx, paragraph, cssWidth - padding * 2));
+    const cssHeight = Math.max(wrapped.length, 1) * lineHeight + padding * 2;
+
+    canvas.width = cssWidth * dpr;
+    canvas.height = cssHeight * dpr;
+    canvas.style.width = `${cssWidth}px`;
+    canvas.style.height = `${cssHeight}px`;
+
+    ctx.scale(dpr, dpr);
+    ctx.font = `${fontSize}px ui-sans-serif, system-ui, sans-serif`;
+    ctx.fillStyle = getComputedStyle(this.el).color || "#1f2937";
+    ctx.textBaseline = "top";
+
+    wrapped.forEach((line, index) => {
+      ctx.fillText(line, padding, padding + index * lineHeight);
+    });
+  },
+
+  destroyed() {
+    window.removeEventListener("resize", this.onResize);
+  },
+};
+
+function wrapLine(ctx, text, maxWidth) {
+  if (text === "") return [""];
+
+  const words = text.split(" ");
+  const lines = [];
+  let current = "";
+
+  for (const word of words) {
+    const candidate = current === "" ? word : `${current} ${word}`;
+    if (ctx.measureText(candidate).width > maxWidth && current !== "") {
+      lines.push(current);
+      current = word;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current !== "") lines.push(current);
+
+  return lines.length > 0 ? lines : [""];
+}
