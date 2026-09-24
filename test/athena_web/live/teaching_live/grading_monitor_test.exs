@@ -34,8 +34,9 @@ defmodule AthenaWeb.TeachingLive.GradingMonitorTest do
           account_id: flagged.id,
           block_id: block.id,
           content: %{
-            "cheat_count" => 4,
-            "proctoring" => %{"allowed_blur_attempts" => 3}
+            "hard_evidence_count" => 2,
+            "outlier_metrics" => %{},
+            "risk_level" => "red"
           },
           status: :needs_review
         )
@@ -43,7 +44,11 @@ defmodule AthenaWeb.TeachingLive.GradingMonitorTest do
       insert(:submission,
         account_id: clean.id,
         block_id: block.id,
-        content: %{"cheat_count" => 0},
+        content: %{
+          "hard_evidence_count" => 0,
+          "outlier_metrics" => %{},
+          "risk_level" => "green"
+        },
         status: :needs_review
       )
 

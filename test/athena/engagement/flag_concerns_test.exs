@@ -5,7 +5,12 @@ defmodule Athena.Engagement.FlagConcernsTest do
 
   describe "flag_concerns/1 - empty/missing data" do
     test "returns empty lists and never crashes on a metrics map with nothing in it" do
-      assert Metrics.flag_concerns(%{}) == %{content: [], slacking: [], struggling: []}
+      assert Metrics.flag_concerns(%{}) == %{
+               content: [],
+               slacking: [],
+               struggling: [],
+               integrity: []
+             }
     end
   end
 
@@ -127,6 +132,59 @@ defmodule Athena.Engagement.FlagConcernsTest do
     test ":panic_debugging does not fire when the flag is false" do
       result = Metrics.flag_concerns(%{panic_debugging?: false})
       refute :panic_debugging in result.struggling
+    end
+  end
+
+  describe "flag_concerns/1 - integrity flags" do
+    test ":printscreen_attempted fires on any printscreen count" do
+      result = Metrics.flag_concerns(%{printscreen_count: 1})
+      assert :printscreen_attempted in result.integrity
+    end
+
+    test ":printscreen_attempted does not fire with zero count" do
+      result = Metrics.flag_concerns(%{printscreen_count: 0})
+      refute :printscreen_attempted in result.integrity
+    end
+
+    test ":copy_attempted and :cut_attempted fire independently" do
+      result = Metrics.flag_concerns(%{copy_attempt_count: 1, cut_attempt_count: 0})
+      assert :copy_attempted in result.integrity
+      refute :cut_attempted in result.integrity
+    end
+
+    test ":multi_tab_detected fires on any count" do
+      result = Metrics.flag_concerns(%{multi_tab_count: 1})
+      assert :multi_tab_detected in result.integrity
+    end
+
+    test ":excessive_tab_switching fires at or above the threshold" do
+      result = Metrics.flag_concerns(%{focus_loss_count: 3})
+      assert :excessive_tab_switching in result.integrity
+    end
+
+    test ":excessive_tab_switching does not fire below the threshold" do
+      result = Metrics.flag_concerns(%{focus_loss_count: 2})
+      refute :excessive_tab_switching in result.integrity
+    end
+
+    test ":heavy_paste_on_exam fires above the exam-specific threshold" do
+      result = Metrics.flag_concerns(%{exam_paste_ratio: 0.61})
+      assert :heavy_paste_on_exam in result.integrity
+    end
+
+    test ":heavy_paste_on_exam does not fire exactly at the threshold" do
+      result = Metrics.flag_concerns(%{exam_paste_ratio: 0.6})
+      refute :heavy_paste_on_exam in result.integrity
+    end
+
+    test "a regular (non-exam) quiz_question's plain paste_ratio/answer_change_count never trips an integrity flag" do
+      # `paste_ratio`/`answer_change_count` (no `exam_`/count suffix) are
+      # what `quiz_question_metrics/1`/`code_metrics/1` produce for a
+      # regular, non-exam block - integrity_flags/2 must only ever read the
+      # exam-prefixed keys, or a normal practice quiz would get mislabeled
+      # as an academic-integrity concern.
+      result = Metrics.flag_concerns(%{paste_ratio: 1.0, answer_change_count: 100})
+      assert result.integrity == []
     end
   end
 

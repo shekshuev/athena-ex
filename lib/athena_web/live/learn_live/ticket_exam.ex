@@ -11,6 +11,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   use AthenaWeb, :live_view
 
   alias Athena.{Content, Engagement, Learning}
+  alias AthenaWeb.LearnLive.EngagementSignals
   import AthenaWeb.BlockComponents
 
   @impl true
@@ -109,6 +110,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
         team_id: team_id,
         cohort_id: cohort_id,
         engagement_session_id: Ecto.UUID.generate(),
+        engagement_answered_blocks: MapSet.new(),
         block: block,
         submission: submission,
         questions: questions,
@@ -428,20 +430,18 @@ defmodule AthenaWeb.LearnLive.TicketExam do
       normalized
     )
 
-    normalized
-    |> Enum.filter(&(&1.event_type in Engagement.proctoring_tracked_event_types()))
-    |> case do
-      [] ->
-        :ok
-
-      proctoring_events ->
-        Engagement.report_proctoring_events(socket.assigns.submission.id, proctoring_events)
-    end
+    Engagement.report_proctoring_events(
+      socket.assigns.submission.id,
+      socket.assigns.cohort_id,
+      socket.assigns.block.id,
+      normalized
+    )
 
     {:noreply, socket}
   end
 
   defp execute_run_code(socket, block_id) do
+    socket = EngagementSignals.emit_code_run_attempt(socket, block_id)
     submission_to_run = resolve_submission_for_run(socket, block_id)
 
     if submission_to_run do
@@ -578,6 +578,13 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   def handle_info({:submission_updated, updated_sub}, socket) do
     new_child_subs = Map.put(socket.assigns.child_submissions, updated_sub.block_id, updated_sub)
 
+    socket =
+      if updated_sub.status in [:pending, :processing, :draft] do
+        socket
+      else
+        EngagementSignals.emit_code_run_result(socket, updated_sub.block_id, updated_sub.status)
+      end
+
     flash_msg =
       case updated_sub.status do
         :accepted -> gettext("Success! Code passed all tests.")
@@ -603,6 +610,15 @@ defmodule AthenaWeb.LearnLive.TicketExam do
       data-session-id={@engagement_session_id}
       class="flex flex-col min-h-screen"
     >
+      <div
+        id={"multi-tab-guard-#{@submission.id}"}
+        phx-hook="MultiTabGuard"
+        phx-update="ignore"
+        data-submission-id={@submission.id}
+        data-block-id={@block.id}
+        class="hidden"
+      >
+      </div>
       <header class="bg-base-100 border-b border-base-300">
         <.page_container size="wide" class="px-4 sm:px-6 lg:px-8">
           <div class="flex items-center justify-between h-16">
@@ -851,7 +867,13 @@ defmodule AthenaWeb.LearnLive.TicketExam do
              ) do
           {:ok, child_sub} ->
             new_child_subs = Map.put(socket.assigns.child_submissions, q.id, child_sub)
-            {:noreply, assign(socket, :child_submissions, new_child_subs)}
+
+            socket =
+              socket
+              |> assign(:child_submissions, new_child_subs)
+              |> EngagementSignals.record_quiz_interaction(q)
+
+            {:noreply, socket}
 
           {:error, :time_limit_exceeded} ->
             {:noreply,
@@ -989,9 +1011,12 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     allowed_blur_attempts = (block && block.content["allowed_blur_attempts"]) || 3
 
     proctoring_fields =
-      submission.id
-      |> Engagement.finalize_proctoring()
-      |> Engagement.proctoring_content_fields(allowed_blur_attempts)
+      Engagement.finalize_proctoring(
+        submission.id,
+        Map.get(socket.assigns, :cohort_id),
+        block && block.id,
+        allowed_blur_attempts
+      )
 
     updated_content = Map.merge(submission.content || %{}, proctoring_fields)
 

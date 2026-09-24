@@ -309,7 +309,13 @@ defmodule Athena.Engagement.Metrics do
     :slow_dwell,
     :hesitation,
     :backtracked,
-    :panic_debugging
+    :panic_debugging,
+    :printscreen_attempted,
+    :copy_attempted,
+    :cut_attempted,
+    :multi_tab_detected,
+    :excessive_tab_switching,
+    :heavy_paste_on_exam
   ]
 
   @doc """
@@ -371,7 +377,8 @@ defmodule Athena.Engagement.Metrics do
             section_id: binary(),
             section_title: String.t(),
             slacking_count: non_neg_integer(),
-            struggling_count: non_neg_integer()
+            struggling_count: non_neg_integer(),
+            integrity_count: non_neg_integer()
           }
         ]
   def section_flag_totals(cohort_id, course_id, opts \\ []) do
@@ -385,18 +392,21 @@ defmodule Athena.Engagement.Metrics do
   defp section_flag_total(section, students, index) do
     blocks = Map.get(index.blocks_by_section, section.id, [])
 
-    {slacking_count, struggling_count} =
-      for block <- blocks, account_id <- students, reduce: {0, 0} do
-        {slacking_acc, struggling_acc} ->
+    {slacking_count, struggling_count, integrity_count} =
+      for block <- blocks, account_id <- students, reduce: {0, 0, 0} do
+        {slacking_acc, struggling_acc, integrity_acc} ->
           flags = student_block_flags(block, account_id, index)
-          {slacking_acc + flags.slacking_count, struggling_acc + flags.struggling_count}
+
+          {slacking_acc + flags.slacking_count, struggling_acc + flags.struggling_count,
+           integrity_acc + flags.integrity_count}
       end
 
     %{
       section_id: section.id,
       section_title: section.title,
       slacking_count: slacking_count,
-      struggling_count: struggling_count
+      struggling_count: struggling_count,
+      integrity_count: integrity_count
     }
   end
 
@@ -615,10 +625,16 @@ defmodule Athena.Engagement.Metrics do
 
     slacking_index = flagged_blocks |> Enum.map(& &1.slacking_count) |> Enum.sum()
     struggling_index = flagged_blocks |> Enum.map(& &1.struggling_count) |> Enum.sum()
+    integrity_index = flagged_blocks |> Enum.map(& &1.integrity_count) |> Enum.sum()
     config = engagement_config()
 
     status =
       cond do
+        # Checked first, and with a lower bar than slacking/struggling - a
+        # single academic-integrity flag (a printscreen/copy attempt during
+        # an exam) is worth a teacher's attention immediately, unlike
+        # slacking/struggling which only matter as a repeated pattern.
+        integrity_index >= Keyword.get(config, :student_radar_integrity_threshold, 1) -> :red
         slacking_index >= Keyword.get(config, :student_radar_slacking_threshold, 2) -> :red
         struggling_index >= Keyword.get(config, :student_radar_struggling_threshold, 2) -> :yellow
         true -> :green
@@ -629,6 +645,7 @@ defmodule Athena.Engagement.Metrics do
       progress_percent: progress_percent(account_id, team_id, blocks),
       slacking_index: slacking_index,
       struggling_index: struggling_index,
+      integrity_index: integrity_index,
       status: status,
       flagged_blocks: flagged_blocks
     }
@@ -665,11 +682,13 @@ defmodule Athena.Engagement.Metrics do
 
     %{
       block_id: block.id,
-      flags: flags.slacking ++ flags.struggling,
+      flags: flags.slacking ++ flags.struggling ++ flags.integrity,
       slacking_flags: flags.slacking,
       struggling_flags: flags.struggling,
+      integrity_flags: flags.integrity,
       slacking_count: length(flags.slacking),
-      struggling_count: length(flags.struggling)
+      struggling_count: length(flags.struggling),
+      integrity_count: length(flags.integrity)
     }
   end
 
@@ -769,14 +788,20 @@ defmodule Athena.Engagement.Metrics do
   All thresholds come from `config :athena, Athena.Engagement` so they can
   be recalibrated after the pilot without a code change.
   """
-  @spec flag_concerns(map()) :: %{content: [atom()], slacking: [atom()], struggling: [atom()]}
+  @spec flag_concerns(map()) :: %{
+          content: [atom()],
+          slacking: [atom()],
+          struggling: [atom()],
+          integrity: [atom()]
+        }
   def flag_concerns(metrics) do
     config = engagement_config()
 
     %{
       content: content_flags(metrics, config),
       slacking: slacking_flags(metrics, config),
-      struggling: struggling_flags(metrics, config)
+      struggling: struggling_flags(metrics, config),
+      integrity: integrity_flags(metrics, config)
     }
   end
 
@@ -833,6 +858,38 @@ defmodule Athena.Engagement.Metrics do
     |> add_if(metrics[:answer_change_count], &(&1 > 0), :hesitation)
     |> add_if(metrics[:backtrack_count], &(&1 > 0), :backtracked)
     |> add_if_true(metrics[:panic_debugging?] == true, :panic_debugging)
+  end
+
+  # Only ever fires on `exam_metrics/1`'s output (`quiz_exam`/`ticket_exam`
+  # blocks) - every key read here is exam-prefixed or exam-exclusive (see
+  # the comment on `exam_metrics/1`), so this silently no-ops (via `add_if`'s
+  # `nil` clause) for every other block type's metrics map. Deliberately
+  # simple absolute thresholds, same idiom as every other flag in this
+  # module - this feeds the *dashboard* (student radar, course-wide flag
+  # rates), a lightweight "worth a look" indicator for any teacher browsing
+  # engagement analytics. It is not the same decision that drives the live
+  # per-attempt risk badge a grader acts on (reject, zero the score) - that
+  # one needs the cohort-relative, percentile-normalized comparison in
+  # `Athena.Engagement.Proctoring`/`ExamIntegrityStats`, precisely because a
+  # single absolute threshold here would flag an anxious student who
+  # revised their answer a lot exactly like it would flag someone who
+  # actually tried to cheat.
+  defp integrity_flags(metrics, config) do
+    []
+    |> add_if(metrics[:printscreen_count], &(&1 > 0), :printscreen_attempted)
+    |> add_if(metrics[:copy_attempt_count], &(&1 > 0), :copy_attempted)
+    |> add_if(metrics[:cut_attempt_count], &(&1 > 0), :cut_attempted)
+    |> add_if(metrics[:multi_tab_count], &(&1 > 0), :multi_tab_detected)
+    |> add_if(
+      metrics[:focus_loss_count],
+      &(&1 >= Keyword.get(config, :exam_focus_loss_threshold, 3)),
+      :excessive_tab_switching
+    )
+    |> add_if(
+      metrics[:exam_paste_ratio],
+      &(&1 > Keyword.get(config, :exam_paste_ratio_threshold, 0.6)),
+      :heavy_paste_on_exam
+    )
   end
 
   defp add_if(flags, nil, _condition?, _flag), do: flags
@@ -903,8 +960,36 @@ defmodule Athena.Engagement.Metrics do
     }
   end
 
+  # Exam-only fields that would otherwise collide in name (but not in
+  # meaning) with `quiz_question_metrics/1`'s/`code_metrics/1`'s own
+  # `paste_ratio`/`answer_change_count`/`run_attempt_count`/
+  # `panic_debugging?` are prefixed `exam_` - `integrity_flags/2` reads
+  # these, and since a metrics map is always produced by exactly one
+  # `type_metrics_for/2` clause (never merged across block types), an
+  # unprefixed name would let e.g. a plain `quiz_question` block's own
+  # `paste_ratio` be silently mistaken for exam-integrity evidence.
   defp exam_metrics(events) do
-    %{focus_loss_count: Enum.count(events, &(&1.event_type == :tab_hidden))}
+    %{
+      focus_loss_count: Enum.count(events, &(&1.event_type == :tab_hidden)),
+      focus_loss_seconds: sum_duration_ms(events, :tab_visible),
+      window_blur_count: Enum.count(events, &(&1.event_type == :window_blur)),
+      printscreen_count: Enum.count(events, &(&1.event_type == :printscreen_attempt)),
+      copy_attempt_count: Enum.count(events, &(&1.event_type == :copy_attempt)),
+      cut_attempt_count: Enum.count(events, &(&1.event_type == :cut_attempt)),
+      multi_tab_count: Enum.count(events, &(&1.event_type == :multi_tab_detected)),
+      idle_seconds_total: sum_duration_ms(events, :idle_end),
+      exam_paste_ratio: avg_paste_ratio(events),
+      exam_answer_change_count: Enum.count(events, &(&1.event_type == :answer_changed)),
+      exam_run_attempt_count: Enum.count(events, &(&1.event_type == :code_run_attempt)),
+      exam_panic_debugging?: panic_debugging?(events)
+    }
+  end
+
+  defp sum_duration_ms(events, event_type) do
+    events
+    |> Enum.filter(&(&1.event_type == event_type))
+    |> Enum.map(&((&1.payload["duration_ms"] || 0) / 1000))
+    |> Enum.sum()
   end
 
   defp code_metrics(events) do

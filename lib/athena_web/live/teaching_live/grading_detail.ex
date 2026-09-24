@@ -559,10 +559,15 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                     <.risk_badge content={@submission.content} />
                   </div>
                   <div class="text-sm text-base-content/70">
-                    {gettext(
-                      "Violations detected: %{count}",
-                      count: proctoring_summary.cheat_count
+                    {gettext("Direct evidence: %{count}",
+                      count: proctoring_summary.hard_evidence_count
                     )}
+                    <%= if map_size(proctoring_summary.outlier_metrics) > 0 do %>
+                      · {gettext(
+                        "Unusual behavior: %{count} metric(s)",
+                        count: map_size(proctoring_summary.outlier_metrics)
+                      )}
+                    <% end %>
                   </div>
                   <.risk_explanation />
                 </div>

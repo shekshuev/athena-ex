@@ -121,6 +121,14 @@ EngagementHooks.EngagementTracker = {
     };
     document.addEventListener("visibilitychange", this.handleVisibilityChange);
 
+    // Complements visibilitychange - catches switching to another top-level
+    // window in setups where visibilitychange doesn't reliably fire (varies
+    // by OS/window manager/multi-monitor).
+    this.handleWindowBlur = () => this.enqueue(this.currentBlockId, "window_blur");
+    this.handleWindowFocus = () => this.enqueue(this.currentBlockId, "window_focus");
+    window.addEventListener("blur", this.handleWindowBlur);
+    window.addEventListener("focus", this.handleWindowFocus);
+
     // PrintScreen keydown - Windows only. macOS screenshot shortcuts
     // (Cmd+Shift+3/4/5) are OS-level and invisible to any web page JS, so
     // this can never catch those - see Athena.Engagement.Event.
@@ -175,6 +183,8 @@ EngagementHooks.EngagementTracker = {
     if (this.observer) this.observer.disconnect();
     document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     document.removeEventListener("keydown", this.handleKeyDown);
+    window.removeEventListener("blur", this.handleWindowBlur);
+    window.removeEventListener("focus", this.handleWindowFocus);
     window.removeEventListener("beforeunload", this.handleBeforeUnload);
     for (const eventName of this.idleActivityEvents || []) {
       window.removeEventListener(eventName, this.resetIdleTimer);
@@ -252,6 +262,37 @@ EngagementHooks.ImageZoomTracker = {
           {
             block_id: blockId,
             event_type: "image_zoom",
+            payload: {},
+            occurred_at: new Date().toISOString(),
+          },
+        ],
+      });
+    };
+
+    this.el.addEventListener("click", this.onClick);
+  },
+
+  destroyed() {
+    this.el.removeEventListener("click", this.onClick);
+  },
+};
+
+// Fires `attachment_open` (see `Athena.Engagement.Event`) the moment a
+// student clicks a file link on an `:attachment` block. Previously this
+// event type existed in the catalog but was never actually emitted by any
+// code path - `attachment_metrics.open_count` was always zero.
+EngagementHooks.AttachmentOpenTracker = {
+  mounted() {
+    const blockId = this.el.dataset.blockId;
+    if (!blockId) return;
+
+    this.onClick = () => {
+      if (!engagementTrackingActive()) return;
+      this.pushEvent("engagement_batch", {
+        events: [
+          {
+            block_id: blockId,
+            event_type: "attachment_open",
             payload: {},
             occurred_at: new Date().toISOString(),
           },
@@ -363,6 +404,70 @@ EngagementHooks.PromptCanvas = {
 
   destroyed() {
     window.removeEventListener("resize", this.onResize);
+  },
+};
+
+// Detects the same exam attempt (`submission_id`) open in more than one
+// tab/window of the same browser profile, via a BroadcastChannel handshake
+// (falling back to localStorage + the `storage` event for older browsers).
+// Only ever mounted on exam pages (`quiz_exam`/`ticket_exam`), keyed by
+// `data-submission-id`, never by block - the whole attempt is one exam, not
+// per-question. A tab that hears from a peer both reports the violation
+// itself and replies, so whichever tab mounted first also gets flagged
+// once the second tab shows up, not just the second tab.
+EngagementHooks.MultiTabGuard = {
+  mounted() {
+    const submissionId = this.el.dataset.submissionId;
+    const blockId = this.el.dataset.blockId;
+    if (!submissionId || !blockId) return;
+
+    this.tabId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    this.reported = false;
+
+    const report = () => {
+      if (this.reported || !engagementTrackingActive()) return;
+      this.reported = true;
+      this.pushEvent("engagement_batch", {
+        events: [
+          {
+            block_id: blockId,
+            event_type: "multi_tab_detected",
+            payload: {},
+            occurred_at: new Date().toISOString(),
+          },
+        ],
+      });
+    };
+
+    if (typeof BroadcastChannel !== "undefined") {
+      this.channel = new BroadcastChannel(`exam-${submissionId}`);
+      this.channel.onmessage = (event) => {
+        if (event.data?.tabId && event.data.tabId !== this.tabId) {
+          report();
+          this.channel.postMessage({ tabId: this.tabId });
+        }
+      };
+      this.channel.postMessage({ tabId: this.tabId });
+    } else {
+      this.storageKey = `exam-tab-${submissionId}`;
+      this.handleStorage = (event) => {
+        if (event.key === this.storageKey && event.newValue && event.newValue !== this.tabId) {
+          report();
+        }
+      };
+      window.addEventListener("storage", this.handleStorage);
+      try {
+        localStorage.setItem(this.storageKey, this.tabId);
+      } catch {
+        // Private browsing / storage disabled - silently no-op, this signal
+        // is best-effort.
+      }
+    }
+  },
+
+  destroyed() {
+    if (this.channel) this.channel.close();
+    if (this.handleStorage) window.removeEventListener("storage", this.handleStorage);
   },
 };
 

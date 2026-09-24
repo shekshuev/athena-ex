@@ -101,7 +101,9 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
           account_id: student.id,
           block_id: block.id,
           content: %{
-            "cheat_count" => 2,
+            "hard_evidence_count" => 2,
+            "outlier_metrics" => %{},
+            "risk_level" => "red",
             "questions" => [
               %{"id" => q1.id, "type" => "quiz_question", "content" => q1.content},
               %{"id" => q2.id, "type" => "quiz_question", "content" => q2.content}
@@ -132,12 +134,12 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
       assert html =~ "Assessment Session"
       assert html =~ "I don&#39;t know"
       assert html =~ "Academic Integrity"
-      assert html =~ "Violations detected: 2"
-      assert html =~ "Some violations"
+      assert html =~ "Direct evidence: 2"
+      assert html =~ "High risk"
       assert html =~ "Manual Review"
     end
 
-    test "shows a clean indicator when cheat_count is 0", %{conn: conn} do
+    test "shows a clean indicator when there is no evidence at all", %{conn: conn} do
       student = insert(:account)
       block = insert(:block, type: :quiz_exam)
 
@@ -145,7 +147,13 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
         insert(:submission,
           account_id: student.id,
           block_id: block.id,
-          content: %{"cheat_count" => 0, "questions" => [], "answers" => %{}},
+          content: %{
+            "hard_evidence_count" => 0,
+            "outlier_metrics" => %{},
+            "risk_level" => "green",
+            "questions" => [],
+            "answers" => %{}
+          },
           status: :needs_review
         )
 

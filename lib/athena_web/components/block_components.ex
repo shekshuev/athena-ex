@@ -206,6 +206,9 @@ defmodule AthenaWeb.BlockComponents do
       <div class="space-y-3">
         <a
           :for={file <- @block.content["files"] || []}
+          id={"attachment-open-#{@block.id}-#{:erlang.phash2(file["url"])}"}
+          phx-hook="AttachmentOpenTracker"
+          data-block-id={@block.id}
           href={file["url"]}
           target="_blank"
           rel="noopener noreferrer"

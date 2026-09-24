@@ -106,7 +106,14 @@ config :athena, Athena.Engagement,
   slow_dwell_ratio_threshold: 2.0,
   student_radar_slacking_threshold: 2,
   student_radar_struggling_threshold: 2,
-  student_radar_default_window_days: 7
+  student_radar_integrity_threshold: 1,
+  student_radar_default_window_days: 7,
+  exam_focus_loss_threshold: 3,
+  exam_paste_ratio_threshold: 0.6,
+  exam_hard_evidence_red_threshold: 2,
+  exam_behavioral_outliers_red_threshold: 2,
+  exam_percentile_outlier_threshold: 90,
+  proctoring_monitor_idle_timeout_minutes: 180
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

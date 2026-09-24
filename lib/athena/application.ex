@@ -64,6 +64,9 @@ defmodule Athena.Application do
       {Registry, keys: :unique, name: Athena.Engagement.ProctoringMonitorRegistry},
       {DynamicSupervisor,
        name: Athena.Engagement.ProctoringMonitorSupervisor, strategy: :one_for_one},
+      {Registry, keys: :unique, name: Athena.Engagement.ExamIntegrityStatsRegistry},
+      {DynamicSupervisor,
+       name: Athena.Engagement.ExamIntegrityStatsSupervisor, strategy: :one_for_one},
       AthenaWeb.Endpoint
     ]
 

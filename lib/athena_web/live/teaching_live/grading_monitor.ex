@@ -37,13 +37,7 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
     accounts = Identity.get_accounts_map(Map.keys(submissions_by_account))
 
     if connected?(socket) do
-      Enum.each(submissions_by_account, fn {account_id, sub} ->
-        Phoenix.PubSub.subscribe(Athena.PubSub, "submission:#{account_id}:#{block.id}")
-
-        if sub && sub.status == :pending do
-          Phoenix.PubSub.subscribe(Athena.PubSub, "proctoring:#{sub.id}")
-        end
-      end)
+      Enum.each(submissions_by_account, &subscribe_to_member(&1, block))
     end
 
     {:ok,
@@ -54,22 +48,64 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
        cohort: cohort,
        accounts: accounts,
        submissions: submissions_by_account,
-       live_counts: %{}
-     )}
+       live_results: %{}
+     )
+     |> refresh_live_results(submissions_by_account)}
+  end
+
+  defp subscribe_to_member({account_id, sub}, block) do
+    Phoenix.PubSub.subscribe(Athena.PubSub, "submission:#{account_id}:#{block.id}")
+
+    if sub && sub.status == :pending do
+      Phoenix.PubSub.subscribe(Athena.PubSub, "proctoring:#{sub.id}")
+    end
+  end
+
+  defp refresh_live_results(socket, submissions_by_account) do
+    allowed_blur_attempts = socket.assigns.block.content["allowed_blur_attempts"] || 3
+
+    live_results =
+      submissions_by_account
+      |> Enum.filter(fn {_account_id, sub} -> sub && sub.status == :pending end)
+      |> Map.new(fn {_account_id, sub} ->
+        {sub.id,
+         Engagement.evaluate_live_proctoring(
+           sub.id,
+           socket.assigns.cohort.id,
+           socket.assigns.block.id,
+           allowed_blur_attempts
+         )}
+      end)
+
+    assign(socket, :live_results, live_results)
   end
 
   @impl true
-  def handle_info({:proctoring_updated, submission_id, counts}, socket) do
-    live_counts = Map.put(socket.assigns.live_counts, submission_id, counts)
-    {:noreply, assign(socket, :live_counts, live_counts)}
+  def handle_info({:proctoring_updated, submission_id}, socket) do
+    allowed_blur_attempts = socket.assigns.block.content["allowed_blur_attempts"] || 3
+
+    fields =
+      Engagement.evaluate_live_proctoring(
+        submission_id,
+        socket.assigns.cohort.id,
+        socket.assigns.block.id,
+        allowed_blur_attempts
+      )
+
+    {:noreply,
+     assign(socket, :live_results, Map.put(socket.assigns.live_results, submission_id, fields))}
   end
 
   def handle_info({:submission_updated, updated_sub}, socket) do
     submissions = Map.put(socket.assigns.submissions, updated_sub.account_id, updated_sub)
 
-    if updated_sub.status != :pending do
-      Phoenix.PubSub.unsubscribe(Athena.PubSub, "proctoring:#{updated_sub.id}")
-    end
+    socket =
+      if updated_sub.status != :pending do
+        Phoenix.PubSub.unsubscribe(Athena.PubSub, "proctoring:#{updated_sub.id}")
+        assign(socket, :live_results, Map.delete(socket.assigns.live_results, updated_sub.id))
+      else
+        socket
+      end
 
     {:noreply, assign(socket, :submissions, submissions)}
   end
@@ -77,28 +113,19 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # The badge always needs a `content` map shaped like `Submission.content`
-  # (see `Athena.Engagement.Proctoring.summary/1`). For a finalized
-  # attempt that's simply `sub.content` (already written at submit time -
-  # see `submit_and_exit/4` in the exam LiveViews). For an attempt still
-  # in progress, `sub.content` has no `cheat_count` yet, so the live counts
-  # streamed from `Athena.Engagement.ProctoringMonitor` are shaped into the
-  # same fields instead - the indicator updates live without ever
+  # (see `Athena.Engagement.Proctoring.summary/1`). For a finalized attempt
+  # that's simply `sub.content` (already written at submit time - see
+  # `submit_and_exit/4` in the exam LiveViews). For an attempt still in
+  # progress, `sub.content` has no `risk_level` yet, so the live evaluation
+  # cached in `@live_results` (refreshed on every `:proctoring_updated`
+  # ping) is used instead - the indicator updates live without ever
   # round-tripping through the database.
-  defp indicator_content(nil, _live_counts, _allowed_blur_attempts), do: nil
+  defp indicator_content(nil, _live_results), do: nil
 
-  defp indicator_content(%{status: :pending} = sub, live_counts, allowed_blur_attempts) do
-    counts =
-      Map.get(live_counts, sub.id, %{
-        tab_hidden: 0,
-        printscreen_attempt: 0,
-        copy_attempt: 0,
-        cut_attempt: 0
-      })
+  defp indicator_content(%{status: :pending} = sub, live_results),
+    do: Map.get(live_results, sub.id, %{})
 
-    Engagement.proctoring_content_fields(counts, allowed_blur_attempts)
-  end
-
-  defp indicator_content(sub, _live_counts, _allowed_blur_attempts), do: sub.content
+  defp indicator_content(sub, _live_results), do: sub.content
 
   defp status_label(nil), do: gettext("Not started")
 
@@ -167,9 +194,7 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
                 {if account = @accounts[account_id], do: account.login, else: gettext("Unknown")}
               </td>
               <td>
-                <.risk_badge content={
-                  indicator_content(sub, @live_counts, @block.content["allowed_blur_attempts"] || 3)
-                } />
+                <.risk_badge content={indicator_content(sub, @live_results)} />
               </td>
               <td>
                 <.badge tone={status_tone(sub)} class="tracking-wide">

@@ -124,7 +124,23 @@ defmodule Athena.Engagement.Event do
     # how these get turned into a live risk indicator during an attempt.
     :printscreen_attempt,
     :copy_attempt,
-    :cut_attempt
+    :cut_attempt,
+
+    # Complements `tab_hidden`/`tab_visible` - the window losing/gaining OS
+    # focus (`window.blur`/`window.focus`), which can catch switching to
+    # another top-level window in situations where `document.
+    # visibilitychange` doesn't reliably fire (varies by OS/window
+    # manager/multi-monitor setup). Collected everywhere the engagement
+    # tracker mounts (Player and both exam LiveViews), not exam-only.
+    :window_blur,
+    :window_focus,
+
+    # `quiz_exam`/`ticket_exam` only. The same attempt (`submission_id`) was
+    # detected open in more than one browser tab/window at once, via a
+    # `BroadcastChannel`/`localStorage` handshake between tabs. Only catches
+    # two tabs in the *same* browser profile - a second device or a
+    # different browser is invisible to this signal.
+    :multi_tab_detected
   ]
 
   @derive {

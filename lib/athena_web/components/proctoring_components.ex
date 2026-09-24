@@ -43,7 +43,7 @@ defmodule AthenaWeb.ProctoringComponents do
       </div>
       <p>
         {gettext(
-          "While a timed assessment is in progress, we count how many times the student's browser tab loses focus, how many times they press PrintScreen, and how many times they try to copy or cut the question text. Green means zero violations. Yellow means some violations, at or below the assessment's configured limit (\"Allowed Blur Attempts\"). Red means that limit was exceeded - the same limit already used to automatically fail the student's own attempt."
+          "While a timed assessment is in progress, we track several kinds of suspicious browser activity - things like switching tabs or apps, attempting to screenshot or copy the question, and opening the same assessment in more than one tab. Green means nothing suspicious. Yellow means something worth a closer look. Red means it's worth checking in with the student directly."
         )}
       </p>
       <p class="text-xs italic">
