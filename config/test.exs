@@ -48,10 +48,15 @@ config :phoenix_live_view,
 config :phoenix,
   sort_verified_routes_query_params: true
 
-# Config for local MinIO
+# Local dev still runs MinIO (see docker-compose.infra.yml) with its fixed
+# root credentials. CI runs Garage instead (see .github/workflows/ci.yml) -
+# Garage has no fixed root user, so CI provisions a real access key/secret
+# per run and exports them as GARAGE_ACCESS_KEY_ID/GARAGE_SECRET_ACCESS_KEY;
+# the "minioadmin" fallback below keeps local dev unchanged when those
+# aren't set.
 config :ex_aws,
-  access_key_id: "minioadmin",
-  secret_access_key: "minioadmin",
+  access_key_id: System.get_env("GARAGE_ACCESS_KEY_ID", "minioadmin"),
+  secret_access_key: System.get_env("GARAGE_SECRET_ACCESS_KEY", "minioadmin"),
   s3: [
     scheme: "http://",
     host: external_host,
