@@ -6,8 +6,9 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
   """
   use AthenaWeb, :live_view
 
-  alias Athena.{Learning, Identity, Content, Execution}
+  alias Athena.{Learning, Identity, Content, Execution, Engagement}
   import AthenaWeb.BlockComponents
+  import AthenaWeb.ProctoringComponents
 
   on_mount {AthenaWeb.Hooks.Permission, "grading.update"}
 
@@ -547,24 +548,28 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                 />
               </div>
 
-              <%= if (@submission.content["cheat_count"] || 0) > 0 do %>
+              <% proctoring_summary = Engagement.proctoring_summary(@submission.content) %>
+              <%= if proctoring_summary do %>
                 <div class="divider my-4"></div>
-                <div class="space-y-4 mb-6">
-                  <div class="text-xs font-bold text-error uppercase tracking-wider">
-                    {gettext("Violations")}
-                  </div>
-                  <div class="p-4 bg-error/10 text-error rounded-sm border border-error/30">
-                    <div class="font-bold flex items-center gap-2 mb-1">
-                      <.icon name="hero-eye" class="size-4" />
-                      {gettext("Cheating Detected")}
+                <div class="space-y-3 mb-6">
+                  <div class="flex items-center justify-between">
+                    <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider">
+                      {gettext("Academic Integrity")}
                     </div>
-                    <div class="text-sm font-medium">
-                      {gettext(
-                        "The student triggered %{count} violations during this session.",
-                        count: @submission.content["cheat_count"]
+                    <.risk_badge content={@submission.content} />
+                  </div>
+                  <div class="text-sm text-base-content/70">
+                    {gettext("Direct evidence: %{count}",
+                      count: proctoring_summary.hard_evidence_count
+                    )}
+                    <%= if map_size(proctoring_summary.outlier_metrics) > 0 do %>
+                      · {gettext(
+                        "Unusual behavior: %{count} metric(s)",
+                        count: map_size(proctoring_summary.outlier_metrics)
                       )}
-                    </div>
+                    <% end %>
                   </div>
+                  <.risk_explanation />
                 </div>
               <% end %>
             </.form>

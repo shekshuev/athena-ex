@@ -1212,4 +1212,117 @@ defmodule Athena.Engagement.MetricsTest do
       assert Metrics.nudge_correction_rate(nil, course.id) == []
     end
   end
+
+  # Regression coverage for the N+1 query storm fixed alongside this test:
+  # `section_flag_totals/3` and `nudge_correction_rate/3` used to re-query
+  # a block's section, its sibling blocks, and its events once per (block,
+  # student) or (nudge, block) pair, so their DB round-trip count scaled
+  # with the size of the course/cohort. `build_scope_index/3` now fetches
+  # the whole course's sections/blocks/events once and does the rest in
+  # memory, so the query count should stay flat as the grid grows - these
+  # tests seed a "small" and a "larger" grid and assert equal (and small)
+  # counts rather than pinning an exact number, so the assertion survives
+  # incidental query-shape changes without becoming a magic-number trap.
+  describe "query count does not scale with grid size" do
+    # `:telemetry.attach/4` is process-global - with `async: true`, other
+    # tests' queries fire this same event concurrently in their own
+    # processes. The query telemetry event is emitted synchronously from
+    # whichever process issued the query, so guarding on `self() == test_pid`
+    # inside the handler (which runs in the *emitting* process, not
+    # necessarily this test's) keeps the count scoped to this test only.
+    defp count_queries(fun) do
+      ref = make_ref()
+      test_pid = self()
+
+      handler = fn _event, _measurements, _metadata, _config ->
+        if self() == test_pid, do: send(test_pid, {:query_counted, ref})
+      end
+
+      :telemetry.attach({:query_counter, ref}, [:athena, :repo, :query], handler, nil)
+
+      try do
+        fun.()
+      after
+        :telemetry.detach({:query_counter, ref})
+      end
+
+      drain_query_count(ref, 0)
+    end
+
+    defp drain_query_count(ref, acc) do
+      receive do
+        {:query_counted, ^ref} -> drain_query_count(ref, acc + 1)
+      after
+        0 -> acc
+      end
+    end
+
+    defp seed_grid(section_count, blocks_per_section, student_count) do
+      course = insert(:course)
+      cohort = insert(:cohort)
+
+      students = for _ <- 1..student_count, do: insert(:account)
+      Enum.each(students, &insert(:cohort_membership, account_id: &1.id, cohort_id: cohort.id))
+
+      for s <- 1..section_count do
+        section = insert(:section, course: course, order: s * 10)
+
+        for b <- 1..blocks_per_section do
+          block = insert(:block, section: section, type: :quiz_question, order: b * 10)
+
+          for student <- students do
+            record(student.id, cohort.id, Ecto.UUID.generate(), block, :nudge_shown, 0, %{
+              "reason" => "heavy_paste"
+            })
+          end
+        end
+      end
+
+      {cohort, course}
+    end
+
+    test "section_flag_totals/3 issues the same query count for a small and a larger course/cohort" do
+      {small_cohort, small_course} = seed_grid(1, 2, 2)
+      {large_cohort, large_course} = seed_grid(3, 4, 5)
+
+      small_count =
+        count_queries(fn ->
+          Metrics.section_flag_totals(small_cohort.id, small_course.id,
+            since: ~U[2020-01-01 00:00:00Z]
+          )
+        end)
+
+      large_count =
+        count_queries(fn ->
+          Metrics.section_flag_totals(large_cohort.id, large_course.id,
+            since: ~U[2020-01-01 00:00:00Z]
+          )
+        end)
+
+      assert small_count == large_count
+      assert small_count <= 10
+    end
+
+    test "nudge_correction_rate/3 issues the same query count regardless of nudge/block count" do
+      {small_cohort, small_course} = seed_grid(1, 2, 2)
+      {large_cohort, large_course} = seed_grid(3, 4, 5)
+
+      small_count =
+        count_queries(fn ->
+          Metrics.nudge_correction_rate(small_cohort.id, small_course.id,
+            since: ~U[2020-01-01 00:00:00Z]
+          )
+        end)
+
+      large_count =
+        count_queries(fn ->
+          Metrics.nudge_correction_rate(large_cohort.id, large_course.id,
+            since: ~U[2020-01-01 00:00:00Z]
+          )
+        end)
+
+      assert small_count == large_count
+      assert small_count <= 10
+    end
+  end
 end

@@ -451,6 +451,17 @@ defmodule AthenaWeb.TeachingLive.Grading do
               </.link>
 
               <.link
+                :if={
+                  @blocks[sub.block_id] && @blocks[sub.block_id].type in [:quiz_exam, :ticket_exam]
+                }
+                navigate={~p"/teaching/grading/#{sub.id}/monitor"}
+                class="btn btn-sm btn-ghost btn-square text-base-content/50 hover:text-warning"
+                title={gettext("Monitor this group for cheating")}
+              >
+                <.icon name="hero-shield-exclamation" class="size-4" />
+              </.link>
+
+              <.link
                 navigate={~p"/teaching/grading/#{sub.id}?return_to=#{@current_path}"}
                 class={[
                   "btn btn-sm btn-square",

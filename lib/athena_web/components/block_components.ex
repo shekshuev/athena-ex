@@ -26,6 +26,7 @@ defmodule AthenaWeb.BlockComponents do
   attr :hide_submit, :boolean, default: false
   attr :user_id, :string, default: nil
   attr :characters, :list, default: []
+  attr :proctoring, :boolean, default: false
 
   def content_block(assigns) do
     ~H"""
@@ -62,6 +63,7 @@ defmodule AthenaWeb.BlockComponents do
             attempts_count={@attempts_count}
             draft={@draft}
             user_id={@user_id}
+            proctoring={@proctoring}
           />
         <% type when type in [:quiz_exam, :ticket_exam] -> %>
           <.render_any_exam
@@ -204,6 +206,9 @@ defmodule AthenaWeb.BlockComponents do
       <div class="space-y-3">
         <a
           :for={file <- @block.content["files"] || []}
+          id={"attachment-open-#{@block.id}-#{:erlang.phash2(file["url"])}"}
+          phx-hook="AttachmentOpenTracker"
+          data-block-id={@block.id}
           href={file["url"]}
           target="_blank"
           rel="noopener noreferrer"
@@ -463,23 +468,37 @@ defmodule AthenaWeb.BlockComponents do
   defp render_quiz_question(assigns) do
     q_type = assigns.block.content["question_type"] || "open"
     opts = assigns.block.content["options"] || []
+    image_mode = assigns.mode == :play && assigns.block.content["render_prompt_as_image"] == true
 
     assigns =
       assigns
       |> assign_new(:user_id, fn -> nil end)
+      |> assign_new(:proctoring, fn -> false end)
       |> assign(:q_type, q_type)
       |> assign(:options, opts)
       |> assign(:answer, extract_quiz_answer(assigns, q_type))
+      |> assign(:image_mode, image_mode)
+      |> assign_new(:prompt_plain_text, fn ->
+        if image_mode, do: extract_plain_text(assigns.block.content["body"]), else: nil
+      end)
+
+    guarded = assigns.mode == :play && assigns.proctoring
+    assigns = assign(assigns, :guarded, guarded)
 
     ~H"""
     <div class="relative">
       <div
         id={"editor-wrapper-#{@mode}-#{@block.id}"}
-        class="editor-wrapper group/tiptap relative outline-none"
+        class={[
+          "editor-wrapper group/tiptap relative outline-none",
+          @guarded && "no-copy-guard"
+        ]}
         tabindex="-1"
+        phx-hook={if(@guarded, do: "NoCopyGuard")}
       >
-        <.tiptap_toolbar mode={@mode} block_id={@block.id} />
+        <.tiptap_toolbar :if={!@image_mode} mode={@mode} block_id={@block.id} />
         <div
+          :if={!@image_mode}
           id={"tiptap-quiz-#{@mode}-#{@block.id}-#{if @mode != :edit, do: :erlang.phash2(@block.content["body"]), else: "static"}"}
           phx-hook="TiptapEditor"
           data-on-change="update_content"
@@ -491,6 +510,16 @@ defmodule AthenaWeb.BlockComponents do
           data-characters={Jason.encode!(@characters)}
           class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed mb-6"
         >
+        </div>
+        <div
+          :if={@image_mode}
+          id={"prompt-canvas-#{@block.id}"}
+          phx-hook="PromptCanvas"
+          phx-update="ignore"
+          data-text={@prompt_plain_text}
+          class="mb-6 select-none"
+        >
+          <canvas></canvas>
         </div>
 
         <%= if @mode == :review && @block.content["general_explanation"] not in [nil, ""] do %>
@@ -515,6 +544,33 @@ defmodule AthenaWeb.BlockComponents do
     </div>
     """
   end
+
+  # Flattens a TipTap rich-text document down to plain, line-broken text -
+  # used only by the opt-in `render_prompt_as_image` toggle, which trades
+  # rich formatting (bold, embedded images, tables, math) for a prompt that
+  # has no selectable text in the DOM at all. Inline text runs within one
+  # block (paragraph/heading/listItem/...) are concatenated with no break;
+  # a single newline follows each such block.
+  @plain_text_block_types ~w(paragraph heading listItem blockquote codeBlock)
+
+  defp extract_plain_text(body) do
+    body
+    |> collect_plain_text_tokens()
+    |> Enum.join()
+    |> String.trim()
+  end
+
+  defp collect_plain_text_tokens(%{"type" => "text"} = node), do: [node["text"] || ""]
+  defp collect_plain_text_tokens(%{"type" => "hardBreak"}), do: ["\n"]
+
+  defp collect_plain_text_tokens(node) when is_map(node) do
+    children = node["content"] || []
+    tokens = Enum.flat_map(children, &collect_plain_text_tokens/1)
+
+    if node["type"] in @plain_text_block_types, do: tokens ++ ["\n"], else: tokens
+  end
+
+  defp collect_plain_text_tokens(_), do: []
 
   defp extract_quiz_answer(assigns, q_type) do
     answer_type = assigns.block.content["answer_type"] || "plain_text"

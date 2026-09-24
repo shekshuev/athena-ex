@@ -77,6 +77,46 @@ defmodule Athena.Engagement.Events do
     |> Repo.all()
   end
 
+  @doc """
+  Normalizes one untrusted raw event map (as pushed by a client
+  `engagement_batch`) into the shape `record_events/4` expects, or `nil` if
+  it's malformed (missing `block_id`, an unknown `event_type`, or an
+  unparseable `occurred_at`). Shared by every LiveView that accepts an
+  `engagement_batch` push (`AthenaWeb.LearnLive.Player`,
+  `AthenaWeb.LearnLive.Exam`, `AthenaWeb.LearnLive.TicketExam`) so event
+  parsing/validation lives in exactly one place.
+  """
+  @spec normalize_event(map(), binary()) :: map() | nil
+  def normalize_event(event, section_id) do
+    with block_id when is_binary(block_id) <- event["block_id"],
+         {:ok, event_type} <- parse_event_type(event["event_type"]),
+         {:ok, occurred_at, _offset} <- parse_occurred_at(event["occurred_at"]) do
+      %{
+        block_id: block_id,
+        section_id: section_id,
+        event_type: event_type,
+        payload: event["payload"] || %{},
+        occurred_at: DateTime.truncate(occurred_at, :second)
+      }
+    else
+      _ -> nil
+    end
+  end
+
+  defp parse_event_type(type) when is_binary(type) do
+    Event.event_types()
+    |> Enum.find(&(Atom.to_string(&1) == type))
+    |> case do
+      nil -> :error
+      atom -> {:ok, atom}
+    end
+  end
+
+  defp parse_event_type(_), do: :error
+
+  defp parse_occurred_at(iso8601) when is_binary(iso8601), do: DateTime.from_iso8601(iso8601)
+  defp parse_occurred_at(_), do: :error
+
   defp maybe_filter_cohort(query, nil), do: query
   defp maybe_filter_cohort(query, cohort_id), do: where(query, [e], e.cohort_id == ^cohort_id)
 

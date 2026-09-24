@@ -101,7 +101,9 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
           account_id: student.id,
           block_id: block.id,
           content: %{
-            "cheat_count" => 2,
+            "hard_evidence_count" => 2,
+            "outlier_metrics" => %{},
+            "risk_level" => "red",
             "questions" => [
               %{"id" => q1.id, "type" => "quiz_question", "content" => q1.content},
               %{"id" => q2.id, "type" => "quiz_question", "content" => q2.content}
@@ -131,12 +133,13 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
       assert html =~ "sneaky_student"
       assert html =~ "Assessment Session"
       assert html =~ "I don&#39;t know"
-      assert html =~ "Cheating Detected"
-      assert html =~ "triggered 2 violations"
+      assert html =~ "Academic Integrity"
+      assert html =~ "Direct evidence: 2"
+      assert html =~ "High risk"
       assert html =~ "Manual Review"
     end
 
-    test "does not render cheat violations if count is 0", %{conn: conn} do
+    test "shows a clean indicator when there is no evidence at all", %{conn: conn} do
       student = insert(:account)
       block = insert(:block, type: :quiz_exam)
 
@@ -144,13 +147,44 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
         insert(:submission,
           account_id: student.id,
           block_id: block.id,
-          content: %{"cheat_count" => 0, "questions" => [], "answers" => %{}},
+          content: %{
+            "hard_evidence_count" => 0,
+            "outlier_metrics" => %{},
+            "risk_level" => "green",
+            "questions" => [],
+            "answers" => %{}
+          },
           status: :needs_review
         )
 
       {:ok, _lv, html} = live(conn, ~p"/teaching/grading/#{sub.id}")
 
-      refute html =~ "Cheating Detected"
+      assert html =~ "Academic Integrity"
+      assert html =~ "No violations"
+    end
+
+    test "does not render the academic integrity panel for a non-exam submission", %{
+      conn: conn
+    } do
+      student = insert(:account)
+
+      block =
+        insert(:block,
+          type: :quiz_question,
+          content: %{"question_type" => "open", "body" => %{"text" => "No tracking here"}}
+        )
+
+      sub =
+        insert(:submission,
+          account_id: student.id,
+          block_id: block.id,
+          content: %{"text_answer" => "answer"},
+          status: :needs_review
+        )
+
+      {:ok, _lv, html} = live(conn, ~p"/teaching/grading/#{sub.id}")
+
+      refute html =~ "Academic Integrity"
     end
 
     test "recalculates overall score when a child question score is changed", %{

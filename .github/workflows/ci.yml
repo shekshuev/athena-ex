@@ -70,12 +70,77 @@ jobs:
       - name: Install dependencies
         run: mix deps.get
 
-      - name: Start MinIO
+      - name: Start Garage (S3-compatible storage)
         run: |
-          docker run -d -p 9000:9000 -p 9001:9001 \
-            -e MINIO_ROOT_USER=minioadmin \
-            -e MINIO_ROOT_PASSWORD=minioadmin \
-            quay.io/minio/minio:latest server /data
+          set -euo pipefail
+
+          RPC_SECRET=$(openssl rand -hex 32)
+          ADMIN_TOKEN=$(openssl rand -hex 32)
+          mkdir -p /tmp/garage/meta /tmp/garage/data
+
+          cat > /tmp/garage/garage.toml <<EOF
+          metadata_dir = "/var/lib/garage/meta"
+          data_dir = "/var/lib/garage/data"
+          db_engine = "sqlite"
+          replication_factor = 1
+
+          rpc_bind_addr = "[::]:3901"
+          rpc_public_addr = "127.0.0.1:3901"
+          rpc_secret = "${RPC_SECRET}"
+
+          [s3_api]
+          s3_region = "us-east-1"
+          api_bind_addr = "[::]:3900"
+          root_domain = ".s3.garage.localhost"
+
+          [admin]
+          api_bind_addr = "[::]:3903"
+          admin_token = "${ADMIN_TOKEN}"
+          EOF
+
+          docker run -d --name garage \
+            -p 9000:3900 \
+            -v /tmp/garage/garage.toml:/etc/garage.toml \
+            -v /tmp/garage/meta:/var/lib/garage/meta \
+            -v /tmp/garage/data:/var/lib/garage/data \
+            dxflrs/garage:v1.0.1
+
+          echo "Waiting for Garage to come up..."
+          for i in $(seq 1 30); do
+            if docker exec garage /garage status >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+
+          # Even a single-node Garage cluster needs an explicit layout
+          # (zone + capacity) assigned and applied before it accepts writes -
+          # this is a one-time bootstrap, not something MinIO required.
+          # `node id -q` still prints "<id>@<rpc_public_addr>" (the `-q`
+          # only suppresses log noise, not the address suffix) - `layout
+          # assign` matches on the bare node ID, so the "@..." part has to
+          # be stripped or it reports "0 nodes match".
+          RAW_NODE_ID=$(docker exec garage /garage node id -q)
+          NODE_ID="${RAW_NODE_ID%%@*}"
+          docker exec garage /garage layout assign -z dc1 -c 1G "$NODE_ID"
+          docker exec garage /garage layout apply --version 1
+
+          # Bucket name must match `config :athena, Athena.Media, :bucket`
+          # in config/test.exs (MIX_TEST_PARTITION is unset in CI, so the
+          # default "athena-test-0" applies). Unlike MinIO, Garage does not
+          # let a client create buckets via the S3 API itself - it must be
+          # created (and access granted) through the Garage CLI first, or
+          # `test/test_helper.exs`'s bucket bootstrap will fail.
+          docker exec garage /garage bucket create athena-test-0
+
+          KEY_OUTPUT=$(docker exec garage /garage key create ci-test-key)
+          ACCESS_KEY_ID=$(echo "$KEY_OUTPUT" | grep -i "Key ID" | head -1 | awk '{print $NF}')
+          SECRET_ACCESS_KEY=$(echo "$KEY_OUTPUT" | grep -i "Secret key" | head -1 | awk '{print $NF}')
+
+          docker exec garage /garage bucket allow --read --write --key ci-test-key athena-test-0
+
+          echo "GARAGE_ACCESS_KEY_ID=$ACCESS_KEY_ID" >> "$GITHUB_ENV"
+          echo "GARAGE_SECRET_ACCESS_KEY=$SECRET_ACCESS_KEY" >> "$GITHUB_ENV"
 
       - name: Check Code Format
         run: mix format --check-formatted

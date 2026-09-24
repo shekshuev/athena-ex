@@ -15,9 +15,26 @@ defmodule Athena.Engagement do
   - `BlockStats`: warm, incrementally-updated per-(cohort, block) running
     statistics, used both for nudge decisions and for live dashboard reads -
     without ever issuing a query per incoming event.
+  - `ProctoringMonitor`: warm, per-exam-attempt academic-integrity signal
+    counts (focus loss, PrintScreen, copy/cut attempts, paste ratio,
+    answer-change rate, ...), accumulated in memory during a timed
+    `quiz_exam`/`ticket_exam` attempt.
+  - `ExamIntegrityStats`: warm, per-(cohort, exam block) live distribution
+    of a few behavioral rates, so a student's rate can be judged relative
+    to peers taking the same exam right now, not against a flat number.
+  - `Proctoring`: turns a `ProctoringMonitor` reading (plus an
+    `ExamIntegrityStats` lookup) into the risk-level fields persisted on a
+    submission, and the summary read back out of them.
   """
 
-  alias Athena.Engagement.{Events, BlockStats, Metrics}
+  alias Athena.Engagement.{
+    Events,
+    BlockStats,
+    Metrics,
+    Proctoring,
+    ProctoringMonitor,
+    ExamIntegrityStats
+  }
 
   @doc """
   Records one batch of raw events reported by a single Player session, then
@@ -40,6 +57,51 @@ defmodule Athena.Engagement do
 
   defdelegate get_session_timeline(account_id, session_id), to: Events
   defdelegate list_events_for_scope(block_ids, cohort_id \\ nil), to: Events
+  defdelegate normalize_event(raw_event, section_id), to: Events
+
+  @doc "The event types the proctoring monitor actually accumulates - used to decide whether a server-originated event is even worth forwarding."
+  defdelegate proctoring_tracked_event_types(), to: ProctoringMonitor, as: :tracked_event_types
+
+  @doc "Fire-and-forget: accumulates a batch of already-normalized events for one exam attempt."
+  defdelegate report_proctoring_events(submission_id, cohort_id, block_id, events),
+    to: ProctoringMonitor,
+    as: :report_events
+
+  @doc """
+  Live (non-destructive) risk evaluation for an in-progress exam attempt -
+  what the group-monitoring view and a single submission's badge both read
+  while the student is still taking the exam. Does not touch
+  `ExamIntegrityStats`'s cohort baseline (see `finalize_proctoring/4` for
+  the one-time, mutating version called when the attempt ends).
+  """
+  @spec evaluate_live_proctoring(binary(), binary() | nil, binary(), non_neg_integer()) :: map()
+  def evaluate_live_proctoring(submission_id, cohort_id, block_id, allowed_blur_attempts) do
+    submission_id
+    |> ProctoringMonitor.snapshot()
+    |> Proctoring.evaluate(cohort_id, block_id, allowed_blur_attempts)
+  end
+
+  @doc """
+  Reads the final reading for one exam attempt, stops accumulating,
+  removes it from the cohort's live baseline (so a finished student's
+  now-frozen rate doesn't keep skewing comparisons for students still
+  taking the exam), and returns the final `hard_evidence_count`/
+  `outlier_metrics`/`risk_level` fields to merge into `Submission.content`.
+  """
+  @spec finalize_proctoring(binary(), binary() | nil, binary(), non_neg_integer()) :: map()
+  def finalize_proctoring(submission_id, cohort_id, block_id, allowed_blur_attempts) do
+    fields =
+      submission_id
+      |> ProctoringMonitor.finalize()
+      |> Proctoring.evaluate(cohort_id, block_id, allowed_blur_attempts)
+
+    ExamIntegrityStats.forget(cohort_id, block_id, submission_id)
+
+    fields
+  end
+
+  @doc "Risk-level summary of a submission's proctoring data, or `nil` if it has none."
+  defdelegate proctoring_summary(content), to: Proctoring, as: :summary
 
   defdelegate get_metrics(scope), to: Metrics
   defdelegate funnel(block_id, cohort_id \\ nil), to: Metrics

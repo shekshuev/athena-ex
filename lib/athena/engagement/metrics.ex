@@ -50,7 +50,18 @@ defmodule Athena.Engagement.Metrics do
       section_blocks =
         section.id |> Content.list_blocks_by_section(:all) |> Enum.sort_by(& &1.order)
 
-      compute_block_metrics(block, section, section_blocks, scope)
+      section_events = events_for_scope(section_blocks, scope)
+      block_events = Enum.filter(section_events, &(&1.block_id == block.id))
+      resolved_rule = Policy.resolve_engagement_rule(block, section)
+
+      compute_block_metrics(
+        block,
+        section,
+        section_blocks,
+        block_events,
+        section_events,
+        resolved_rule
+      )
     else
       _ -> %{}
     end
@@ -62,8 +73,21 @@ defmodule Athena.Engagement.Metrics do
         section_blocks =
           section_id |> Content.list_blocks_by_section(:all) |> Enum.sort_by(& &1.order)
 
+        section_events = events_for_scope(section_blocks, scope)
+
         Map.new(section_blocks, fn block ->
-          {block.id, compute_block_metrics(block, section, section_blocks, scope)}
+          block_events = Enum.filter(section_events, &(&1.block_id == block.id))
+          resolved_rule = Policy.resolve_engagement_rule(block, section)
+
+          {block.id,
+           compute_block_metrics(
+             block,
+             section,
+             section_blocks,
+             block_events,
+             section_events,
+             resolved_rule
+           )}
         end)
 
       _ ->
@@ -193,6 +217,56 @@ defmodule Athena.Engagement.Metrics do
     end
   end
 
+  # Fetches every section, block, and matching event for a whole course in a
+  # fixed, small number of queries (one for sections, one bulk query for
+  # blocks, one bulk query for events), then indexes them in memory - the
+  # shared foundation for every course-wide aggregate below
+  # (`section_flag_totals/3`, `nudge_correction_rate/3`,
+  # `cohort_flag_profile/3`, `student_radar/3`), all of which used to
+  # re-fetch a block's own section and section-blocks, and re-query events,
+  # once per (block, student) pair (an O(sections x blocks x students) DB
+  # round-trip count). `student_block_flags/4` reads this index instead of
+  # touching the database at all.
+  defp build_scope_index(course_id, cohort_id, since) do
+    sections = course_id |> Content.get_course_tree(:all) |> flatten_sections()
+    section_by_id = Map.new(sections, &{&1.id, &1})
+
+    blocks_by_section =
+      sections
+      |> Enum.map(& &1.id)
+      |> Content.list_blocks_by_section_ids()
+      |> Enum.group_by(& &1.section_id)
+      |> Map.new(fn {section_id, blocks} -> {section_id, Enum.sort_by(blocks, & &1.order)} end)
+
+    all_blocks = blocks_by_section |> Map.values() |> List.flatten()
+    all_block_ids = Enum.map(all_blocks, & &1.id)
+    block_to_section_id = Map.new(all_blocks, &{&1.id, &1.section_id})
+
+    all_events = Events.list_events_for_scope(all_block_ids, cohort_id, since)
+    events_by_block = Enum.group_by(all_events, & &1.block_id)
+    events_by_section = Enum.group_by(all_events, &Map.fetch!(block_to_section_id, &1.block_id))
+
+    resolved_rule_by_block_id =
+      Map.new(all_blocks, fn block ->
+        section = Map.fetch!(section_by_id, block.section_id)
+        {block.id, Policy.resolve_engagement_rule(block, section)}
+      end)
+
+    %{
+      sections: sections,
+      section_by_id: section_by_id,
+      blocks_by_section: blocks_by_section,
+      events_by_block: events_by_block,
+      events_by_section: events_by_section,
+      resolved_rule_by_block_id: resolved_rule_by_block_id
+    }
+  end
+
+  defp filter_since(events, nil), do: events
+
+  defp filter_since(events, since),
+    do: Enum.filter(events, &(DateTime.compare(&1.occurred_at, since) != :lt))
+
   @doc """
   The "Group Radar" screen's data: for every student in `cohort_id`, how
   many `flag_concerns/1` slacking/struggling flags fired across the course
@@ -212,12 +286,13 @@ defmodule Athena.Engagement.Metrics do
   @spec student_radar(binary(), binary(), keyword()) :: [map()]
   def student_radar(cohort_id, course_id, opts \\ []) do
     since = Keyword.get(opts, :since, default_since())
-    blocks = radar_blocks(course_id, Keyword.get(opts, :section_id))
+    index = build_scope_index(course_id, cohort_id, since)
+    blocks = radar_blocks(index, Keyword.get(opts, :section_id))
     team_id = team_scope_id(cohort_id)
 
     cohort_id
     |> students_in_cohort()
-    |> Enum.map(&student_radar_row(&1, cohort_id, team_id, blocks, since))
+    |> Enum.map(&student_radar_row(&1, team_id, blocks, index))
   end
 
   # The full set of student-level flags from `slacking_flags/2` +
@@ -234,7 +309,13 @@ defmodule Athena.Engagement.Metrics do
     :slow_dwell,
     :hesitation,
     :backtracked,
-    :panic_debugging
+    :panic_debugging,
+    :printscreen_attempted,
+    :copy_attempted,
+    :cut_attempted,
+    :multi_tab_detected,
+    :excessive_tab_switching,
+    :heavy_paste_on_exam
   ]
 
   @doc """
@@ -258,7 +339,8 @@ defmodule Athena.Engagement.Metrics do
   @spec cohort_flag_profile(binary(), binary(), keyword()) :: %{atom() => float()}
   def cohort_flag_profile(cohort_id, course_id, opts \\ []) do
     since = Keyword.get(opts, :since, default_since())
-    blocks = radar_blocks(course_id, Keyword.get(opts, :section_id))
+    index = build_scope_index(course_id, cohort_id, since)
+    blocks = radar_blocks(index, Keyword.get(opts, :section_id))
     students = students_in_cohort(cohort_id)
     total_observations = length(blocks) * length(students)
 
@@ -267,15 +349,15 @@ defmodule Athena.Engagement.Metrics do
     else
       counts =
         for block <- blocks, account_id <- students, reduce: %{} do
-          acc -> tally_block_account_flags(block, cohort_id, account_id, since, acc)
+          acc -> tally_block_account_flags(block, account_id, index, acc)
         end
 
       Map.new(@radar_axes, fn axis -> {axis, Map.get(counts, axis, 0) / total_observations} end)
     end
   end
 
-  defp tally_block_account_flags(block, cohort_id, account_id, since, acc) do
-    flags = student_block_flags(block, cohort_id, account_id, since)
+  defp tally_block_account_flags(block, account_id, index, acc) do
+    flags = student_block_flags(block, account_id, index)
     Enum.reduce(flags.flags, acc, fn flag, acc2 -> Map.update(acc2, flag, 1, &(&1 + 1)) end)
   end
 
@@ -295,34 +377,36 @@ defmodule Athena.Engagement.Metrics do
             section_id: binary(),
             section_title: String.t(),
             slacking_count: non_neg_integer(),
-            struggling_count: non_neg_integer()
+            struggling_count: non_neg_integer(),
+            integrity_count: non_neg_integer()
           }
         ]
   def section_flag_totals(cohort_id, course_id, opts \\ []) do
     since = Keyword.get(opts, :since, default_since())
     students = students_in_cohort(cohort_id)
+    index = build_scope_index(course_id, cohort_id, since)
 
-    course_id
-    |> Content.get_course_tree(:all)
-    |> flatten_sections()
-    |> Enum.map(fn section -> section_flag_total(section, students, cohort_id, since) end)
+    Enum.map(index.sections, fn section -> section_flag_total(section, students, index) end)
   end
 
-  defp section_flag_total(section, students, cohort_id, since) do
-    blocks = Content.list_blocks_by_section(section.id, :all)
+  defp section_flag_total(section, students, index) do
+    blocks = Map.get(index.blocks_by_section, section.id, [])
 
-    {slacking_count, struggling_count} =
-      for block <- blocks, account_id <- students, reduce: {0, 0} do
-        {slacking_acc, struggling_acc} ->
-          flags = student_block_flags(block, cohort_id, account_id, since)
-          {slacking_acc + flags.slacking_count, struggling_acc + flags.struggling_count}
+    {slacking_count, struggling_count, integrity_count} =
+      for block <- blocks, account_id <- students, reduce: {0, 0, 0} do
+        {slacking_acc, struggling_acc, integrity_acc} ->
+          flags = student_block_flags(block, account_id, index)
+
+          {slacking_acc + flags.slacking_count, struggling_acc + flags.struggling_count,
+           integrity_acc + flags.integrity_count}
       end
 
     %{
       section_id: section.id,
       section_title: section.title,
       slacking_count: slacking_count,
-      struggling_count: struggling_count
+      struggling_count: struggling_count,
+      integrity_count: integrity_count
     }
   end
 
@@ -488,16 +572,17 @@ defmodule Athena.Engagement.Metrics do
         ]
   def nudge_correction_rate(cohort_id, course_id, opts \\ []) do
     since = Keyword.get(opts, :since, default_since())
-    blocks = course_blocks(course_id)
-    block_ids = Enum.map(blocks, & &1.id)
+    index = build_scope_index(course_id, cohort_id, since)
+    blocks = index.blocks_by_section |> Map.values() |> List.flatten()
 
-    block_ids
-    |> Events.list_events_for_scope(cohort_id, since)
+    index.events_by_block
+    |> Map.values()
+    |> List.flatten()
     |> Enum.filter(&(&1.event_type == :nudge_shown))
     |> Enum.map(&{nudge_reason(&1), &1})
     |> Enum.reject(fn {reason, _event} -> is_nil(reason) end)
     |> Enum.group_by(fn {reason, _event} -> reason end, fn {_reason, event} -> event end)
-    |> Enum.map(fn {reason, nudges} -> reason_correction(reason, nudges, blocks, cohort_id) end)
+    |> Enum.map(fn {reason, nudges} -> reason_correction(reason, nudges, blocks, index) end)
   end
 
   defp nudge_reason(%{payload: %{"reason" => reason}}) when is_binary(reason) do
@@ -508,9 +593,9 @@ defmodule Athena.Engagement.Metrics do
 
   defp nudge_reason(_event), do: nil
 
-  defp reason_correction(reason, nudges, blocks, cohort_id) do
+  defp reason_correction(reason, nudges, blocks, index) do
     nudged_count = length(nudges)
-    corrected_count = Enum.count(nudges, &(!flag_fires_again?(reason, &1, blocks, cohort_id)))
+    corrected_count = Enum.count(nudges, &(!flag_fires_again?(reason, &1, blocks, index)))
 
     %{
       reason: reason,
@@ -520,30 +605,36 @@ defmodule Athena.Engagement.Metrics do
     }
   end
 
-  defp flag_fires_again?(reason, nudge, blocks, cohort_id) do
+  defp flag_fires_again?(reason, nudge, blocks, index) do
     after_at = DateTime.add(nudge.occurred_at, 1, :second)
 
     Enum.any?(blocks, fn block ->
-      flags = student_block_flags(block, cohort_id, nudge.account_id, after_at)
+      flags = student_block_flags(block, nudge.account_id, index, after_at)
       reason in flags.slacking_flags
     end)
   end
 
-  defp radar_blocks(course_id, nil), do: course_blocks(course_id)
-  defp radar_blocks(_course_id, section_id), do: Content.list_blocks_by_section(section_id, :all)
+  defp radar_blocks(index, nil), do: index.blocks_by_section |> Map.values() |> List.flatten()
+  defp radar_blocks(index, section_id), do: Map.get(index.blocks_by_section, section_id, [])
 
-  defp student_radar_row(account_id, cohort_id, team_id, blocks, since) do
+  defp student_radar_row(account_id, team_id, blocks, index) do
     flagged_blocks =
       blocks
-      |> Enum.map(&student_block_flags(&1, cohort_id, account_id, since))
+      |> Enum.map(&student_block_flags(&1, account_id, index))
       |> Enum.filter(&(&1.flags != []))
 
     slacking_index = flagged_blocks |> Enum.map(& &1.slacking_count) |> Enum.sum()
     struggling_index = flagged_blocks |> Enum.map(& &1.struggling_count) |> Enum.sum()
+    integrity_index = flagged_blocks |> Enum.map(& &1.integrity_count) |> Enum.sum()
     config = engagement_config()
 
     status =
       cond do
+        # Checked first, and with a lower bar than slacking/struggling - a
+        # single academic-integrity flag (a printscreen/copy attempt during
+        # an exam) is worth a teacher's attention immediately, unlike
+        # slacking/struggling which only matter as a repeated pattern.
+        integrity_index >= Keyword.get(config, :student_radar_integrity_threshold, 1) -> :red
         slacking_index >= Keyword.get(config, :student_radar_slacking_threshold, 2) -> :red
         struggling_index >= Keyword.get(config, :student_radar_struggling_threshold, 2) -> :yellow
         true -> :green
@@ -554,29 +645,50 @@ defmodule Athena.Engagement.Metrics do
       progress_percent: progress_percent(account_id, team_id, blocks),
       slacking_index: slacking_index,
       struggling_index: struggling_index,
+      integrity_index: integrity_index,
       status: status,
       flagged_blocks: flagged_blocks
     }
   end
 
-  defp student_block_flags(block, cohort_id, account_id, since) do
-    scope = %{
-      resource_type: :block,
-      resource_id: block.id,
-      cohort_id: cohort_id,
-      account_id: account_id,
-      since: since
-    }
+  defp student_block_flags(block, account_id, index, since_override \\ nil) do
+    section = Map.fetch!(index.section_by_id, block.section_id)
+    section_blocks = Map.fetch!(index.blocks_by_section, block.section_id)
+    resolved_rule = Map.fetch!(index.resolved_rule_by_block_id, block.id)
 
-    flags = scope |> get_metrics() |> flag_concerns()
+    block_events =
+      index.events_by_block
+      |> Map.get(block.id, [])
+      |> filter_by_account(account_id)
+      |> filter_since(since_override)
+
+    section_events =
+      index.events_by_section
+      |> Map.get(block.section_id, [])
+      |> filter_by_account(account_id)
+      |> filter_since(since_override)
+
+    metrics =
+      compute_block_metrics(
+        block,
+        section,
+        section_blocks,
+        block_events,
+        section_events,
+        resolved_rule
+      )
+
+    flags = flag_concerns(metrics)
 
     %{
       block_id: block.id,
-      flags: flags.slacking ++ flags.struggling,
+      flags: flags.slacking ++ flags.struggling ++ flags.integrity,
       slacking_flags: flags.slacking,
       struggling_flags: flags.struggling,
+      integrity_flags: flags.integrity,
       slacking_count: length(flags.slacking),
-      struggling_count: length(flags.struggling)
+      struggling_count: length(flags.struggling),
+      integrity_count: length(flags.integrity)
     }
   end
 
@@ -626,18 +738,23 @@ defmodule Athena.Engagement.Metrics do
 
   # Per-block-type dispatch
 
-  defp compute_block_metrics(block, section, section_blocks, scope) do
-    events = fetch_events(block.id, scope)
-    resolved_rule = Policy.resolve_engagement_rule(block, section)
-    type_metrics = type_metrics_for(block.type, events)
-    shared = shared_metrics(events, resolved_rule)
-    backtrack = backtrack_count(block, section_blocks, events_for_scope(section_blocks, scope))
+  defp compute_block_metrics(
+         block,
+         _section,
+         section_blocks,
+         block_events,
+         section_events,
+         resolved_rule
+       ) do
+    type_metrics = type_metrics_for(block.type, block_events)
+    shared = shared_metrics(block_events, resolved_rule)
+    backtrack = backtrack_count(block, section_blocks, section_events)
 
     type_metrics
     |> Map.merge(shared)
     |> Map.put(:backtrack_count, backtrack)
     |> Map.put(:backtrack_rate, rate(backtrack, shared.students_observed))
-    |> Map.put(:hesitation_rate, hesitating_students_rate(events, shared.students_observed))
+    |> Map.put(:hesitation_rate, hesitating_students_rate(block_events, shared.students_observed))
   end
 
   # One function clause per block type (rather than a `case`) keeps each
@@ -671,14 +788,20 @@ defmodule Athena.Engagement.Metrics do
   All thresholds come from `config :athena, Athena.Engagement` so they can
   be recalibrated after the pilot without a code change.
   """
-  @spec flag_concerns(map()) :: %{content: [atom()], slacking: [atom()], struggling: [atom()]}
+  @spec flag_concerns(map()) :: %{
+          content: [atom()],
+          slacking: [atom()],
+          struggling: [atom()],
+          integrity: [atom()]
+        }
   def flag_concerns(metrics) do
     config = engagement_config()
 
     %{
       content: content_flags(metrics, config),
       slacking: slacking_flags(metrics, config),
-      struggling: struggling_flags(metrics, config)
+      struggling: struggling_flags(metrics, config),
+      integrity: integrity_flags(metrics, config)
     }
   end
 
@@ -735,6 +858,38 @@ defmodule Athena.Engagement.Metrics do
     |> add_if(metrics[:answer_change_count], &(&1 > 0), :hesitation)
     |> add_if(metrics[:backtrack_count], &(&1 > 0), :backtracked)
     |> add_if_true(metrics[:panic_debugging?] == true, :panic_debugging)
+  end
+
+  # Only ever fires on `exam_metrics/1`'s output (`quiz_exam`/`ticket_exam`
+  # blocks) - every key read here is exam-prefixed or exam-exclusive (see
+  # the comment on `exam_metrics/1`), so this silently no-ops (via `add_if`'s
+  # `nil` clause) for every other block type's metrics map. Deliberately
+  # simple absolute thresholds, same idiom as every other flag in this
+  # module - this feeds the *dashboard* (student radar, course-wide flag
+  # rates), a lightweight "worth a look" indicator for any teacher browsing
+  # engagement analytics. It is not the same decision that drives the live
+  # per-attempt risk badge a grader acts on (reject, zero the score) - that
+  # one needs the cohort-relative, percentile-normalized comparison in
+  # `Athena.Engagement.Proctoring`/`ExamIntegrityStats`, precisely because a
+  # single absolute threshold here would flag an anxious student who
+  # revised their answer a lot exactly like it would flag someone who
+  # actually tried to cheat.
+  defp integrity_flags(metrics, config) do
+    []
+    |> add_if(metrics[:printscreen_count], &(&1 > 0), :printscreen_attempted)
+    |> add_if(metrics[:copy_attempt_count], &(&1 > 0), :copy_attempted)
+    |> add_if(metrics[:cut_attempt_count], &(&1 > 0), :cut_attempted)
+    |> add_if(metrics[:multi_tab_count], &(&1 > 0), :multi_tab_detected)
+    |> add_if(
+      metrics[:focus_loss_count],
+      &(&1 >= Keyword.get(config, :exam_focus_loss_threshold, 3)),
+      :excessive_tab_switching
+    )
+    |> add_if(
+      metrics[:exam_paste_ratio],
+      &(&1 > Keyword.get(config, :exam_paste_ratio_threshold, 0.6)),
+      :heavy_paste_on_exam
+    )
   end
 
   defp add_if(flags, nil, _condition?, _flag), do: flags
@@ -805,8 +960,36 @@ defmodule Athena.Engagement.Metrics do
     }
   end
 
+  # Exam-only fields that would otherwise collide in name (but not in
+  # meaning) with `quiz_question_metrics/1`'s/`code_metrics/1`'s own
+  # `paste_ratio`/`answer_change_count`/`run_attempt_count`/
+  # `panic_debugging?` are prefixed `exam_` - `integrity_flags/2` reads
+  # these, and since a metrics map is always produced by exactly one
+  # `type_metrics_for/2` clause (never merged across block types), an
+  # unprefixed name would let e.g. a plain `quiz_question` block's own
+  # `paste_ratio` be silently mistaken for exam-integrity evidence.
   defp exam_metrics(events) do
-    %{focus_loss_count: Enum.count(events, &(&1.event_type == :tab_hidden))}
+    %{
+      focus_loss_count: Enum.count(events, &(&1.event_type == :tab_hidden)),
+      focus_loss_seconds: sum_duration_ms(events, :tab_visible),
+      window_blur_count: Enum.count(events, &(&1.event_type == :window_blur)),
+      printscreen_count: Enum.count(events, &(&1.event_type == :printscreen_attempt)),
+      copy_attempt_count: Enum.count(events, &(&1.event_type == :copy_attempt)),
+      cut_attempt_count: Enum.count(events, &(&1.event_type == :cut_attempt)),
+      multi_tab_count: Enum.count(events, &(&1.event_type == :multi_tab_detected)),
+      idle_seconds_total: sum_duration_ms(events, :idle_end),
+      exam_paste_ratio: avg_paste_ratio(events),
+      exam_answer_change_count: Enum.count(events, &(&1.event_type == :answer_changed)),
+      exam_run_attempt_count: Enum.count(events, &(&1.event_type == :code_run_attempt)),
+      exam_panic_debugging?: panic_debugging?(events)
+    }
+  end
+
+  defp sum_duration_ms(events, event_type) do
+    events
+    |> Enum.filter(&(&1.event_type == event_type))
+    |> Enum.map(&((&1.payload["duration_ms"] || 0) / 1000))
+    |> Enum.sum()
   end
 
   defp code_metrics(events) do
@@ -924,12 +1107,6 @@ defmodule Athena.Engagement.Metrics do
   defp events_for_scope(section_blocks, scope) do
     section_blocks
     |> Enum.map(& &1.id)
-    |> Events.list_events_for_scope(Map.get(scope, :cohort_id), Map.get(scope, :since))
-    |> filter_by_account(Map.get(scope, :account_id))
-  end
-
-  defp fetch_events(block_id, scope) do
-    [block_id]
     |> Events.list_events_for_scope(Map.get(scope, :cohort_id), Map.get(scope, :since))
     |> filter_by_account(Map.get(scope, :account_id))
   end

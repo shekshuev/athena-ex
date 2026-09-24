@@ -647,6 +647,61 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       assert slacking["data"] == [1]
     end
 
+    test "selecting a block skips recomputing the course-wide charts entirely, section view recomputes them again",
+         %{
+           conn: conn,
+           cohort: cohort,
+           course: course,
+           section: section,
+           block: block,
+           quiz_block: quiz_block,
+           student: student
+         } do
+      insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      record_fast_dwell(student, cohort, block, section, now)
+
+      {:ok, lv, _html} =
+        live(
+          conn,
+          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}"
+        )
+
+      chart_before_block_selected =
+        :sys.get_state(lv.pid).socket.assigns.section_chart_config
+
+      # New flagged behavior that WOULD change `@section_chart_config` if
+      # `refresh_course_charts/1` ran again.
+      record_heavy_paste(student, cohort, quiz_block, section, now)
+
+      render_patch(
+        lv,
+        ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&block_id=#{block.id}"
+      )
+
+      chart_while_block_selected =
+        :sys.get_state(lv.pid).socket.assigns.section_chart_config
+
+      # Unchanged term - proves `refresh_course_charts/1` did not re-run
+      # while the block-detail sub-view (which never renders this chart)
+      # was active.
+      assert chart_while_block_selected == chart_before_block_selected
+
+      render_patch(
+        lv,
+        ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}"
+      )
+
+      chart_back_on_section_view =
+        :sys.get_state(lv.pid).socket.assigns.section_chart_config
+
+      # Back on the section/course-radar view, the charts recompute again
+      # and now reflect the heavy_paste event recorded while a block was
+      # selected - confirming the skip is conditional, not a permanent
+      # regression.
+      assert chart_back_on_section_view != chart_before_block_selected
+    end
+
     test "changing the course window preserves the current section", %{
       conn: conn,
       cohort: cohort,

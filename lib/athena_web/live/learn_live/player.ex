@@ -19,6 +19,7 @@ defmodule AthenaWeb.LearnLive.Player do
   alias Athena.Engagement
   alias Athena.Execution
   alias Athena.Learning
+  alias AthenaWeb.LearnLive.EngagementSignals
   import AthenaWeb.BlockComponents
 
   @doc """
@@ -456,7 +457,7 @@ defmodule AthenaWeb.LearnLive.Player do
     draft = Map.get(socket.assigns.drafts || %{}, block_id)
     submission = Map.get(socket.assigns.submissions || %{}, block_id)
 
-    socket = emit_engagement_event(socket, block_id, :code_run_attempt)
+    socket = EngagementSignals.emit_code_run_attempt(socket, block_id)
 
     do_run_code(socket, block, draft, submission)
   end
@@ -491,7 +492,7 @@ defmodule AthenaWeb.LearnLive.Player do
         socket =
           socket
           |> assign(:drafts, new_drafts)
-          |> record_quiz_interaction(block)
+          |> EngagementSignals.record_quiz_interaction(block)
 
         {:noreply, socket}
 
@@ -510,7 +511,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
     normalized =
       events
-      |> Enum.map(&normalize_engagement_event(&1, section_id))
+      |> Enum.map(&Engagement.normalize_event(&1, section_id))
       |> Enum.reject(&is_nil/1)
 
     # A builder "test run" plays through as a throwaway ephemeral account
@@ -715,92 +716,14 @@ defmodule AthenaWeb.LearnLive.Player do
 
   @doc false
   defp nudge_student(socket, block_id, reason) do
-    emit_engagement_event(socket, block_id, :nudge_shown, %{"reason" => to_string(reason)})
+    EngagementSignals.emit_engagement_event(socket, block_id, :nudge_shown, %{
+      "reason" => to_string(reason)
+    })
 
     socket
     |> assign(:nudged_block_ids, MapSet.put(socket.assigns.nudged_block_ids, {block_id, reason}))
     |> put_flash(:info, nudge_message(reason))
   end
-
-  # Shared entry point for events the *server* originates on the student's
-  # behalf (as opposed to the batches `handle_event("engagement_batch", ...)`
-  # relays from the client) - `nudge_shown`, `code_run_attempt`,
-  # `code_run_result`. Always for the current section/session, so callers
-  # only ever need to supply the block, type, and payload.
-  @doc false
-  defp emit_engagement_event(socket, block_id, event_type, payload \\ %{}) do
-    unless socket.assigns.test_run do
-      Engagement.record_events(
-        socket.assigns.current_user.id,
-        socket.assigns.cohort_id,
-        socket.assigns.engagement_session_id,
-        [
-          %{
-            block_id: block_id,
-            section_id: socket.assigns.section.id,
-            event_type: event_type,
-            payload: payload,
-            occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
-          }
-        ]
-      )
-    end
-
-    socket
-  end
-
-  # Same as `emit_engagement_event/4` but for several event types that
-  # genuinely happen at the same instant (`first_interaction` +
-  # `answer_selected` on a quiz's very first answer) - one batch, one
-  # timestamp, instead of two separate round trips.
-  @doc false
-  defp emit_engagement_events(socket, block_id, event_types) do
-    unless socket.assigns.test_run do
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-      events =
-        Enum.map(event_types, fn event_type ->
-          %{
-            block_id: block_id,
-            section_id: socket.assigns.section.id,
-            event_type: event_type,
-            payload: %{},
-            occurred_at: now
-          }
-        end)
-
-      Engagement.record_events(
-        socket.assigns.current_user.id,
-        socket.assigns.cohort_id,
-        socket.assigns.engagement_session_id,
-        events
-      )
-    end
-
-    socket
-  end
-
-  # `answer_selected`/`answer_changed` were part of the event catalog from
-  # the start but never actually wired client-side - rather than a new JS
-  # hook on every radio/checkbox/rich-text input, this reuses the
-  # `save_draft` autosave that already fires on every quiz interaction
-  # (single/multiple/exact_match and the open rich-text answer all go
-  # through it). First save for this block this session doubles as TTFA's
-  # `first_interaction`; every save after that is a revision.
-  @doc false
-  defp record_quiz_interaction(socket, %{type: :quiz_question, id: block_id}) do
-    answered = socket.assigns.engagement_answered_blocks
-
-    if MapSet.member?(answered, block_id) do
-      emit_engagement_event(socket, block_id, :answer_changed)
-    else
-      socket
-      |> emit_engagement_events(block_id, [:first_interaction, :answer_selected])
-      |> assign(:engagement_answered_blocks, MapSet.put(answered, block_id))
-    end
-  end
-
-  defp record_quiz_interaction(socket, _block), do: socket
 
   @doc false
   defp nudge_message(:shallow_scroll),
@@ -825,39 +748,6 @@ defmodule AthenaWeb.LearnLive.Player do
 
   defp video_skip_ratio_threshold,
     do: Keyword.get(engagement_config(), :video_skip_ratio_threshold, 0.3)
-
-  @doc false
-  defp normalize_engagement_event(event, section_id) do
-    with block_id when is_binary(block_id) <- event["block_id"],
-         {:ok, event_type} <- parse_engagement_event_type(event["event_type"]),
-         {:ok, occurred_at, _offset} <- parse_occurred_at(event["occurred_at"]) do
-      %{
-        block_id: block_id,
-        section_id: section_id,
-        event_type: event_type,
-        payload: event["payload"] || %{},
-        occurred_at: DateTime.truncate(occurred_at, :second)
-      }
-    else
-      _ -> nil
-    end
-  end
-
-  @doc false
-  defp parse_engagement_event_type(type) when is_binary(type) do
-    Engagement.Event.event_types()
-    |> Enum.find(&(Atom.to_string(&1) == type))
-    |> case do
-      nil -> :error
-      atom -> {:ok, atom}
-    end
-  end
-
-  defp parse_engagement_event_type(_), do: :error
-
-  @doc false
-  defp parse_occurred_at(iso8601) when is_binary(iso8601), do: DateTime.from_iso8601(iso8601)
-  defp parse_occurred_at(_), do: :error
 
   defp do_run_code(socket, nil, _draft, _submission), do: {:noreply, socket}
 
@@ -1402,10 +1292,7 @@ defmodule AthenaWeb.LearnLive.Player do
       if submission.status in [:pending, :processing, :draft] do
         socket
       else
-        socket =
-          emit_engagement_event(socket, block.id, :code_run_result, %{
-            "outcome" => to_string(submission.status)
-          })
+        socket = EngagementSignals.emit_code_run_result(socket, block.id, submission.status)
 
         attempts = Map.get(socket.assigns.attempts_map || %{}, block.id, 0)
         {flash_type, flash_msg} = build_code_flash(submission, block, attempts)
