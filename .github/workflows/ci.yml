@@ -116,7 +116,12 @@ jobs:
           # Even a single-node Garage cluster needs an explicit layout
           # (zone + capacity) assigned and applied before it accepts writes -
           # this is a one-time bootstrap, not something MinIO required.
-          NODE_ID=$(docker exec garage /garage node id -q)
+          # `node id -q` still prints "<id>@<rpc_public_addr>" (the `-q`
+          # only suppresses log noise, not the address suffix) - `layout
+          # assign` matches on the bare node ID, so the "@..." part has to
+          # be stripped or it reports "0 nodes match".
+          RAW_NODE_ID=$(docker exec garage /garage node id -q)
+          NODE_ID="${RAW_NODE_ID%%@*}"
           docker exec garage /garage layout assign -z dc1 -c 1G "$NODE_ID"
           docker exec garage /garage layout apply --version 1
 
