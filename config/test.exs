@@ -14,7 +14,8 @@ config :athena, Athena.Repo,
   hostname: external_host,
   database: "athena_test#{System.get_env("MIX_TEST_PARTITION")}",
   pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: System.schedulers_online() * 2,
+  pool_size: System.schedulers_online() * 3,
+  queue_target: 5_000,
   types: Athena.PostgresTypes
 
 config :athena, Athena.Execution.SqlRunner,
@@ -65,3 +66,11 @@ config :athena, Oban,
   plugins: false
 
 config :athena, :server_role, "all"
+
+# These global singletons (see `Athena.Application.background_listeners/0`)
+# can never be granted access to a test's sandboxed DB connection, so
+# leaving them running just spams every test run with harmless-but-noisy
+# DBConnection.OwnershipError logs whenever any test broadcasts a domain
+# event. Their handler logic is unit-tested directly instead (calling
+# `handle_info/2` in the test's own sandboxed process).
+config :athena, :start_background_listeners, false

@@ -47,31 +47,45 @@ defmodule Athena.Application do
     ]
 
   defp children_for_role("default", _runner_family),
-    do: [
-      Athena.Repo,
-      {Oban, Application.fetch_env!(:athena, Oban)},
-      AthenaWeb.Telemetry,
-      {DNSCluster, query: Application.get_env(:athena, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: Athena.PubSub},
-      AthenaWeb.Presence,
-      Athena.Media.EventListener,
-      Athena.Content.Listener,
-      Athena.Gamification.ActivityListener,
-      Supervisor.child_spec({Cachex, name: :account_cache}, id: :account_cache),
-      Supervisor.child_spec({Cachex, name: :draft_cache}, id: :draft_cache),
-      {Registry, keys: :unique, name: Athena.Engagement.BlockStatsRegistry},
-      {DynamicSupervisor, name: Athena.Engagement.BlockStatsSupervisor, strategy: :one_for_one},
-      {Registry, keys: :unique, name: Athena.Engagement.ProctoringMonitorRegistry},
-      {DynamicSupervisor,
-       name: Athena.Engagement.ProctoringMonitorSupervisor, strategy: :one_for_one},
-      {Registry, keys: :unique, name: Athena.Engagement.ExamIntegrityStatsRegistry},
-      {DynamicSupervisor,
-       name: Athena.Engagement.ExamIntegrityStatsSupervisor, strategy: :one_for_one},
-      AthenaWeb.Endpoint
-    ]
+    do:
+      [
+        Athena.Repo,
+        {Oban, Application.fetch_env!(:athena, Oban)},
+        AthenaWeb.Telemetry,
+        {DNSCluster, query: Application.get_env(:athena, :dns_cluster_query) || :ignore},
+        {Phoenix.PubSub, name: Athena.PubSub},
+        AthenaWeb.Presence
+      ] ++
+        background_listeners() ++
+        [
+          Supervisor.child_spec({Cachex, name: :account_cache}, id: :account_cache),
+          Supervisor.child_spec({Cachex, name: :draft_cache}, id: :draft_cache),
+          {Registry, keys: :unique, name: Athena.Engagement.BlockStatsRegistry},
+          {DynamicSupervisor,
+           name: Athena.Engagement.BlockStatsSupervisor, strategy: :one_for_one},
+          {Registry, keys: :unique, name: Athena.Engagement.ProctoringMonitorRegistry},
+          {DynamicSupervisor,
+           name: Athena.Engagement.ProctoringMonitorSupervisor, strategy: :one_for_one},
+          {Registry, keys: :unique, name: Athena.Engagement.ExamIntegrityStatsRegistry},
+          {DynamicSupervisor,
+           name: Athena.Engagement.ExamIntegrityStatsSupervisor, strategy: :one_for_one},
+          AthenaWeb.Endpoint
+        ]
 
   defp children_for_role("all", runner_family),
     do: children_for_role("runner", runner_family) ++ children_for_role("default", runner_family)
+
+  defp background_listeners do
+    if Application.get_env(:athena, :start_background_listeners, true) do
+      [
+        Athena.Media.EventListener,
+        Athena.Content.Listener,
+        Athena.Gamification.ActivityListener
+      ]
+    else
+      []
+    end
+  end
 
   # A combined ("all") node serves every language, since there's only one of it.
   defp runner_families(nil), do: [:db, :compiled, :script]
