@@ -1004,9 +1004,10 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                         type="number"
                         name="library_block[content][time_limit]"
                         value={@block.content["time_limit"]}
-                        label={gettext("Time (Min)")}
-                        placeholder="Opt"
+                        label={gettext("Time Limit (min)")}
+                        placeholder={gettext("Optional")}
                         min="1"
+                        phx-debounce="500"
                       />
 
                       <div class="flex items-center justify-between mb-2 mt-6">
@@ -1113,7 +1114,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                           type="number"
                           name="library_block[content][time_limit]"
                           value={@block.content["time_limit"]}
-                          label={gettext("Time Limit (sec)")}
+                          label={gettext("Time Limit (min)")}
                           placeholder={gettext("Optional")}
                           min="1"
                           phx-debounce="500"

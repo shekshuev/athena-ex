@@ -2146,10 +2146,6 @@ msgstr ""
 msgid "Submission graded successfully!"
 msgstr ""
 
-#: lib/athena_web/live/studio_live/library_editor.ex:981
-#, elixir-autogen, elixir-format
-msgid "Time (Min)"
-msgstr ""
 
 #: lib/athena_web/components/block_components.ex:630
 #, elixir-autogen, elixir-format
@@ -3847,7 +3843,7 @@ msgstr ""
 #: lib/athena_web/live/studio_live/inspector_component.ex:471
 #: lib/athena_web/live/studio_live/library_editor.ex:1090
 #, elixir-autogen, elixir-format
-msgid "Time Limit (sec)"
+msgid "Time Limit (min)"
 msgstr ""
 
 #: lib/athena_web/live/teaching_live/grading_detail.ex:337

@@ -357,7 +357,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                   type="number"
                   name="block[content][time_limit]"
                   value={@block.content["time_limit"]}
-                  label={gettext("Time Limit (sec)")}
+                  label={gettext("Time Limit (min)")}
                   placeholder={gettext("Optional")}
                   min="1"
                 />
@@ -484,7 +484,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                   type="number"
                   name="block[content][time_limit]"
                   value={@block.content["time_limit"]}
-                  label={gettext("Time Limit (sec)")}
+                  label={gettext("Time Limit (min)")}
                   placeholder={gettext("Optional")}
                   min="1"
                   phx-debounce="500"
