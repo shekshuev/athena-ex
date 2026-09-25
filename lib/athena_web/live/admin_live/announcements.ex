@@ -186,7 +186,7 @@ defmodule AthenaWeb.AdminLive.Announcements do
           {owner_name(@owners, a.author_id)}
         </:col>
         <:col :let={{_id, a}} label={gettext("Created At")} sort="inserted_at">
-          <span class="text-sm opacity-60">{Calendar.strftime(a.inserted_at, "%d.%m.%Y")}</span>
+          <span class="text-sm opacity-60">{TimeZones.format(a.inserted_at, "%d.%m.%Y")}</span>
         </:col>
         <:action :let={{_id, a}}>
           <div class="flex justify-end gap-2">

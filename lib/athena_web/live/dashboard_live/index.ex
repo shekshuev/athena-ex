@@ -379,7 +379,7 @@ defmodule AthenaWeb.DashboardLive.Index do
             >
               <div class="card-body py-3 px-4">
                 <div class="text-xs font-black uppercase text-error tracking-wide">
-                  {Calendar.strftime(deadline.lock_at, "%d.%m %H:%M")}
+                  {TimeZones.format(deadline.lock_at, "%d.%m %H:%M")}
                 </div>
                 <div class="font-bold text-sm truncate">{deadline.course.title}</div>
                 <div class="text-xs text-base-content/50 truncate">{deadline.section_title}</div>

@@ -6198,3 +6198,83 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Question %{number}"
 msgstr "Вопрос %{number}"
+
+#: lib/athena_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Pick a date"
+msgstr "Выберите дату"
+
+#: lib/athena_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Month"
+msgstr "Месяц"
+
+#: lib/athena_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Year"
+msgstr "Год"
+
+#: lib/athena_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Today"
+msgstr "Сегодня"
+
+#: lib/athena_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "January"
+msgstr "Январь"
+
+#: lib/athena_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "February"
+msgstr "Февраль"
+
+#: lib/athena_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "March"
+msgstr "Март"
+
+#: lib/athena_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "April"
+msgstr "Апрель"
+
+#: lib/athena_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "May"
+msgstr "Май"
+
+#: lib/athena_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "June"
+msgstr "Июнь"
+
+#: lib/athena_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "July"
+msgstr "Июль"
+
+#: lib/athena_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "August"
+msgstr "Август"
+
+#: lib/athena_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "September"
+msgstr "Сентябрь"
+
+#: lib/athena_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "October"
+msgstr "Октябрь"
+
+#: lib/athena_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "November"
+msgstr "Ноябрь"
+
+#: lib/athena_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "December"
+msgstr "Декабрь"

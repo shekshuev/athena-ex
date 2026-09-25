@@ -87,7 +87,7 @@ defmodule AthenaWeb.MessengerLive.MessageComponent do
 
         <div class={["flex items-center gap-2 mt-0.5 px-1", @own && "justify-end"]}>
           <span class="text-[11px] text-base-content/40">
-            {Calendar.strftime(@message.inserted_at, "%H:%M")}
+            {TimeZones.format(@message.inserted_at, "%H:%M")}
           </span>
           <span
             :if={@message.edited_at && !@message.deleted_at}

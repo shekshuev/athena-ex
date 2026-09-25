@@ -28,12 +28,12 @@ defmodule Athena.Gamification.DailyChallenges do
 
   @doc """
   Returns today's challenge for the account, generating one the first time
-  it's requested this (UTC) day. `nil` if the account has no eligible
+  it's requested this day (in the app timezone, see `Athena.TimeZones`). `nil` if the account has no eligible
   completed block yet (no enrollments, or nothing auto-gradable solved).
   """
   @spec today_for(String.t()) :: DailyChallenge.t() | nil
   def today_for(account_id) do
-    today = Date.utc_today()
+    today = Athena.TimeZones.today()
 
     case Repo.get_by(DailyChallenge, account_id: account_id, assigned_date: today) do
       nil -> generate_for(account_id, today)
@@ -125,7 +125,7 @@ defmodule Athena.Gamification.DailyChallenges do
   """
   @spec handle_block_completed(map()) :: :ok
   def handle_block_completed(%{account_id: account_id, block_id: block_id} = payload) do
-    today = Date.utc_today()
+    today = Athena.TimeZones.today()
 
     DailyChallenge
     |> where(
@@ -180,7 +180,7 @@ defmodule Athena.Gamification.DailyChallenges do
   `Athena.Gamification.Workers.DailyChallengeCleanup`.
   """
   @spec delete_stale(Date.t()) :: non_neg_integer()
-  def delete_stale(cutoff \\ Date.add(Date.utc_today(), -@retention_days)) do
+  def delete_stale(cutoff \\ Date.add(Athena.TimeZones.today(), -@retention_days)) do
     {count, _} =
       DailyChallenge
       |> where([c], c.assigned_date < ^cutoff)

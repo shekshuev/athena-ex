@@ -142,6 +142,8 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
   end
 
   defp build_override_attrs(params, assigns, type, id) do
+    params = TimeZones.localize_params(params, ~w(unlock_at lock_at))
+
     visibility =
       if params["visibility"] in [nil, ""], do: nil, else: String.to_atom(params["visibility"])
 
@@ -368,29 +370,23 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
             </h4>
             <div class="space-y-4">
               <div class={["space-y-4 mb-4", @current_vis != "restricted" && "hidden"]}>
-                <div>
-                  <label class="block text-xs font-bold text-base-content/70 mb-1">
-                    {gettext("Unlock Time")}
-                  </label>
-                  <input
-                    type="datetime-local"
-                    name="unlock_at"
-                    value={if @override, do: format_dt_input(@override.unlock_at), else: ""}
-                    class="input input-bordered input-sm rounded-sm w-full font-mono"
-                  />
-                </div>
+                <.input
+                  type="datetime-local"
+                  id="override-unlock-at"
+                  name="unlock_at"
+                  value={@override && @override.unlock_at}
+                  label={gettext("Unlock Time")}
+                  class="input input-sm rounded-sm w-full font-mono"
+                />
 
-                <div>
-                  <label class="block text-xs font-bold text-base-content/70 mb-1">
-                    {gettext("Lock Time")}
-                  </label>
-                  <input
-                    type="datetime-local"
-                    name="lock_at"
-                    value={if @override, do: format_dt_input(@override.lock_at), else: ""}
-                    class="input input-bordered input-sm rounded-sm w-full font-mono"
-                  />
-                </div>
+                <.input
+                  type="datetime-local"
+                  id="override-lock-at"
+                  name="lock_at"
+                  value={@override && @override.lock_at}
+                  label={gettext("Lock Time")}
+                  class="input input-sm rounded-sm w-full font-mono"
+                />
               </div>
 
               <div class="pt-2 flex gap-2">
@@ -438,8 +434,5 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
   end
 
   defp format_dt(nil), do: ""
-  defp format_dt(dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M UTC")
-
-  defp format_dt_input(nil), do: ""
-  defp format_dt_input(dt), do: Calendar.strftime(dt, "%Y-%m-%dT%H:%M")
+  defp format_dt(dt), do: TimeZones.format(dt, "%d.%m.%Y %H:%M")
 end

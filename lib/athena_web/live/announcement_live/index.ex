@@ -75,7 +75,7 @@ defmodule AthenaWeb.AnnouncementLive.Index do
               {if a.scope == :global, do: gettext("Global"), else: cohort_name(@cohorts, a.cohort_id)}
             </.badge>
           </div>
-          <p class="text-sm text-base-content/50">{Calendar.strftime(a.inserted_at, "%d.%m.%Y")}</p>
+          <p class="text-sm text-base-content/50">{TimeZones.format(a.inserted_at, "%d.%m.%Y")}</p>
           <div
             id={"tiptap-view-#{a.id}"}
             phx-hook="TiptapEditor"

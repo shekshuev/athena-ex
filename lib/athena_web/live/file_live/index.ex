@@ -365,7 +365,7 @@ defmodule AthenaWeb.FileLive.Index do
               </.badge>
             </div>
             <div class="text-xs font-medium text-base-content/50 uppercase tracking-wider">
-              {Media.format_bytes(file.size)} · {Calendar.strftime(file.inserted_at, "%d.%m.%Y")}
+              {Media.format_bytes(file.size)} · {TimeZones.format(file.inserted_at, "%d.%m.%Y")}
             </div>
           </div>
         </div>

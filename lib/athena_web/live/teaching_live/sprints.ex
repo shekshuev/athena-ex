@@ -40,11 +40,13 @@ defmodule AthenaWeb.TeachingLive.Sprints do
   end
 
   def handle_event("validate", %{"sprint" => params}, socket) do
+    params = TimeZones.localize_params(params, ~w(starts_at ends_at))
     changeset = %Sprint{} |> Sprint.changeset(params) |> Map.put(:action, :validate)
     {:noreply, assign(socket, :form, to_form(changeset))}
   end
 
   def handle_event("save", %{"sprint" => params}, socket) do
+    params = TimeZones.localize_params(params, ~w(starts_at ends_at))
     user = socket.assigns.current_user
 
     case Gamification.create_sprint(user, params) do
@@ -183,6 +185,7 @@ defmodule AthenaWeb.TeachingLive.Sprints do
           <ul class="space-y-2">
             <li
               :for={sprint <- @sprints}
+              id={"sprint-#{sprint.id}"}
               class="flex items-center justify-between p-4 bg-base-100 border border-base-300 rounded-sm"
             >
               <div>
@@ -193,7 +196,7 @@ defmodule AthenaWeb.TeachingLive.Sprints do
                   </span>
                 </div>
                 <div class="text-xs text-base-content/50">
-                  {Calendar.strftime(sprint.starts_at, "%d.%m %H:%M")} — {Calendar.strftime(
+                  {TimeZones.format(sprint.starts_at, "%d.%m %H:%M")} — {TimeZones.format(
                     sprint.ends_at,
                     "%d.%m %H:%M"
                   )} · x{sprint.xp_multiplier}

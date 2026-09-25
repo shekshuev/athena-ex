@@ -1,5 +1,8 @@
 import Config
 
+# Keep day boundaries and rendered times deterministic in tests.
+config :athena, :app_timezone, "Etc/UTC"
+
 # Configure your database
 #
 # The MIX_TEST_PARTITION environment variable can be used

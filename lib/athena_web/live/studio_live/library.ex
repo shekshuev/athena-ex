@@ -615,7 +615,7 @@ defmodule AthenaWeb.StudioLive.Library do
 
               <:col :let={{_id, block}} label={gettext("Created At")} sort="inserted_at">
                 <span class="text-sm opacity-60">
-                  {Calendar.strftime(block.inserted_at, "%d.%m.%Y")}
+                  {TimeZones.format(block.inserted_at, "%d.%m.%Y")}
                 </span>
               </:col>
 

@@ -11,6 +11,13 @@ config :athena,
   ecto_repos: [Athena.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+# Everything is stored and compared in UTC. The app timezone defines where a
+# "day"/"week" starts for server-side logic (daily challenges, weekly rollups,
+# cron) and is the display fallback when the browser hasn't reported its own.
+config :athena, :app_timezone, "Europe/Moscow"
+
+config :elixir, :time_zone_database, Tz.TimeZoneDatabase
+
 # Configure the endpoint
 config :athena, AthenaWeb.Endpoint,
   url: [host: "localhost"],

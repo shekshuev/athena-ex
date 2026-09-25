@@ -221,7 +221,7 @@ defmodule AthenaWeb.StudioLive.Characters do
 
         <:col :let={{_id, character}} label={gettext("Created At")} sort="inserted_at">
           <span class="text-sm opacity-60">
-            {Calendar.strftime(character.inserted_at, "%d.%m.%Y")}
+            {TimeZones.format(character.inserted_at, "%d.%m.%Y")}
           </span>
         </:col>
 

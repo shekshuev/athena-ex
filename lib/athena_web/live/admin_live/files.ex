@@ -265,7 +265,7 @@ defmodule AthenaWeb.AdminLive.Files do
           {Media.format_bytes(file.size)}
         </:col>
         <:col :let={{_id, file}} label={gettext("Uploaded At")} sort="inserted_at">
-          <span class="text-sm opacity-60">{Calendar.strftime(file.inserted_at, "%d.%m.%Y")}</span>
+          <span class="text-sm opacity-60">{TimeZones.format(file.inserted_at, "%d.%m.%Y")}</span>
         </:col>
         <:action :let={{_id, file}}>
           <div class="flex justify-end gap-2">

@@ -25,6 +25,7 @@ defmodule Athena.Engagement.Metrics do
   """
 
   alias Athena.Content
+  alias Athena.TimeZones
   alias Athena.Content.Policy
   alias Athena.Engagement.Events
   alias Athena.Learning
@@ -411,15 +412,16 @@ defmodule Athena.Engagement.Metrics do
   end
 
   @doc """
-  A 7x24 activity heatmap (day of week x hour of day, UTC) for every raw
+  A 7x24 activity heatmap (day of week x hour of day, app timezone) for every raw
   event a cohort produced across `course_id` - not a per-block metric, a
   "when is this cohort actually working" view, the kind of procrastination/
   crunch pattern Moodle's engagement analytics and GitHub-style
   contribution grids both surface. Counts every event type, not just dwell,
   since the question is "is anyone active right now", not "how long did
   they stay". `day_of_week` is `Date.day_of_week/1`'s convention (`1` =
-  Monday .. `7` = Sunday); the hour bucket is the UTC hour of `occurred_at`
-  - a known simplification (no per-student timezone data is collected).
+  Monday .. `7` = Sunday); the hour bucket is the hour of `occurred_at` in
+  the app timezone (`Athena.TimeZones.app_timezone/0`) - a known
+  simplification, students' own timezones aren't considered.
   Always returns the full 168-cell grid, zeros
   included, so a chart never has to guess whether a missing cell means "no
   data" or "not computed".
@@ -445,7 +447,8 @@ defmodule Athena.Engagement.Metrics do
   end
 
   defp heatmap_cell(occurred_at) do
-    {occurred_at |> DateTime.to_date() |> Date.day_of_week(), occurred_at.hour}
+    local = TimeZones.to_app_zone(occurred_at)
+    {local |> DateTime.to_date() |> Date.day_of_week(), local.hour}
   end
 
   @doc """
@@ -525,7 +528,7 @@ defmodule Athena.Engagement.Metrics do
   reading. Only days with activity are returned (not a zero-filled
   calendar range) - a chart can still plot a sparse series, and this way
   the result never has to guess where "today" is relative to `opts[:since]`.
-  Day boundaries are UTC calendar days, the same simplification
+  Day boundaries are app-timezone calendar days, the same simplification
   `activity_heatmap/3` already documents.
   """
   @spec active_students_trend(binary(), binary(), keyword()) :: [
@@ -537,7 +540,7 @@ defmodule Athena.Engagement.Metrics do
 
     block_ids
     |> Events.list_events_for_scope(cohort_id, since)
-    |> Enum.group_by(&DateTime.to_date(&1.occurred_at))
+    |> Enum.group_by(&(&1.occurred_at |> TimeZones.to_app_zone() |> DateTime.to_date()))
     |> Enum.map(fn {date, events} ->
       %{date: date, active_count: events |> Enum.map(& &1.account_id) |> Enum.uniq() |> length()}
     end)
@@ -1178,7 +1181,7 @@ defmodule Athena.Engagement.Metrics do
   defp avg(list), do: Enum.sum(list) / length(list)
 
   defp week_start(%{occurred_at: occurred_at}) do
-    date = DateTime.to_date(occurred_at)
+    date = occurred_at |> TimeZones.to_app_zone() |> DateTime.to_date()
     Date.add(date, -(Date.day_of_week(date) - 1))
   end
 

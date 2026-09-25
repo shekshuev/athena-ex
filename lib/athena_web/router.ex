@@ -9,6 +9,7 @@ defmodule AthenaWeb.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug :put_locale
+    plug AthenaWeb.Plugs.PutTimezone
     plug AthenaWeb.Plugs.FetchCurrentUser
   end
 
@@ -44,7 +45,7 @@ defmodule AthenaWeb.Router do
 
   live_session :public,
     layout: {AthenaWeb.Layouts, :app},
-    on_mount: [{AthenaWeb.Hooks.Auth, :default}] do
+    on_mount: [{AthenaWeb.Hooks.Timezone, :default}, {AthenaWeb.Hooks.Auth, :default}] do
     scope "/auth", AthenaWeb do
       pipe_through :browser
       live "/login", AuthLive.Login, :new
@@ -54,6 +55,7 @@ defmodule AthenaWeb.Router do
   live_session :require_password_change,
     layout: {AthenaWeb.Layouts, :app},
     on_mount: [
+      {AthenaWeb.Hooks.Timezone, :default},
       {AthenaWeb.Hooks.Auth, :default},
       {AthenaWeb.Hooks.Auth, :require_authenticated_user}
     ] do
@@ -66,6 +68,7 @@ defmodule AthenaWeb.Router do
   live_session :authenticated,
     layout: {AthenaWeb.Layouts, :dashboard},
     on_mount: [
+      {AthenaWeb.Hooks.Timezone, :default},
       {AthenaWeb.Hooks.Auth, :default},
       {AthenaWeb.Hooks.Auth, :require_authenticated_user},
       {AthenaWeb.Hooks.Auth, :ensure_password_changed},

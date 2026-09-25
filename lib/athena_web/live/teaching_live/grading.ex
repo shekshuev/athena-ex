@@ -182,20 +182,9 @@ defmodule AthenaWeb.TeachingLive.Grading do
         do: [%{"field" => "block_id", "op" => "==", "value" => block_id} | filters],
         else: filters
 
-    filters =
-      if date_from != "",
-        do: [
-          %{"field" => "inserted_at", "op" => ">=", "value" => date_from <> "T00:00:00Z"}
-          | filters
-        ],
-        else: filters
-
-    filters =
-      if date_to != "",
-        do: [
-          %{"field" => "inserted_at", "op" => "<=", "value" => date_to <> "T23:59:59Z"} | filters
-        ],
-        else: filters
+    # Picked dates are calendar days in the user's timezone.
+    filters = add_date_bound_filter(filters, date_from, 0, ">=")
+    filters = add_date_bound_filter(filters, date_to, 1, "<")
 
     filters =
       if has_cheats == "true",
@@ -215,6 +204,13 @@ defmodule AthenaWeb.TeachingLive.Grading do
     filters
     |> Enum.with_index(fn filter, index -> {Integer.to_string(index), filter} end)
     |> Map.new()
+  end
+
+  defp add_date_bound_filter(filters, date_string, offset_days, op) do
+    case TimeZones.local_day_start(date_string, offset_days) do
+      {:ok, bound} -> [%{"field" => "inserted_at", "op" => op, "value" => bound} | filters]
+      :error -> filters
+    end
   end
 
   @doc false
@@ -433,7 +429,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
 
           <:col :let={{_id, sub}} label={gettext("Submitted At")} sort="inserted_at">
             <span class="text-sm font-mono opacity-60">
-              {Calendar.strftime(sub.inserted_at, "%d.%m.%Y %H:%M")}
+              {TimeZones.format(sub.inserted_at, "%d.%m.%Y %H:%M")}
             </span>
           </:col>
 

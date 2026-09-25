@@ -235,7 +235,7 @@ defmodule AthenaWeb.AdminLive.Users do
           <div class="badge badge-outline">{acc.role.name}</div>
         </:col>
         <:col :let={{_id, acc}} label={gettext("Created At")} sort="inserted_at">
-          <span class="text-sm opacity-60">{Calendar.strftime(acc.inserted_at, "%d.%m.%Y")}</span>
+          <span class="text-sm opacity-60">{TimeZones.format(acc.inserted_at, "%d.%m.%Y")}</span>
         </:col>
         <:action :let={{_id, acc}}>
           <div class="flex justify-end gap-2">

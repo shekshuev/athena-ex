@@ -55,8 +55,7 @@ defmodule Athena.Gamification.Facts do
   end
 
   defp weekly_xp(account_id) do
-    week_start = Date.beginning_of_week(Date.utc_today())
-    week_start_dt = DateTime.new!(week_start, ~T[00:00:00], "Etc/UTC")
+    week_start_dt = Athena.TimeZones.start_of_day(Athena.TimeZones.this_week_start())
 
     XpEvent
     |> where([e], e.account_id == ^account_id and e.inserted_at >= ^week_start_dt)

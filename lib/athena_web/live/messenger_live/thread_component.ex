@@ -156,7 +156,7 @@ defmodule AthenaWeb.MessengerLive.ThreadComponent do
       diff < 60 -> gettext("just now")
       diff < 3600 -> gettext("%{n}m ago", n: div(diff, 60))
       diff < 86_400 -> gettext("%{n}h ago", n: div(diff, 3600))
-      true -> Calendar.strftime(datetime, "%d.%m.%Y")
+      true -> TimeZones.format(datetime, "%d.%m.%Y")
     end
   end
 end
