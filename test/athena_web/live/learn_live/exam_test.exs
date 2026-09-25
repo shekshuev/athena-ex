@@ -235,6 +235,99 @@ defmodule AthenaWeb.LearnLive.ExamTest do
     end
   end
 
+  describe "Time Limit Exceeded" do
+    test "scores a fully answered exam and marks it timed out, without needing a manual review",
+         %{conn: conn, course: course, section: section, user: user} do
+      block = insert(:block, section: section, type: :quiz_exam, content: %{"count" => 2})
+
+      q1 = %{
+        "id" => Ecto.UUID.generate(),
+        "type" => "quiz_question",
+        "content" => %{
+          "question_type" => "exact_match",
+          "body" => %{"text" => "What is 2+2?"},
+          "correct_answer" => "4"
+        }
+      }
+
+      q2 = %{
+        "id" => Ecto.UUID.generate(),
+        "type" => "quiz_question",
+        "content" => %{
+          "question_type" => "exact_match",
+          "body" => %{"text" => "What is 3+3?"},
+          "correct_answer" => "6"
+        }
+      }
+
+      parent =
+        insert(:submission,
+          account_id: user.id,
+          block_id: block.id,
+          status: :pending,
+          expires_at:
+            DateTime.utc_now() |> DateTime.add(-10, :second) |> DateTime.truncate(:second),
+          content: %{"type" => "quiz_exam", "questions" => [q1, q2]}
+        )
+
+      # Answered correctly (still :draft - only finalization grades it, same
+      # as a normal in-time submit).
+      insert(:submission,
+        account_id: user.id,
+        block_id: q1["id"],
+        parent_submission_id: parent.id,
+        status: :draft,
+        content: %{"text_answer" => "4"}
+      )
+
+      # q2 left unanswered entirely - the finalizer must backfill a blank
+      # child submission for it without crashing on the expired time limit.
+
+      assert {:error, {:live_redirect, %{to: return_to}}} =
+               live(conn, ~p"/learn/courses/#{course.id}/exam/#{block.id}")
+
+      assert return_to =~ "/learn/courses/#{course.id}/play"
+
+      reloaded = Athena.Repo.get!(Athena.Learning.Submission, parent.id)
+      assert reloaded.status == :time_limit_exceeded
+      assert reloaded.score == 50
+    end
+
+    test "flags manually-gradeable answers for review while still timing out the attempt", %{
+      conn: conn,
+      course: course,
+      section: section,
+      user: user
+    } do
+      block = insert(:block, section: section, type: :quiz_exam, content: %{"count" => 1})
+
+      q1 = %{
+        "id" => Ecto.UUID.generate(),
+        "type" => "quiz_question",
+        "content" => %{"question_type" => "open", "body" => %{"text" => "Write an essay."}}
+      }
+
+      parent =
+        insert(:submission,
+          account_id: user.id,
+          block_id: block.id,
+          status: :pending,
+          expires_at:
+            DateTime.utc_now() |> DateTime.add(-10, :second) |> DateTime.truncate(:second),
+          content: %{"type" => "quiz_exam", "questions" => [q1]}
+        )
+
+      assert {:error, {:live_redirect, _}} =
+               live(conn, ~p"/learn/courses/#{course.id}/exam/#{block.id}")
+
+      reloaded = Athena.Repo.get!(Athena.Learning.Submission, parent.id)
+      assert reloaded.status == :time_limit_exceeded
+
+      [essay_sub] = Athena.Learning.Submissions.get_child_submissions(parent.id) |> Map.values()
+      assert essay_sub.status == :needs_review
+    end
+  end
+
   describe "Exam completion" do
     test "finishing a fully auto-graded exam that passes the gate marks the block completed", %{
       conn: conn,

@@ -766,6 +766,31 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
     end
   end
 
+  describe "Quiz Exam Block - Time Limit Exceeded" do
+    test "shows the computed score alongside the time-out message", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :quiz_exam, content: %{"count" => 2})
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :time_limit_exceeded,
+        score: 50,
+        content: %{"type" => "quiz_exam", "cheat_count" => 0}
+      )
+
+      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ "Assessment Completed"
+      assert html =~ "50 / 100"
+      assert html =~ "Time Expired"
+    end
+  end
+
   describe "Quiz Exam Block" do
     test "renders initial exam card and starts exam", %{conn: conn, course: course} do
       s1 = insert(:section, course: course)

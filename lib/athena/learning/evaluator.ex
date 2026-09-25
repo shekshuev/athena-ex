@@ -104,7 +104,7 @@ defmodule Athena.Learning.Evaluator do
       end
 
     {:ok, new_sub} =
-      Submissions.save_question_submission(
+      Submissions.system_save_question_submission(
         parent_sub,
         parent_sub.account_id,
         q["id"],

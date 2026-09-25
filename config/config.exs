@@ -51,6 +51,16 @@ config :phoenix, :json_library, Jason
 
 config :flop, repo: Athena.Repo
 
+# ExAws (S3/MinIO) defaults to :hackney, but per this project's guidelines
+# we use Req for HTTP everywhere. Also sidesteps a real hackney bug
+# (`hackney:test_host_cidr/2` has no clause for a 1-element address list -
+# github.com/benoitc/hackney/blob/1.25.0/src/hackney.erl#L793) that crashes
+# every ExAws request, including the test bucket check in
+# test/test_helper.exs, whenever NO_PROXY/no_proxy contains a CIDR entry
+# (e.g. auto-injected by WSL2 or a VPN client) - previously worked around by
+# unsetting those env vars before running mix.
+config :ex_aws, http_client: ExAws.Request.Req
+
 config :mime, :types, %{
   "video/x-matroska" => ["mkv"],
   "video/x-msvideo" => ["avi"],

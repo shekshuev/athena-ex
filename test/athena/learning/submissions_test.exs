@@ -1339,6 +1339,50 @@ defmodule Athena.Learning.SubmissionsTest do
       assert Submissions.get_active_exam_submission(account.id, exam_block.id) == nil
     end
 
+    test "get_or_create_exam_attempt scores an expired attempt instead of leaving it blank", %{
+      account: account,
+      exam_block: exam_block
+    } do
+      expired_time = DateTime.add(DateTime.utc_now(), -10, :second) |> DateTime.truncate(:second)
+      course = insert(:course)
+
+      q1 = %{
+        "id" => Ecto.UUID.generate(),
+        "content" => %{"question_type" => "exact_match", "correct_answer" => "4"}
+      }
+
+      expired_sub =
+        Repo.insert!(%Submission{
+          account_id: account.id,
+          block_id: exam_block.id,
+          status: :pending,
+          expires_at: expired_time,
+          content: %{"questions" => [q1]}
+        })
+
+      insert(:submission,
+        account_id: account.id,
+        block_id: q1["id"],
+        parent_submission_id: expired_sub.id,
+        status: :draft,
+        content: %{"text_answer" => "4"}
+      )
+
+      {:ok, result_sub} =
+        Submissions.get_or_create_exam_attempt(
+          course.id,
+          account.id,
+          exam_block.id,
+          exam_block.type,
+          nil,
+          3600,
+          %{}
+        )
+
+      assert result_sub.status == :time_limit_exceeded
+      assert result_sub.score == 100
+    end
+
     test "get_or_create_exam_attempt transitions expired submission to :time_limit_exceeded", %{
       account: account,
       exam_block: exam_block

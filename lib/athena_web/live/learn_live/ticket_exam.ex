@@ -65,6 +65,14 @@ defmodule AthenaWeb.LearnLive.TicketExam do
          return_to
        ) do
     if DateTime.compare(DateTime.utc_now(), submission.expires_at) == :gt do
+      # `submit_and_exit` reads `socket.assigns.team_id`/`:return_to` (for
+      # `broadcast_team_progress/2` and the post-submit redirect) and
+      # `:cohort_id`/`:block` (for `Engagement.finalize_proctoring/4`);
+      # normally set by `setup_exam_state`, but this bail-out path skips
+      # straight past it, so assign them here too.
+      socket =
+        assign(socket, team_id: team_id, cohort_id: cohort_id, block: block, return_to: return_to)
+
       {:ok, submit_and_exit(socket, submission, course_id, :time_limit_exceeded)}
     else
       setup_exam_state(
@@ -1005,8 +1013,6 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   end
 
   defp submit_and_exit(socket, submission, course_id, reason) do
-    initial_status = if reason == :time_limit_exceeded, do: "time_limit_exceeded", else: "pending"
-
     block = Map.get(socket.assigns, :block)
     allowed_blur_attempts = (block && block.content["allowed_blur_attempts"]) || 3
 
@@ -1020,20 +1026,28 @@ defmodule AthenaWeb.LearnLive.TicketExam do
 
     updated_content = Map.merge(submission.content || %{}, proctoring_fields)
 
-    {:ok, pending_sub} =
-      Learning.system_update_submission(submission, %{
-        "status" => initial_status,
-        "content" => updated_content
-      })
+    {:ok, submission} =
+      Learning.system_update_submission(submission, %{"content" => updated_content})
 
     final_sub =
-      if initial_status == "pending" do
-        eval_results = Learning.evaluate_sync(pending_sub)
+      case reason do
+        :time_limit_exceeded ->
+          # Scores it (open/code/file answers still land in :needs_review for
+          # manual grading) and stamps :time_limit_exceeded instead of
+          # :graded, so the student sees both why it ended and their score.
+          # Idempotent - already a no-op if `get_or_create_exam_attempt`
+          # finalized this attempt on a prior mount.
+          {:ok, sub} = Learning.finalize_expired_exam(submission)
+          sub
 
-        {:ok, graded_sub} = Learning.system_update_submission(pending_sub, eval_results)
-        graded_sub
-      else
-        pending_sub
+        _ ->
+          {:ok, pending_sub} =
+            Learning.system_update_submission(submission, %{"status" => "pending"})
+
+          eval_results = Learning.evaluate_sync(pending_sub)
+
+          {:ok, graded_sub} = Learning.system_update_submission(pending_sub, eval_results)
+          graded_sub
       end
 
     Learning.maybe_complete_from_submission(final_sub)

@@ -100,6 +100,18 @@ defmodule Athena.Learning do
     |> notify_submission_subscribers()
   end
 
+  @doc """
+  Finalizes a timed-out exam/ticket attempt (auto-grades it, stamps
+  `:time_limit_exceeded`) and notifies subscribers - the Player showing the
+  block, and the instructor-facing grading views - same as any other
+  submission update. See `Submissions.finalize_expired_exam/1` for the
+  grading behavior; idempotent, safe to call on an already-finalized one.
+  """
+  def finalize_expired_exam(submission) do
+    Submissions.finalize_expired_exam(submission)
+    |> notify_submission_subscribers()
+  end
+
   defdelegate get_latest_submissions(account_id, block_ids, cohort_id \\ nil), to: Submissions
   defdelegate get_feedback_map(account_id, block_ids, cohort_id \\ nil), to: Submissions
   defdelegate get_submission!(user, id), to: Submissions
