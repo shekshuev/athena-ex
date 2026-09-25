@@ -60,6 +60,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
          course_bank_mode: course_bank_mode,
          course_id: course_id,
          return_path: return_path,
+         return_query: return_query,
          tags_string: Enum.join(block.tags || [], ", "),
          show_media_modal: false,
          upload_type: nil,
@@ -214,6 +215,33 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
   def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket), do: {:noreply, socket}
 
   @impl true
+  def handle_event("copy_block", _params, socket) do
+    user = socket.assigns.current_user
+    block = socket.assigns.block
+
+    with true <- Identity.can?(user, "library.create"),
+         {:ok, copy} <- Content.duplicate_library_block(user, block) do
+      if socket.assigns.course_bank_mode do
+        Content.pin_library_block(user, socket.assigns.course_id, copy.id)
+      end
+
+      new_path =
+        if socket.assigns.course_bank_mode do
+          ~p"/studio/courses/#{socket.assigns.course_id}/library/#{copy.id}/editor?#{socket.assigns.return_query}"
+        else
+          ~p"/studio/library/#{copy.id}/editor?#{socket.assigns.return_query}"
+        end
+
+      {:noreply,
+       socket
+       |> put_flash(:info, gettext("Template duplicated successfully"))
+       |> push_navigate(to: new_path)}
+    else
+      _ ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to duplicate template"))}
+    end
+  end
+
   def handle_event("update_content", %{"content" => parsed}, socket) do
     if can_edit?(socket) do
       block = socket.assigns.block
@@ -831,6 +859,18 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
               {gettext("Block Type:")} {Atom.to_string(@block.type) |> String.replace("_", " ")}
             </div>
           </div>
+
+          <.button
+            :if={Identity.can?(@current_user, "library.create")}
+            id="library-editor-copy"
+            type="button"
+            phx-click="copy_block"
+            class="btn btn-ghost btn-sm ml-auto"
+            title={gettext("Duplicate Template")}
+          >
+            <.icon name="hero-square-2-stack" class="size-5" />
+            <span class="hidden sm:inline">{gettext("Duplicate")}</span>
+          </.button>
         </div>
 
         <div class="flex flex-col lg:flex-row items-start gap-8">

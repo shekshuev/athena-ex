@@ -96,6 +96,24 @@ defmodule Athena.Content.Library do
     end
   end
 
+  @doc """
+  Duplicates a library block template, inserting the copy owned by the current
+  user with `" (Copy)"` appended to its title. Sharing and public visibility
+  are not carried over to the copy.
+  """
+  @spec duplicate_library_block(map(), LibraryBlock.t()) ::
+          {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :forbidden}
+  def duplicate_library_block(user, %LibraryBlock{} = block) do
+    attrs = %{
+      "title" => gettext("%{title} (Copy)", title: block.title),
+      "type" => block.type,
+      "content" => block.content,
+      "tags" => block.tags
+    }
+
+    create_library_block(user, attrs)
+  end
+
   @doc "Updates a library block template. Checks own_only policies."
   @spec update_library_block(map(), LibraryBlock.t(), map()) ::
           {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :forbidden}

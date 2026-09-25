@@ -175,4 +175,41 @@ defmodule AthenaWeb.AdminLive.UsersTest do
       assert html =~ "You don&#39;t have permission to delete users."
     end
   end
+
+  describe "Non-admin role with users CRUD but no roles.read (regression)" do
+    setup %{conn: conn} do
+      role =
+        insert(:role,
+          permissions: ["users.read", "users.create", "users.update", "users.delete"]
+        )
+
+      limited_user = insert(:account, role: role)
+      conn = init_test_session(conn, %{"account_id" => limited_user.id})
+
+      %{conn: conn, limited_user: limited_user}
+    end
+
+    test "opens the create user slide-over without crashing and shows role options", %{
+      conn: conn
+    } do
+      assigned_role = insert(:role, name: "assigned_role")
+
+      {:ok, _lv, html} = live(conn, ~p"/admin/users/new")
+
+      assert html =~ "Account Access"
+      assert html =~ assigned_role.name
+    end
+
+    test "opens the edit user slide-over without crashing and shows role options", %{
+      conn: conn
+    } do
+      assigned_role = insert(:role, name: "assigned_role")
+      target = insert(:account)
+
+      {:ok, _lv, html} = live(conn, ~p"/admin/users/#{target.id}/edit")
+
+      assert html =~ "Edit User"
+      assert html =~ assigned_role.name
+    end
+  end
 end

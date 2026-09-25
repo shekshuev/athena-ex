@@ -650,6 +650,54 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
     end
   end
 
+  describe "Copy action" do
+    setup %{admin: owner} do
+      role = insert(:role, permissions: ["library.read", "library.update", "library.create"])
+      writer = insert(:account, role: role)
+      %{owner: owner, writer: writer}
+    end
+
+    test "duplicates the template and navigates to the copy's editor", %{
+      conn: conn,
+      writer: writer
+    } do
+      block = insert(:library_block, title: "Original", owner_id: writer.id)
+      conn = init_test_session(conn, %{"account_id" => writer.id})
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      {:ok, new_lv, html} =
+        lv
+        |> element("#library-editor-copy")
+        |> render_click()
+        |> follow_redirect(conn)
+
+      assert html =~ "Template duplicated successfully"
+
+      copy =
+        Athena.Repo.get_by(Athena.Content.LibraryBlock,
+          title: "Original (Copy)",
+          owner_id: writer.id
+        )
+
+      assert copy
+      assert new_lv |> render() =~ "Original (Copy)"
+    end
+
+    test "hides the copy button without library.create permission", %{conn: conn, owner: owner} do
+      role = insert(:role, permissions: ["library.read", "library.update"])
+      reader = insert(:account, role: role)
+      block = insert(:library_block, title: "No Copy", owner_id: owner.id)
+      insert(:library_block_share, library_block: block, account_id: reader.id, role: :writer)
+
+      conn = init_test_session(conn, %{"account_id" => reader.id})
+      {:ok, lv, html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      refute html =~ "library-editor-copy"
+      refute has_element?(lv, "#library-editor-copy")
+    end
+  end
+
   describe "Collaborator Roles (Reader vs Writer)" do
     setup %{admin: owner} do
       role_reader = insert(:role, permissions: ["library.read"])

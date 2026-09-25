@@ -170,6 +170,7 @@ defmodule Athena.Content do
   defdelegate get_library_block(user, id), to: Library
   defdelegate get_library_block(id), to: Library
   defdelegate create_library_block(user, attrs), to: Library
+  defdelegate duplicate_library_block(user, block), to: Library
   defdelegate update_library_block(user, block, attrs), to: Library
   defdelegate delete_library_block(user, block), to: Library
   defdelegate generate_exam_questions(course_id, params), to: Library

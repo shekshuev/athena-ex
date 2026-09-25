@@ -167,6 +167,37 @@ defmodule Athena.Content.LibraryTest do
     end
   end
 
+  describe "duplicate_library_block/2 (With ACL)" do
+    test "should create a copy owned by the current user with '(Copy)' appended to the title", %{
+      owner1: owner1,
+      owner2: owner2
+    } do
+      block =
+        insert(:library_block,
+          title: "Original",
+          owner_id: owner2.id,
+          tags: ["a", "b"],
+          is_public: true
+        )
+
+      assert {:ok, copy} = Library.duplicate_library_block(owner1, block)
+
+      assert copy.id != block.id
+      assert copy.title == "Original (Copy)"
+      assert copy.type == block.type
+      assert copy.content == block.content
+      assert copy.tags == block.tags
+      assert copy.owner_id == owner1.id
+      assert copy.is_public == false
+    end
+
+    test "should return forbidden if user lacks permission", %{student: student, owner1: owner1} do
+      block = insert(:library_block, owner_id: owner1.id)
+
+      assert {:error, :forbidden} = Library.duplicate_library_block(student, block)
+    end
+  end
+
   describe "update_library_block/3 (With ACL)" do
     test "should update existing library block if owner", %{owner1: owner1} do
       block = insert(:library_block, title: "Old Title", owner_id: owner1.id)

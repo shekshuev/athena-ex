@@ -65,7 +65,7 @@ defmodule AthenaWeb.StudioLive.Library do
     flop_params =
       params
       |> Map.merge(%{"filters" => flop_filters})
-      |> Map.put("course_id", params["id"])
+      |> Map.put("course_id", socket.assigns.course_id)
       |> Map.put("pinned_only", socket.assigns.pinned_only)
 
     case Content.list_library_blocks(socket.assigns.current_user, flop_params) do
@@ -267,6 +267,44 @@ defmodule AthenaWeb.StudioLive.Library do
       end
     else
       {:noreply, socket}
+    end
+  end
+
+  def handle_event("copy_block", %{"id" => id}, socket) do
+    with {:ok, block} <- Content.get_library_block(socket.assigns.current_user, id),
+         {:ok, copy} <- Content.duplicate_library_block(socket.assigns.current_user, block) do
+      socket =
+        socket
+        |> pin_copy_if_course_library(copy)
+        |> put_flash(:info, gettext("Template duplicated successfully"))
+        |> load_blocks(build_query_params(socket.assigns, %{}))
+
+      {:noreply, socket}
+    else
+      {:error, :forbidden} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           gettext("You do not have permission to duplicate this template.")
+         )}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to duplicate template"))}
+    end
+  end
+
+  defp pin_copy_if_course_library(%{assigns: %{course_library_mode: false}} = socket, _copy),
+    do: socket
+
+  defp pin_copy_if_course_library(socket, copy) do
+    case Content.pin_library_block(
+           socket.assigns.current_user,
+           socket.assigns.course.id,
+           copy.id
+         ) do
+      {:ok, _} -> assign(socket, pinned_ids: MapSet.put(socket.assigns.pinned_ids, copy.id))
+      {:error, _} -> socket
     end
   end
 
@@ -665,6 +703,18 @@ defmodule AthenaWeb.StudioLive.Library do
                     title={gettext("Edit Metadata")}
                   >
                     <.icon name="hero-pencil-square" class="size-4" />
+                  </.button>
+
+                  <.button
+                    :if={can_view and Identity.can?(@current_user, "library.create")}
+                    id={"copy-block-#{block.id}"}
+                    type="button"
+                    phx-click="copy_block"
+                    phx-value-id={block.id}
+                    class="btn btn-ghost btn-xs btn-square"
+                    title={gettext("Duplicate Template")}
+                  >
+                    <.icon name="hero-square-2-stack" class="size-4" />
                   </.button>
 
                   <.button

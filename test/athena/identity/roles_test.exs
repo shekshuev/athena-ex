@@ -39,6 +39,28 @@ defmodule Athena.Identity.RolesTest do
       assert {:error, :forbidden} = Roles.list_roles(student, %{})
       assert {:error, :forbidden} = Roles.list_all_roles(student)
     end
+
+    test "should return all roles for a user with users.create even without roles.read" do
+      insert_list(2, :role)
+
+      user_manager =
+        insert(:account, role: insert(:role, permissions: ["users.create"]))
+
+      roles = Roles.list_all_roles(user_manager)
+      # 2 из сетапа + 2 новых + роль самого user_manager
+      assert length(roles) == 5
+    end
+
+    test "should return all roles for a user with users.update even without roles.read" do
+      insert_list(2, :role)
+
+      user_manager =
+        insert(:account, role: insert(:role, permissions: ["users.update"]))
+
+      roles = Roles.list_all_roles(user_manager)
+      # 2 из сетапа + 2 новых + роль самого user_manager
+      assert length(roles) == 5
+    end
   end
 
   describe "get_role/2 and get_role_by_name/1" do

@@ -236,6 +236,30 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
     end
   end
 
+  describe "Library page (Copy action)" do
+    test "should duplicate the template and insert the copy into the table", %{
+      conn: conn,
+      admin: admin
+    } do
+      block = insert(:library_block, title: "Original Template", owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library")
+
+      html =
+        lv
+        |> element("button[phx-click='copy_block'][phx-value-id='#{block.id}']")
+        |> render_click()
+
+      assert html =~ "Template duplicated successfully"
+      assert html =~ "Original Template (Copy)"
+
+      assert Athena.Repo.get_by(Athena.Content.LibraryBlock,
+               title: "Original Template (Copy)",
+               owner_id: admin.id
+             )
+    end
+  end
+
   describe "Permissions & ACL" do
     setup %{conn: conn} do
       role = insert(:role, permissions: ["library.read"])
@@ -443,6 +467,38 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
 
       refute Athena.Repo.get_by(Athena.Content.CourseLibraryBlock,
                library_block_id: block.id,
+               course_id: course.id
+             )
+    end
+
+    test "should duplicate a pinned block and pin the copy to the same course", %{
+      conn: conn,
+      admin: admin,
+      course: course
+    } do
+      block = insert(:library_block, title: "Pinned Original", owner_id: admin.id)
+      insert(:course_library_block, course: course, library_block: block)
+
+      {:ok, lv, _html} = live(conn, "/studio/courses/#{course.id}/library")
+
+      html =
+        lv
+        |> element("button[phx-click='copy_block'][phx-value-id='#{block.id}']")
+        |> render_click()
+
+      assert html =~ "Template duplicated successfully"
+      assert html =~ "Pinned Original (Copy)"
+
+      copy =
+        Athena.Repo.get_by(Athena.Content.LibraryBlock,
+          title: "Pinned Original (Copy)",
+          owner_id: admin.id
+        )
+
+      assert copy
+
+      assert Athena.Repo.get_by(Athena.Content.CourseLibraryBlock,
+               library_block_id: copy.id,
                course_id: course.id
              )
     end
