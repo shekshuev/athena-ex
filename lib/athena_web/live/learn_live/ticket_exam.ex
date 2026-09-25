@@ -103,6 +103,15 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     pending_urls = build_pending_urls(child_subs)
 
     if connected?(socket) do
+      # The ticket's own submission - an instructor rejecting a cheater from
+      # the grading screen, or another tab finalizing it, must end this
+      # session immediately (see `handle_info({:submission_updated, ...})`
+      # below), not only once the student submits or times out.
+      Phoenix.PubSub.subscribe(
+        Athena.PubSub,
+        "submission:#{socket.assigns.current_user.id}:#{block.id}"
+      )
+
       Enum.each(questions, fn q ->
         Phoenix.PubSub.subscribe(
           Athena.PubSub,
@@ -580,6 +589,28 @@ defmodule AthenaWeb.LearnLive.TicketExam do
 
       {:noreply, socket}
     end
+  end
+
+  # The ticket's own submission was ended by someone else - an instructor
+  # rejecting a cheater from the grading screen (or another tab/device
+  # finalizing it) - while the student still has this page open. It's
+  # already graded/rejected in the DB; just get them off the exam now
+  # instead of letting them keep answering an attempt that's already over.
+  @impl true
+  def handle_info(
+        {:submission_updated, %{id: id, status: status}},
+        %{assigns: %{submission: %{id: id}}} = socket
+      )
+      when status != :pending do
+    msg =
+      if status == :rejected,
+        do: gettext("Your instructor ended this assessment session."),
+        else: gettext("This assessment session has already been finished.")
+
+    {:noreply,
+     socket
+     |> put_flash(:warning, msg)
+     |> push_navigate(to: socket.assigns.return_to)}
   end
 
   @impl true

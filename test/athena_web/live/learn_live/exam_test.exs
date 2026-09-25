@@ -73,6 +73,48 @@ defmodule AthenaWeb.LearnLive.ExamTest do
     end
   end
 
+  describe "Instructor terminates a live attempt" do
+    test "rejecting from the grading screen ends the session immediately, without re-grading it",
+         %{conn: conn, course: course, section: section, user: user} do
+      block = insert(:block, section: section, type: :quiz_exam, content: %{"count" => 3})
+      questions = generate_dummy_questions()
+
+      submission =
+        insert(:submission,
+          account_id: user.id,
+          block_id: block.id,
+          status: :pending,
+          expires_at:
+            DateTime.utc_now() |> DateTime.add(3600, :second) |> DateTime.truncate(:second),
+          content: %{
+            "type" => "quiz_exam",
+            "started_at" => DateTime.utc_now(),
+            "questions" => questions
+          }
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/exam/#{block.id}")
+
+      teacher_role = insert(:role, permissions: ["grading.read", "grading.update"])
+      teacher = insert(:account, role: teacher_role)
+
+      {:ok, rejected} =
+        Athena.Learning.update_submission(teacher, submission, %{
+          "score" => "0",
+          "feedback" => "Caught copying answers.",
+          "status" => "rejected"
+        })
+
+      assert rejected.status == :rejected
+
+      assert_redirect(lv, ~p"/learn/courses/#{course.id}/play")
+
+      # The teacher's own write set the final grade - the student leaving
+      # must not trigger a second, auto-computed grade over it.
+      assert Athena.Repo.reload!(submission).feedback == "Caught copying answers."
+    end
+  end
+
   describe "Exam Navigation & Autosave" do
     setup %{conn: conn, course: course, section: section, user: user} do
       block = insert(:block, section: section, type: :quiz_exam, content: %{"count" => 3})

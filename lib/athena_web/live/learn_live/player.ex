@@ -211,7 +211,12 @@ defmodule AthenaWeb.LearnLive.Player do
 
   @doc false
   defp subscribe_to_block_topics(blocks, user_id, team_id) do
-    for block <- blocks, block.type == :code do
+    # Every block, not just :code - a grade can land on any of them (a
+    # teacher grading a quiz_exam/ticket_exam/file_assignment from the
+    # grading screen) while the student still has this section open, and
+    # `handle_info({:submission_updated, ...})` below already handles any
+    # block type generically.
+    for block <- blocks do
       Phoenix.PubSub.subscribe(Athena.PubSub, "submission:#{user_id}:#{block.id}")
     end
 
@@ -1298,14 +1303,29 @@ defmodule AthenaWeb.LearnLive.Player do
       end
 
     socket =
-      if submission.status in [:pending, :processing, :draft] do
-        socket
-      else
-        socket = EngagementSignals.emit_code_run_result(socket, block.id, submission.status)
+      cond do
+        submission.status in [:pending, :processing, :draft] ->
+          socket
 
-        attempts = Map.get(socket.assigns.attempts_map || %{}, block.id, 0)
-        {flash_type, flash_msg} = build_code_flash(submission, block, attempts)
-        put_flash(socket, flash_type, flash_msg)
+        # `build_code_flash/3` and the "code_run_result" event are specific
+        # to the code sandbox's own run/attempt cycle - a manually graded
+        # type (quiz_exam, ticket_exam, file_assignment, ...) gets its own,
+        # simpler "you were graded" flash below instead.
+        block.type == :code ->
+          socket = EngagementSignals.emit_code_run_result(socket, block.id, submission.status)
+
+          attempts = Map.get(socket.assigns.attempts_map || %{}, block.id, 0)
+          {flash_type, flash_msg} = build_code_flash(submission, block, attempts)
+          put_flash(socket, flash_type, flash_msg)
+
+        submission.status == :rejected ->
+          put_flash(socket, :error, gettext("Your submission was rejected by the instructor."))
+
+        submission.status == :needs_review ->
+          socket
+
+        true ->
+          put_flash(socket, :info, gettext("Your submission was graded."))
       end
 
     {:noreply, socket}

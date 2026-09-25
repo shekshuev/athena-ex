@@ -189,6 +189,35 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponentTest do
       assert html =~ "60 Min"
     end
 
+    test "renders quiz_exam question count from slots, not the unused legacy count" do
+      exam_block = %Block{
+        id: "block-exam-slots-1",
+        type: :quiz_exam,
+        content: %{
+          # Legacy default left over from block creation; slots must win.
+          "count" => 10,
+          "slots" => [
+            %{"id" => "1", "count" => 5, "tags" => ["easy"]},
+            %{"id" => "2", "count" => 7, "tags" => ["hard"]}
+          ],
+          "time_limit" => 60
+        }
+      }
+
+      html =
+        render_component(CanvasComponent,
+          active_section_id: "sec-1",
+          blocks: [exam_block],
+          active_block_id: nil,
+          breadcrumbs: [],
+          mode: :edit,
+          characters: []
+        )
+
+      assert html =~ "12 Questions"
+      refute html =~ "10 Questions"
+    end
+
     test "renders ticket_exam block preview card" do
       ticket_exam_block = %Block{
         id: "block-ticket-1",

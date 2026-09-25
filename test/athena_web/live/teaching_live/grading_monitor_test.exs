@@ -68,6 +68,45 @@ defmodule AthenaWeb.TeachingLive.GradingMonitorTest do
       assert html =~ "Not started"
     end
 
+    test "shows a live badge the moment a student starts, without waiting for a cheat event", %{
+      conn: conn
+    } do
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section, type: :quiz_exam, content: %{"count" => 1})
+      cohort = insert(:cohort, name: "Section A")
+      insert(:enrollment, cohort_id: cohort.id, course_id: course.id, status: :active)
+
+      already_started = insert(:account, login: "already_started")
+      late_starter = insert(:account, login: "late_starter")
+
+      for account <- [already_started, late_starter] do
+        insert(:cohort_membership, cohort_id: cohort.id, account_id: account.id)
+      end
+
+      seed_sub =
+        insert(:submission, account_id: already_started.id, block_id: block.id, status: :pending)
+
+      {:ok, lv, html} = live(conn, ~p"/teaching/grading/#{seed_sub.id}/monitor")
+      assert html =~ "late_starter"
+      assert html =~ "Not started"
+
+      {:ok, _sub} =
+        Athena.Learning.get_or_create_exam_attempt(
+          course.id,
+          late_starter.id,
+          block.id,
+          :quiz_exam,
+          cohort.id,
+          3600,
+          block.content
+        )
+
+      html = render(lv)
+      refute html =~ "Not started"
+      assert html =~ "No violations"
+    end
+
     test "redirects with a flash when the submission's academic group can't be resolved", %{
       conn: conn
     } do

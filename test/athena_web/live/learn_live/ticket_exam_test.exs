@@ -91,6 +91,52 @@ defmodule AthenaWeb.LearnLive.TicketExamTest do
     end
   end
 
+  describe "Instructor terminates a live attempt" do
+    test "rejecting from the grading screen ends the session immediately, without re-grading it",
+         %{conn: conn, course: course, section: section, user: user} do
+      block =
+        insert(:block,
+          section: section,
+          type: :ticket_exam,
+          content: %{"slots" => [%{}, %{}, %{}]}
+        )
+
+      questions = generate_dummy_questions()
+
+      submission =
+        insert(:submission,
+          account_id: user.id,
+          block_id: block.id,
+          status: :pending,
+          expires_at:
+            DateTime.utc_now() |> DateTime.add(3600, :second) |> DateTime.truncate(:second),
+          content: %{
+            "type" => "ticket_exam",
+            "started_at" => DateTime.utc_now(),
+            "questions" => questions
+          }
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/ticket/#{block.id}")
+
+      teacher_role = insert(:role, permissions: ["grading.read", "grading.update"])
+      teacher = insert(:account, role: teacher_role)
+
+      {:ok, rejected} =
+        Athena.Learning.update_submission(teacher, submission, %{
+          "score" => "0",
+          "feedback" => "Caught copying answers.",
+          "status" => "rejected"
+        })
+
+      assert rejected.status == :rejected
+
+      assert_redirect(lv, ~p"/learn/courses/#{course.id}/play")
+
+      assert Athena.Repo.reload!(submission).feedback == "Caught copying answers."
+    end
+  end
+
   describe "Ticket Exam Navigation & Autosave" do
     setup %{conn: conn, course: course, section: section, user: user} do
       block =

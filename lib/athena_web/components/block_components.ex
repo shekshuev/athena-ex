@@ -260,7 +260,7 @@ defmodule AthenaWeb.BlockComponents do
       >
         <.tiptap_toolbar mode={@mode} block_id={@block.id} />
         <div
-          id={"tiptap-code-#{@mode}-#{@block.id}"}
+          id={"tiptap-code-#{@mode}-#{@block.id}-#{if @mode != :edit, do: :erlang.phash2(@block.content["body"]), else: "static"}"}
           phx-hook="TiptapEditor"
           data-on-change="update_content"
           data-id={@block.id}
@@ -313,7 +313,7 @@ defmodule AthenaWeb.BlockComponents do
           <% end %>
 
           <div
-            id={"code-editor-#{@mode}-#{@block.id}-#{if @mode == :review, do: :erlang.phash2(@code), else: "static"}"}
+            id={"code-editor-#{@mode}-#{@block.id}-#{code_editor_cache_key(@mode, @block, @code)}"}
             phx-hook="CodeEditor"
             data-language={@cm_lang}
             data-readonly={to_string(@readonly)}
@@ -424,6 +424,25 @@ defmodule AthenaWeb.BlockComponents do
     extract_code_answer(block.id, answers, submission, nil) ||
       block.content["initial_code"] || ""
   end
+
+  # CodeMirror is `phx-update="ignore"`, so it only ever sees its `data-code`
+  # again by remounting under a new DOM id. Two different things need that:
+  #
+  #   - `:play` - a student's own answer changes on every keystroke (via
+  #     `@code` itself), so hashing *that* would remount - and lose focus/
+  #     cursor - on every autosave. Hash `initial_code` instead: the one
+  #     piece only an instructor edit changes, so a live builder edit still
+  #     reaches an open player, without punishing the student's own typing.
+  #   - `:review`/others - `@code` is a fixed, already-submitted answer (no
+  #     student is typing into it), so hashing it directly is fine and is
+  #     what lets a reviewer step between different submissions' code in the
+  #     same LiveView.
+  defp code_editor_cache_key(:edit, _block, _code), do: "static"
+
+  defp code_editor_cache_key(:play, block, _code),
+    do: :erlang.phash2(block.content["initial_code"])
+
+  defp code_editor_cache_key(_mode, _block, code), do: :erlang.phash2(code)
 
   defp extract_code_answer(block_id, answers, submission, draft) do
     live_answer = Map.get(answers || %{}, block_id)
@@ -1048,12 +1067,23 @@ defmodule AthenaWeb.BlockComponents do
 
   defp render_any_exam(assigns) do
     is_ticket = assigns.block.type == :ticket_exam
+    slots = assigns.block.content["slots"] || []
 
     q_count =
-      if is_ticket do
-        length(assigns.block.content["slots"] || [])
-      else
-        assigns.block.content["count"] || 10
+      cond do
+        # Ticket slots are specific questions, one each - the slot count IS the total.
+        is_ticket ->
+          length(slots)
+
+        # Quiz slots each pick `count` random questions from a tag group - once any
+        # slot is configured, they fully replace the legacy `count` field (see
+        # `Athena.Content.Library.generate_exam_questions/2`), so the real total is
+        # their sum, not the still-present-but-unused legacy default.
+        slots != [] ->
+          Enum.reduce(slots, 0, &(&2 + (&1["count"] || 1)))
+
+        true ->
+          assigns.block.content["count"] || 10
       end
 
     title = if is_ticket, do: gettext("Ticket Assessment"), else: gettext("Assessment Session")
