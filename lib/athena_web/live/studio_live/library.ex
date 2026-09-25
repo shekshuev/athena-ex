@@ -636,11 +636,13 @@ defmodule AthenaWeb.StudioLive.Library do
                 <div class="flex justify-end gap-2">
                   <% editor_path =
                     if @course_library_mode,
-                      do: ~p"/studio/courses/#{@course.id}/library/#{block.id}/editor",
-                      else: ~p"/studio/library/#{block.id}/editor" %>
+                      do:
+                        ~p"/studio/courses/#{@course.id}/library/#{block.id}/editor?#{build_query_params(assigns, %{})}",
+                      else: ~p"/studio/library/#{block.id}/editor?#{build_query_params(assigns, %{})}" %>
 
                   <.button
                     :if={can_view}
+                    id={"open-editor-#{block.id}"}
                     navigate={editor_path}
                     class="btn btn-primary btn-xs btn-square btn-soft"
                     title={if can_edit, do: gettext("Open Editor"), else: gettext("View Template")}

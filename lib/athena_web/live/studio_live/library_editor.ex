@@ -14,6 +14,8 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
   on_mount {AthenaWeb.Hooks.Permission, "library.read"}
 
+  @return_query_keys ~w(search type tag pinned_only page page_size order_by order_directions)
+
   @impl true
   def mount(params, _session, socket) do
     course_bank_mode = socket.assigns.live_action == :course_library
@@ -25,11 +27,14 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
         {nil, params["id"]}
       end
 
+    # The library list forwards its filters/pagination so "back" lands on the same page.
+    return_query = Map.take(params, @return_query_keys)
+
     return_path =
       if course_bank_mode do
-        ~p"/studio/courses/#{course_id}/library"
+        ~p"/studio/courses/#{course_id}/library?#{return_query}"
       else
-        ~p"/studio/library"
+        ~p"/studio/library?#{return_query}"
       end
 
     with {:ok, block} <- Content.get_library_block(block_id),
@@ -811,6 +816,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
       <.page_container size="wide" class={not @course_bank_mode && "pb-20 pt-4"}>
         <div class="flex items-center gap-4 mb-8 border-b border-base-300 pb-6">
           <.link
+            id="library-editor-back"
             navigate={@return_path}
             class="btn btn-ghost btn-sm btn-square rounded-sm hover:bg-base-200"
             title={gettext("Back to Library")}
@@ -1288,6 +1294,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
             <div class="p-6 border-t border-base-300 mt-auto">
               <.link
+                id="library-editor-back-bottom"
                 navigate={@return_path}
                 class="btn btn-primary rounded-sm w-full"
               >

@@ -62,6 +62,63 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
               }} = redirect
     end
 
+    test "back links return to the library with the forwarded filters", %{
+      conn: conn,
+      admin: admin
+    } do
+      block = insert(:library_block, owner_id: admin.id)
+
+      {:ok, lv, _html} =
+        live(
+          conn,
+          ~p"/studio/library/#{block.id}/editor?page=3&search=foo&order_by[]=title&junk=1"
+        )
+
+      for id <- ["#library-editor-back", "#library-editor-back-bottom"] do
+        href =
+          lv
+          |> element(id)
+          |> render()
+          |> LazyHTML.from_fragment()
+          |> LazyHTML.attribute("href")
+          |> List.first()
+
+        assert %URI{path: "/studio/library", query: query} = URI.parse(href)
+
+        assert Plug.Conn.Query.decode(query) == %{
+                 "page" => "3",
+                 "search" => "foo",
+                 "order_by" => ["title"]
+               }
+      end
+    end
+
+    test "course library editor returns to the course library with filters", %{
+      conn: conn,
+      admin: admin
+    } do
+      course = insert(:course, owner_id: admin.id)
+      block = insert(:library_block, owner_id: admin.id)
+
+      {:ok, lv, _html} =
+        live(
+          conn,
+          ~p"/studio/courses/#{course.id}/library/#{block.id}/editor?page=2&pinned_only=false"
+        )
+
+      href =
+        lv
+        |> element("#library-editor-back")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.attribute("href")
+        |> List.first()
+
+      assert %URI{path: path, query: query} = URI.parse(href)
+      assert path == "/studio/courses/#{course.id}/library"
+      assert Plug.Conn.Query.decode(query) == %{"page" => "2", "pinned_only" => "false"}
+    end
+
     test "renders editor successfully with template title", %{conn: conn, admin: admin} do
       block = insert(:library_block, title: "My Awesome Template", owner_id: admin.id)
 

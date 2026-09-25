@@ -57,6 +57,27 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
   end
 
   describe "Library page (Pagination & Sorting)" do
+    test "editor link keeps current filters and page", %{conn: conn, admin: admin} do
+      block =
+        insert(:library_block, title: "Paged Template", tags: ["basics"], owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library?search=Paged&page_size=20&tag=basics")
+
+      href =
+        lv
+        |> element("#open-editor-#{block.id}")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.attribute("href")
+        |> List.first()
+
+      assert %URI{path: path, query: query} = URI.parse(href)
+      assert path == "/studio/library/#{block.id}/editor"
+
+      assert %{"search" => "Paged", "page_size" => "20", "tag" => "basics", "page" => "1"} =
+               Plug.Conn.Query.decode(query)
+    end
+
     test "changes page size and updates URL", %{conn: conn, admin: admin} do
       insert(:library_block, owner_id: admin.id)
 
