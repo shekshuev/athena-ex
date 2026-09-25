@@ -271,6 +271,30 @@ defmodule Athena.Learning.Submissions do
   end
 
   @doc """
+  Finalizes an exam/ticket attempt whose time limit has run out.
+
+  Auto-grades it exactly as a voluntary submit would (correct/incorrect
+  questions scored, essays and file/code answers flagged for review), then
+  stamps the final status as `:time_limit_exceeded` instead of
+  `:graded`/`:needs_review` - so the student sees *why* it ended, while
+  their score is still computed and visible instead of hidden behind a bare
+  "time's up". An instructor can still open it from the grading queue
+  (unfiltered, since it's no longer `:needs_review`) and grade it by hand;
+  that later update overwrites this one same as any other regrade.
+
+  Idempotent: called both here (when a student returns to an exam whose
+  clock already ran out) and by the Exam/Ticket LiveViews (when the clock
+  hits zero while they're on the page) - by the second call the submission
+  is no longer `:pending`, so it's returned unchanged.
+  """
+  def finalize_expired_exam(%Submission{status: :pending} = submission) do
+    eval_results = Athena.Learning.Evaluator.evaluate_sync(submission)
+    system_update_submission(submission, Map.put(eval_results, :status, :time_limit_exceeded))
+  end
+
+  def finalize_expired_exam(%Submission{} = submission), do: {:ok, submission}
+
+  @doc """
   Gets the best/latest submissions for a list of block ids, scoped by cohort or user.
   Prioritizes the highest score. If scores are equal, takes the latest attempt.
   Excludes draft submissions.
@@ -298,6 +322,90 @@ defmodule Athena.Learning.Submissions do
     |> order_by([s], [s.block_id, desc: s.score, desc: s.inserted_at])
     |> Repo.all()
     |> Map.new(&{&1.block_id, &1})
+  end
+
+  @doc """
+  Collects instructor feedback per block for the student-facing player.
+
+  Picked independently of `get_latest_submissions/3`: that one prefers the
+  highest score, so a rejected (score 0) or re-graded older attempt carrying
+  the instructor's comment would never surface. Here, per block, the most
+  recently updated attempt that has feedback — its own, or on any of its
+  exam question children — wins.
+
+  Returns `%{block_id => %{feedback: String.t() | nil, status: atom(),
+  questions: [%{number: pos_integer(), feedback: String.t(), score: integer()}]}}`.
+  """
+  @spec get_feedback_map(String.t(), [String.t()], String.t() | nil) :: %{String.t() => map()}
+  def get_feedback_map(account_id, block_ids, cohort_id \\ nil)
+
+  def get_feedback_map(_account_id, [], _cohort_id), do: %{}
+
+  def get_feedback_map(account_id, block_ids, cohort_id) do
+    children_with_feedback =
+      from c in Submission,
+        where:
+          c.parent_submission_id == parent_as(:sub).id and not is_nil(c.feedback) and
+            c.feedback != "",
+        select: 1
+
+    parents =
+      from(s in Submission, as: :sub)
+      |> where([s], s.block_id in ^block_ids and s.status != :draft)
+      |> where([s], is_nil(s.parent_submission_id))
+      |> where([s], fragment("?->>'is_test_run' IS NULL", s.content))
+      |> where_owner(account_id, cohort_id)
+      |> where(
+        [s],
+        (not is_nil(s.feedback) and s.feedback != "") or exists(subquery(children_with_feedback))
+      )
+      |> distinct([s], s.block_id)
+      |> order_by([s], [s.block_id, desc: s.updated_at, desc: s.inserted_at])
+      |> Repo.all()
+
+    children_by_parent =
+      from(c in Submission,
+        where:
+          c.parent_submission_id in ^Enum.map(parents, & &1.id) and not is_nil(c.feedback) and
+            c.feedback != ""
+      )
+      |> Repo.all()
+      |> Enum.group_by(& &1.parent_submission_id)
+
+    Map.new(parents, fn parent ->
+      children = Map.get(children_by_parent, parent.id, [])
+
+      {parent.block_id,
+       %{
+         feedback: if(parent.feedback in [nil, ""], do: nil, else: parent.feedback),
+         status: parent.status,
+         questions: question_feedback(parent, children)
+       }}
+    end)
+  end
+
+  defp where_owner(query, _account_id, cohort_id) when not is_nil(cohort_id),
+    do: where(query, [s], s.cohort_id == ^cohort_id)
+
+  defp where_owner(query, account_id, nil),
+    do: where(query, [s], s.account_id == ^account_id and is_nil(s.cohort_id))
+
+  # Orders child feedback by the question's position in the attempt, so the
+  # student can match "Question 3" to what they saw in the exam.
+  defp question_feedback(_parent, []), do: []
+
+  defp question_feedback(parent, children) do
+    order =
+      (parent.content["questions"] || [])
+      |> Enum.map(fn q -> q["id"] || q[:id] end)
+      |> Enum.with_index(1)
+      |> Map.new()
+
+    children
+    |> Enum.map(fn c ->
+      %{number: Map.get(order, c.block_id), feedback: c.feedback, score: c.score}
+    end)
+    |> Enum.sort_by(&(&1.number || 999_999))
   end
 
   @doc """
@@ -598,7 +706,10 @@ defmodule Athena.Learning.Submissions do
 
   @doc """
   Saves or updates a submission for a specific question/block within an exam.
-  Links it to the parent exam submission.
+  Links it to the parent exam submission. Rejects writes once the parent's
+  time limit has passed - use `system_save_question_submission/5` for
+  system-driven writes (e.g. auto-filling blanks while finalizing a timed-out
+  exam) that must go through even though the clock has run out.
   """
   def save_question_submission(
         parent_submission,
@@ -614,27 +725,32 @@ defmodule Athena.Learning.Submissions do
         :lt
       end
 
-    do_save_question_submission(
-      limit_check,
-      parent_submission,
-      account_id,
-      question_block_id,
-      cohort_id,
-      answer_content
-    )
+    if limit_check == :gt do
+      {:error, :time_limit_exceeded}
+    else
+      system_save_question_submission(
+        parent_submission,
+        account_id,
+        question_block_id,
+        cohort_id,
+        answer_content
+      )
+    end
   end
 
-  @doc false
-  defp do_save_question_submission(:gt, _, _, _, _, _), do: {:error, :time_limit_exceeded}
-
-  defp do_save_question_submission(
-         _,
-         parent_submission,
-         account_id,
-         question_block_id,
-         cohort_id,
-         answer_content
-       ) do
+  @doc """
+  Same as `save_question_submission/5`, but bypasses the exam's time-limit
+  check. For system-driven writes only - e.g. `Evaluator` auto-filling blank
+  answers for unanswered questions while finalizing a timed-out exam, after
+  the deadline has already passed.
+  """
+  def system_save_question_submission(
+        parent_submission,
+        account_id,
+        question_block_id,
+        cohort_id,
+        answer_content
+      ) do
     query =
       from s in Submission,
         where: s.parent_submission_id == ^parent_submission.id,
@@ -749,7 +865,7 @@ defmodule Athena.Learning.Submissions do
         now = DateTime.utc_now()
 
         if submission.expires_at && DateTime.compare(now, submission.expires_at) == :gt do
-          system_update_submission(submission, %{status: :time_limit_exceeded})
+          finalize_expired_exam(submission)
         else
           {:ok, submission}
         end

@@ -612,6 +612,185 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
     end
   end
 
+  describe "Instructor Feedback (all block types)" do
+    test "shows feedback on a rejected retry even when an older attempt scored higher", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block, section: s1, type: :quiz_question, content: %{"question_type" => "open"})
+
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :graded,
+        score: 60,
+        updated_at: DateTime.add(now, -1, :day)
+      )
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :rejected,
+        score: 0,
+        feedback: "Answer copied from a classmate.",
+        updated_at: now
+      )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert has_element?(
+               lv,
+               "#instructor-feedback-#{block.id}",
+               "Answer copied from a classmate."
+             )
+    end
+
+    test "shows overall and per-question feedback on a quiz exam", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :quiz_exam, content: %{"count" => 2})
+      q1 = Ecto.UUID.generate()
+      q2 = Ecto.UUID.generate()
+
+      parent =
+        insert(:submission,
+          account_id: user.id,
+          block_id: block.id,
+          status: :graded,
+          score: 75,
+          feedback: "Solid work overall.",
+          content: %{
+            "type" => "quiz_exam",
+            "cheat_count" => 0,
+            "questions" => [%{"id" => q1}, %{"id" => q2}]
+          }
+        )
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: q2,
+        parent_submission_id: parent.id,
+        score: 50,
+        feedback: "Mixed up the formulas."
+      )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert has_element?(lv, "#instructor-feedback-#{block.id}", "Solid work overall.")
+      assert has_element?(lv, "#instructor-feedback-#{block.id}", "Mixed up the formulas.")
+      assert has_element?(lv, "#instructor-feedback-#{block.id}", "Question 2")
+    end
+
+    test "shows feedback on code and file assignment blocks", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      code_block =
+        insert(:block,
+          section: s1,
+          type: :code,
+          order: 10,
+          content: %{"language" => "python", "initial_code" => "print(1)"}
+        )
+
+      file_block =
+        insert(:block, section: s1, type: :file_assignment, order: 20, content: %{})
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: code_block.id,
+        status: :graded,
+        score: 100,
+        feedback: "Clean solution."
+      )
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: file_block.id,
+        status: :graded,
+        score: 70,
+        feedback: "Missing the diagram."
+      )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert has_element?(lv, "#instructor-feedback-#{code_block.id}", "Clean solution.")
+      assert has_element?(lv, "#instructor-feedback-#{file_block.id}", "Missing the diagram.")
+    end
+
+    test "feedback appears live when the instructor grades", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :file_assignment, content: %{})
+
+      sub =
+        insert(:submission,
+          account_id: user.id,
+          block_id: block.id,
+          status: :needs_review,
+          score: 0
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+      refute has_element?(lv, "#instructor-feedback-#{block.id}")
+
+      # Reload so `content` is the plain map the real broadcast carries,
+      # not the factory's in-memory struct.
+      sub = Athena.Repo.get!(Athena.Learning.Submission, sub.id)
+
+      {:ok, graded} =
+        Athena.Learning.system_update_submission(sub, %{
+          "status" => "graded",
+          "score" => 90,
+          "feedback" => "Nicely structured."
+        })
+
+      send(lv.pid, {:submission_updated, graded})
+
+      assert has_element?(lv, "#instructor-feedback-#{block.id}", "Nicely structured.")
+    end
+  end
+
+  describe "Quiz Exam Block - Time Limit Exceeded" do
+    test "shows the computed score alongside the time-out message", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :quiz_exam, content: %{"count" => 2})
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :time_limit_exceeded,
+        score: 50,
+        content: %{"type" => "quiz_exam", "cheat_count" => 0}
+      )
+
+      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert html =~ "Assessment Completed"
+      assert html =~ "50 / 100"
+      assert html =~ "Time Expired"
+    end
+  end
+
   describe "Quiz Exam Block" do
     test "renders initial exam card and starts exam", %{conn: conn, course: course} do
       s1 = insert(:section, course: course)

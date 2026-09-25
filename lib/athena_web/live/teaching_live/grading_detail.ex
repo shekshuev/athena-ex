@@ -82,10 +82,12 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
 
     attrs = %{"score" => final_score, "feedback" => feedback, "status" => status}
 
+    # Children first: the parent's update is what the student's player
+    # listens to, and it re-reads per-question feedback on that broadcast.
+    update_all_child_grades(socket, params["child_grades"] || %{}, status)
+
     case Learning.update_submission(socket.assigns.current_user, socket.assigns.submission, attrs) do
       {:ok, _updated_sub} ->
-        update_all_child_grades(socket, params["child_grades"] || %{}, status)
-
         msg =
           if action == "reject",
             do: gettext("Submission rejected!"),

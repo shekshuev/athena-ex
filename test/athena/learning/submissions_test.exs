@@ -171,6 +171,88 @@ defmodule Athena.Learning.SubmissionsTest do
     end
   end
 
+  describe "get_feedback_map/3" do
+    test "surfaces feedback from a rejected attempt the best-score lookup would skip" do
+      account_id = Ecto.UUID.generate()
+      block_id = Ecto.UUID.generate()
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      insert(:submission,
+        account_id: account_id,
+        block_id: block_id,
+        score: 80,
+        status: :graded,
+        updated_at: DateTime.add(now, -1, :day)
+      )
+
+      insert(:submission,
+        account_id: account_id,
+        block_id: block_id,
+        score: 0,
+        status: :rejected,
+        feedback: "Redo the second part",
+        updated_at: now
+      )
+
+      result = Submissions.get_feedback_map(account_id, [block_id])
+
+      assert %{feedback: "Redo the second part", status: :rejected, questions: []} =
+               result[block_id]
+    end
+
+    test "collects per-question exam feedback ordered by question position" do
+      account_id = Ecto.UUID.generate()
+      exam_id = Ecto.UUID.generate()
+      q1 = Ecto.UUID.generate()
+      q2 = Ecto.UUID.generate()
+
+      parent =
+        insert(:submission,
+          account_id: account_id,
+          block_id: exam_id,
+          status: :graded,
+          content: %{"questions" => [%{"id" => q1}, %{"id" => q2}]}
+        )
+
+      insert(:submission,
+        account_id: account_id,
+        block_id: q2,
+        parent_submission_id: parent.id,
+        score: 50,
+        feedback: "Half right"
+      )
+
+      insert(:submission,
+        account_id: account_id,
+        block_id: q1,
+        parent_submission_id: parent.id,
+        score: 100
+      )
+
+      result = Submissions.get_feedback_map(account_id, [exam_id])
+
+      assert %{feedback: nil, questions: [%{number: 2, feedback: "Half right", score: 50}]} =
+               result[exam_id]
+
+      refute Map.has_key?(result, q1)
+    end
+
+    test "omits blocks without feedback and other students' feedback" do
+      account_id = Ecto.UUID.generate()
+      block_id = Ecto.UUID.generate()
+
+      insert(:submission, account_id: account_id, block_id: block_id, status: :graded)
+
+      insert(:submission,
+        account_id: Ecto.UUID.generate(),
+        block_id: block_id,
+        feedback: "Not yours"
+      )
+
+      assert Submissions.get_feedback_map(account_id, [block_id]) == %{}
+    end
+  end
+
   describe "get_latest_submissions/3" do
     test "returns a map of the highest scored individual submissions for the given block ids" do
       account_id = Ecto.UUID.generate()
@@ -1255,6 +1337,50 @@ defmodule Athena.Learning.SubmissionsTest do
       exam_block: exam_block
     } do
       assert Submissions.get_active_exam_submission(account.id, exam_block.id) == nil
+    end
+
+    test "get_or_create_exam_attempt scores an expired attempt instead of leaving it blank", %{
+      account: account,
+      exam_block: exam_block
+    } do
+      expired_time = DateTime.add(DateTime.utc_now(), -10, :second) |> DateTime.truncate(:second)
+      course = insert(:course)
+
+      q1 = %{
+        "id" => Ecto.UUID.generate(),
+        "content" => %{"question_type" => "exact_match", "correct_answer" => "4"}
+      }
+
+      expired_sub =
+        Repo.insert!(%Submission{
+          account_id: account.id,
+          block_id: exam_block.id,
+          status: :pending,
+          expires_at: expired_time,
+          content: %{"questions" => [q1]}
+        })
+
+      insert(:submission,
+        account_id: account.id,
+        block_id: q1["id"],
+        parent_submission_id: expired_sub.id,
+        status: :draft,
+        content: %{"text_answer" => "4"}
+      )
+
+      {:ok, result_sub} =
+        Submissions.get_or_create_exam_attempt(
+          course.id,
+          account.id,
+          exam_block.id,
+          exam_block.type,
+          nil,
+          3600,
+          %{}
+        )
+
+      assert result_sub.status == :time_limit_exceeded
+      assert result_sub.score == 100
     end
 
     test "get_or_create_exam_attempt transitions expired submission to :time_limit_exceeded", %{

@@ -1087,11 +1087,6 @@ defmodule AthenaWeb.BlockComponents do
                 <.icon name="hero-x-circle-solid" class="size-6" />
                 {gettext("Assessment Failed (Violations)")}
               </div>
-            <% @submission.status == :time_limit_exceeded -> %>
-              <div class="text-xs font-bold uppercase tracking-widest mt-2">
-                <.icon name="hero-clock-solid" class="size-6" />
-                {gettext("Assessment Failed (Time Out)")}
-              </div>
             <% @submission.status in [:graded, :needs_review, :rejected, :time_limit_exceeded] -> %>
               <div class="inline-flex flex-col items-center gap-2">
                 <div class={[
@@ -1120,6 +1115,11 @@ defmodule AthenaWeb.BlockComponents do
                 <%= if @submission.status == :needs_review do %>
                   <span class="text-xs font-bold uppercase tracking-widest mt-2">
                     {gettext("Pending Instructor Review")}
+                  </span>
+                <% end %>
+                <%= if @submission.status == :time_limit_exceeded do %>
+                  <span class="text-xs font-bold uppercase tracking-widest mt-2 text-error">
+                    {gettext("Time Expired - Auto-Submitted")}
                   </span>
                 <% end %>
               </div>

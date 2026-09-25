@@ -164,7 +164,7 @@ msgstr "пароли не совпадают"
 msgid "You don't have permission to access this page."
 msgstr "У вас нет прав для доступа к этой странице"
 
-#: lib/athena/content/competition_rule.ex:32
+#: lib/athena/content/competition_rule.ex:39
 #, elixir-autogen, elixir-format
 msgid "can't be blank for auto-grade"
 msgstr "обязательно для автопроверки"
