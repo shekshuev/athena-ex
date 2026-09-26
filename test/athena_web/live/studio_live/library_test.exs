@@ -502,5 +502,84 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
                course_id: course.id
              )
     end
+
+    test "select all pins every block on the page, then unpins them all", %{
+      conn: conn,
+      admin: admin,
+      course: course
+    } do
+      b1 = insert(:library_block, title: "Alpha", owner_id: admin.id)
+      b2 = insert(:library_block, title: "Beta", owner_id: admin.id)
+
+      {:ok, lv, html} = live(conn, "/studio/courses/#{course.id}/library?pinned_only=false")
+      assert html =~ "Select all"
+      assert html =~ "(0/2 in this course)"
+
+      html =
+        lv
+        |> element("input[phx-click='toggle_pin_all']")
+        |> render_click()
+
+      assert html =~ "Deselect all"
+      assert html =~ "(2/2 in this course)"
+
+      for block <- [b1, b2] do
+        assert Athena.Repo.get_by(Athena.Content.CourseLibraryBlock,
+                 library_block_id: block.id,
+                 course_id: course.id
+               )
+      end
+
+      html =
+        lv
+        |> element("input[phx-click='toggle_pin_all']")
+        |> render_click()
+
+      assert html =~ "Select all"
+      assert html =~ "(0/2 in this course)"
+
+      for block <- [b1, b2] do
+        refute Athena.Repo.get_by(Athena.Content.CourseLibraryBlock,
+                 library_block_id: block.id,
+                 course_id: course.id
+               )
+      end
+    end
+
+    test "select all only ever touches blocks the current user can actually pin", %{
+      conn: conn,
+      admin: admin,
+      course: course
+    } do
+      # A course collaborator (writer share, so pinning to this course
+      # actually succeeds server-side) who isn't the course owner and holds
+      # no unscoped "library.update" - only owning `mine` makes it togglable.
+      limited_role =
+        insert(:role, permissions: ["library.read", "courses.read", "courses.update"])
+
+      limited_user = insert(:account, role: limited_role)
+      insert(:course_share, course: course, account_id: limited_user.id, role: :writer)
+      conn = init_test_session(conn, %{"account_id" => limited_user.id})
+
+      mine = insert(:library_block, title: "Mine", owner_id: limited_user.id)
+      not_mine = insert(:library_block, title: "Not Mine", owner_id: admin.id)
+
+      {:ok, lv, html} = live(conn, "/studio/courses/#{course.id}/library?pinned_only=false")
+      assert html =~ "(0/1 in this course)"
+
+      lv
+      |> element("input[phx-click='toggle_pin_all']")
+      |> render_click()
+
+      assert Athena.Repo.get_by(Athena.Content.CourseLibraryBlock,
+               library_block_id: mine.id,
+               course_id: course.id
+             )
+
+      refute Athena.Repo.get_by(Athena.Content.CourseLibraryBlock,
+               library_block_id: not_mine.id,
+               course_id: course.id
+             )
+    end
   end
 end
