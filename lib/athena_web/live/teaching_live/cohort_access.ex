@@ -7,6 +7,8 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
   use AthenaWeb, :live_view
 
   alias Athena.Content
+  alias Athena.Content.Block
+  alias Athena.Identity
   alias Athena.Learning
   import AthenaWeb.BlockComponents
   import AthenaWeb.TeachingLive.CourseTreeComponents, only: [course_tree_nav: 1]
@@ -199,12 +201,25 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
       <div class="flex-1 overflow-y-auto bg-base-200 p-8 relative">
         <%= if @active_block do %>
           <.page_container size="narrow">
-            <.link
-              patch={access_path(@cohort, @course.id, section_id: @active_section.id)}
-              class="btn btn-ghost rounded-sm btn-sm mb-6"
-            >
-              <.icon name="hero-arrow-left" class="size-4" /> {gettext("Back to Section")}
-            </.link>
+            <div class="flex items-center justify-between mb-6">
+              <.link
+                patch={access_path(@cohort, @course.id, section_id: @active_section.id)}
+                class="btn btn-ghost rounded-sm btn-sm"
+              >
+                <.icon name="hero-arrow-left" class="size-4" /> {gettext("Back to Section")}
+              </.link>
+
+              <.link
+                :if={Block.gradable?(@active_block) && Identity.can?(@current_user, "grading.read")}
+                navigate={
+                  ~p"/teaching/grading?#{%{"block_id" => @active_block.id, "cohort_id" => @cohort.id}}"
+                }
+                class="btn btn-ghost btn-sm text-primary"
+              >
+                <.icon name="hero-inbox-arrow-down" class="size-4" />
+                {gettext("View Submissions")}
+              </.link>
+            </div>
 
             <div class="mb-8 opacity-80 pointer-events-none">
               <.content_block block={@active_block} mode={:edit} />
@@ -261,18 +276,33 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
                             </span>
                           <% end %>
                         </div>
-                        <.link
-                          patch={
-                            access_path(@cohort, @course.id,
-                              section_id: @active_section.id,
-                              block_id: block.id
-                            )
-                          }
-                          class="btn btn-ghost btn-xs text-primary"
-                        >
-                          <.icon name="hero-cog-8-tooth" class="size-4" />
-                          {gettext("Configure")}
-                        </.link>
+                        <div class="flex items-center gap-2">
+                          <.link
+                            :if={
+                              Block.gradable?(block) &&
+                                Identity.can?(@current_user, "grading.read")
+                            }
+                            navigate={
+                              ~p"/teaching/grading?#{%{"block_id" => block.id, "cohort_id" => @cohort.id}}"
+                            }
+                            class="btn btn-ghost btn-xs text-primary"
+                          >
+                            <.icon name="hero-inbox-arrow-down" class="size-4" />
+                            {gettext("Submissions")}
+                          </.link>
+                          <.link
+                            patch={
+                              access_path(@cohort, @course.id,
+                                section_id: @active_section.id,
+                                block_id: block.id
+                              )
+                            }
+                            class="btn btn-ghost btn-xs text-primary"
+                          >
+                            <.icon name="hero-cog-8-tooth" class="size-4" />
+                            {gettext("Configure")}
+                          </.link>
+                        </div>
                       </div>
                     </div>
                   <% end %>

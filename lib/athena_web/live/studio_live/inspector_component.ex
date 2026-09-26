@@ -236,7 +236,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
     ~H"""
     <div class="flex flex-col flex-1 min-h-0 animate-in fade-in duration-200 px-4">
       <div class="flex items-center gap-3 py-4 border-b border-base-300">
-        <div>
+        <div class="flex-1 min-w-0">
           <div class="text-xs text-base-content/50 font-bold uppercase tracking-wider">
             {gettext("Type")}
           </div>
@@ -251,6 +251,16 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
             <% end %>
           </div>
         </div>
+
+        <.link
+          :if={Block.gradable?(@block) && Identity.can?(@current_user, "grading.read")}
+          navigate={~p"/teaching/grading?block_id=#{@block.id}"}
+          class="btn btn-ghost btn-xs text-primary shrink-0"
+          title={gettext("See who has submitted this block")}
+        >
+          <.icon name="hero-inbox-arrow-down" class="size-4" />
+          {gettext("Submissions")}
+        </.link>
       </div>
 
       <div class="overflow-y-auto py-4 space-y-6 flex-1">

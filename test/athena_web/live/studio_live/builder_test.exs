@@ -552,6 +552,50 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
     end
   end
 
+  describe "Inspector - View Submissions link" do
+    test "shows a submissions link, filtered to this block, only for gradable types", %{
+      conn: conn,
+      course: course,
+      admin: admin
+    } do
+      {:ok, section} = Content.create_section(admin, %{"title" => "S1", "course_id" => course.id})
+
+      {:ok, text_block} =
+        Content.create_block(admin, %{
+          "type" => "text",
+          "section_id" => section.id,
+          "content" => %{}
+        })
+
+      {:ok, code_block} =
+        Content.create_block(admin, %{
+          "type" => "code",
+          "section_id" => section.id,
+          "content" => %{"language" => "python3"}
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      html =
+        lv
+        |> element("div[phx-click='select_block'][phx-value-id='#{text_block.id}']")
+        |> render_click()
+
+      refute html =~ "/teaching/grading?block_id=#{text_block.id}"
+
+      html =
+        lv
+        |> element("div[phx-click='select_block'][phx-value-id='#{code_block.id}']")
+        |> render_click()
+
+      assert html =~ "/teaching/grading?block_id=#{code_block.id}"
+    end
+  end
+
   describe "Quiz & Media Inspectors" do
     setup %{course: course, admin: admin} do
       {:ok, section} =

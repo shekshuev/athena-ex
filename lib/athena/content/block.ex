@@ -62,6 +62,18 @@ defmodule Athena.Content.Block do
     timestamps(type: :utc_datetime)
   end
 
+  @gradable_types ~w(code quiz_question quiz_exam ticket_exam file_assignment)a
+
+  @doc """
+  Whether a block of this type can have student `Submission`s at all (as
+  opposed to pure content - text/image/video/attachment) - used to decide
+  whether a "View Submissions" link to the grading screen makes sense for it.
+  """
+  @spec gradable?(t() | atom()) :: boolean()
+  def gradable?(%__MODULE__{type: type}), do: gradable?(type)
+  def gradable?(type) when type in @gradable_types, do: true
+  def gradable?(_type), do: false
+
   @doc """
   Builds a changeset for block creation or update.
   """
