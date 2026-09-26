@@ -24,9 +24,8 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     return_to = Map.get(params, "return_to", ~p"/learn/courses/#{course_id}/play")
 
     with {:ok, block} <- Content.get_block(block_id),
-         time_limit_sec <- get_time_limit_sec(block),
-         {:ok, submission} <-
-           Learning.get_or_create_exam_attempt(
+         time_limit_sec <- get_time_limit_sec(block) do
+      case Learning.get_or_create_exam_attempt(
              course_id,
              user.id,
              block_id,
@@ -35,16 +34,38 @@ defmodule AthenaWeb.LearnLive.TicketExam do
              time_limit_sec,
              block.content
            ) do
-      handle_exam_mount(
-        socket,
-        block,
-        submission,
-        course_id,
-        team_id,
-        cohort_id,
-        time_limit_sec,
-        return_to
-      )
+        {:ok, submission} ->
+          handle_exam_mount(
+            socket,
+            block,
+            submission,
+            course_id,
+            team_id,
+            cohort_id,
+            time_limit_sec,
+            return_to
+          )
+
+        # Already graded/rejected/needs review/timed out - most commonly hit
+        # by pressing "back" in the browser right after finishing, which
+        # would otherwise silently start a brand new attempt (see
+        # `Submissions.get_or_create_exam_attempt/7`). A real retake goes
+        # through an instructor deleting the old submission instead.
+        {:already_completed, _submission} ->
+          {:ok,
+           socket
+           |> put_flash(:info, gettext("You've already completed this ticket assessment."))
+           |> push_navigate(to: return_to)}
+
+        _ ->
+          {:ok,
+           socket
+           |> put_flash(
+             :error,
+             gettext("Ticket assessment is not active or already finished.")
+           )
+           |> push_navigate(to: ~p"/learn/courses/#{course_id}")}
+      end
     else
       _ ->
         {:ok,

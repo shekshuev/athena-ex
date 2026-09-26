@@ -1413,6 +1413,67 @@ defmodule Athena.Learning.SubmissionsTest do
       assert result_sub.status == :time_limit_exceeded
     end
 
+    test "get_or_create_exam_attempt refuses a second attempt once the first is finished", %{
+      account: account,
+      exam_block: exam_block
+    } do
+      course = insert(:course)
+
+      finished =
+        insert(:submission,
+          account_id: account.id,
+          block_id: exam_block.id,
+          status: :graded,
+          score: 85,
+          content: %{"questions" => []}
+        )
+
+      assert {:already_completed, result_sub} =
+               Submissions.get_or_create_exam_attempt(
+                 course.id,
+                 account.id,
+                 exam_block.id,
+                 exam_block.type,
+                 nil,
+                 3600,
+                 %{}
+               )
+
+      assert result_sub.id == finished.id
+
+      # Confirms no second row was created (a naive `nil? -> create` check
+      # based only on `get_active_exam_submission/2` would happily insert
+      # another parent submission here, matching the reported "hit back
+      # after finishing" bug).
+      assert Repo.aggregate(Submission, :count) == 1
+    end
+
+    test "get_or_create_exam_attempt also refuses a re-attempt after an instructor rejects it",
+         %{account: account, exam_block: exam_block} do
+      course = insert(:course)
+
+      rejected =
+        insert(:submission,
+          account_id: account.id,
+          block_id: exam_block.id,
+          status: :rejected,
+          score: 0
+        )
+
+      assert {:already_completed, result_sub} =
+               Submissions.get_or_create_exam_attempt(
+                 course.id,
+                 account.id,
+                 exam_block.id,
+                 exam_block.type,
+                 nil,
+                 3600,
+                 %{}
+               )
+
+      assert result_sub.id == rejected.id
+    end
+
     test "get_or_create_exam_attempt uses ticket logic for a ticket_exam block with slots", %{
       account: account
     } do

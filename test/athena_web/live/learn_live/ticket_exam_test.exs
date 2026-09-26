@@ -91,6 +91,40 @@ defmodule AthenaWeb.LearnLive.TicketExamTest do
     end
   end
 
+  describe "Re-entering after finishing (e.g. via the browser back button)" do
+    test "redirects instead of silently starting a brand new attempt", %{
+      conn: conn,
+      course: course,
+      section: section,
+      user: user
+    } do
+      block =
+        insert(:block,
+          section: section,
+          type: :ticket_exam,
+          content: %{"slots" => [%{}, %{}, %{}]}
+        )
+
+      finished =
+        insert(:submission,
+          account_id: user.id,
+          block_id: block.id,
+          status: :graded,
+          score: 90,
+          content: %{"type" => "ticket_exam", "questions" => []}
+        )
+
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
+               live(conn, ~p"/learn/courses/#{course.id}/ticket/#{block.id}")
+
+      assert to == "/learn/courses/#{course.id}/play"
+      assert flash["info"] =~ "already completed"
+
+      assert Athena.Repo.aggregate(Athena.Learning.Submission, :count) == 1
+      assert Athena.Repo.reload!(finished).score == 90
+    end
+  end
+
   describe "Instructor terminates a live attempt" do
     test "rejecting from the grading screen ends the session immediately, without re-grading it",
          %{conn: conn, course: course, section: section, user: user} do
