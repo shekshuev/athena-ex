@@ -302,15 +302,7 @@ defmodule AthenaWeb.LearnLive.Player do
   @impl true
   def handle_event("continue_exam", %{"block_id" => block_id}, socket) do
     block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
-
-    route =
-      if block && block.type == :ticket_exam do
-        ~p"/learn/courses/#{socket.assigns.course.id}/ticket/#{block_id}"
-      else
-        ~p"/learn/courses/#{socket.assigns.course.id}/exam/#{block_id}"
-      end
-
-    {:noreply, push_navigate(socket, to: route)}
+    enter_exam(socket, block_id, block && block.type)
   end
 
   @impl true
@@ -867,15 +859,17 @@ defmodule AthenaWeb.LearnLive.Player do
          ) do
       {:ok, _submission} ->
         broadcast_team_progress(socket.assigns.team_id, socket.assigns.course.id)
+        enter_exam(socket, block.id, block.type)
 
-        route =
-          if block.type == :ticket_exam do
-            ~p"/learn/courses/#{socket.assigns.course.id}/ticket/#{block.id}"
-          else
-            ~p"/learn/courses/#{socket.assigns.course.id}/exam/#{block.id}"
-          end
-
-        {:noreply, push_navigate(socket, to: route)}
+      # Stale client state (e.g. a second tab) clicking "Start" on an attempt
+      # that already finished elsewhere - refresh instead of a fresh attempt.
+      {:already_completed, updated_sub} ->
+        {:noreply,
+         assign(
+           socket,
+           :submissions,
+           Map.put(socket.assigns.submissions, block.id, updated_sub)
+         )}
 
       {:error, _} ->
         {:noreply,
@@ -884,6 +878,31 @@ defmodule AthenaWeb.LearnLive.Player do
            :error,
            gettext("Failed to start the assessment session.")
          )}
+    end
+  end
+
+  # Enters the exam/ticket LiveView for `block_id`: a real page navigation
+  # normally, but nested inside the builder's "test run" modal, navigating
+  # the real browser away would exit the sandbox entirely (and land on the
+  # instructor's own real account, not the test-run one) - so instead this
+  # tells the parent (the builder) to swap its live_render from this module
+  # to `AthenaWeb.LearnLive.Exam`/`TicketExam` for the same block, which
+  # then mounts nested exactly like this LiveView already does (see its own
+  # `mount(:not_mounted_at_router, ...)` clause).
+  @doc false
+  defp enter_exam(socket, block_id, block_type) do
+    if socket.assigns[:test_run] do
+      send(socket.parent_pid, {:test_run_enter_exam, block_id, block_type})
+      {:noreply, socket}
+    else
+      route =
+        if block_type == :ticket_exam do
+          ~p"/learn/courses/#{socket.assigns.course.id}/ticket/#{block_id}"
+        else
+          ~p"/learn/courses/#{socket.assigns.course.id}/exam/#{block_id}"
+        end
+
+      {:noreply, push_navigate(socket, to: route)}
     end
   end
 

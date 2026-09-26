@@ -10,24 +10,56 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   """
   use AthenaWeb, :live_view
 
+  on_mount {AthenaWeb.Hooks.Auth, :test_run}
+
   alias Athena.{Content, Engagement, Learning}
   alias AthenaWeb.LearnLive.EngagementSignals
   import AthenaWeb.BlockComponents
 
+  @spec mount(map() | :not_mounted_at_router, map(), Phoenix.LiveView.Socket.t()) ::
+          {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
+  # Nested via the builder's "test run" modal - `Player`, mounted the same
+  # way, swaps its own live_render to this module instead of navigating
+  # here (see its `start_exam_for_block/2`), so a ticket_exam started inside
+  # a test run stays inside the sandbox instead of taking the browser to a
+  # real page under the instructor's own account. Nothing in this LiveView
+  # may navigate the real browser while nested; `exit_exam/4` messages the
+  # parent to swap back to `Player` instead.
+  def mount(
+        :not_mounted_at_router,
+        %{"block_id" => block_id},
+        %{assigns: %{test_run: true}} = socket
+      ) do
+    mount_exam(socket.assigns.test_run_course_id, block_id, socket, nil)
+  end
+
   def mount(%{"id" => course_id, "block_id" => block_id} = params, _session, socket) do
+    return_to = Map.get(params, "return_to", ~p"/learn/courses/#{course_id}/play")
+    mount_exam(course_id, block_id, socket, return_to)
+  end
+
+  @doc false
+  defp mount_exam(course_id, block_id, socket, return_to) do
     user = socket.assigns.current_user
-    cohort = Learning.get_user_cohort_for_course(user.id, course_id)
+    test_run? = !!socket.assigns[:test_run]
+    socket = assign(socket, :test_run, test_run?)
+
+    # The ephemeral test-run account has no real enrollment/cohort of its own.
+    cohort = unless test_run?, do: Learning.get_user_cohort_for_course(user.id, course_id)
     team_id = if cohort && cohort.type == :team, do: cohort.id, else: nil
     cohort_id = cohort && cohort.id
 
-    return_to = Map.get(params, "return_to", ~p"/learn/courses/#{course_id}/play")
+    resolve_exam_mount(socket, course_id, block_id, user.id, team_id, cohort_id, return_to)
+  end
 
+  @doc false
+  defp resolve_exam_mount(socket, course_id, block_id, user_id, team_id, cohort_id, return_to) do
     with {:ok, block} <- Content.get_block(block_id),
          time_limit_sec <- get_time_limit_sec(block) do
       case Learning.get_or_create_exam_attempt(
              course_id,
-             user.id,
+             user_id,
              block_id,
              block.type,
              team_id,
@@ -53,25 +85,53 @@ defmodule AthenaWeb.LearnLive.TicketExam do
         # through an instructor deleting the old submission instead.
         {:already_completed, _submission} ->
           {:ok,
-           socket
-           |> put_flash(:info, gettext("You've already completed this ticket assessment."))
-           |> push_navigate(to: return_to)}
+           exit_bail(
+             socket,
+             return_to,
+             :info,
+             gettext("You've already completed this ticket assessment.")
+           )}
 
         _ ->
           {:ok,
-           socket
-           |> put_flash(
+           exit_bail(
+             socket,
+             return_to || ~p"/learn/courses/#{course_id}",
              :error,
              gettext("Ticket assessment is not active or already finished.")
-           )
-           |> push_navigate(to: ~p"/learn/courses/#{course_id}")}
+           )}
       end
     else
       _ ->
         {:ok,
-         socket
-         |> put_flash(:error, gettext("Ticket assessment is not active or already finished."))
-         |> push_navigate(to: ~p"/learn/courses/#{course_id}")}
+         exit_bail(
+           socket,
+           return_to || ~p"/learn/courses/#{course_id}",
+           :error,
+           gettext("Ticket assessment is not active or already finished.")
+         )}
+    end
+  end
+
+  # Used at mount time, before `@block` exists - unlike `exit_exam/4`, sets
+  # `@block` to `nil` so the `render/1` guard clause below shows nothing
+  # while the "swap back to Player" message to the parent is in flight.
+  @doc false
+  defp exit_bail(socket, return_to, flash_type, msg) do
+    socket |> assign(:block, nil) |> exit_exam(return_to, flash_type, msg)
+  end
+
+  # Leaves the exam: for a real page, the normal flash+redirect; nested in
+  # the test-run sandbox, nothing here may navigate the real browser away
+  # from the modal, so this tells the parent (`Player`) to swap back to
+  # itself instead, with the flash to show once it does.
+  @doc false
+  defp exit_exam(socket, return_to, flash_type, msg) do
+    if socket.assigns[:test_run] do
+      send(socket.parent_pid, {:test_run_exam_finished, flash_type, msg})
+      socket
+    else
+      socket |> put_flash(flash_type, msg) |> push_navigate(to: return_to)
     end
   end
 
@@ -628,10 +688,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
         do: gettext("Your instructor ended this assessment session."),
         else: gettext("This assessment session has already been finished.")
 
-    {:noreply,
-     socket
-     |> put_flash(:warning, msg)
-     |> push_navigate(to: socket.assigns.return_to)}
+    {:noreply, exit_exam(socket, socket.assigns.return_to, :warning, msg)}
   end
 
   @impl true
@@ -659,6 +716,16 @@ defmodule AthenaWeb.LearnLive.TicketExam do
 
   def handle_info(_msg, socket) do
     {:noreply, socket}
+  end
+
+  # Mount bailed out (block missing, attempt already finished, ...) while
+  # nested in a test run - the parent is already on its way to swapping this
+  # child out for `Player` again (see `exit_bail/4`); nothing to show here.
+  @impl true
+  def render(%{block: nil} = assigns) do
+    ~H"""
+    <div></div>
+    """
   end
 
   @impl true
@@ -1111,9 +1178,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
         do: gettext("Time is up! Your ticket assessment has been automatically submitted."),
         else: gettext("Ticket assessment submitted successfully!")
 
-    socket
-    |> put_flash(:info, msg)
-    |> push_navigate(to: socket.assigns.return_to)
+    exit_exam(socket, socket.assigns.return_to, :info, msg)
   end
 
   defp format_time(seconds) when seconds > 0 do

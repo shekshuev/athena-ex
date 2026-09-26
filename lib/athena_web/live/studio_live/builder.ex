@@ -68,7 +68,8 @@ defmodule AthenaWeb.StudioLive.Builder do
          hide_mobile_nav: true,
          characters: Content.characters_for_picker(socket.assigns.current_user),
          show_character_modal: false,
-         test_run_session: nil
+         test_run_session: nil,
+         test_run_active_exam: nil
        )}
     else
       _ ->
@@ -229,6 +230,30 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   @impl true
   def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket), do: {:noreply, socket}
+
+  # A quiz_exam/ticket_exam started inside the test-run modal must stay
+  # inside it - `AthenaWeb.LearnLive.Player`, nested below, sends this
+  # instead of navigating (which would take the whole browser to a real
+  # page under the instructor's own account, exiting the sandbox) when it
+  # would otherwise push_navigate to the exam/ticket route. Swapping which
+  # module gets `live_render`'d below achieves the same "go to the exam"
+  # step while staying nested.
+  @impl true
+  def handle_info({:test_run_enter_exam, block_id, block_type}, socket) do
+    {:noreply,
+     assign(socket, :test_run_active_exam, %{block_id: block_id, block_type: block_type})}
+  end
+
+  # The nested exam/ticket LiveView finished (submitted, timed out, or
+  # bailed out at mount) and is telling us to swap back to `Player` - see
+  # `AthenaWeb.LearnLive.Exam`/`TicketExam`'s own `exit_exam/4`.
+  @impl true
+  def handle_info({:test_run_exam_finished, flash_type, msg}, socket) do
+    {:noreply,
+     socket
+     |> assign(:test_run_active_exam, nil)
+     |> put_flash(flash_type, msg)}
+  end
 
   @impl true
   def handle_params(params, _url, socket) do
@@ -512,7 +537,7 @@ defmodule AthenaWeb.StudioLive.Builder do
       Learning.cleanup_test_run(session)
     end
 
-    {:noreply, assign(socket, test_run_session: nil)}
+    {:noreply, assign(socket, test_run_session: nil, test_run_active_exam: nil)}
   end
 
   def handle_event("move_section", %{"target_id" => target_id}, socket) do
@@ -1865,10 +1890,24 @@ defmodule AthenaWeb.StudioLive.Builder do
           </button>
         </div>
         <div class="flex-1 overflow-y-auto">
-          {live_render(@socket, AthenaWeb.LearnLive.Player,
-            id: "test-run-player-#{@test_run_session.id}",
-            session: %{"test_run_id" => @test_run_session.id}
-          )}
+          <%= if @test_run_active_exam do %>
+            <% exam_module =
+              if @test_run_active_exam.block_type == :ticket_exam,
+                do: AthenaWeb.LearnLive.TicketExam,
+                else: AthenaWeb.LearnLive.Exam %>
+            {live_render(@socket, exam_module,
+              id: "test-run-exam-#{@test_run_session.id}-#{@test_run_active_exam.block_id}",
+              session: %{
+                "test_run_id" => @test_run_session.id,
+                "block_id" => @test_run_active_exam.block_id
+              }
+            )}
+          <% else %>
+            {live_render(@socket, AthenaWeb.LearnLive.Player,
+              id: "test-run-player-#{@test_run_session.id}",
+              session: %{"test_run_id" => @test_run_session.id}
+            )}
+          <% end %>
         </div>
       </div>
 
