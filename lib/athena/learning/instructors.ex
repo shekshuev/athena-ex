@@ -31,39 +31,44 @@ defmodule Athena.Learning.Instructors do
 
   @doc """
   Searches for instructors by their title or their associated account login.
-  Requires 'instructors.read' permission.
+
+  Deliberately does **not** gate on `"instructors.read"` (nor, for the
+  login-matching half, on `"users.read"` - see `Identity.Accounts.
+  search_account_ids_by_login/2`) - its only callers today
+  (`CohortFormComponent`/`TeamFormComponent`) are the "assign instructors"
+  autocomplete inside the cohort/team create-edit form, already reachable
+  only by someone who passed a `"cohorts.create"`/`"cohorts.update"` (or
+  team-equivalent) check to open it; managing who *teaches* a cohort and
+  managing the instructor/user-admin pages are separate capabilities, so
+  requiring either here silently broke the search for any role that only has
+  the former (this returned `[]` with no error, so it looked "broken").
   """
   @spec search_instructors(map(), String.t(), integer()) :: [Instructor.t()]
-  def search_instructors(user, search_query, limit \\ 10) do
-    if Identity.can?(user, "instructors.read") do
-      search_term = "%#{search_query}%"
+  def search_instructors(_user, search_query, limit \\ 10) do
+    search_term = "%#{search_query}%"
 
-      instructors_by_title =
+    instructors_by_title =
+      Instructor
+      |> where([i], ilike(i.title, ^search_term))
+      |> limit(^limit)
+      |> Repo.all()
+
+    account_ids_from_login = Identity.search_account_ids_by_login(search_query, limit)
+
+    instructors_by_account =
+      if account_ids_from_login == [] do
+        []
+      else
         Instructor
-        |> where([i], ilike(i.title, ^search_term))
+        |> where([i], i.owner_id in ^account_ids_from_login)
         |> limit(^limit)
         |> Repo.all()
+      end
 
-      account_ids_from_login =
-        Identity.search_accounts_by_login(user, search_query, limit) |> Enum.map(& &1.id)
-
-      instructors_by_account =
-        if account_ids_from_login == [] do
-          []
-        else
-          Instructor
-          |> where([i], i.owner_id in ^account_ids_from_login)
-          |> limit(^limit)
-          |> Repo.all()
-        end
-
-      (instructors_by_title ++ instructors_by_account)
-      |> Enum.uniq_by(& &1.id)
-      |> Enum.take(limit)
-      |> enrich_with_accounts()
-    else
-      []
-    end
+    (instructors_by_title ++ instructors_by_account)
+    |> Enum.uniq_by(& &1.id)
+    |> Enum.take(limit)
+    |> enrich_with_accounts()
   end
 
   @doc """

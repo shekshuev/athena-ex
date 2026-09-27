@@ -890,6 +890,42 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       refute html =~ "Assessment Completed"
       refute html =~ "Start Assessment"
     end
+
+    test "shows a teacher's grade live, without a page reload", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :quiz_exam, content: %{"count" => 10})
+
+      submission =
+        insert(:submission,
+          account_id: user.id,
+          block_id: block.id,
+          status: :needs_review,
+          content: %{"type" => "quiz_exam", "cheat_count" => 0}
+        )
+
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+      assert html =~ "Pending Instructor Review"
+      refute html =~ "92 / 100"
+
+      teacher_role = insert(:role, permissions: ["grading.read", "grading.update"])
+      teacher = insert(:account, role: teacher_role)
+
+      {:ok, _graded} =
+        Athena.Learning.update_submission(teacher, submission, %{
+          "score" => "92",
+          "feedback" => "Nice work.",
+          "status" => "graded"
+        })
+
+      html = render(lv)
+      assert html =~ "Assessment Completed"
+      assert html =~ "92 / 100"
+      refute html =~ "Pending Instructor Review"
+    end
   end
 
   describe "Ticket Exam Block" do
@@ -1147,6 +1183,63 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       assert render(lv) =~ "Team Unlockable!"
     end
+  end
+
+  describe "Code editor remount key (phx-update=\"ignore\" cache-busting)" do
+    test "a live builder edit to the starter code reaches an open player", %{conn: conn} do
+      owner_role = insert(:role, permissions: ["courses.update", "admin"])
+      owner = insert(:account, role: owner_role)
+      course = insert(:course, owner_id: owner.id)
+      user = insert(:account)
+      conn = init_test_session(conn, %{"account_id" => user.id})
+      insert(:enrollment, account_id: user.id, course_id: course.id)
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block,
+          section: s1,
+          type: :code,
+          content: %{"language" => "python3", "initial_code" => "# original starter"}
+        )
+
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+      assert html =~ "# original starter"
+      before_id = code_editor_dom_id(html, block.id)
+
+      {:ok, _updated} =
+        Athena.Content.update_block(owner, block, %{
+          "content" => %{"language" => "python3", "initial_code" => "# edited by instructor"}
+        })
+
+      html = render(lv)
+      assert html =~ "# edited by instructor"
+      refute html =~ "# original starter"
+      # A genuinely new id, not just new content in the same node - the
+      # editor is `phx-update="ignore"`, so only a remount picks it up.
+      refute code_editor_dom_id(html, block.id) == before_id
+    end
+
+    test "the student's own typing never remounts the editor (no cursor/focus loss)", %{
+      conn: conn,
+      course: course
+    } do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :code, content: %{"language" => "python3"})
+
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+      before_id = code_editor_dom_id(html, block.id)
+
+      html =
+        lv
+        |> form("#code-form-#{block.id}")
+        |> render_change(%{"answer" => %{"code" => "print('still typing')"}})
+
+      assert code_editor_dom_id(html, block.id) == before_id
+    end
+  end
+
+  defp code_editor_dom_id(html, block_id) do
+    Regex.run(~r/id="(code-editor-play-#{block_id}-[^"]+)"/, html) |> List.last()
   end
 
   describe "Code Submissions & Real-time Results" do

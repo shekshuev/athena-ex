@@ -199,7 +199,7 @@ defmodule AthenaWeb.TeachingLive.Instructors do
         </:col>
         <:col :let={{_id, instructor}} label={gettext("Created At")} sort="inserted_at">
           <span class="text-sm opacity-60">
-            {Calendar.strftime(instructor.inserted_at, "%d.%m.%Y")}
+            {TimeZones.format(instructor.inserted_at, "%d.%m.%Y")}
           </span>
         </:col>
         <:action :let={{_id, instructor}}>

@@ -95,6 +95,8 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
 
   @impl true
   def handle_event("validate", %{"announcement" => params}, socket) do
+    params = TimeZones.localize_params(params, ~w(starts_at ends_at))
+
     changeset =
       socket.assigns.announcement
       |> Announcement.changeset(params)
@@ -124,6 +126,7 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
   end
 
   def handle_event("save", %{"announcement" => params}, socket) do
+    params = TimeZones.localize_params(params, ~w(starts_at ends_at))
     cohort_id = socket.assigns.selected_cohort && socket.assigns.selected_cohort.id
     params = Map.put(params, "cohort_id", cohort_id)
 

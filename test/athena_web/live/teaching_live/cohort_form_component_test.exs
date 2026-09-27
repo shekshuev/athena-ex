@@ -82,6 +82,27 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponentTest do
       assert render(lv) =~ "Cohort created successfully"
     end
 
+    test "finds instructors without 'instructors.read'/'users.read' - only cohort management is required",
+         %{conn: conn} do
+      limited_role =
+        insert(:role, permissions: ["cohorts.read", "cohorts.create", "cohorts.update"])
+
+      limited_user = insert(:account, role: limited_role)
+      conn = init_test_session(conn, %{"account_id" => limited_user.id})
+
+      account = insert(:account, login: "jane_doe")
+      insert(:instructor, owner_id: account.id, title: "Elixir Master")
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/new")
+
+      html =
+        lv
+        |> element("input[phx-keyup='search_instructors']")
+        |> render_keyup(%{"value" => "jane_doe"})
+
+      assert html =~ "jane_doe"
+    end
+
     test "updates an existing cohort and adds a new instructor", %{
       conn: conn,
       current_user: current_user

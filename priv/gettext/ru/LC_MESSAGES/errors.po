@@ -210,7 +210,7 @@ msgstr "код не может быть пустым"
 #: lib/athena/learning/submission_content.ex:103
 #, elixir-autogen, elixir-format
 msgid "exam answers cannot be empty"
-msgstr "ответы на экзамен не могут быть пустыми"
+msgstr "ответы не могут быть пустыми"
 
 #: lib/athena/learning/submission_content.ex:59
 #, elixir-autogen, elixir-format
@@ -227,7 +227,7 @@ msgstr "пожалуйста, введите ответ или выберите 
 msgid "Cannot enroll: the following students already have access to this course: %{logins}"
 msgstr "Невозможно зачислить: следующие пользователи уже имеют доступ к этому курсу: %{logins}"
 
-#: lib/athena/content/library.ex:122
+#: lib/athena/content/library.ex:140
 #: lib/athena/content/library_block.ex:63
 #, elixir-autogen, elixir-format
 msgid "is pinned to a course and cannot be deleted"

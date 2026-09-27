@@ -62,6 +62,63 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
               }} = redirect
     end
 
+    test "back links return to the library with the forwarded filters", %{
+      conn: conn,
+      admin: admin
+    } do
+      block = insert(:library_block, owner_id: admin.id)
+
+      {:ok, lv, _html} =
+        live(
+          conn,
+          ~p"/studio/library/#{block.id}/editor?page=3&search=foo&order_by[]=title&junk=1"
+        )
+
+      for id <- ["#library-editor-back", "#library-editor-back-bottom"] do
+        href =
+          lv
+          |> element(id)
+          |> render()
+          |> LazyHTML.from_fragment()
+          |> LazyHTML.attribute("href")
+          |> List.first()
+
+        assert %URI{path: "/studio/library", query: query} = URI.parse(href)
+
+        assert Plug.Conn.Query.decode(query) == %{
+                 "page" => "3",
+                 "search" => "foo",
+                 "order_by" => ["title"]
+               }
+      end
+    end
+
+    test "course library editor returns to the course library with filters", %{
+      conn: conn,
+      admin: admin
+    } do
+      course = insert(:course, owner_id: admin.id)
+      block = insert(:library_block, owner_id: admin.id)
+
+      {:ok, lv, _html} =
+        live(
+          conn,
+          ~p"/studio/courses/#{course.id}/library/#{block.id}/editor?page=2&pinned_only=false"
+        )
+
+      href =
+        lv
+        |> element("#library-editor-back")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.attribute("href")
+        |> List.first()
+
+      assert %URI{path: path, query: query} = URI.parse(href)
+      assert path == "/studio/courses/#{course.id}/library"
+      assert Plug.Conn.Query.decode(query) == %{"page" => "2", "pinned_only" => "false"}
+    end
+
     test "renders editor successfully with template title", %{conn: conn, admin: admin} do
       block = insert(:library_block, title: "My Awesome Template", owner_id: admin.id)
 
@@ -590,6 +647,54 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
 
       html = render(lv)
       assert html =~ "Your access level has been updated."
+    end
+  end
+
+  describe "Copy action" do
+    setup %{admin: owner} do
+      role = insert(:role, permissions: ["library.read", "library.update", "library.create"])
+      writer = insert(:account, role: role)
+      %{owner: owner, writer: writer}
+    end
+
+    test "duplicates the template and navigates to the copy's editor", %{
+      conn: conn,
+      writer: writer
+    } do
+      block = insert(:library_block, title: "Original", owner_id: writer.id)
+      conn = init_test_session(conn, %{"account_id" => writer.id})
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      {:ok, new_lv, html} =
+        lv
+        |> element("#library-editor-copy")
+        |> render_click()
+        |> follow_redirect(conn)
+
+      assert html =~ "Template duplicated successfully"
+
+      copy =
+        Athena.Repo.get_by(Athena.Content.LibraryBlock,
+          title: "Original (Copy)",
+          owner_id: writer.id
+        )
+
+      assert copy
+      assert new_lv |> render() =~ "Original (Copy)"
+    end
+
+    test "hides the copy button without library.create permission", %{conn: conn, owner: owner} do
+      role = insert(:role, permissions: ["library.read", "library.update"])
+      reader = insert(:account, role: role)
+      block = insert(:library_block, title: "No Copy", owner_id: owner.id)
+      insert(:library_block_share, library_block: block, account_id: reader.id, role: :writer)
+
+      conn = init_test_session(conn, %{"account_id" => reader.id})
+      {:ok, lv, html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      refute html =~ "library-editor-copy"
+      refute has_element?(lv, "#library-editor-copy")
     end
   end
 

@@ -199,7 +199,7 @@ defmodule AthenaWeb.TeachingLive.Teams do
         </:col>
         <:col :let={{_id, cohort}} label={gettext("Created")} sort="inserted_at">
           <span class="text-sm opacity-60">
-            {Calendar.strftime(cohort.inserted_at, "%d.%m.%Y")}
+            {TimeZones.format(cohort.inserted_at, "%d.%m.%Y")}
           </span>
         </:col>
         <:action :let={{_id, cohort}}>

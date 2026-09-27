@@ -38,6 +38,7 @@ import { EditorView, basicSetup } from "codemirror";
 import { common, createLowlight } from "lowlight";
 import * as mammoth from "mammoth";
 import { Socket } from "phoenix";
+import "cally"; // <calendar-date> web component used by the date picker in core_components
 import { hooks as colocatedHooks } from "phoenix-colocated/athena";
 import "phoenix_html";
 import { LiveSocket } from "phoenix_live_view";
@@ -1484,10 +1485,17 @@ window.addEventListener("phx:scroll_to_block", (e) => {
   }, 150);
 });
 
+// Browser timezone: sent on every socket connect (authoritative) and mirrored
+// into a cookie so the first, disconnected render is already local too.
+const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+if (browserTimezone) {
+  document.cookie = `tz=${browserTimezone}; path=/; max-age=31536000; SameSite=Lax`;
+}
+
 const liveSocket = new LiveSocket("/live", Socket, {
   uploaders: Uploaders,
   longPollFallbackMs: 2500,
-  params: { _csrf_token: csrfToken },
+  params: { _csrf_token: csrfToken, timezone: browserTimezone },
   hooks: { ...colocatedHooks, ...Hooks },
 });
 

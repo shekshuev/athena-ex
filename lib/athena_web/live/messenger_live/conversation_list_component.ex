@@ -159,13 +159,13 @@ defmodule AthenaWeb.MessengerLive.ConversationListComponent do
   end
 
   defp format_time(datetime) do
-    today = Date.utc_today()
-    date = DateTime.to_date(datetime)
+    today = TimeZones.local_today()
+    date = datetime |> TimeZones.to_local() |> DateTime.to_date()
 
     if date == today do
-      Calendar.strftime(datetime, "%H:%M")
+      TimeZones.format(datetime, "%H:%M")
     else
-      Calendar.strftime(datetime, "%d.%m")
+      TimeZones.format(datetime, "%d.%m")
     end
   end
 end

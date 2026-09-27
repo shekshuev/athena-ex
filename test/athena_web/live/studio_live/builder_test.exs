@@ -552,6 +552,50 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
     end
   end
 
+  describe "Inspector - View Submissions link" do
+    test "shows a submissions link, filtered to this block, only for gradable types", %{
+      conn: conn,
+      course: course,
+      admin: admin
+    } do
+      {:ok, section} = Content.create_section(admin, %{"title" => "S1", "course_id" => course.id})
+
+      {:ok, text_block} =
+        Content.create_block(admin, %{
+          "type" => "text",
+          "section_id" => section.id,
+          "content" => %{}
+        })
+
+      {:ok, code_block} =
+        Content.create_block(admin, %{
+          "type" => "code",
+          "section_id" => section.id,
+          "content" => %{"language" => "python3"}
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      html =
+        lv
+        |> element("div[phx-click='select_block'][phx-value-id='#{text_block.id}']")
+        |> render_click()
+
+      refute html =~ "/teaching/grading?block_id=#{text_block.id}"
+
+      html =
+        lv
+        |> element("div[phx-click='select_block'][phx-value-id='#{code_block.id}']")
+        |> render_click()
+
+      assert html =~ "/teaching/grading?block_id=#{code_block.id}"
+    end
+  end
+
   describe "Quiz & Media Inspectors" do
     setup %{course: course, admin: admin} do
       {:ok, section} =
@@ -1532,6 +1576,133 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert :ok = Oban.Testing.perform_job(Athena.Execution.TestWorker, job.args, repo: Repo)
 
       assert render(player) =~ "ACCEPTED"
+    end
+  end
+
+  describe "Test Run - quiz_exam/ticket_exam stay inside the sandbox" do
+    test "starting a quiz_exam swaps the modal's nested view instead of navigating away", %{
+      conn: conn,
+      course: course,
+      admin: admin
+    } do
+      {:ok, section} =
+        Content.create_section(admin, %{"title" => "Exam Lesson", "course_id" => course.id})
+
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "quiz_exam",
+          "section_id" => section.id,
+          "content" => %{"count" => 3, "time_limit" => 30}
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> element("button[phx-click='start_test_run']")
+      |> render_click()
+
+      session = Repo.one!(Athena.Learning.TestRunSession)
+      player = find_live_child(lv, "test-run-player-#{session.id}")
+      assert player
+
+      player
+      |> element("button[phx-click='start_exam'][phx-value-block_id='#{block.id}']")
+      |> render_click()
+
+      # Still the same top-level page - no navigation happened.
+      assert render(lv) =~ "Test run"
+      refute_redirected(lv, ~p"/learn/courses/#{course.id}/exam/#{block.id}")
+
+      exam = find_live_child(lv, "test-run-exam-#{session.id}-#{block.id}")
+      assert exam
+      refute find_live_child(lv, "test-run-player-#{session.id}")
+      assert render(exam) =~ "Assessment Session"
+
+      # And it ran as the ephemeral test-run account, not the instructor.
+      submission = Repo.one!(Athena.Learning.Submission)
+      assert submission.account_id == session.ephemeral_account_id
+      assert submission.account_id != admin.id
+    end
+
+    test "finishing the exam swaps back to the player, still inside the modal", %{
+      conn: conn,
+      course: course,
+      admin: admin
+    } do
+      {:ok, section} =
+        Content.create_section(admin, %{"title" => "Exam Lesson", "course_id" => course.id})
+
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "quiz_exam",
+          "section_id" => section.id,
+          "content" => %{"count" => 1, "time_limit" => 30}
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> element("button[phx-click='start_test_run']")
+      |> render_click()
+
+      session = Repo.one!(Athena.Learning.TestRunSession)
+
+      find_live_child(lv, "test-run-player-#{session.id}")
+      |> element("button[phx-click='start_exam'][phx-value-block_id='#{block.id}']")
+      |> render_click()
+
+      exam = find_live_child(lv, "test-run-exam-#{session.id}-#{block.id}")
+
+      render_click(exam, "finish_exam", %{})
+
+      refute find_live_child(lv, "test-run-exam-#{session.id}-#{block.id}")
+      player = find_live_child(lv, "test-run-player-#{session.id}")
+      assert player
+      assert render(lv) =~ "submitted successfully"
+    end
+
+    test "a ticket_exam nests AthenaWeb.LearnLive.TicketExam, not Exam", %{
+      conn: conn,
+      course: course,
+      admin: admin
+    } do
+      {:ok, section} =
+        Content.create_section(admin, %{"title" => "Ticket Lesson", "course_id" => course.id})
+
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "ticket_exam",
+          "section_id" => section.id,
+          "content" => %{"slots" => [%{"id" => "1"}], "time_limit" => 30}
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> element("button[phx-click='start_test_run']")
+      |> render_click()
+
+      session = Repo.one!(Athena.Learning.TestRunSession)
+
+      find_live_child(lv, "test-run-player-#{session.id}")
+      |> element("button[phx-click='start_exam'][phx-value-block_id='#{block.id}']")
+      |> render_click()
+
+      ticket_exam = find_live_child(lv, "test-run-exam-#{session.id}-#{block.id}")
+      assert ticket_exam
+      assert render(ticket_exam) =~ "Ticket Assessment"
     end
   end
 

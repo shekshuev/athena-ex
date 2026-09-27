@@ -91,6 +91,7 @@ defmodule Athena.MixProject do
       {:bandit, "~> 1.5"},
       {:boundary, "~> 0.10", runtime: false},
       {:oban, "~> 2.20"},
+      {:tz, "~> 0.28"},
       {:argon2_elixir, "~> 4.0"},
       {:flop, "~> 0.25.0"},
       {:ex_machina, "~> 2.7.0", only: :test},

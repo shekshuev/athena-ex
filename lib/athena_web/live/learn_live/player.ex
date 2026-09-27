@@ -211,7 +211,12 @@ defmodule AthenaWeb.LearnLive.Player do
 
   @doc false
   defp subscribe_to_block_topics(blocks, user_id, team_id) do
-    for block <- blocks, block.type == :code do
+    # Every block, not just :code - a grade can land on any of them (a
+    # teacher grading a quiz_exam/ticket_exam/file_assignment from the
+    # grading screen) while the student still has this section open, and
+    # `handle_info({:submission_updated, ...})` below already handles any
+    # block type generically.
+    for block <- blocks do
       Phoenix.PubSub.subscribe(Athena.PubSub, "submission:#{user_id}:#{block.id}")
     end
 
@@ -297,15 +302,7 @@ defmodule AthenaWeb.LearnLive.Player do
   @impl true
   def handle_event("continue_exam", %{"block_id" => block_id}, socket) do
     block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
-
-    route =
-      if block && block.type == :ticket_exam do
-        ~p"/learn/courses/#{socket.assigns.course.id}/ticket/#{block_id}"
-      else
-        ~p"/learn/courses/#{socket.assigns.course.id}/exam/#{block_id}"
-      end
-
-    {:noreply, push_navigate(socket, to: route)}
+    enter_exam(socket, block_id, block && block.type)
   end
 
   @impl true
@@ -862,15 +859,17 @@ defmodule AthenaWeb.LearnLive.Player do
          ) do
       {:ok, _submission} ->
         broadcast_team_progress(socket.assigns.team_id, socket.assigns.course.id)
+        enter_exam(socket, block.id, block.type)
 
-        route =
-          if block.type == :ticket_exam do
-            ~p"/learn/courses/#{socket.assigns.course.id}/ticket/#{block.id}"
-          else
-            ~p"/learn/courses/#{socket.assigns.course.id}/exam/#{block.id}"
-          end
-
-        {:noreply, push_navigate(socket, to: route)}
+      # Stale client state (e.g. a second tab) clicking "Start" on an attempt
+      # that already finished elsewhere - refresh instead of a fresh attempt.
+      {:already_completed, updated_sub} ->
+        {:noreply,
+         assign(
+           socket,
+           :submissions,
+           Map.put(socket.assigns.submissions, block.id, updated_sub)
+         )}
 
       {:error, _} ->
         {:noreply,
@@ -879,6 +878,31 @@ defmodule AthenaWeb.LearnLive.Player do
            :error,
            gettext("Failed to start the assessment session.")
          )}
+    end
+  end
+
+  # Enters the exam/ticket LiveView for `block_id`: a real page navigation
+  # normally, but nested inside the builder's "test run" modal, navigating
+  # the real browser away would exit the sandbox entirely (and land on the
+  # instructor's own real account, not the test-run one) - so instead this
+  # tells the parent (the builder) to swap its live_render from this module
+  # to `AthenaWeb.LearnLive.Exam`/`TicketExam` for the same block, which
+  # then mounts nested exactly like this LiveView already does (see its own
+  # `mount(:not_mounted_at_router, ...)` clause).
+  @doc false
+  defp enter_exam(socket, block_id, block_type) do
+    if socket.assigns[:test_run] do
+      send(socket.parent_pid, {:test_run_enter_exam, block_id, block_type})
+      {:noreply, socket}
+    else
+      route =
+        if block_type == :ticket_exam do
+          ~p"/learn/courses/#{socket.assigns.course.id}/ticket/#{block_id}"
+        else
+          ~p"/learn/courses/#{socket.assigns.course.id}/exam/#{block_id}"
+        end
+
+      {:noreply, push_navigate(socket, to: route)}
     end
   end
 
@@ -1298,14 +1322,29 @@ defmodule AthenaWeb.LearnLive.Player do
       end
 
     socket =
-      if submission.status in [:pending, :processing, :draft] do
-        socket
-      else
-        socket = EngagementSignals.emit_code_run_result(socket, block.id, submission.status)
+      cond do
+        submission.status in [:pending, :processing, :draft] ->
+          socket
 
-        attempts = Map.get(socket.assigns.attempts_map || %{}, block.id, 0)
-        {flash_type, flash_msg} = build_code_flash(submission, block, attempts)
-        put_flash(socket, flash_type, flash_msg)
+        # `build_code_flash/3` and the "code_run_result" event are specific
+        # to the code sandbox's own run/attempt cycle - a manually graded
+        # type (quiz_exam, ticket_exam, file_assignment, ...) gets its own,
+        # simpler "you were graded" flash below instead.
+        block.type == :code ->
+          socket = EngagementSignals.emit_code_run_result(socket, block.id, submission.status)
+
+          attempts = Map.get(socket.assigns.attempts_map || %{}, block.id, 0)
+          {flash_type, flash_msg} = build_code_flash(submission, block, attempts)
+          put_flash(socket, flash_type, flash_msg)
+
+        submission.status == :rejected ->
+          put_flash(socket, :error, gettext("Your submission was rejected by the instructor."))
+
+        submission.status == :needs_review ->
+          socket
+
+        true ->
+          put_flash(socket, :info, gettext("Your submission was graded."))
       end
 
     {:noreply, socket}

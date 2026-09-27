@@ -26,7 +26,8 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
   """
   use AthenaWeb, :live_view
 
-  alias Athena.{Content, Engagement, Learning}
+  alias Athena.{Content, Engagement, Identity, Learning}
+  alias Athena.Content.Block
   alias AthenaWeb.TeachingLive.ChartConfig
   import AthenaWeb.TeachingLive.CourseTreeComponents, only: [course_tree_nav: 1]
 
@@ -293,14 +294,25 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
             </div>
 
             <%= if @active_block do %>
-              <.button
-                variant="ghost"
-                size="sm"
-                class="mb-6"
-                patch={build_path(assigns, block_id: nil)}
-              >
-                <.icon name="hero-arrow-left" class="size-4" /> {gettext("Back to Section")}
-              </.button>
+              <div class="flex items-center justify-between mb-6">
+                <.button variant="ghost" size="sm" patch={build_path(assigns, block_id: nil)}>
+                  <.icon name="hero-arrow-left" class="size-4" /> {gettext("Back to Section")}
+                </.button>
+
+                <.link
+                  :if={
+                    Block.gradable?(@active_block) &&
+                      Identity.can?(@current_user, "grading.read")
+                  }
+                  navigate={
+                    ~p"/teaching/grading?#{%{"block_id" => @active_block.id, "cohort_id" => @cohort.id}}"
+                  }
+                  class="btn btn-ghost btn-sm text-primary"
+                >
+                  <.icon name="hero-inbox-arrow-down" class="size-4" />
+                  {gettext("View Submissions")}
+                </.link>
+              </div>
 
               <.metrics_table metrics={@metrics} />
 

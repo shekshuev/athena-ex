@@ -182,11 +182,8 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
 
       html =
         lv
-        |> form("form[phx-change='update_filters']", %{
-          "date_from" => "2026-05-01",
-          "date_to" => "2026-05-10"
-        })
-        |> render_change()
+        |> form("form[phx-change='update_filters']")
+        |> render_change(%{"date_from" => "2026-05-01", "date_to" => "2026-05-10"})
 
       assert html =~ "new_sub"
       refute html =~ "old_sub"

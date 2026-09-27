@@ -46,6 +46,50 @@ defmodule AthenaWeb.TeachingLive.CohortAccessTest do
       assert html =~ "Blocks in this Section"
     end
 
+    test "offers a submissions link only for gradable blocks, and only with grading.read", %{
+      conn: conn,
+      cohort: cohort,
+      course: course,
+      section: section,
+      block: text_block
+    } do
+      code_block = insert(:block, section: section, type: :code)
+
+      {:ok, _lv, html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/access/#{course.id}")
+
+      # `&` is HTML-escaped as `&amp;` inside an href attribute, so match on
+      # the unescaped prefix (up to the block_id) plus the cohort_id key/value
+      # pair separately, rather than the full literal query string.
+      grading_href_prefix = fn block -> "/teaching/grading?block_id=#{block.id}" end
+      cohort_pair = "cohort_id=#{cohort.id}"
+
+      # `text_block` isn't gradable - no link even though admin lacks
+      # grading.read too, so this alone doesn't prove the permission gate.
+      refute html =~ grading_href_prefix.(text_block)
+      refute html =~ grading_href_prefix.(code_block)
+
+      grading_role =
+        insert(:role,
+          permissions: [
+            "cohorts.read",
+            "cohorts.update",
+            "courses.read",
+            "courses.update",
+            "grading.read"
+          ]
+        )
+
+      grading_admin = insert(:account, role: grading_role)
+      grading_conn = init_test_session(conn, %{"account_id" => grading_admin.id})
+
+      {:ok, _lv, html} =
+        live(grading_conn, ~p"/teaching/cohorts/#{cohort.id}/access/#{course.id}")
+
+      refute html =~ grading_href_prefix.(text_block)
+      assert html =~ grading_href_prefix.(code_block)
+      assert html =~ cohort_pair
+    end
+
     test "focuses on a specific block when block_id is in params", %{
       conn: conn,
       cohort: cohort,

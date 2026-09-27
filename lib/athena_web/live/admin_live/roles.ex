@@ -211,7 +211,7 @@ defmodule AthenaWeb.AdminLive.Roles do
           </div>
         </:col>
         <:col :let={{_id, role}} label={gettext("Created At")} sort="inserted_at">
-          <span class="text-sm opacity-60">{Calendar.strftime(role.inserted_at, "%d.%m.%Y")}</span>
+          <span class="text-sm opacity-60">{TimeZones.format(role.inserted_at, "%d.%m.%Y")}</span>
         </:col>
         <:action :let={{_id, role}}>
           <div class="flex justify-end gap-2">

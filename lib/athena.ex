@@ -11,6 +11,7 @@ defmodule Athena do
     deps: [],
     exports: [
       Repo,
+      TimeZones,
       Identity,
       Identity.Account,
       Identity.Accounts,

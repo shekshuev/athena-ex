@@ -94,6 +94,7 @@ defmodule AthenaWeb do
       alias AthenaWeb.Layouts
 
       alias Athena.Identity
+      alias Athena.TimeZones
 
       # Routes generation with the ~p sigil
       unquote(verified_routes())

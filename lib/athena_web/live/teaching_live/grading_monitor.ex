@@ -36,9 +36,22 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
     submissions_by_account = Learning.list_group_submissions_for_block(cohort.id, block.id)
     accounts = Identity.get_accounts_map(Map.keys(submissions_by_account))
 
-    if connected?(socket) do
-      Enum.each(submissions_by_account, &subscribe_to_member(&1, block))
-    end
+    # Every cohort member gets a "submission:" subscription up front, even
+    # the ones who haven't started yet (`sub` is nil) - `list_group_
+    # submissions_for_block/2` returns one entry per member for exactly this
+    # reason. What's tracked here is *which of them are also already
+    # subscribed to their own "proctoring:" channel*, so a student who
+    # starts after this mount gets picked up by `:submission_updated` below
+    # instead of staying badge-less until their first blur/proctoring ping.
+    proctoring_subscribed_ids =
+      if connected?(socket) do
+        submissions_by_account
+        |> Enum.map(&subscribe_to_member(&1, block))
+        |> Enum.reject(&is_nil/1)
+        |> MapSet.new()
+      else
+        MapSet.new()
+      end
 
     {:ok,
      socket
@@ -48,6 +61,7 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
        cohort: cohort,
        accounts: accounts,
        submissions: submissions_by_account,
+       proctoring_subscribed_ids: proctoring_subscribed_ids,
        live_results: %{}
      )
      |> refresh_live_results(submissions_by_account)}
@@ -58,6 +72,7 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
 
     if sub && sub.status == :pending do
       Phoenix.PubSub.subscribe(Athena.PubSub, "proctoring:#{sub.id}")
+      sub.id
     end
   end
 
@@ -82,6 +97,53 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
 
   @impl true
   def handle_info({:proctoring_updated, submission_id}, socket) do
+    {:noreply, put_live_result(socket, submission_id)}
+  end
+
+  def handle_info({:submission_updated, updated_sub}, socket) do
+    socket =
+      assign(
+        socket,
+        :submissions,
+        Map.put(socket.assigns.submissions, updated_sub.account_id, updated_sub)
+      )
+
+    cond do
+      updated_sub.status == :pending and
+          updated_sub.id not in socket.assigns.proctoring_subscribed_ids ->
+        # First we're hearing of this attempt (it started, or a resit
+        # created a new one, after this monitor mounted) - start tracking it
+        # live right away instead of waiting for its first proctoring ping.
+        Phoenix.PubSub.subscribe(Athena.PubSub, "proctoring:#{updated_sub.id}")
+
+        socket =
+          assign(
+            socket,
+            :proctoring_subscribed_ids,
+            MapSet.put(socket.assigns.proctoring_subscribed_ids, updated_sub.id)
+          )
+
+        {:noreply, put_live_result(socket, updated_sub.id)}
+
+      updated_sub.status != :pending ->
+        Phoenix.PubSub.unsubscribe(Athena.PubSub, "proctoring:#{updated_sub.id}")
+
+        {:noreply,
+         socket
+         |> assign(
+           :proctoring_subscribed_ids,
+           MapSet.delete(socket.assigns.proctoring_subscribed_ids, updated_sub.id)
+         )
+         |> assign(:live_results, Map.delete(socket.assigns.live_results, updated_sub.id))}
+
+      true ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
+  defp put_live_result(socket, submission_id) do
     allowed_blur_attempts = socket.assigns.block.content["allowed_blur_attempts"] || 3
 
     fields =
@@ -92,25 +154,8 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
         allowed_blur_attempts
       )
 
-    {:noreply,
-     assign(socket, :live_results, Map.put(socket.assigns.live_results, submission_id, fields))}
+    assign(socket, :live_results, Map.put(socket.assigns.live_results, submission_id, fields))
   end
-
-  def handle_info({:submission_updated, updated_sub}, socket) do
-    submissions = Map.put(socket.assigns.submissions, updated_sub.account_id, updated_sub)
-
-    socket =
-      if updated_sub.status != :pending do
-        Phoenix.PubSub.unsubscribe(Athena.PubSub, "proctoring:#{updated_sub.id}")
-        assign(socket, :live_results, Map.delete(socket.assigns.live_results, updated_sub.id))
-      else
-        socket
-      end
-
-    {:noreply, assign(socket, :submissions, submissions)}
-  end
-
-  def handle_info(_msg, socket), do: {:noreply, socket}
 
   # The badge always needs a `content` map shaped like `Submission.content`
   # (see `Athena.Engagement.Proctoring.summary/1`). For a finalized attempt
@@ -187,11 +232,16 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
               {account_id, sub} <-
                 Enum.sort_by(@submissions, fn {account_id, _sub} ->
                   account = @accounts[account_id]
-                  if account, do: account.login, else: ""
+                  if account, do: Identity.display_name(account), else: ""
                 end)
             }>
-              <td class="font-bold">
-                {if account = @accounts[account_id], do: account.login, else: gettext("Unknown")}
+              <td>
+                <% account = @accounts[account_id] %>
+                <% name = account && Identity.display_name(account) %>
+                <div class="font-bold">{name || gettext("Unknown")}</div>
+                <div :if={account && name != account.login} class="text-xs text-base-content/50">
+                  {account.login}
+                </div>
               </td>
               <td>
                 <.risk_badge content={indicator_content(sub, @live_results)} />

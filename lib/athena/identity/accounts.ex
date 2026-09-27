@@ -427,6 +427,27 @@ defmodule Athena.Identity.Accounts do
   end
 
   @doc """
+  Account ids whose login matches `query` - deliberately open like
+  `search_addable_cohort_accounts/3` below: used by `Athena.Learning.
+  Instructors.search_instructors/3` to resolve which instructor profiles to
+  offer in the "assign instructors" autocomplete, itself only reachable from
+  a cohort/team create-edit form already gated on `"cohorts.update"`/
+  `"teams.update"` - requiring `"users.read"` here (as `search_accounts_by_login/3`
+  above does) would silently break that search for any cohort manager who
+  lacks that separate, unrelated permission.
+  """
+  @spec search_account_ids_by_login(String.t(), integer()) :: [String.t()]
+  def search_account_ids_by_login(query, limit \\ 10) do
+    term = "%#{query}%"
+
+    Account
+    |> where([a], ilike(a.login, ^term))
+    |> select([a], a.id)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  @doc """
   Searches active, non-deleted accounts by login OR profile name
   (first/last/patronymic), for the open messenger's "start a new
   conversation" flow.
@@ -528,16 +549,36 @@ defmodule Athena.Identity.Accounts do
   end
 
   @doc """
-  Retrieves a list of account IDs matching a partial login string.
-  Useful for cross-context filtering (like Flop).
+  Retrieves a list of account IDs matching a partial login or profile name
+  (first/last/patronymic - "ФИО") string. Useful for cross-context filtering
+  (like Flop): a Flop `:in` filter over this is how the grading screen's
+  "Student" search matches either.
   """
-  @spec get_account_ids_by_login(String.t()) :: [String.t()]
-  def get_account_ids_by_login(query) do
-    search_term = "%#{query}%"
+  @spec get_account_ids_by_login_or_name(String.t()) :: [String.t()]
+  def get_account_ids_by_login_or_name(query) do
+    term = "%#{query}%"
 
     Account
-    |> where([a], ilike(a.login, ^search_term))
+    |> join(:left, [a], p in Profile, on: p.owner_id == a.id)
+    |> where(
+      [a, p],
+      ilike(a.login, ^term) or ilike(p.first_name, ^term) or ilike(p.last_name, ^term) or
+        ilike(p.patronymic, ^term)
+    )
     |> select([a], a.id)
+    |> distinct(true)
+    |> Repo.all()
+  end
+
+  @doc """
+  Account ids that are members of `cohort_id`. Useful for cross-context
+  filtering (like Flop) - the admin Users list's cohort filter resolves the
+  picked cohort through this into an `:in` filter on `id`, the same way
+  `get_account_ids_by_login_or_name/1`'s result feeds one.
+  """
+  @spec get_account_ids_by_cohort(String.t()) :: [String.t()]
+  def get_account_ids_by_cohort(cohort_id) do
+    from(m in CohortMembership, where: m.cohort_id == ^cohort_id, select: m.account_id)
     |> Repo.all()
   end
 

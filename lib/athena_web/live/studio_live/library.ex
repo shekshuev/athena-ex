@@ -27,6 +27,7 @@ defmodule AthenaWeb.StudioLive.Library do
      |> assign(course_library_mode: false)
      |> assign(course: nil)
      |> assign(pinned_ids: MapSet.new())
+     |> assign(pinnable_ids: MapSet.new())
      |> stream(:library_blocks, [])}
   end
 
@@ -65,7 +66,7 @@ defmodule AthenaWeb.StudioLive.Library do
     flop_params =
       params
       |> Map.merge(%{"filters" => flop_filters})
-      |> Map.put("course_id", params["id"])
+      |> Map.put("course_id", socket.assigns.course_id)
       |> Map.put("pinned_only", socket.assigns.pinned_only)
 
     case Content.list_library_blocks(socket.assigns.current_user, flop_params) do
@@ -76,14 +77,62 @@ defmodule AthenaWeb.StudioLive.Library do
         |> assign(type_filter: type)
         |> assign(tag_filter: tag)
         |> assign(has_blocks: blocks != [])
+        |> assign(pinnable_ids: pinnable_ids(socket, blocks))
         |> stream(:library_blocks, blocks, reset: true)
 
       {:error, _meta} ->
         socket
         |> assign(search: search, type_filter: type, tag_filter: tag, has_blocks: false)
+        |> assign(pinnable_ids: MapSet.new())
         |> stream(:library_blocks, [], reset: true)
     end
   end
+
+  # Ids of the blocks on this page the current user is actually allowed to
+  # pin/unpin - mirrors the `can_toggle` check the "In Course" column itself
+  # already does per row - so the header's select-all checkbox only ever
+  # offers to touch blocks a bulk toggle could actually change.
+  defp pinnable_ids(%{assigns: %{course_library_mode: false}}, _blocks), do: MapSet.new()
+
+  defp pinnable_ids(socket, blocks) do
+    user = socket.assigns.current_user
+    is_course_owner = socket.assigns.course && socket.assigns.course.owner_id == user.id
+
+    blocks
+    |> Enum.filter(fn block ->
+      is_course_owner or block_badges(block, user).role in [:owner, :writer] or
+        Identity.can?(user, "library.update", block)
+    end)
+    |> Enum.map(& &1.id)
+    |> MapSet.new()
+  end
+
+  defp all_pinned?(pinnable_ids, _pinned_ids) when pinnable_ids == %MapSet{}, do: false
+  defp all_pinned?(pinnable_ids, pinned_ids), do: MapSet.subset?(pinnable_ids, pinned_ids)
+
+  defp pin_all_targets(pinnable_ids, pinned_ids, true = _select_all?),
+    do: MapSet.difference(pinnable_ids, pinned_ids)
+
+  defp pin_all_targets(pinnable_ids, pinned_ids, false = _select_all?),
+    do: MapSet.intersection(pinnable_ids, pinned_ids)
+
+  defp apply_bulk_pin(block_id, {pinned_ids, failures}, socket, select_all?) do
+    course_id = socket.assigns.course.id
+    user = socket.assigns.current_user
+
+    result =
+      if select_all?,
+        do: Content.pin_library_block(user, course_id, block_id),
+        else: Content.unpin_library_block(user, course_id, block_id)
+
+    case result do
+      {:ok, _} -> {toggle_membership(pinned_ids, block_id, select_all?), failures}
+      {:error, _} -> {pinned_ids, failures + 1}
+    end
+  end
+
+  defp toggle_membership(mapset, id, true = _member?), do: MapSet.put(mapset, id)
+  defp toggle_membership(mapset, id, false = _member?), do: MapSet.delete(mapset, id)
 
   defp apply_action(socket, :course_library, %{"id" => course_id}) do
     case Content.get_course(socket.assigns.current_user, course_id) do
@@ -247,26 +296,101 @@ defmodule AthenaWeb.StudioLive.Library do
     {:noreply, assign(socket, block_to_share: nil)}
   end
 
-  def handle_event("toggle_pin", %{"id" => block_id}, socket) do
-    if socket.assigns.course_library_mode do
-      course_id = socket.assigns.course.id
-      pinned_ids = socket.assigns.pinned_ids
+  def handle_event(
+        "toggle_pin",
+        %{"id" => block_id},
+        %{assigns: %{course_library_mode: true}} = socket
+      ) do
+    course_id = socket.assigns.course.id
+    pinned_ids = socket.assigns.pinned_ids
+    currently_pinned? = MapSet.member?(pinned_ids, block_id)
 
-      pinned_ids
-      |> MapSet.member?(block_id)
-      |> case do
-        true -> Content.unpin_library_block(socket.assigns.current_user, course_id, block_id)
-        false -> Content.pin_library_block(socket.assigns.current_user, course_id, block_id)
+    result =
+      if currently_pinned? do
+        Content.unpin_library_block(socket.assigns.current_user, course_id, block_id)
+      else
+        Content.pin_library_block(socket.assigns.current_user, course_id, block_id)
       end
-      |> case do
-        {:ok, _} ->
-          {:noreply, assign(socket, pinned_ids: MapSet.put(pinned_ids, block_id))}
 
-        {:error, _} ->
-          {:noreply, put_flash(socket, :error, gettext("Failed to update block."))}
+    case result do
+      {:ok, _} ->
+        new_pinned_ids = toggle_membership(pinned_ids, block_id, !currently_pinned?)
+        {:noreply, assign(socket, pinned_ids: new_pinned_ids)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to update block."))}
+    end
+  end
+
+  def handle_event("toggle_pin", _params, socket), do: {:noreply, socket}
+
+  # Toggles every togglable block on the current page at once: pins whatever
+  # isn't pinned yet unless everything already is, in which case it unpins
+  # the lot instead - the standard "select all" header checkbox behavior.
+  def handle_event(
+        "toggle_pin_all",
+        _params,
+        %{assigns: %{course_library_mode: true}} = socket
+      ) do
+    select_all? = not all_pinned?(socket.assigns.pinnable_ids, socket.assigns.pinned_ids)
+    targets = pin_all_targets(socket.assigns.pinnable_ids, socket.assigns.pinned_ids, select_all?)
+
+    {pinned_ids, failures} =
+      Enum.reduce(
+        targets,
+        {socket.assigns.pinned_ids, 0},
+        &apply_bulk_pin(&1, &2, socket, select_all?)
+      )
+
+    socket = assign(socket, :pinned_ids, pinned_ids)
+
+    socket =
+      if failures > 0 do
+        put_flash(socket, :error, gettext("Failed to update %{count} block(s).", count: failures))
+      else
+        socket
       end
-    else
+
+    {:noreply, socket}
+  end
+
+  def handle_event("toggle_pin_all", _params, socket), do: {:noreply, socket}
+
+  def handle_event("copy_block", %{"id" => id}, socket) do
+    with {:ok, block} <- Content.get_library_block(socket.assigns.current_user, id),
+         {:ok, copy} <- Content.duplicate_library_block(socket.assigns.current_user, block) do
+      socket =
+        socket
+        |> pin_copy_if_course_library(copy)
+        |> put_flash(:info, gettext("Template duplicated successfully"))
+        |> load_blocks(build_query_params(socket.assigns, %{}))
+
       {:noreply, socket}
+    else
+      {:error, :forbidden} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           gettext("You do not have permission to duplicate this template.")
+         )}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to duplicate template"))}
+    end
+  end
+
+  defp pin_copy_if_course_library(%{assigns: %{course_library_mode: false}} = socket, _copy),
+    do: socket
+
+  defp pin_copy_if_course_library(socket, copy) do
+    case Content.pin_library_block(
+           socket.assigns.current_user,
+           socket.assigns.course.id,
+           copy.id
+         ) do
+      {:ok, _} -> assign(socket, pinned_ids: MapSet.put(socket.assigns.pinned_ids, copy.id))
+      {:error, _} -> socket
     end
   end
 
@@ -562,6 +686,31 @@ defmodule AthenaWeb.StudioLive.Library do
           end %>
 
           <div :if={@has_blocks}>
+            <label
+              :if={@course_library_mode && @pinnable_ids != MapSet.new()}
+              class="flex items-center gap-2 mb-3 cursor-pointer select-none w-fit"
+            >
+              <input
+                type="checkbox"
+                checked={all_pinned?(@pinnable_ids, @pinned_ids)}
+                phx-click="toggle_pin_all"
+                class="checkbox checkbox-primary checkbox-sm"
+              />
+              <span class="text-sm font-bold">
+                <%= if all_pinned?(@pinnable_ids, @pinned_ids) do %>
+                  {gettext("Deselect all")}
+                <% else %>
+                  {gettext("Select all")}
+                <% end %>
+              </span>
+              <span class="text-xs text-base-content/50 font-normal">
+                {gettext("(%{pinned}/%{total} in this course)",
+                  pinned: MapSet.size(MapSet.intersection(@pinnable_ids, @pinned_ids)),
+                  total: MapSet.size(@pinnable_ids)
+                )}
+              </span>
+            </label>
+
             <.table id="library-blocks" rows={@streams.library_blocks} meta={@meta} path_fn={path_fn}>
               <:col :let={{_id, block}} :if={@course_library_mode} label={gettext("In Course")}>
                 <% info = block_badges(block, @current_user) %>
@@ -615,7 +764,7 @@ defmodule AthenaWeb.StudioLive.Library do
 
               <:col :let={{_id, block}} label={gettext("Created At")} sort="inserted_at">
                 <span class="text-sm opacity-60">
-                  {Calendar.strftime(block.inserted_at, "%d.%m.%Y")}
+                  {TimeZones.format(block.inserted_at, "%d.%m.%Y")}
                 </span>
               </:col>
 
@@ -636,11 +785,13 @@ defmodule AthenaWeb.StudioLive.Library do
                 <div class="flex justify-end gap-2">
                   <% editor_path =
                     if @course_library_mode,
-                      do: ~p"/studio/courses/#{@course.id}/library/#{block.id}/editor",
-                      else: ~p"/studio/library/#{block.id}/editor" %>
+                      do:
+                        ~p"/studio/courses/#{@course.id}/library/#{block.id}/editor?#{build_query_params(assigns, %{})}",
+                      else: ~p"/studio/library/#{block.id}/editor?#{build_query_params(assigns, %{})}" %>
 
                   <.button
                     :if={can_view}
+                    id={"open-editor-#{block.id}"}
                     navigate={editor_path}
                     class="btn btn-primary btn-xs btn-square btn-soft"
                     title={if can_edit, do: gettext("Open Editor"), else: gettext("View Template")}
@@ -663,6 +814,18 @@ defmodule AthenaWeb.StudioLive.Library do
                     title={gettext("Edit Metadata")}
                   >
                     <.icon name="hero-pencil-square" class="size-4" />
+                  </.button>
+
+                  <.button
+                    :if={can_view and Identity.can?(@current_user, "library.create")}
+                    id={"copy-block-#{block.id}"}
+                    type="button"
+                    phx-click="copy_block"
+                    phx-value-id={block.id}
+                    class="btn btn-ghost btn-xs btn-square"
+                    title={gettext("Duplicate Template")}
+                  >
+                    <.icon name="hero-square-2-stack" class="size-4" />
                   </.button>
 
                   <.button

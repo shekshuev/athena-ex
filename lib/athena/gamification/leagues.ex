@@ -139,8 +139,8 @@ defmodule Athena.Gamification.Leagues do
   end
 
   defp weekly_xp_for(account_id, week_start) do
-    week_start_dt = DateTime.new!(week_start, ~T[00:00:00], "Etc/UTC")
-    week_end_dt = DateTime.new!(Date.add(week_start, 7), ~T[00:00:00], "Etc/UTC")
+    week_start_dt = Athena.TimeZones.start_of_day(week_start)
+    week_end_dt = Athena.TimeZones.start_of_day(Date.add(week_start, 7))
 
     XpEvent
     |> where([e], e.account_id == ^account_id)

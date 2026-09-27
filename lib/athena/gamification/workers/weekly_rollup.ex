@@ -49,8 +49,7 @@ defmodule Athena.Gamification.Workers.WeeklyRollup do
   defp week_start_from_args(_), do: nil
 
   defp previous_week_start do
-    Date.utc_today()
-    |> Date.beginning_of_week()
+    Athena.TimeZones.this_week_start()
     |> Date.add(-7)
   end
 end

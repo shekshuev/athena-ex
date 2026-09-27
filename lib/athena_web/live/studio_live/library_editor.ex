@@ -14,6 +14,8 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
   on_mount {AthenaWeb.Hooks.Permission, "library.read"}
 
+  @return_query_keys ~w(search type tag pinned_only page page_size order_by order_directions)
+
   @impl true
   def mount(params, _session, socket) do
     course_bank_mode = socket.assigns.live_action == :course_library
@@ -25,11 +27,14 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
         {nil, params["id"]}
       end
 
+    # The library list forwards its filters/pagination so "back" lands on the same page.
+    return_query = Map.take(params, @return_query_keys)
+
     return_path =
       if course_bank_mode do
-        ~p"/studio/courses/#{course_id}/library"
+        ~p"/studio/courses/#{course_id}/library?#{return_query}"
       else
-        ~p"/studio/library"
+        ~p"/studio/library?#{return_query}"
       end
 
     with {:ok, block} <- Content.get_library_block(block_id),
@@ -55,6 +60,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
          course_bank_mode: course_bank_mode,
          course_id: course_id,
          return_path: return_path,
+         return_query: return_query,
          tags_string: Enum.join(block.tags || [], ", "),
          show_media_modal: false,
          upload_type: nil,
@@ -209,6 +215,33 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
   def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket), do: {:noreply, socket}
 
   @impl true
+  def handle_event("copy_block", _params, socket) do
+    user = socket.assigns.current_user
+    block = socket.assigns.block
+
+    with true <- Identity.can?(user, "library.create"),
+         {:ok, copy} <- Content.duplicate_library_block(user, block) do
+      if socket.assigns.course_bank_mode do
+        Content.pin_library_block(user, socket.assigns.course_id, copy.id)
+      end
+
+      new_path =
+        if socket.assigns.course_bank_mode do
+          ~p"/studio/courses/#{socket.assigns.course_id}/library/#{copy.id}/editor?#{socket.assigns.return_query}"
+        else
+          ~p"/studio/library/#{copy.id}/editor?#{socket.assigns.return_query}"
+        end
+
+      {:noreply,
+       socket
+       |> put_flash(:info, gettext("Template duplicated successfully"))
+       |> push_navigate(to: new_path)}
+    else
+      _ ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to duplicate template"))}
+    end
+  end
+
   def handle_event("update_content", %{"content" => parsed}, socket) do
     if can_edit?(socket) do
       block = socket.assigns.block
@@ -811,6 +844,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
       <.page_container size="wide" class={not @course_bank_mode && "pb-20 pt-4"}>
         <div class="flex items-center gap-4 mb-8 border-b border-base-300 pb-6">
           <.link
+            id="library-editor-back"
             navigate={@return_path}
             class="btn btn-ghost btn-sm btn-square rounded-sm hover:bg-base-200"
             title={gettext("Back to Library")}
@@ -825,6 +859,18 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
               {gettext("Block Type:")} {Atom.to_string(@block.type) |> String.replace("_", " ")}
             </div>
           </div>
+
+          <.button
+            :if={Identity.can?(@current_user, "library.create")}
+            id="library-editor-copy"
+            type="button"
+            phx-click="copy_block"
+            class="btn btn-ghost btn-sm ml-auto"
+            title={gettext("Duplicate Template")}
+          >
+            <.icon name="hero-square-2-stack" class="size-5" />
+            <span class="hidden sm:inline">{gettext("Duplicate")}</span>
+          </.button>
         </div>
 
         <div class="flex flex-col lg:flex-row items-start gap-8">
@@ -998,9 +1044,10 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                         type="number"
                         name="library_block[content][time_limit]"
                         value={@block.content["time_limit"]}
-                        label={gettext("Time (Min)")}
-                        placeholder="Opt"
+                        label={gettext("Time Limit (min)")}
+                        placeholder={gettext("Optional")}
                         min="1"
+                        phx-debounce="500"
                       />
 
                       <div class="flex items-center justify-between mb-2 mt-6">
@@ -1107,7 +1154,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                           type="number"
                           name="library_block[content][time_limit]"
                           value={@block.content["time_limit"]}
-                          label={gettext("Time Limit (sec)")}
+                          label={gettext("Time Limit (min)")}
                           placeholder={gettext("Optional")}
                           min="1"
                           phx-debounce="500"
@@ -1288,6 +1335,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
             <div class="p-6 border-t border-base-300 mt-auto">
               <.link
+                id="library-editor-back-bottom"
                 navigate={@return_path}
                 class="btn btn-primary rounded-sm w-full"
               >

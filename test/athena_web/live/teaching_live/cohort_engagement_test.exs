@@ -122,6 +122,53 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
     assert html =~ "Whole cohort"
   end
 
+  test "offers a submissions link only for gradable blocks, and only with grading.read", %{
+    conn: conn,
+    cohort: cohort,
+    course: course,
+    section: section,
+    block: text_block,
+    quiz_block: quiz_block
+  } do
+    grading_href_prefix = fn block -> "/teaching/grading?block_id=#{block.id}" end
+    cohort_pair = "cohort_id=#{cohort.id}"
+
+    {:ok, _lv, html} =
+      live(
+        conn,
+        ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&block_id=#{text_block.id}"
+      )
+
+    # `text_block` isn't gradable, and this teacher lacks grading.read too -
+    # the next block confirms which of the two actually gates the link.
+    refute html =~ grading_href_prefix.(text_block)
+
+    {:ok, _lv, html} =
+      live(
+        conn,
+        ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&block_id=#{quiz_block.id}"
+      )
+
+    refute html =~ grading_href_prefix.(quiz_block)
+
+    grading_role =
+      insert(:role,
+        permissions: ["cohorts.read", "courses.read", "engagement.read", "grading.read"]
+      )
+
+    grading_teacher = insert(:account, role: grading_role)
+    grading_conn = init_test_session(conn, %{"account_id" => grading_teacher.id})
+
+    {:ok, _lv, html} =
+      live(
+        grading_conn,
+        ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&block_id=#{quiz_block.id}"
+      )
+
+    assert html =~ grading_href_prefix.(quiz_block)
+    assert html =~ cohort_pair
+  end
+
   test "lists cohort members in the student filter dropdown", %{
     conn: conn,
     cohort: cohort,

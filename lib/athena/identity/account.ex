@@ -19,7 +19,7 @@ defmodule Athena.Identity.Account do
 
   @derive {
     Flop.Schema,
-    filterable: [:login, :status],
+    filterable: [:id, :login, :status],
     sortable: [:login, :status, :inserted_at],
     default_limit: 10,
     default_order: %{

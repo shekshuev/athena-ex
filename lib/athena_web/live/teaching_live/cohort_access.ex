@@ -7,6 +7,8 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
   use AthenaWeb, :live_view
 
   alias Athena.Content
+  alias Athena.Content.Block
+  alias Athena.Identity
   alias Athena.Learning
   import AthenaWeb.BlockComponents
   import AthenaWeb.TeachingLive.CourseTreeComponents, only: [course_tree_nav: 1]
@@ -142,6 +144,8 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
   end
 
   defp build_override_attrs(params, assigns, type, id) do
+    params = TimeZones.localize_params(params, ~w(unlock_at lock_at))
+
     visibility =
       if params["visibility"] in [nil, ""], do: nil, else: String.to_atom(params["visibility"])
 
@@ -197,12 +201,25 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
       <div class="flex-1 overflow-y-auto bg-base-200 p-8 relative">
         <%= if @active_block do %>
           <.page_container size="narrow">
-            <.link
-              patch={access_path(@cohort, @course.id, section_id: @active_section.id)}
-              class="btn btn-ghost rounded-sm btn-sm mb-6"
-            >
-              <.icon name="hero-arrow-left" class="size-4" /> {gettext("Back to Section")}
-            </.link>
+            <div class="flex items-center justify-between mb-6">
+              <.link
+                patch={access_path(@cohort, @course.id, section_id: @active_section.id)}
+                class="btn btn-ghost rounded-sm btn-sm"
+              >
+                <.icon name="hero-arrow-left" class="size-4" /> {gettext("Back to Section")}
+              </.link>
+
+              <.link
+                :if={Block.gradable?(@active_block) && Identity.can?(@current_user, "grading.read")}
+                navigate={
+                  ~p"/teaching/grading?#{%{"block_id" => @active_block.id, "cohort_id" => @cohort.id}}"
+                }
+                class="btn btn-ghost btn-sm text-primary"
+              >
+                <.icon name="hero-inbox-arrow-down" class="size-4" />
+                {gettext("View Submissions")}
+              </.link>
+            </div>
 
             <div class="mb-8 opacity-80 pointer-events-none">
               <.content_block block={@active_block} mode={:edit} />
@@ -259,18 +276,33 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
                             </span>
                           <% end %>
                         </div>
-                        <.link
-                          patch={
-                            access_path(@cohort, @course.id,
-                              section_id: @active_section.id,
-                              block_id: block.id
-                            )
-                          }
-                          class="btn btn-ghost btn-xs text-primary"
-                        >
-                          <.icon name="hero-cog-8-tooth" class="size-4" />
-                          {gettext("Configure")}
-                        </.link>
+                        <div class="flex items-center gap-2">
+                          <.link
+                            :if={
+                              Block.gradable?(block) &&
+                                Identity.can?(@current_user, "grading.read")
+                            }
+                            navigate={
+                              ~p"/teaching/grading?#{%{"block_id" => block.id, "cohort_id" => @cohort.id}}"
+                            }
+                            class="btn btn-ghost btn-xs text-primary"
+                          >
+                            <.icon name="hero-inbox-arrow-down" class="size-4" />
+                            {gettext("Submissions")}
+                          </.link>
+                          <.link
+                            patch={
+                              access_path(@cohort, @course.id,
+                                section_id: @active_section.id,
+                                block_id: block.id
+                              )
+                            }
+                            class="btn btn-ghost btn-xs text-primary"
+                          >
+                            <.icon name="hero-cog-8-tooth" class="size-4" />
+                            {gettext("Configure")}
+                          </.link>
+                        </div>
                       </div>
                     </div>
                   <% end %>
@@ -368,29 +400,23 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
             </h4>
             <div class="space-y-4">
               <div class={["space-y-4 mb-4", @current_vis != "restricted" && "hidden"]}>
-                <div>
-                  <label class="block text-xs font-bold text-base-content/70 mb-1">
-                    {gettext("Unlock Time")}
-                  </label>
-                  <input
-                    type="datetime-local"
-                    name="unlock_at"
-                    value={if @override, do: format_dt_input(@override.unlock_at), else: ""}
-                    class="input input-bordered input-sm rounded-sm w-full font-mono"
-                  />
-                </div>
+                <.input
+                  type="datetime-local"
+                  id="override-unlock-at"
+                  name="unlock_at"
+                  value={@override && @override.unlock_at}
+                  label={gettext("Unlock Time")}
+                  class="input input-sm rounded-sm w-full font-mono"
+                />
 
-                <div>
-                  <label class="block text-xs font-bold text-base-content/70 mb-1">
-                    {gettext("Lock Time")}
-                  </label>
-                  <input
-                    type="datetime-local"
-                    name="lock_at"
-                    value={if @override, do: format_dt_input(@override.lock_at), else: ""}
-                    class="input input-bordered input-sm rounded-sm w-full font-mono"
-                  />
-                </div>
+                <.input
+                  type="datetime-local"
+                  id="override-lock-at"
+                  name="lock_at"
+                  value={@override && @override.lock_at}
+                  label={gettext("Lock Time")}
+                  class="input input-sm rounded-sm w-full font-mono"
+                />
               </div>
 
               <div class="pt-2 flex gap-2">
@@ -438,8 +464,5 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
   end
 
   defp format_dt(nil), do: ""
-  defp format_dt(dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M UTC")
-
-  defp format_dt_input(nil), do: ""
-  defp format_dt_input(dt), do: Calendar.strftime(dt, "%Y-%m-%dT%H:%M")
+  defp format_dt(dt), do: TimeZones.format(dt, "%d.%m.%Y %H:%M")
 end

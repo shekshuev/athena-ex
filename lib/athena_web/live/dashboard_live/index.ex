@@ -6,10 +6,10 @@ defmodule AthenaWeb.DashboardLive.Index do
   enrolled course progress, and upcoming access-window deadlines. Accounts
   that additionally own an `Athena.Learning.Instructor` profile (the
   ground truth for "is this account a teacher" — not a permission or role
-  name) also get a Teaching section underneath: the cohorts they manage,
-  which members went quiet this week, and — for those who can also grade —
-  a pending-review counter. Both layers are gated at the data-loading step
-  in `mount/3`, not just in the template.
+  name) also get a Teaching section underneath: quick links to the cohorts
+  they manage, and — for those who can also grade — a pending-review
+  counter linking straight to the filtered queue. Both layers are gated at
+  the data-loading step in `mount/3`, not just in the template.
   """
   use AthenaWeb, :live_view
 
@@ -124,29 +124,15 @@ defmodule AthenaWeb.DashboardLive.Index do
          true <- Identity.can?(account, "cohorts.read") do
       {:ok, {cohorts, _meta}} = Learning.list_cohorts(account, %{"page_size" => 50})
 
-      cohort_rows =
-        cohorts
-        |> Enum.filter(&(&1.type == :academic))
-        |> Enum.map(fn cohort ->
-          %{cohort: cohort, quiet_members: quiet_members_with_accounts(cohort.id)}
-        end)
+      cohorts = Enum.filter(cohorts, &(&1.type == :academic))
 
       needs_review_count =
         if Identity.can?(account, "grading.read"), do: count_needs_review(account)
 
-      %{cohorts: cohort_rows, needs_review_count: needs_review_count}
+      %{cohorts: cohorts, needs_review_count: needs_review_count}
     else
       _ -> nil
     end
-  end
-
-  defp quiet_members_with_accounts(cohort_id) do
-    members = Gamification.quiet_members(cohort_id)
-    accounts_map = Identity.get_accounts_map(Enum.map(members, & &1.account_id))
-
-    Enum.map(members, fn member ->
-      Map.put(member, :account, Map.get(accounts_map, member.account_id))
-    end)
   end
 
   defp resolve_continue(%{block_id: block_id}, enrollments) do
@@ -379,7 +365,7 @@ defmodule AthenaWeb.DashboardLive.Index do
             >
               <div class="card-body py-3 px-4">
                 <div class="text-xs font-black uppercase text-error tracking-wide">
-                  {Calendar.strftime(deadline.lock_at, "%d.%m %H:%M")}
+                  {TimeZones.format(deadline.lock_at, "%d.%m %H:%M")}
                 </div>
                 <div class="font-bold text-sm truncate">{deadline.course.title}</div>
                 <div class="text-xs text-base-content/50 truncate">{deadline.section_title}</div>
@@ -444,42 +430,42 @@ defmodule AthenaWeb.DashboardLive.Index do
                 )}
               </div>
             </div>
-            <.button variant="warning" size="sm" navigate={~p"/teaching/grading"}>
+            <.button
+              variant="warning"
+              size="sm"
+              navigate={~p"/teaching/grading?status=needs_review"}
+            >
               {gettext("Go to grading")}
             </.button>
           </div>
         </div>
 
-        <div :if={@teaching.cohorts == []} class="text-base-content/50 text-sm">
-          {gettext("You don't manage any cohorts yet.")}
-        </div>
+        <div>
+          <h3 class="text-xs font-black uppercase text-base-content/50 tracking-wide mb-3">
+            {gettext("My Cohorts")}
+          </h3>
 
-        <div :if={@teaching.cohorts != []} class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div :if={@teaching.cohorts == []} class="text-base-content/50 text-sm">
+            {gettext("You don't manage any cohorts yet.")}
+          </div>
+
           <div
-            :for={row <- @teaching.cohorts}
-            class="card bg-base-100 border border-base-300 rounded-sm"
+            :if={@teaching.cohorts != []}
+            class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3"
           >
-            <div class="card-body py-4 gap-2">
-              <div class="flex items-center justify-between">
-                <div class="font-bold">{row.cohort.name}</div>
-                <.button variant="ghost" size="xs" navigate={~p"/teaching/cohorts/#{row.cohort.id}"}>
-                  {gettext("Open")}
-                </.button>
+            <.link
+              :for={cohort <- @teaching.cohorts}
+              navigate={~p"/teaching/cohorts/#{cohort.id}"}
+              class="card bg-base-100 border border-base-300 rounded-sm hover:border-primary/50 transition-colors"
+            >
+              <div class="card-body py-4 flex-row items-center justify-between gap-2">
+                <div class="font-bold truncate">{cohort.name}</div>
+                <.icon
+                  name="hero-arrow-right"
+                  class="size-4 text-base-content/40 shrink-0"
+                />
               </div>
-
-              <div :if={row.quiet_members == []} class="text-xs text-base-content/50">
-                {gettext("Everyone was active this week.")}
-              </div>
-
-              <div :if={row.quiet_members != []} class="space-y-1">
-                <div class="text-xs font-black uppercase text-base-content/50 tracking-wide">
-                  {gettext("Quiet this week")}
-                </div>
-                <div :for={member <- row.quiet_members} class="text-sm truncate">
-                  {member.account && member.account.login}
-                </div>
-              </div>
-            </div>
+            </.link>
           </div>
         </div>
       </div>

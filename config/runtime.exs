@@ -47,6 +47,13 @@ config :athena, :runner_family, runner_family
 
 config :athena, :default_locale, System.get_env("DEFAULT_LOCALE") || "en"
 
+# Where "today"/"this week" starts for server-side logic and cron. Storage stays UTC.
+app_timezone = System.get_env("APP_TIMEZONE") || "Europe/Moscow"
+
+if config_env() != :test do
+  config :athena, :app_timezone, app_timezone
+end
+
 if server_role == "runner" do
   config :athena, ecto_repos: []
 end
@@ -160,6 +167,7 @@ if config_env() == :prod do
       plugins: [
         Oban.Plugins.Pruner,
         {Oban.Plugins.Cron,
+         timezone: app_timezone,
          crontab: [
            {media_cron, Athena.Workers.MediaCleanup, queue: :maintenance},
            {gamification_rollup_cron, Athena.Gamification.Workers.WeeklyRollup,

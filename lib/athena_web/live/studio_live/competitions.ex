@@ -385,7 +385,7 @@ defmodule AthenaWeb.StudioLive.Competitions do
         </:col>
 
         <:col :let={{_id, course}} label={gettext("Created At")} sort="inserted_at">
-          <span class="text-sm opacity-60">{Calendar.strftime(course.inserted_at, "%d.%m.%Y")}</span>
+          <span class="text-sm opacity-60">{TimeZones.format(course.inserted_at, "%d.%m.%Y")}</span>
         </:col>
         <:action :let={{_id, course}}>
           <% info = course_badges(course, @current_user) %>

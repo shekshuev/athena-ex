@@ -812,7 +812,27 @@ defmodule Athena.Learning.Submissions do
   Gets an active exam attempt, or creates a new one with a fixed set of questions.
   Routes to either `quiz_exam` or `ticket_exam` generator logic based on `block_type`
   (both may carry a `"slots"` config, so the block's own type is the source of truth).
+
+  Returns `{:already_completed, submission}` instead of creating a fresh attempt
+  when the student's last one is already finished (graded, rejected, needs
+  review, or timed out) - exams are one attempt per student by design (no
+  `max_attempts`-style config exists for them, unlike quiz questions/code
+  blocks), and without this check, simply pressing "back" in the browser
+  after finishing would `mount/3` this LiveView again and silently hand out
+  a brand new attempt with a fresh set of questions. A real retake already
+  has a path: an instructor deletes the finished submission from the
+  grading screen (`delete_submission_with_rollback/2`), which removes the
+  row entirely, so the next mount finds nothing and starts clean.
   """
+  @spec get_or_create_exam_attempt(
+          String.t(),
+          String.t(),
+          String.t(),
+          atom(),
+          String.t() | nil,
+          integer(),
+          map()
+        ) :: {:ok, Submission.t()} | {:already_completed, Submission.t()} | {:error, any()}
   def get_or_create_exam_attempt(
         course_id,
         account_id,
@@ -822,7 +842,7 @@ defmodule Athena.Learning.Submissions do
         time_limit_sec,
         exam_config
       ) do
-    case get_active_exam_submission(account_id, exam_block_id) do
+    case get_last_exam_submission(account_id, exam_block_id) do
       nil ->
         is_ticket = block_type == :ticket_exam
 
@@ -861,7 +881,7 @@ defmodule Athena.Learning.Submissions do
         })
         |> Repo.insert()
 
-      submission ->
+      %{status: status} = submission when status in [:pending, :draft] ->
         now = DateTime.utc_now()
 
         if submission.expires_at && DateTime.compare(now, submission.expires_at) == :gt do
@@ -869,7 +889,22 @@ defmodule Athena.Learning.Submissions do
         else
           {:ok, submission}
         end
+
+      finished_submission ->
+        {:already_completed, finished_submission}
     end
+  end
+
+  @doc false
+  defp get_last_exam_submission(account_id, exam_block_id) do
+    from(s in Submission,
+      where: s.account_id == ^account_id,
+      where: s.block_id == ^exam_block_id,
+      where: is_nil(s.parent_submission_id),
+      order_by: [desc: s.inserted_at],
+      limit: 1
+    )
+    |> Repo.one()
   end
 
   @doc false

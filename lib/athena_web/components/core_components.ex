@@ -621,7 +621,44 @@ defmodule AthenaWeb.CoreComponents do
     """
   end
 
-  # All other inputs text, datetime-local, url, password, etc. are handled here...
+  def input(%{type: "date"} = assigns) do
+    ~H"""
+    <.date_picker
+      id={@id}
+      name={@name}
+      value={@value}
+      label={@label}
+      errors={@errors}
+      class={@class}
+      error_class={@error_class}
+      min={@rest[:min]}
+      max={@rest[:max]}
+      placeholder={@rest[:placeholder]}
+      disabled={@rest[:disabled]}
+      required={@rest[:required]}
+    />
+    """
+  end
+
+  def input(%{type: "datetime-local"} = assigns) do
+    ~H"""
+    <.datetime_picker
+      id={@id}
+      name={@name}
+      value={@value}
+      label={@label}
+      errors={@errors}
+      class={@class}
+      error_class={@error_class}
+      min={@rest[:min]}
+      max={@rest[:max]}
+      disabled={@rest[:disabled]}
+      required={@rest[:required]}
+    />
+    """
+  end
+
+  # All other inputs text, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
     <fieldset class="fieldset mb-2 w-full">
@@ -651,6 +688,614 @@ defmodule AthenaWeb.CoreComponents do
       <.icon name="hero-exclamation-circle" class="size-4 shrink-0 mt-0.5" />
       <span>{render_slot(@inner_block)}</span>
     </p>
+    """
+  end
+
+  # --- Date & time pickers ----------------------------------------------------
+  #
+  # `date_picker/1` and `time_picker/1` behave like `input/1` (accept `field`,
+  # submit a value under `name`) and are what `input/1` renders under the hood
+  # for `type="date"` / `type="datetime-local"` - the datetime-local case
+  # composes both through `datetime_picker/1`.
+  #
+  # Values on the wire: `date_picker` submits "YYYY-MM-DD"; `time_picker`
+  # submits "HH:MM"; `datetime_picker` submits the wall-clock
+  # "YYYY-MM-DDTHH:MM" that `type="datetime-local"` always has - turn it into
+  # UTC with `Athena.TimeZones.localize_params/2` before casting. All three
+  # show `DateTime` values in the user's timezone (see `Athena.TimeZones`).
+
+  @doc """
+  A daisyUI-styled date picker: a button that opens a Cally calendar in a
+  popover, with month/year jump selects and Today/Clear shortcuts. Renders
+  and behaves like `<.input type="date">` (submits "YYYY-MM-DD").
+  """
+  attr :id, :any, default: nil
+  attr :name, :any, default: nil
+  attr :label, :string, default: nil
+  attr :value, :any, default: nil
+
+  attr :field, Phoenix.HTML.FormField,
+    doc: "a form field struct retrieved from the form, for example: @form[:starts_on]"
+
+  attr :errors, :list, default: []
+  attr :class, :any, default: nil
+  attr :error_class, :any, default: nil
+
+  attr :embedded, :boolean,
+    default: false,
+    doc: "renders the control alone, with no fieldset/label/error (used by datetime_picker/1)"
+
+  attr :min, :string, default: nil, doc: ~s(earliest selectable date, "YYYY-MM-DD")
+  attr :max, :string, default: nil, doc: ~s(latest selectable date, "YYYY-MM-DD")
+  attr :placeholder, :string, default: nil
+  attr :disabled, :boolean, default: false
+  attr :required, :boolean, default: false
+
+  def date_picker(%{field: %Phoenix.HTML.FormField{}} = assigns) do
+    assigns |> normalize_field_assigns() |> date_picker()
+  end
+
+  def date_picker(%{embedded: true} = assigns) do
+    ~H"""
+    <.date_picker_control
+      id={@id || "date-picker-#{System.unique_integer([:positive])}"}
+      name={@name}
+      value={@value}
+      class={@class}
+      error_class={@error_class}
+      errors={@errors}
+      min={@min}
+      max={@max}
+      placeholder={@placeholder}
+      disabled={@disabled}
+    />
+    """
+  end
+
+  def date_picker(assigns) do
+    assigns =
+      assign(assigns, :id, assigns.id || "date-picker-#{System.unique_integer([:positive])}")
+
+    ~H"""
+    <fieldset class="fieldset mb-2 w-full">
+      <label :if={@label} for={"#{@id}-trigger"} class="label">
+        <span class="label-text font-bold">{@label}</span>
+      </label>
+      <.date_picker_control
+        id={@id}
+        name={@name}
+        value={@value}
+        class={@class}
+        error_class={@error_class}
+        errors={@errors}
+        min={@min}
+        max={@max}
+        placeholder={@placeholder}
+        disabled={@disabled}
+      />
+      <.error :for={msg <- @errors}>{msg}</.error>
+    </fieldset>
+    """
+  end
+
+  attr :id, :any, required: true
+  attr :name, :any, default: nil
+  attr :value, :any, default: nil
+  attr :class, :any, default: nil
+  attr :error_class, :any, default: nil
+  attr :errors, :list, default: []
+  attr :min, :string, default: nil
+  attr :max, :string, default: nil
+  attr :placeholder, :string, default: nil
+  attr :disabled, :boolean, default: false
+
+  defp date_picker_control(assigns) do
+    value = date_only_value(assigns.value)
+    {date_part, _time_part} = split_picker_value(value)
+
+    assigns =
+      assign(assigns,
+        dom_key: String.replace(assigns.id, ~r/[^A-Za-z0-9_-]/, "-"),
+        value: value,
+        date_part: date_part,
+        min: date_bound(assigns.min),
+        max: date_bound(assigns.max),
+        placeholder: assigns.placeholder || gettext("Pick a date"),
+        locale: Gettext.get_locale(AthenaWeb.Gettext)
+      )
+
+    ~H"""
+    <div id={"#{@id}-picker"} phx-hook=".DatePicker" class="flex-1 min-w-0">
+      <input
+        type="hidden"
+        id={@id}
+        name={@name}
+        value={@value}
+        data-role="date-value"
+        disabled={@disabled}
+      />
+
+      <button
+        type="button"
+        id={"#{@id}-trigger"}
+        popovertarget={"#{@dom_key}-popover"}
+        disabled={@disabled}
+        style={"anchor-name: --#{@dom_key}"}
+        class={[
+          @class || "input w-full",
+          "justify-start gap-2 cursor-pointer text-left",
+          @errors != [] && (@error_class || "input-error border-error!")
+        ]}
+      >
+        <.icon name="hero-calendar-days" class="size-4 shrink-0 text-base-content/40" />
+        <span
+          data-role="label"
+          data-placeholder={@placeholder}
+          class={["truncate", @date_part == "" && "text-base-content/40"]}
+        >
+          {if @date_part == "", do: @placeholder, else: display_date(@date_part)}
+        </span>
+      </button>
+
+      <div
+        popover
+        id={"#{@dom_key}-popover"}
+        style={"position-anchor: --#{@dom_key}"}
+        class="dropdown bg-base-100 rounded-sm border border-base-300 p-3 mt-2"
+      >
+        <div class="flex gap-2 mb-2">
+          <select data-role="month" aria-label={gettext("Month")} class="select select-sm flex-1">
+            <option :for={{name, m} <- month_options()} value={m}>{name}</option>
+          </select>
+          <select data-role="year" aria-label={gettext("Year")} class="select select-sm w-24">
+            <option :for={y <- year_options(@min, @max)} value={y}>{y}</option>
+          </select>
+        </div>
+
+        <calendar-date
+          class="cally"
+          value={@date_part}
+          min={@min}
+          max={@max}
+          locale={@locale}
+          first-day-of-week="1"
+          data-role="calendar"
+        >
+          <svg
+            aria-label={gettext("Previous")}
+            class="fill-current size-4"
+            slot="previous"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+          >
+            <path d="M15.75 19.5 8.25 12l7.5-7.5"></path>
+          </svg>
+          <svg
+            aria-label={gettext("Next")}
+            class="fill-current size-4"
+            slot="next"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+          >
+            <path d="m8.25 4.5 7.5 7.5-7.5 7.5"></path>
+          </svg>
+          <calendar-month></calendar-month>
+        </calendar-date>
+
+        <div class="flex justify-between gap-2 mt-2 pt-2 border-t border-base-200">
+          <button type="button" data-role="today" class="btn btn-ghost btn-xs">
+            {gettext("Today")}
+          </button>
+          <button type="button" data-role="clear" class="btn btn-ghost btn-xs text-base-content/60">
+            {gettext("Clear")}
+          </button>
+        </div>
+      </div>
+    </div>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".DatePicker">
+      const pad = (n) => String(n).padStart(2, "0");
+      const isoDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      const displayDate = (iso) => {
+        const [y, m, d] = iso.split("-");
+        return `${d}.${m}.${y}`;
+      };
+
+      export default {
+        mounted() {
+          this.q = (role) => this.el.querySelector(`[data-role="${role}"]`);
+
+          const calendar = this.q("calendar");
+          const popover = calendar.closest("[popover]");
+
+          calendar.addEventListener("change", () => {
+            this.setDate(calendar.value);
+            popover.hidePopover();
+          });
+          // Keep the month/year selects in sync with the month Cally shows.
+          calendar.addEventListener("focusday", (e) => this.syncSelects(e.detail));
+          popover.addEventListener("toggle", (e) => {
+            if (e.newState === "open") this.syncSelects(calendar.value || isoDate(new Date()));
+          });
+
+          const jump = () => {
+            calendar.focusedDate = `${this.q("year").value}-${pad(this.q("month").value)}-01`;
+          };
+          this.q("month").addEventListener("change", (e) => { e.stopPropagation(); jump(); });
+          this.q("year").addEventListener("change", (e) => { e.stopPropagation(); jump(); });
+          ["input", "change"].forEach((type) => {
+            this.q("month").addEventListener(type, (e) => e.stopPropagation());
+            this.q("year").addEventListener(type, (e) => e.stopPropagation());
+          });
+
+          this.q("today").addEventListener("click", () => {
+            this.setDate(isoDate(new Date()));
+            popover.hidePopover();
+          });
+          this.q("clear").addEventListener("click", () => {
+            this.setDate("");
+            popover.hidePopover();
+          });
+        },
+
+        syncSelects(value) {
+          if (!value) return;
+          const [y, m] = String(value).split("-");
+          const year = this.q("year");
+          if (![...year.options].some((o) => o.value === y)) year.add(new Option(y, y));
+          year.value = y;
+          this.q("month").value = String(Number(m));
+        },
+
+        setDate(iso) {
+          this.q("calendar").value = iso;
+          const label = this.q("label");
+          label.textContent = iso ? displayDate(iso) : label.dataset.placeholder;
+          label.classList.toggle("text-base-content/40", !iso);
+
+          const hidden = this.q("date-value");
+          if (hidden.value === iso) return;
+          hidden.value = iso;
+          hidden.dispatchEvent(new Event("input", { bubbles: true }));
+        },
+      };
+    </script>
+    """
+  end
+
+  @doc """
+  A masked 24-hour time field ("--:--", digits only, clamped to valid
+  hours/minutes as you type - "5" alone becomes "05" and jumps to minutes).
+  Renders and behaves like `<.input type="time">` (submits "HH:MM").
+  """
+  attr :id, :any, default: nil
+  attr :name, :any, default: nil
+  attr :label, :string, default: nil
+  attr :value, :any, default: nil
+
+  attr :field, Phoenix.HTML.FormField,
+    doc: "a form field struct retrieved from the form, for example: @form[:opens_at]"
+
+  attr :errors, :list, default: []
+  attr :class, :any, default: nil
+  attr :error_class, :any, default: nil
+
+  attr :embedded, :boolean,
+    default: false,
+    doc: "renders the control alone, with no fieldset/label/error (used by datetime_picker/1)"
+
+  attr :disabled, :boolean, default: false
+  attr :required, :boolean, default: false
+
+  def time_picker(%{field: %Phoenix.HTML.FormField{}} = assigns) do
+    assigns |> normalize_field_assigns() |> time_picker()
+  end
+
+  def time_picker(%{embedded: true} = assigns) do
+    ~H"""
+    <.time_picker_control
+      id={@id || "time-picker-#{System.unique_integer([:positive])}"}
+      name={@name}
+      value={@value}
+      class={@class}
+      error_class={@error_class}
+      errors={@errors}
+      disabled={@disabled}
+    />
+    """
+  end
+
+  def time_picker(assigns) do
+    assigns =
+      assign(assigns, :id, assigns.id || "time-picker-#{System.unique_integer([:positive])}")
+
+    ~H"""
+    <fieldset class="fieldset mb-2 w-full">
+      <label :if={@label} for={@id} class="label">
+        <span class="label-text font-bold">{@label}</span>
+      </label>
+      <.time_picker_control
+        id={@id}
+        name={@name}
+        value={@value}
+        class={@class}
+        error_class={@error_class}
+        errors={@errors}
+        disabled={@disabled}
+      />
+      <.error :for={msg <- @errors}>{msg}</.error>
+    </fieldset>
+    """
+  end
+
+  attr :id, :any, required: true
+  attr :name, :any, default: nil
+  attr :value, :any, default: nil
+  attr :class, :any, default: nil
+  attr :error_class, :any, default: nil
+  attr :errors, :list, default: []
+  attr :disabled, :boolean, default: false
+
+  defp time_picker_control(assigns) do
+    assigns = assign(assigns, value: time_only_value(assigns.value))
+
+    ~H"""
+    <div class="w-28 shrink-0">
+      <label class={[
+        @class || "input w-full gap-2 tabular-nums",
+        @errors != [] && (@error_class || "input-error border-error!")
+      ]}>
+        <.icon name="hero-clock" class="size-4 shrink-0 text-base-content/40" />
+        <input
+          type="text"
+          inputmode="numeric"
+          autocomplete="off"
+          id={@id}
+          name={@name}
+          phx-hook=".TimePicker"
+          value={@value}
+          placeholder="--:--"
+          aria-label={gettext("Time")}
+          disabled={@disabled}
+          data-role="time-value"
+          class="grow min-w-0 font-mono tracking-widest"
+        />
+      </label>
+    </div>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".TimePicker">
+      const PLACEHOLDER = "_";
+      const blank = () => [PLACEHOLDER, PLACEHOLDER, PLACEHOLDER, PLACEHOLDER];
+
+      export default {
+        mounted() {
+          // Exposed so .DateTimePicker can read/drive this field without
+          // guessing at its formatted string (see core_components.ex).
+          this.el.__timePicker = this;
+          this.syncFromValue(this.el.value);
+
+          this.el.addEventListener("keydown", (e) => this.handleKeydown(e));
+          this.el.addEventListener("paste", (e) => this.handlePaste(e));
+          this.el.addEventListener("blur", () => this.handleBlur());
+        },
+
+        isEmpty() {
+          return this.pos === 0;
+        },
+
+        isComplete() {
+          return this.pos === 4;
+        },
+
+        // Sets a complete value (e.g. defaulting to "00:00" once a date is
+        // picked) while keeping our digit state in sync.
+        setValue(value) {
+          this.syncFromValue(value);
+          this.commit();
+        },
+
+        syncFromValue(value) {
+          const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value || "");
+          if (match) {
+            this.digits = [...match[1], ...match[2]];
+            this.pos = 4;
+          } else {
+            this.digits = blank();
+            this.pos = 0;
+          }
+          this.render();
+        },
+
+        handleKeydown(e) {
+          if (e.key === "Tab" || e.key === "Escape" || e.key === "Enter") return;
+          if ((e.metaKey || e.ctrlKey) && ["a", "c", "v", "x"].includes(e.key.toLowerCase())) return;
+
+          e.preventDefault();
+
+          if (e.key === "Backspace") {
+            this.pos = Math.max(this.pos - 1, 0);
+            this.digits[this.pos] = PLACEHOLDER;
+            this.render();
+            this.commit();
+          } else if (e.key === "Delete") {
+            this.digits = blank();
+            this.pos = 0;
+            this.render();
+            this.commit();
+          } else if (/^[0-9]$/.test(e.key)) {
+            this.typeDigit(Number(e.key));
+          }
+        },
+
+        handlePaste(e) {
+          e.preventDefault();
+          const text = (e.clipboardData || window.clipboardData).getData("text");
+          this.digits = blank();
+          this.pos = 0;
+          for (const digit of text.replace(/\D/g, "").slice(0, 4)) this.typeDigit(Number(digit));
+        },
+
+        handleBlur() {
+          // Only a complete "HH:MM" is a valid value - anything half-typed reverts to empty.
+          if (this.pos > 0 && this.pos < 4) {
+            this.digits = blank();
+            this.pos = 0;
+            this.render();
+            this.commit();
+          }
+        },
+
+        // Digit-by-digit entry with range clamping, so e.g. "5" alone becomes
+        // "05" and jumps straight to minutes instead of waiting for an
+        // impossible second digit.
+        typeDigit(d) {
+          if (this.pos === 4) {
+            this.digits = blank();
+            this.pos = 0;
+          }
+
+          if (this.pos === 0) {
+            if (d > 2) {
+              this.digits[0] = "0";
+              this.digits[1] = String(d);
+              this.pos = 2;
+            } else {
+              this.digits[0] = String(d);
+              this.pos = 1;
+            }
+          } else if (this.pos === 1) {
+            const maxOnes = this.digits[0] === "2" ? 3 : 9;
+            this.digits[1] = String(Math.min(d, maxOnes));
+            this.pos = 2;
+          } else if (this.pos === 2) {
+            if (d > 5) {
+              this.digits[2] = "0";
+              this.digits[3] = String(d);
+              this.pos = 4;
+            } else {
+              this.digits[2] = String(d);
+              this.pos = 3;
+            }
+          } else {
+            this.digits[3] = String(d);
+            this.pos = 4;
+          }
+
+          this.render();
+          this.commit();
+        },
+
+        render() {
+          this.el.value = `${this.digits[0]}${this.digits[1]}:${this.digits[2]}${this.digits[3]}`;
+        },
+
+        commit() {
+          this.el.dispatchEvent(new Event("input", { bubbles: true }));
+        },
+      };
+    </script>
+    """
+  end
+
+  @doc """
+  Composes `date_picker/1` and `time_picker/1` into one field that submits
+  the wall-clock "YYYY-MM-DDTHH:MM" that `<.input type="datetime-local">`
+  submits. Picking a date defaults the time to 00:00; clearing the date
+  clears the time.
+  """
+  attr :id, :any, default: nil
+  attr :name, :any, default: nil
+  attr :label, :string, default: nil
+  attr :value, :any, default: nil
+
+  attr :field, Phoenix.HTML.FormField,
+    doc: "a form field struct retrieved from the form, for example: @form[:starts_at]"
+
+  attr :errors, :list, default: []
+  attr :class, :any, default: nil
+  attr :error_class, :any, default: nil
+  attr :min, :string, default: nil
+  attr :max, :string, default: nil
+  attr :disabled, :boolean, default: false
+  attr :required, :boolean, default: false
+
+  def datetime_picker(%{field: %Phoenix.HTML.FormField{}} = assigns) do
+    assigns |> normalize_field_assigns() |> datetime_picker()
+  end
+
+  def datetime_picker(assigns) do
+    value = Athena.TimeZones.input_value(assigns.value)
+    {date_part, time_part} = split_picker_value(value)
+    id = assigns.id || "datetime-picker-#{System.unique_integer([:positive])}"
+
+    assigns =
+      assign(assigns,
+        id: id,
+        value: value,
+        date_part: date_part,
+        time_part: time_part,
+        min: date_bound(assigns.min),
+        max: date_bound(assigns.max)
+      )
+
+    ~H"""
+    <fieldset class="fieldset mb-2 w-full">
+      <label :if={@label} for={"#{@id}-date-trigger"} class="label">
+        <span class="label-text font-bold">{@label}</span>
+      </label>
+      <div id={"#{@id}-wrap"} phx-hook=".DateTimePicker" class="flex gap-2">
+        <input type="hidden" id={@id} name={@name} value={@value} data-role="value" />
+
+        <.date_picker_control
+          id={"#{@id}-date"}
+          value={@date_part}
+          class={@class}
+          error_class={@error_class}
+          errors={@errors}
+          min={@min}
+          max={@max}
+          disabled={@disabled}
+        />
+        <.time_picker_control
+          id={"#{@id}-time"}
+          value={@time_part}
+          class={@class}
+          error_class={@error_class}
+          errors={@errors}
+          disabled={@disabled}
+        />
+      </div>
+      <.error :for={msg <- @errors}>{msg}</.error>
+    </fieldset>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".DateTimePicker">
+      export default {
+        mounted() {
+          this.dateEl = this.el.querySelector('[data-role="date-value"]');
+          this.timeEl = this.el.querySelector('[data-role="time-value"]');
+          this.hidden = this.el.querySelector('[data-role="value"]');
+
+          this.el.addEventListener("input", (e) => {
+            if (e.target !== this.hidden) this.commit();
+          });
+        },
+
+        commit() {
+          const date = this.dateEl.value || "";
+          const time = this.timeEl.__timePicker;
+
+          if (!date) {
+            if (time && !time.isEmpty()) time.setValue("");
+          } else if (time && time.isEmpty()) {
+            time.setValue("00:00");
+          }
+
+          const timeValue = time && time.isComplete() ? this.timeEl.value : "00:00";
+          const value = date ? `${date}T${timeValue}` : "";
+
+          if (this.hidden.value === value) return;
+          this.hidden.value = value;
+          this.hidden.dispatchEvent(new Event("input", { bubbles: true }));
+        },
+      };
+    </script>
     """
   end
 
@@ -1107,4 +1752,83 @@ defmodule AthenaWeb.CoreComponents do
   def app_version do
     "#{@app_version} (#{@commit_sha})"
   end
+
+  # --- date/time picker helpers -----------------------------------------------
+
+  defp normalize_field_assigns(%{field: field} = assigns) do
+    errors = if Phoenix.Component.used_input?(field), do: field.errors, else: []
+
+    assigns
+    |> assign(field: nil, id: assigns.id || field.id)
+    |> assign(:errors, Enum.map(errors, &translate_error(&1)))
+    |> assign_new(:name, fn -> field.name end)
+    |> assign_new(:value, fn -> field.value end)
+  end
+
+  defp date_only_value(%Date{} = date), do: Date.to_iso8601(date)
+
+  defp date_only_value(%DateTime{} = dt),
+    do: dt |> Athena.TimeZones.to_local() |> DateTime.to_date() |> Date.to_iso8601()
+
+  defp date_only_value(value) when is_binary(value), do: String.slice(value, 0, 10)
+  defp date_only_value(_value), do: ""
+
+  defp time_only_value(%Time{} = time), do: Calendar.strftime(time, "%H:%M")
+
+  defp time_only_value(value) when is_binary(value) and byte_size(value) >= 5,
+    do: String.slice(value, 0, 5)
+
+  defp time_only_value(_value), do: ""
+
+  defp split_picker_value(<<date::binary-size(10), "T", time::binary-size(5), _::binary>>),
+    do: {date, time}
+
+  defp split_picker_value(<<date::binary-size(10), _::binary>>), do: {date, ""}
+  defp split_picker_value(_), do: {"", ""}
+
+  defp display_date(<<y::binary-size(4), "-", m::binary-size(2), "-", d::binary-size(2)>>),
+    do: "#{d}.#{m}.#{y}"
+
+  defp display_date(other), do: other
+
+  defp date_bound(nil), do: nil
+  defp date_bound(%Date{} = date), do: Date.to_iso8601(date)
+  defp date_bound(value) when is_binary(value), do: String.slice(value, 0, 10)
+  defp date_bound(_), do: nil
+
+  defp month_options do
+    [
+      gettext("January"),
+      gettext("February"),
+      gettext("March"),
+      gettext("April"),
+      gettext("May"),
+      gettext("June"),
+      gettext("July"),
+      gettext("August"),
+      gettext("September"),
+      gettext("October"),
+      gettext("November"),
+      gettext("December")
+    ]
+    |> Enum.with_index(1)
+  end
+
+  # Year dropdown: bounded by min/max when given, otherwise wide enough for
+  # both birth dates and scheduling.
+  defp year_options(min, max) do
+    current = Date.utc_today().year
+    from = year_of(min) || current - 100
+    to = year_of(max) || current + 10
+    Enum.to_list(to..from//-1)
+  end
+
+  defp year_of(<<y::binary-size(4), _::binary>>) do
+    case Integer.parse(y) do
+      {year, ""} -> year
+      _ -> nil
+    end
+  end
+
+  defp year_of(_), do: nil
 end

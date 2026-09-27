@@ -8,35 +8,82 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="flex-1 flex flex-col relative h-full">
-      <div class="flex items-center gap-2 mb-8 border-b border-base-300 pb-6">
-        <span class="text-sm font-bold text-base-content/50 uppercase tracking-widest flex items-center gap-2">
-          <.icon name="hero-map" class="size-4" />
-          {gettext("Builder")}
-        </span>
-        <span :for={crumb <- @breadcrumbs} class="flex items-center gap-2">
-          <.icon name="hero-chevron-right" class="size-4 text-base-content/30" />
-          <button
-            type="button"
-            phx-click="select_section"
-            phx-value-id={crumb.id}
-            class="text-sm font-medium hover:text-primary transition-colors truncate max-w-40"
-            title={crumb.title}
+    <div class="flex-1 flex flex-col relative h-full min-w-0">
+      <div class="flex items-center gap-3 mb-8 border-b border-base-300 pb-6 min-w-0">
+        <nav
+          id="builder-breadcrumbs"
+          aria-label={gettext("Breadcrumbs")}
+          class="flex items-center gap-1.5 min-w-0 flex-1"
+        >
+          <span
+            class="text-sm font-bold text-base-content/50 uppercase tracking-widest flex items-center gap-2 shrink-0"
+            title={gettext("Builder")}
           >
-            {crumb.title}
-          </button>
-        </span>
+            <.icon name="hero-map" class="size-4" />
+            <span class={[@breadcrumbs != [] && "hidden xl:inline"]}>{gettext("Builder")}</span>
+          </span>
+
+          <%= for item <- collapse_breadcrumbs(@breadcrumbs) do %>
+            <.icon name="hero-chevron-right" class="size-3.5 text-base-content/30 shrink-0" />
+            <%= case item do %>
+              <% {:hidden, crumbs} -> %>
+                <div class="dropdown shrink-0">
+                  <div
+                    tabindex="0"
+                    role="button"
+                    class="px-1.5 py-0.5 rounded-sm text-sm font-medium text-base-content/60 hover:bg-base-200 hover:text-primary transition-colors cursor-pointer"
+                    title={gettext("Show hidden sections")}
+                  >
+                    …
+                  </div>
+                  <ul
+                    tabindex="0"
+                    class="dropdown-content menu bg-base-100 rounded-sm z-20 w-64 p-1 mt-2 border border-base-300 shadow-lg"
+                  >
+                    <li :for={crumb <- crumbs}>
+                      <button
+                        type="button"
+                        phx-click="select_section"
+                        phx-value-id={crumb.id}
+                        title={crumb.title}
+                      >
+                        <.icon name="hero-folder" class="size-4 text-base-content/40 shrink-0" />
+                        <span class="truncate">{crumb.title}</span>
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              <% {:crumb, crumb, last?} -> %>
+                <button
+                  type="button"
+                  phx-click="select_section"
+                  phx-value-id={crumb.id}
+                  class={[
+                    "text-sm truncate min-w-0 hover:text-primary transition-colors",
+                    if(last?,
+                      do: "font-semibold text-base-content shrink",
+                      else: "font-medium text-base-content/70 max-w-32 shrink-[2]"
+                    )
+                  ]}
+                  title={crumb.title}
+                >
+                  {crumb.title}
+                </button>
+            <% end %>
+          <% end %>
+        </nav>
 
         <button
           :if={@mode == :edit && @active_section_id}
+          id="start-test-run-btn"
           type="button"
           phx-click="start_test_run"
           phx-value-section_id={@active_section_id}
-          class="btn btn-sm btn-outline ml-auto"
+          class="btn btn-sm btn-outline shrink-0"
           title={gettext("Play through this section as a test student")}
         >
           <.icon name="hero-play-circle" class="size-4" />
-          {gettext("Test run")}
+          <span class="hidden lg:inline">{gettext("Test run")}</span>
         </button>
       </div>
 
@@ -396,5 +443,22 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       </.button>
     </div>
     """
+  end
+
+  # Keeps the first crumb and the last two visible; everything in between
+  # is folded into a single "…" dropdown so deep paths fit on one line.
+  defp collapse_breadcrumbs(crumbs) when length(crumbs) <= 3 do
+    last_index = length(crumbs) - 1
+
+    crumbs
+    |> Enum.with_index()
+    |> Enum.map(fn {crumb, i} -> {:crumb, crumb, i == last_index} end)
+  end
+
+  defp collapse_breadcrumbs([first | rest]) do
+    {hidden, tail} = Enum.split(rest, -2)
+    [prev, last] = tail
+
+    [{:crumb, first, false}, {:hidden, hidden}, {:crumb, prev, false}, {:crumb, last, true}]
   end
 end

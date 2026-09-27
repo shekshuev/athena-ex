@@ -27,7 +27,7 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponentTest do
         |> form("#membership-form")
         |> render_submit()
 
-      assert html =~ "Please select a student."
+      assert html =~ "Please select at least one student."
     end
 
     test "searches and adds a student to the cohort via autocomplete", %{conn: conn} do
@@ -59,6 +59,52 @@ defmodule AthenaWeb.TeachingLive.MembershipFormComponentTest do
       {:ok, {memberships, _meta}} = Learning.list_cohort_memberships(cohort.id)
       assert length(memberships) == 1
       assert hd(memberships).account_id == student_account.id
+    end
+
+    test "selects several students as removable badges and adds them all at once", %{
+      conn: conn
+    } do
+      cohort = insert(:cohort)
+      alice = insert(:account, login: "alice_student")
+      bob = insert(:account, login: "bob_student")
+      carol = insert(:account, login: "carol_student")
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/add_student")
+
+      for account <- [alice, bob, carol] do
+        lv
+        |> element("input[phx-keyup='search_accounts']")
+        |> render_keyup(%{"value" => account.login})
+
+        html =
+          lv
+          |> element("li", account.login)
+          |> render_click()
+
+        assert html =~ account.login
+      end
+
+      # Removing one badge before submitting drops just that student.
+      html =
+        lv
+        |> element("button[phx-click='remove_account'][phx-value-id='#{bob.id}']")
+        |> render_click()
+
+      refute html =~ "bob_student"
+
+      html =
+        lv
+        |> form("#membership-form")
+        |> render_submit()
+
+      assert html =~ "2 students successfully added to the cohort."
+
+      {:ok, {memberships, _meta}} = Learning.list_cohort_memberships(cohort.id)
+      member_ids = Enum.map(memberships, & &1.account_id)
+
+      assert alice.id in member_ids
+      assert carol.id in member_ids
+      refute bob.id in member_ids
     end
 
     test "shows error if the student is already in the cohort", %{

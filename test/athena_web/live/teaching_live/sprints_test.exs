@@ -35,18 +35,36 @@ defmodule AthenaWeb.TeachingLive.SprintsTest do
 
     html =
       lv
-      |> form("#sprint-form", %{
-        "sprint" => %{
-          "title" => "Exam push",
-          "starts_at" => starts_at,
-          "ends_at" => ends_at,
-          "xp_multiplier" => "2"
-        }
-      })
-      |> render_submit()
+      |> form("#sprint-form", %{"sprint" => %{"title" => "Exam push", "xp_multiplier" => "2"}})
+      # Dates live in the picker's hidden inputs, which the JS hook fills in.
+      |> render_submit(%{"sprint" => %{"starts_at" => starts_at, "ends_at" => ends_at}})
 
     assert html =~ "Exam push"
     assert Athena.Repo.get_by(Sprint, cohort_id: cohort.id, title: "Exam push")
+  end
+
+  test "reads and shows sprint times in the browser's timezone, stores UTC", %{
+    conn: conn,
+    cohort: cohort
+  } do
+    conn = put_connect_params(conn, %{"timezone" => "Europe/Moscow"})
+    {:ok, lv, _html} = live(conn, ~p"/teaching/sprints")
+
+    lv
+    |> element("form[phx-change='select_cohort']")
+    |> render_change(%{"cohort_id" => cohort.id})
+
+    lv
+    |> form("#sprint-form", %{"sprint" => %{"title" => "Moscow sprint", "xp_multiplier" => "2"}})
+    |> render_submit(%{
+      "sprint" => %{"starts_at" => "2030-10-01T14:00", "ends_at" => "2030-10-01T18:30"}
+    })
+
+    sprint = Athena.Repo.get_by!(Sprint, cohort_id: cohort.id, title: "Moscow sprint")
+    assert sprint.starts_at == ~U[2030-10-01 11:00:00Z]
+    assert sprint.ends_at == ~U[2030-10-01 15:30:00Z]
+
+    assert has_element?(lv, "#sprint-#{sprint.id}", "01.10 14:00 — 01.10 18:30")
   end
 
   test "shows a permission error when the instructor doesn't manage the cohort", %{
@@ -69,15 +87,9 @@ defmodule AthenaWeb.TeachingLive.SprintsTest do
 
     html =
       lv
-      |> form("#sprint-form", %{
-        "sprint" => %{
-          "title" => "Nope",
-          "starts_at" => starts_at,
-          "ends_at" => ends_at,
-          "xp_multiplier" => "2"
-        }
-      })
-      |> render_submit()
+      |> form("#sprint-form", %{"sprint" => %{"title" => "Nope", "xp_multiplier" => "2"}})
+      # Dates live in the picker's hidden inputs, which the JS hook fills in.
+      |> render_submit(%{"sprint" => %{"starts_at" => starts_at, "ends_at" => ends_at}})
 
     assert html =~ "don&#39;t manage this cohort"
     refute Athena.Repo.get_by(Sprint, cohort_id: cohort.id, title: "Nope")

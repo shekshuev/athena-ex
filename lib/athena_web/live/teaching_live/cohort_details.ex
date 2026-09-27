@@ -273,7 +273,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           </:col>
           <:col :let={{_id, enrollment}} label={gettext("Assigned At")}>
             <span class="text-sm opacity-60">
-              {Calendar.strftime(enrollment.inserted_at, "%d.%m.%Y")}
+              {TimeZones.format(enrollment.inserted_at, "%d.%m.%Y")}
             </span>
           </:col>
           <:action :let={{_id, enrollment}}>
@@ -344,7 +344,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           </:col>
           <:col :let={{_id, membership}} label={gettext("Joined At")} sort="inserted_at">
             <span class="text-sm opacity-60">
-              {Calendar.strftime(membership.inserted_at, "%d.%m.%Y")}
+              {TimeZones.format(membership.inserted_at, "%d.%m.%Y")}
             </span>
           </:col>
           <:action :let={{_id, membership}}>

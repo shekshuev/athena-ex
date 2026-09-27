@@ -2,13 +2,15 @@ defmodule AthenaWeb.AdminLive.Users do
   @moduledoc """
   LiveView for managing system user accounts and profiles.
 
-  Displays a paginated and searchable list of users using Streams for optimal
-  DOM diffing. Handles account soft-deletion and integrates with `UserFormComponent`
-  for creating and editing users via a slide-over.
+  Displays a paginated, sortable, searchable list of users using Streams for
+  optimal DOM diffing - search matches login or profile name (ФИО), and can
+  be narrowed to one cohort's members. Handles account soft-deletion and
+  integrates with `UserFormComponent` for creating and editing users via a
+  slide-over.
   """
   use AthenaWeb, :live_view
 
-  alias Athena.{Identity, Repo}
+  alias Athena.{Identity, Learning, Repo}
   alias Athena.Identity.{Account, Profile}
   alias AthenaWeb.AdminLive.UserFormComponent
 
@@ -20,29 +22,33 @@ defmodule AthenaWeb.AdminLive.Users do
   @spec mount(map(), map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   @impl true
   def mount(_params, _session, socket) do
+    user = socket.assigns.current_user
+
+    # The cohort filter is only worth offering to someone who can actually
+    # see cohorts - a "users.read" admin without "cohorts.read" would
+    # otherwise get a permanently empty dropdown.
+    cohort_options =
+      if Identity.can?(user, "cohorts.read"), do: Learning.get_cohort_options(user), else: []
+
     {:ok,
      socket
      |> assign(account_to_delete: nil)
+     |> assign(cohort_options: cohort_options)
      |> stream(:accounts, [])}
   end
 
   @doc """
-  Handles URL parameters for pagination, search, and live actions (:index, :new, :edit).
+  Handles URL parameters for pagination, sorting, search, cohort filtering,
+  and live actions (:index, :new, :edit).
   """
   @spec handle_params(map(), String.t(), Phoenix.LiveView.Socket.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
   def handle_params(params, _url, socket) do
     search = Map.get(params, "search", "")
+    cohort_id = Map.get(params, "cohort_id", "")
 
-    flop_params =
-      if search != "" do
-        Map.put(params, "filters", %{
-          "0" => %{"field" => "login", "op" => "ilike_and", "value" => search}
-        })
-      else
-        params
-      end
+    flop_params = Map.put(params, "filters", build_flop_filters(search, cohort_id))
 
     case Identity.list_accounts(socket.assigns.current_user, flop_params,
            preload: [:profile, :role]
@@ -50,7 +56,7 @@ defmodule AthenaWeb.AdminLive.Users do
       {:ok, {accounts, meta}} ->
         socket =
           socket
-          |> assign(meta: meta, search: search)
+          |> assign(meta: meta, search: search, cohort_id: cohort_id)
           |> stream(:accounts, accounts, reset: true)
           |> apply_action(socket.assigns.live_action, params)
 
@@ -60,6 +66,36 @@ defmodule AthenaWeb.AdminLive.Users do
         {:noreply, push_patch(socket, to: ~p"/admin/users")}
     end
   end
+
+  # Both `search` and `cohort_id` resolve to a set of matching account ids
+  # first (login/name search can't be expressed as a single Flop filter -
+  # it has to match across two schemas, OR'd together), then feed an `:in`
+  # filter on `id` - the same pattern the grading screen's "Student" filter
+  # and cohort filter already use for submissions. Combined, the two
+  # narrow down to their intersection, same as any other pair of filters.
+  defp build_flop_filters(search, cohort_id) do
+    filters = []
+
+    filters =
+      if search != "",
+        do: [id_in_filter(Identity.get_account_ids_by_login_or_name(search)) | filters],
+        else: filters
+
+    filters =
+      if cohort_id != "",
+        do: [id_in_filter(Identity.get_account_ids_by_cohort(cohort_id)) | filters],
+        else: filters
+
+    filters
+    |> Enum.with_index(fn filter, index -> {Integer.to_string(index), filter} end)
+    |> Map.new()
+  end
+
+  # An empty match list would make `id in []` - Ecto/Postgres treats that as
+  # always-false already, but staying explicit here (a made-up id no account
+  # can ever have) keeps the intent obvious rather than relying on that.
+  defp id_in_filter([]), do: %{"field" => "id", "op" => "in", "value" => [Ecto.UUID.generate()]}
+  defp id_in_filter(ids), do: %{"field" => "id", "op" => "in", "value" => ids}
 
   defp apply_action(socket, :index, _params) do
     assign(socket, page_title: gettext("Users"), account: nil)
@@ -89,12 +125,18 @@ defmodule AthenaWeb.AdminLive.Users do
   end
 
   @doc """
-  Handles UI events such as searching and user deletion confirmations.
+  Handles UI events such as filtering and user deletion confirmations.
   """
   @impl true
-  def handle_event("search", %{"search" => search}, socket) do
-    params = build_query_params(socket.assigns, %{"search" => search, "page" => 1})
-    {:noreply, push_patch(socket, to: ~p"/admin/users?#{params}")}
+  def handle_event("update_filters", params, socket) do
+    overrides = %{
+      "search" => params["search"] || "",
+      "cohort_id" => params["cohort_id"] || "",
+      "page" => 1
+    }
+
+    query_params = build_query_params(socket.assigns, overrides)
+    {:noreply, push_patch(socket, to: ~p"/admin/users?#{query_params}")}
   end
 
   def handle_event("clear_cache", _params, socket) do
@@ -195,24 +237,36 @@ defmodule AthenaWeb.AdminLive.Users do
         </div>
       </div>
 
-      <div class="flex gap-4">
-        <.form for={nil} phx-change="search" phx-submit="search" class="w-full max-w-sm">
-          <div class="relative">
-            <.icon
-              name="hero-magnifying-glass"
-              class="absolute left-3 top-3.5 size-5 text-base-content/50 z-10"
-            />
-            <.input
-              type="text"
-              name="search"
-              value={@search}
-              placeholder={gettext("Search users...")}
-              class="input input-bordered w-full pl-10"
-              phx-debounce="500"
-            />
-          </div>
-        </.form>
-      </div>
+      <.form
+        for={nil}
+        phx-change="update_filters"
+        phx-submit="update_filters"
+        class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+      >
+        <div class="relative">
+          <.icon
+            name="hero-magnifying-glass"
+            class="absolute left-3 top-3.5 size-5 text-base-content/50 z-10"
+          />
+          <.input
+            type="text"
+            name="search"
+            value={@search}
+            placeholder={gettext("Search by login or name...")}
+            class="input input-bordered w-full pl-10"
+            phx-debounce="500"
+          />
+        </div>
+
+        <.input
+          :if={@cohort_options != []}
+          type="select"
+          name="cohort_id"
+          value={@cohort_id}
+          options={@cohort_options}
+          prompt={gettext("All Cohorts")}
+        />
+      </.form>
 
       <% path_fn = fn overrides -> ~p"/admin/users?#{build_query_params(assigns, overrides)}" end %>
 
@@ -235,7 +289,7 @@ defmodule AthenaWeb.AdminLive.Users do
           <div class="badge badge-outline">{acc.role.name}</div>
         </:col>
         <:col :let={{_id, acc}} label={gettext("Created At")} sort="inserted_at">
-          <span class="text-sm opacity-60">{Calendar.strftime(acc.inserted_at, "%d.%m.%Y")}</span>
+          <span class="text-sm opacity-60">{TimeZones.format(acc.inserted_at, "%d.%m.%Y")}</span>
         </:col>
         <:action :let={{_id, acc}}>
           <div class="flex justify-end gap-2">
@@ -324,6 +378,7 @@ defmodule AthenaWeb.AdminLive.Users do
 
     %{
       "search" => assigns.search,
+      "cohort_id" => assigns.cohort_id,
       "page" => meta.current_page,
       "page_size" => meta.page_size,
       "order_by" => order_by,
