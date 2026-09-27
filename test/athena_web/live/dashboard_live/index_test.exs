@@ -116,6 +116,17 @@ defmodule AthenaWeb.DashboardLive.IndexTest do
       assert has_element?(lv, "h2", "Teaching")
       assert html =~ "awaiting review"
       assert html =~ "Go to grading"
+
+      # Filtered straight to what actually needs review, not the full queue.
+      href =
+        lv
+        |> element("a", "Go to grading")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.attribute("href")
+        |> List.first()
+
+      assert href =~ "status=needs_review"
     end
 
     test "hides the pending-review widget for accounts without grading.read permission", %{
@@ -145,24 +156,35 @@ defmodule AthenaWeb.DashboardLive.IndexTest do
       refute has_element?(lv, "a", "Go to grading")
     end
 
-    test "shows quiet cohort members to an instructor managing the cohort", %{conn: conn} do
+    test "lists the instructor's cohorts as quick links, teams excluded", %{conn: conn} do
       role = insert(:role, permissions: ["cohorts.read"])
       account = insert(:account, role: role)
       instructor = insert(:instructor, owner_id: account.id)
 
-      cohort = insert(:cohort, type: :academic)
+      cohort = insert(:cohort, name: "Autumn Cohort", type: :academic)
       insert(:cohort_instructor, cohort_id: cohort.id, instructor_id: instructor.id)
 
-      quiet_student = insert(:account)
-      insert(:cohort_membership, account_id: quiet_student.id, cohort_id: cohort.id)
+      team = insert(:cohort, name: "Hack Team", type: :team)
+      insert(:cohort_instructor, cohort_id: team.id, instructor_id: instructor.id)
 
       conn = init_test_session(conn, %{"account_id" => account.id})
       {:ok, lv, html} = live(conn, ~p"/dashboard")
 
       assert has_element?(lv, "h2", "Teaching")
-      assert html =~ cohort.name
-      assert html =~ "Quiet this week"
-      assert html =~ quiet_student.login
+      assert html =~ "My Cohorts"
+      assert has_element?(lv, "a[href='/teaching/cohorts/#{cohort.id}']", "Autumn Cohort")
+      refute html =~ "Hack Team"
+    end
+
+    test "shows an empty-state message when the instructor manages no cohorts", %{conn: conn} do
+      role = insert(:role, permissions: ["cohorts.read"])
+      account = insert(:account, role: role)
+      insert(:instructor, owner_id: account.id)
+
+      conn = init_test_session(conn, %{"account_id" => account.id})
+      {:ok, _lv, html} = live(conn, ~p"/dashboard")
+
+      assert html =~ "You don&#39;t manage any cohorts yet."
     end
 
     test "shows a daily challenge once an eligible block has been solved", %{conn: conn} do

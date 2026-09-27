@@ -4469,10 +4469,6 @@ msgstr "Редактировать персонажа"
 msgid "Ends"
 msgstr "Дата окончания"
 
-#: lib/athena_web/live/dashboard_live/index.ex:471
-#, elixir-autogen, elixir-format
-msgid "Everyone was active this week."
-msgstr "На этой неделе все были активны."
 
 #: lib/athena_web/live/teaching_live/sprints.ex:176
 #, elixir-autogen, elixir-format
@@ -4676,10 +4672,6 @@ msgstr "Профиль"
 msgid "Profile updated successfully"
 msgstr "Профиль успешно обновлён"
 
-#: lib/athena_web/live/dashboard_live/index.ex:476
-#, elixir-autogen, elixir-format
-msgid "Quiet this week"
-msgstr "Тихие на этой неделе"
 
 #: lib/athena_web/live/studio_live/avatar_upload_component.ex:153
 #, elixir-autogen, elixir-format
@@ -6296,3 +6288,8 @@ msgstr "Не удалось добавить выбранных обучающи
 #, elixir-autogen, elixir-format
 msgid "Added %{added} student(s); %{failed} could not be added."
 msgstr "Добавлено %{added} обучающихся; %{failed} не удалось добавить."
+
+#: lib/athena_web/live/dashboard_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "My Cohorts"
+msgstr "Мои группы"
