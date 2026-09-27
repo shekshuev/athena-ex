@@ -103,12 +103,29 @@ defmodule Athena.Learning.InstructorsTest do
       assert length(results) == 1
     end
 
-    test "returns empty list if user lacks read permission" do
-      user_no_access = insert(:account, role: insert(:role, permissions: []))
+    test "works without 'instructors.read' - it's only reachable from an already-gated cohort/team form" do
+      # Managing who *teaches* a cohort ("cohorts.update") and managing the
+      # instructor *profiles* admin page ("instructors.read") are separate
+      # capabilities. Requiring the latter here used to silently break this
+      # search (returning `[]`, no error) for any cohort manager who only
+      # has the former.
+      cohort_manager = insert(:account, role: insert(:role, permissions: ["cohorts.update"]))
       insert(:instructor, title: "Elixir Hacker")
 
-      results = Instructors.search_instructors(user_no_access, "Elixir")
-      assert results == []
+      results = Instructors.search_instructors(cohort_manager, "Elixir")
+      assert length(results) == 1
+      assert hd(results).title == "Elixir Hacker"
+    end
+
+    test "finds by account login too, without 'users.read' - the login lookup is unscoped for the same reason" do
+      cohort_manager = insert(:account, role: insert(:role, permissions: ["cohorts.update"]))
+      account = insert(:account, login: "hidden_dragon")
+      instructor = insert(:instructor, owner_id: account.id, title: "Martial Arts Coach")
+
+      results = Instructors.search_instructors(cohort_manager, "hidden")
+
+      assert length(results) == 1
+      assert hd(results).id == instructor.id
     end
   end
 

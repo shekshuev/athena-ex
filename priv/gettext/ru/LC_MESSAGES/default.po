@@ -1350,8 +1350,8 @@ msgstr "Пожалуйста, выберите курс."
 
 #: lib/athena_web/live/teaching_live/membership_form_component.ex:61
 #, elixir-autogen, elixir-format
-msgid "Please select a student."
-msgstr "Пожалуйста, выберите обучающегося."
+msgid "Please select at least one student."
+msgstr "Пожалуйста, выберите хотя бы одного обучающегося."
 
 #: lib/athena_web/live/studio_live/inspector_component.ex:660
 #: lib/athena_web/live/studio_live/library_editor.ex:1259
@@ -1540,7 +1540,10 @@ msgstr "Обучающийся удалён из учебной группы."
 #: lib/athena_web/live/teaching_live/membership_form_component.ex:78
 #, elixir-autogen, elixir-format
 msgid "Student successfully added to the cohort."
-msgstr "Обучающийся успешно добавлен в учебную группу."
+msgid_plural "%{count} students successfully added to the cohort."
+msgstr[0] "%{count} обучающийся успешно добавлен в учебную группу."
+msgstr[1] "%{count} обучающегося успешно добавлено в учебную группу."
+msgstr[2] "%{count} обучающихся успешно добавлено в учебную группу."
 
 #: lib/athena_web/live/teaching_live/cohort_details.ex:326
 #, elixir-autogen, elixir-format
@@ -5893,8 +5896,8 @@ msgstr "Повторное копирование курса…"
 
 #: lib/athena_web/live/teaching_live/membership_form_component.ex:109
 #, elixir-autogen, elixir-format
-msgid "Search Student"
-msgstr "Поиск обучающегося"
+msgid "Search Students"
+msgstr "Поиск обучающихся"
 
 #: lib/athena_web/live/admin_live/announcements.ex:157
 #, elixir-autogen, elixir-format
@@ -6278,3 +6281,18 @@ msgstr "Ноябрь"
 #, elixir-autogen, elixir-format
 msgid "December"
 msgstr "Декабрь"
+
+#: lib/athena_web/live/teaching_live/membership_form_component.ex
+#, elixir-autogen, elixir-format
+msgid "Add Students (%{count})"
+msgstr "Добавить обучающихся (%{count})"
+
+#: lib/athena_web/live/teaching_live/membership_form_component.ex
+#, elixir-autogen, elixir-format
+msgid "Failed to add the selected students."
+msgstr "Не удалось добавить выбранных обучающихся."
+
+#: lib/athena_web/live/teaching_live/membership_form_component.ex
+#, elixir-autogen, elixir-format
+msgid "Added %{added} student(s); %{failed} could not be added."
+msgstr "Добавлено %{added} обучающихся; %{failed} не удалось добавить."

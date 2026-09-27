@@ -427,6 +427,27 @@ defmodule Athena.Identity.Accounts do
   end
 
   @doc """
+  Account ids whose login matches `query` - deliberately open like
+  `search_addable_cohort_accounts/3` below: used by `Athena.Learning.
+  Instructors.search_instructors/3` to resolve which instructor profiles to
+  offer in the "assign instructors" autocomplete, itself only reachable from
+  a cohort/team create-edit form already gated on `"cohorts.update"`/
+  `"teams.update"` - requiring `"users.read"` here (as `search_accounts_by_login/3`
+  above does) would silently break that search for any cohort manager who
+  lacks that separate, unrelated permission.
+  """
+  @spec search_account_ids_by_login(String.t(), integer()) :: [String.t()]
+  def search_account_ids_by_login(query, limit \\ 10) do
+    term = "%#{query}%"
+
+    Account
+    |> where([a], ilike(a.login, ^term))
+    |> select([a], a.id)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  @doc """
   Searches active, non-deleted accounts by login OR profile name
   (first/last/patronymic), for the open messenger's "start a new
   conversation" flow.
