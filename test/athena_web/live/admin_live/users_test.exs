@@ -32,7 +32,7 @@ defmodule AthenaWeb.AdminLive.UsersTest do
 
       html =
         lv
-        |> form("form[phx-change='search']", %{"search" => "editor"})
+        |> form("form[phx-change='update_filters']", %{"search" => "editor"})
         |> render_change()
 
       assert html =~ "editor_dude"
@@ -42,6 +42,77 @@ defmodule AthenaWeb.AdminLive.UsersTest do
         lv,
         ~p"/admin/users?order_by[]=inserted_at&order_directions[]=desc&page=1&page_size=10&search=editor"
       )
+    end
+
+    test "search also matches profile name (ФИО), not just login", %{conn: conn} do
+      account = insert(:account, login: "unrelated_login_123")
+      insert(:profile, owner: account, first_name: "Иван", last_name: "Петров")
+      insert(:account, login: "someone_else")
+
+      {:ok, lv, _html} = live(conn, ~p"/admin/users")
+
+      html =
+        lv
+        |> form("form[phx-change='update_filters']", %{"search" => "Петров"})
+        |> render_change()
+
+      assert html =~ "unrelated_login_123"
+      refute html =~ "someone_else"
+    end
+
+    test "filters by cohort membership", %{conn: conn} do
+      cohort = insert(:cohort, name: "Autumn Cohort")
+      member = insert(:account, login: "cohort_member")
+      insert(:cohort_membership, account_id: member.id, cohort_id: cohort.id)
+      insert(:account, login: "not_in_cohort")
+
+      {:ok, lv, html} = live(conn, ~p"/admin/users")
+      assert html =~ "Autumn Cohort"
+
+      html =
+        lv
+        |> form("form[phx-change='update_filters']", %{"cohort_id" => cohort.id})
+        |> render_change()
+
+      assert html =~ "cohort_member"
+      refute html =~ "not_in_cohort"
+    end
+
+    test "combines search and cohort filter (intersection)", %{conn: conn} do
+      cohort = insert(:cohort)
+      other_cohort = insert(:cohort)
+
+      in_cohort = insert(:account, login: "target_student")
+      insert(:cohort_membership, account_id: in_cohort.id, cohort_id: cohort.id)
+
+      wrong_cohort = insert(:account, login: "target_elsewhere")
+      insert(:cohort_membership, account_id: wrong_cohort.id, cohort_id: other_cohort.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/admin/users")
+
+      html =
+        lv
+        |> form("form[phx-change='update_filters']", %{
+          "search" => "target",
+          "cohort_id" => cohort.id
+        })
+        |> render_change()
+
+      assert html =~ "target_student"
+      refute html =~ "target_elsewhere"
+    end
+
+    test "hides the cohort filter for an admin without cohorts.read", %{conn: conn} do
+      role = insert(:role, permissions: ["users.read"])
+      limited_admin = insert(:account, role: role)
+      conn = init_test_session(conn, %{"account_id" => limited_admin.id})
+
+      insert(:cohort, name: "Should Not Appear")
+
+      {:ok, _lv, html} = live(conn, ~p"/admin/users")
+
+      refute html =~ "Should Not Appear"
+      refute html =~ "All Cohorts"
     end
   end
 

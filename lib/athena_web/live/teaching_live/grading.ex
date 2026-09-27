@@ -193,7 +193,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
 
     filters =
       if login != "" do
-        ids = Identity.get_account_ids_by_login(login)
+        ids = Identity.get_account_ids_by_login_or_name(login)
 
         ids = if ids == [], do: [Ecto.UUID.generate()], else: ids
         [%{"field" => "account_id", "op" => "in", "value" => ids} | filters]
@@ -308,7 +308,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
               type="text"
               name="login"
               value={@login}
-              label={gettext("Student Login")}
+              label={gettext("Student (login or name)")}
               placeholder={gettext("Start typing...")}
             />
             <div class="flex flex-col justify-end pb-2">

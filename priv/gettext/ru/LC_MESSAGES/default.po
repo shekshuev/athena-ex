@@ -588,8 +588,8 @@ msgstr "Роль"
 
 #: lib/athena_web/live/admin_live/users.ex:209
 #, elixir-autogen, elixir-format
-msgid "Search users..."
-msgstr "Поиск пользователей..."
+msgid "Search by login or name..."
+msgstr "Поиск по логину или ФИО..."
 
 #: lib/athena_web/live/admin_live/user_form_component.ex:189
 #, elixir-autogen, elixir-format
@@ -2662,8 +2662,8 @@ msgstr "Начните писать здесь..."
 
 #: lib/athena_web/live/teaching_live/grading.ex:315
 #, elixir-autogen, elixir-format
-msgid "Student Login"
-msgstr "Логин обучающегося"
+msgid "Student (login or name)"
+msgstr "Обучающийся (логин или ФИО)"
 
 #: lib/athena_web/live/teaching_live/grading.ex:331
 #, elixir-autogen, elixir-format

@@ -549,16 +549,36 @@ defmodule Athena.Identity.Accounts do
   end
 
   @doc """
-  Retrieves a list of account IDs matching a partial login string.
-  Useful for cross-context filtering (like Flop).
+  Retrieves a list of account IDs matching a partial login or profile name
+  (first/last/patronymic - "ФИО") string. Useful for cross-context filtering
+  (like Flop): a Flop `:in` filter over this is how the grading screen's
+  "Student" search matches either.
   """
-  @spec get_account_ids_by_login(String.t()) :: [String.t()]
-  def get_account_ids_by_login(query) do
-    search_term = "%#{query}%"
+  @spec get_account_ids_by_login_or_name(String.t()) :: [String.t()]
+  def get_account_ids_by_login_or_name(query) do
+    term = "%#{query}%"
 
     Account
-    |> where([a], ilike(a.login, ^search_term))
+    |> join(:left, [a], p in Profile, on: p.owner_id == a.id)
+    |> where(
+      [a, p],
+      ilike(a.login, ^term) or ilike(p.first_name, ^term) or ilike(p.last_name, ^term) or
+        ilike(p.patronymic, ^term)
+    )
     |> select([a], a.id)
+    |> distinct(true)
+    |> Repo.all()
+  end
+
+  @doc """
+  Account ids that are members of `cohort_id`. Useful for cross-context
+  filtering (like Flop) - the admin Users list's cohort filter resolves the
+  picked cohort through this into an `:in` filter on `id`, the same way
+  `get_account_ids_by_login_or_name/1`'s result feeds one.
+  """
+  @spec get_account_ids_by_cohort(String.t()) :: [String.t()]
+  def get_account_ids_by_cohort(cohort_id) do
+    from(m in CohortMembership, where: m.cohort_id == ^cohort_id, select: m.account_id)
     |> Repo.all()
   end
 

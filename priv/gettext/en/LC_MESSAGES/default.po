@@ -588,7 +588,7 @@ msgstr ""
 
 #: lib/athena_web/live/admin_live/users.ex:209
 #, elixir-autogen, elixir-format, fuzzy
-msgid "Search users..."
+msgid "Search by login or name..."
 msgstr ""
 
 #: lib/athena_web/live/admin_live/user_form_component.ex:189
@@ -2661,7 +2661,7 @@ msgstr ""
 
 #: lib/athena_web/live/teaching_live/grading.ex:315
 #, elixir-autogen, elixir-format, fuzzy
-msgid "Student Login"
+msgid "Student (login or name)"
 msgstr ""
 
 #: lib/athena_web/live/teaching_live/grading.ex:331
