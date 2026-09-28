@@ -31,7 +31,11 @@ defmodule Athena.Engagement.ExamIntegrityStats do
   @registry Athena.Engagement.ExamIntegrityStatsRegistry
   @supervisor Athena.Engagement.ExamIntegrityStatsSupervisor
 
-  @type metric :: :tab_hidden_per_minute | :answer_changed_per_minute | :paste_ratio
+  @type metric ::
+          :tab_hidden_per_minute
+          | :answer_changed_per_minute
+          | :paste_ratio
+          | :right_click_per_minute
 
   # Public API
 

@@ -163,6 +163,57 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
       assert html =~ "No violations"
     end
 
+    test "clicking Learn more shows this submission's concrete counts, rates and rationale", %{
+      conn: conn
+    } do
+      student = insert(:account, login: "sneaky_student")
+      block = insert(:block, type: :quiz_exam)
+
+      sub =
+        insert(:submission,
+          account_id: student.id,
+          block_id: block.id,
+          content: %{
+            "hard_evidence_count" => 3,
+            "outlier_metrics" => %{"paste_ratio" => 95.0},
+            "risk_level" => "red",
+            "event_counts" => %{"copy_attempt" => 1, "printscreen_attempt" => 2},
+            "rates" => %{"paste_ratio" => 0.8},
+            "metric_percentiles" => %{"paste_ratio" => 95.0},
+            "elapsed_minutes" => 22.0,
+            "allowed_blur_attempts" => 3,
+            "blur_overage_count" => 0,
+            "heartbeat_silence_seconds" => 12,
+            "questions" => [],
+            "answers" => %{}
+          },
+          status: :needs_review
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{sub.id}")
+
+      refute has_element?(lv, "#proctoring-detail-modal")
+
+      html =
+        lv
+        |> element("button[phx-click='open_proctoring_modal']")
+        |> render_click()
+
+      assert has_element?(lv, "#proctoring-detail-modal.modal-open")
+      assert html =~ "Why this submission was flagged"
+      assert html =~ "Flagged because:"
+      assert html =~ "3 piece(s) of direct evidence"
+      assert html =~ "1 unusual behavior metric(s)"
+      assert html =~ "95th percentile"
+
+      html =
+        lv
+        |> element("#proctoring-detail-modal button", "Close")
+        |> render_click()
+
+      refute html =~ "Why this submission was flagged"
+    end
+
     test "does not render the academic integrity panel for a non-exam submission", %{
       conn: conn
     } do

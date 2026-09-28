@@ -54,6 +54,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
        form: form,
        return_to: return_to,
        show_delete_modal: false,
+       show_proctoring_modal: false,
        child_submissions: child_subs,
        questions: questions,
        manual_score_override: false,
@@ -142,6 +143,14 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
 
   def handle_event("close_delete_modal", _, socket) do
     {:noreply, assign(socket, show_delete_modal: false)}
+  end
+
+  def handle_event("open_proctoring_modal", _, socket) do
+    {:noreply, assign(socket, show_proctoring_modal: true)}
+  end
+
+  def handle_event("close_proctoring_modal", _, socket) do
+    {:noreply, assign(socket, show_proctoring_modal: false)}
   end
 
   def handle_event("confirm_delete_submission", _params, socket) do
@@ -571,7 +580,10 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                       )}
                     <% end %>
                   </div>
-                  <.risk_explanation />
+                  <div class="space-y-2">
+                    <.risk_explanation />
+                    <.details_button event="open_proctoring_modal" />
+                  </div>
                 </div>
               <% end %>
             </.form>
@@ -629,6 +641,11 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
         danger={true}
         on_cancel={JS.push("close_delete_modal")}
         on_confirm={JS.push("confirm_delete_submission")}
+      />
+      <.submission_breakdown_modal
+        show={@show_proctoring_modal}
+        content={@submission.content}
+        on_cancel={JS.push("close_proctoring_modal")}
       />
     </.page_container>
     """

@@ -126,6 +126,15 @@ defmodule Athena.Engagement.Event do
     :copy_attempt,
     :cut_attempt,
 
+    # Right-click (`contextmenu`) inside a question-prompt container marked
+    # no-copy, `quiz_exam`/`ticket_exam` only - see `NoCopyGuard`. Unlike
+    # copy/cut, right-clicking has ordinary innocent causes (inspecting
+    # layout, a misclick, unfamiliarity with the block), so a raw count
+    # isn't damning the way an actual clipboard event is; this is a
+    # cohort-relative behavioral-outlier signal, not hard evidence - see
+    # `Athena.Engagement.Proctoring`.
+    :right_click_attempt,
+
     # Complements `tab_hidden`/`tab_visible` - the window losing/gaining OS
     # focus (`window.blur`/`window.focus`), which can catch switching to
     # another top-level window in situations where `document.

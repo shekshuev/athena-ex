@@ -50,7 +50,8 @@ defmodule Athena.Engagement.ProctoringMonitor do
     :multi_tab_detected,
     :paste_detected,
     :answer_changed,
-    :code_run_attempt
+    :code_run_attempt,
+    :right_click_attempt
   ]
 
   @type counts :: %{
@@ -62,10 +63,16 @@ defmodule Athena.Engagement.ProctoringMonitor do
           multi_tab_detected: non_neg_integer(),
           answer_changed: non_neg_integer(),
           code_run_attempt: non_neg_integer(),
+          right_click_attempt: non_neg_integer(),
           paste_ratio: float()
         }
 
-  @type reading :: %{counts: counts(), elapsed_minutes: float()}
+  @type reading :: %{
+          counts: counts(),
+          elapsed_minutes: float(),
+          silence_seconds: non_neg_integer(),
+          max_silence_seconds: non_neg_integer()
+        }
 
   # Public API
 
@@ -105,6 +112,20 @@ defmodule Athena.Engagement.ProctoringMonitor do
   end
 
   @doc """
+  A liveness ping, distinct from `report_events/4` - always starts the
+  monitor (even with nothing to report) so "an empty batch" and "the
+  telemetry channel has gone completely silent" stay distinguishable. Sent
+  by the client on every flush tick regardless of whether anything
+  interesting happened, so a gap between two of these is itself a signal
+  (see `Athena.Engagement.Proctoring` for how it factors into risk level).
+  """
+  @spec heartbeat(binary(), binary() | nil, binary()) :: :ok
+  def heartbeat(submission_id, cohort_id, block_id) do
+    {:ok, pid} = get_or_start(submission_id, cohort_id, block_id)
+    GenServer.cast(pid, :heartbeat)
+  end
+
+  @doc """
   Current counts and elapsed minutes, live. Returns an all-zero reading
   (not an error) if no process is running - either nothing has happened
   yet, or the attempt already finalized.
@@ -112,8 +133,16 @@ defmodule Athena.Engagement.ProctoringMonitor do
   @spec snapshot(binary()) :: reading()
   def snapshot(submission_id) do
     case Registry.lookup(@registry, submission_id) do
-      [{pid, _}] -> GenServer.call(pid, :snapshot)
-      [] -> %{counts: initial_counts(), elapsed_minutes: min_elapsed_minutes()}
+      [{pid, _}] ->
+        GenServer.call(pid, :snapshot)
+
+      [] ->
+        %{
+          counts: initial_counts(),
+          elapsed_minutes: min_elapsed_minutes(),
+          silence_seconds: 0,
+          max_silence_seconds: 0
+        }
     end
   end
 
@@ -162,29 +191,33 @@ defmodule Athena.Engagement.ProctoringMonitor do
        started_at: now,
        counts: initial_counts(),
        paste_totals: %{pasted_chars: 0, total_chars: 0},
-       last_event_at: now
+       last_event_at: now,
+       max_silence_seconds: 0,
+       tab_hidden: false
      }}
   end
 
   @impl true
   def handle_cast({:events, events}, state) do
+    state = note_activity(state)
+
     {counts, paste_totals} =
       Enum.reduce(events, {state.counts, state.paste_totals}, &apply_event/2)
 
-    state = %{
-      state
-      | counts: counts,
-        paste_totals: paste_totals,
-        last_event_at: DateTime.utc_now()
-    }
+    tab_hidden = Enum.reduce(events, state.tab_hidden, &apply_tab_hidden/2)
+
+    state = %{state | counts: counts, paste_totals: paste_totals, tab_hidden: tab_hidden}
 
     report_rates_to_exam_integrity_stats(state)
+    broadcast_updated(state)
 
-    Phoenix.PubSub.broadcast(
-      Athena.PubSub,
-      "proctoring:#{state.submission_id}",
-      {:proctoring_updated, state.submission_id}
-    )
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast(:heartbeat, state) do
+    state = note_activity(state)
+    broadcast_updated(state)
 
     {:noreply, state}
   end
@@ -201,6 +234,15 @@ defmodule Athena.Engagement.ProctoringMonitor do
     if idle_for_ms >= idle_timeout_seconds() * 1000 do
       {:stop, :normal, state}
     else
+      # A silent-but-not-yet-idle gap doesn't get its own cast to trigger a
+      # broadcast (that's the whole point - nothing is arriving), so this
+      # otherwise-idle-only tick doubles as the only thing that pushes a
+      # growing silence out to live viewers (the group monitor) while the
+      # attempt is still technically in progress.
+      if current_silence_seconds(state) > notable_silence_seconds() do
+        broadcast_updated(state)
+      end
+
       schedule_idle_check()
       {:noreply, state}
     end
@@ -227,6 +269,52 @@ defmodule Athena.Engagement.ProctoringMonitor do
 
   defp apply_event(_event, acc), do: acc
 
+  defp apply_tab_hidden(%{event_type: :tab_hidden}, _tab_hidden), do: true
+  defp apply_tab_hidden(%{event_type: :tab_visible}, _tab_hidden), do: false
+  defp apply_tab_hidden(_event, tab_hidden), do: tab_hidden
+
+  # Bumps `last_event_at` and folds the gap since the previous activity
+  # (event batch or heartbeat, whichever was more recent) into the running
+  # max - called from both `{:events, _}` and `:heartbeat` casts so a real
+  # event closes out a silent gap exactly the same way a heartbeat does.
+  defp note_activity(state) do
+    now = DateTime.utc_now()
+    gap = current_silence_seconds(state, now)
+
+    %{
+      state
+      | last_event_at: now,
+        max_silence_seconds: max(state.max_silence_seconds, gap)
+    }
+  end
+
+  defp broadcast_updated(state) do
+    Phoenix.PubSub.broadcast(
+      Athena.PubSub,
+      "proctoring:#{state.submission_id}",
+      {:proctoring_updated, state.submission_id}
+    )
+  end
+
+  # The live, still-open gap since the last activity of any kind - not the
+  # same as `max_silence_seconds`, which is the largest *closed* gap so
+  # far. Deliberately `0` while the tab is legitimately backgrounded
+  # (`tab_hidden`) - that case is already covered by the `tab_hidden`
+  # signal itself and going quiet while backgrounded is expected, not
+  # suspicious.
+  defp current_silence_seconds(state, now \\ DateTime.utc_now())
+
+  defp current_silence_seconds(%{tab_hidden: true}, _now), do: 0
+
+  defp current_silence_seconds(state, now),
+    do: DateTime.diff(now, state.last_event_at, :second)
+
+  # Threshold for the idle-check tick to bother broadcasting a live update
+  # purely because of silence - deliberately below the configured yellow
+  # threshold, so the monitor's live badge is already trending before it
+  # flips color, not appearing to jump straight there.
+  defp notable_silence_seconds, do: 20
+
   defp reading(state) do
     elapsed_minutes =
       max(
@@ -235,8 +323,14 @@ defmodule Athena.Engagement.ProctoringMonitor do
       )
 
     paste_ratio = paste_ratio(state.paste_totals)
+    silence_seconds = current_silence_seconds(state)
 
-    %{counts: Map.put(state.counts, :paste_ratio, paste_ratio), elapsed_minutes: elapsed_minutes}
+    %{
+      counts: Map.put(state.counts, :paste_ratio, paste_ratio),
+      elapsed_minutes: elapsed_minutes,
+      silence_seconds: silence_seconds,
+      max_silence_seconds: max(state.max_silence_seconds, silence_seconds)
+    }
   end
 
   # A floor, never zero - `elapsed_minutes` is used as a division
@@ -252,12 +346,18 @@ defmodule Athena.Engagement.ProctoringMonitor do
   defp report_rates_to_exam_integrity_stats(state) do
     %{counts: counts, elapsed_minutes: elapsed_minutes} = reading(state)
 
+    # `window_blur` complements `tab_hidden` (same underlying "lost focus"
+    # event, caught via two different browser APIs - see `Athena.Engagement.
+    # Event`), so both feed the one `tab_hidden_per_minute` rate rather than
+    # being two separate cohort-relative metrics. `Proctoring.evaluate/4`
+    # must compute this identically, or the percentile comparison below
+    # would compare apples to a differently-shaped baseline.
     ExamIntegrityStats.report_rate(
       state.cohort_id,
       state.block_id,
       state.submission_id,
       :tab_hidden_per_minute,
-      counts.tab_hidden / elapsed_minutes
+      (counts.tab_hidden + counts.window_blur) / elapsed_minutes
     )
 
     ExamIntegrityStats.report_rate(
@@ -275,6 +375,14 @@ defmodule Athena.Engagement.ProctoringMonitor do
       :paste_ratio,
       counts.paste_ratio
     )
+
+    ExamIntegrityStats.report_rate(
+      state.cohort_id,
+      state.block_id,
+      state.submission_id,
+      :right_click_per_minute,
+      counts.right_click_attempt / elapsed_minutes
+    )
   end
 
   defp initial_counts do
@@ -287,6 +395,7 @@ defmodule Athena.Engagement.ProctoringMonitor do
       multi_tab_detected: 0,
       answer_changed: 0,
       code_run_attempt: 0,
+      right_click_attempt: 0,
       paste_ratio: 0.0
     }
   end

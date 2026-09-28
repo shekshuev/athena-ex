@@ -107,6 +107,54 @@ defmodule AthenaWeb.TeachingLive.GradingMonitorTest do
       assert html =~ "No violations"
     end
 
+    test "clicking Learn more opens the methodology modal with the full per-event breakdown", %{
+      conn: conn
+    } do
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section, type: :quiz_exam)
+      cohort = insert(:cohort, name: "Section A")
+      insert(:enrollment, cohort_id: cohort.id, course_id: course.id, status: :active)
+
+      account = insert(:account, login: "dana")
+      insert(:cohort_membership, cohort_id: cohort.id, account_id: account.id)
+
+      sub =
+        insert(:submission,
+          account_id: account.id,
+          block_id: block.id,
+          content: %{
+            "hard_evidence_count" => 0,
+            "outlier_metrics" => %{},
+            "risk_level" => "green"
+          },
+          status: :needs_review
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{sub.id}/monitor")
+
+      refute has_element?(lv, "#proctoring-methodology-modal")
+
+      html =
+        lv
+        |> element("button", "Learn more")
+        |> render_click()
+
+      assert has_element?(lv, "#proctoring-methodology-modal.modal-open")
+      assert html =~ "How the cheating risk indicator is calculated"
+      assert html =~ "Direct evidence"
+      assert html =~ "Behavior compared to the group"
+      assert html =~ "Telemetry silence"
+      assert html =~ "Known blind spots"
+
+      html =
+        lv
+        |> element("#proctoring-methodology-modal button", "Close")
+        |> render_click()
+
+      refute html =~ "How the cheating risk indicator is calculated"
+    end
+
     test "redirects with a flash when the submission's academic group can't be resolved", %{
       conn: conn
     } do

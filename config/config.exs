@@ -130,6 +130,8 @@ config :athena, Athena.Engagement,
   exam_hard_evidence_red_threshold: 2,
   exam_behavioral_outliers_red_threshold: 2,
   exam_percentile_outlier_threshold: 90,
+  exam_heartbeat_silence_yellow_threshold_seconds: 45,
+  exam_heartbeat_silence_red_threshold_seconds: 120,
   proctoring_monitor_idle_timeout_minutes: 180
 
 # Import environment specific config. This must remain at the bottom

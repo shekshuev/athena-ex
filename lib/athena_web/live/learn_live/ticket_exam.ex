@@ -538,6 +538,16 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     {:noreply, socket}
   end
 
+  def handle_event("engagement_heartbeat", _params, socket) do
+    Engagement.report_proctoring_heartbeat(
+      socket.assigns.submission.id,
+      socket.assigns.cohort_id,
+      socket.assigns.block.id
+    )
+
+    {:noreply, socket}
+  end
+
   defp execute_run_code(socket, block_id) do
     socket = EngagementSignals.emit_code_run_attempt(socket, block_id)
     submission_to_run = resolve_submission_for_run(socket, block_id)
@@ -735,6 +745,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
       id="engagement-tracker"
       phx-hook="EngagementTracker"
       data-session-id={@engagement_session_id}
+      data-heartbeat="true"
       class="flex flex-col min-h-screen"
     >
       <div

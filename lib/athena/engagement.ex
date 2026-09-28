@@ -67,6 +67,11 @@ defmodule Athena.Engagement do
     to: ProctoringMonitor,
     as: :report_events
 
+  @doc "Liveness ping for one exam attempt - see `ProctoringMonitor.heartbeat/3`."
+  defdelegate report_proctoring_heartbeat(submission_id, cohort_id, block_id),
+    to: ProctoringMonitor,
+    as: :heartbeat
+
   @doc """
   Live (non-destructive) risk evaluation for an in-progress exam attempt -
   what the group-monitoring view and a single submission's badge both read
@@ -102,6 +107,12 @@ defmodule Athena.Engagement do
 
   @doc "Risk-level summary of a submission's proctoring data, or `nil` if it has none."
   defdelegate proctoring_summary(content), to: Proctoring, as: :summary
+
+  @doc "Full per-event breakdown of a submission's proctoring data, or `nil` if it has none."
+  defdelegate proctoring_detail(content), to: Proctoring, as: :detail
+
+  @doc "The config thresholds `Proctoring` uses, for display in the methodology modal."
+  defdelegate proctoring_thresholds(), to: Proctoring, as: :thresholds
 
   defdelegate get_metrics(scope), to: Metrics
   defdelegate funnel(block_id, cohort_id \\ nil), to: Metrics

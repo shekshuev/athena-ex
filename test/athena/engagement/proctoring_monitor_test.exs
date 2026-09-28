@@ -37,8 +37,12 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
                multi_tab_detected: 0,
                answer_changed: 0,
                code_run_attempt: 0,
+               right_click_attempt: 0,
                paste_ratio: 0.0
              }
+
+      assert reading.silence_seconds == 0
+      assert reading.max_silence_seconds == 0
     end
 
     test "accumulates only tracked event types, incrementally, across multiple batches" do
@@ -62,6 +66,17 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
       assert reading.counts.printscreen_attempt == 1
       assert reading.counts.copy_attempt == 0
       assert reading.elapsed_minutes > 0
+    end
+
+    test "right_click_attempt is tracked like any other hard-evidence-style count" do
+      submission_id = Ecto.UUID.generate()
+
+      ProctoringMonitor.report_events(submission_id, Ecto.UUID.generate(), "block", [
+        %{event_type: :right_click_attempt},
+        %{event_type: :right_click_attempt}
+      ])
+
+      assert ProctoringMonitor.snapshot(submission_id).counts.right_click_attempt == 2
     end
 
     test "paste_detected accumulates into a running ratio, not a plain count" do
@@ -98,6 +113,69 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
       ])
 
       assert_receive {:proctoring_updated, ^submission_id}
+    end
+  end
+
+  describe "heartbeat/3" do
+    test "starts a fresh process even with nothing to report - unlike an empty report_events/4 batch" do
+      submission_id = Ecto.UUID.generate()
+
+      :ok = ProctoringMonitor.heartbeat(submission_id, Ecto.UUID.generate(), "block")
+
+      assert [{pid, _}] =
+               Registry.lookup(Athena.Engagement.ProctoringMonitorRegistry, submission_id)
+
+      assert Process.alive?(pid)
+      assert ProctoringMonitor.snapshot(submission_id).counts.tab_hidden == 0
+    end
+
+    test "broadcasts a ping on the submission's own proctoring topic" do
+      submission_id = Ecto.UUID.generate()
+      Phoenix.PubSub.subscribe(Athena.PubSub, "proctoring:#{submission_id}")
+
+      ProctoringMonitor.heartbeat(submission_id, Ecto.UUID.generate(), "block")
+
+      assert_receive {:proctoring_updated, ^submission_id}
+    end
+  end
+
+  describe "telemetry silence" do
+    test "a live gap since the last activity shows up in silence_seconds without another event" do
+      submission_id = Ecto.UUID.generate()
+
+      ProctoringMonitor.heartbeat(submission_id, Ecto.UUID.generate(), "block")
+      Process.sleep(1100)
+
+      reading = ProctoringMonitor.snapshot(submission_id)
+      assert reading.silence_seconds >= 1
+    end
+
+    test "closing a gap with new activity folds it into max_silence_seconds and resets the live gap" do
+      submission_id = Ecto.UUID.generate()
+      cohort_id = Ecto.UUID.generate()
+
+      ProctoringMonitor.heartbeat(submission_id, cohort_id, "block")
+      Process.sleep(1100)
+      ProctoringMonitor.heartbeat(submission_id, cohort_id, "block")
+
+      reading = ProctoringMonitor.snapshot(submission_id)
+      assert reading.max_silence_seconds >= 1
+      assert reading.silence_seconds == 0
+    end
+
+    test "a gap while the tab is legitimately hidden does not count as silence" do
+      submission_id = Ecto.UUID.generate()
+      cohort_id = Ecto.UUID.generate()
+
+      ProctoringMonitor.report_events(submission_id, cohort_id, "block", [
+        %{event_type: :tab_hidden}
+      ])
+
+      Process.sleep(1100)
+
+      reading = ProctoringMonitor.snapshot(submission_id)
+      assert reading.silence_seconds == 0
+      assert reading.max_silence_seconds == 0
     end
   end
 

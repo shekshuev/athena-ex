@@ -54,7 +54,18 @@ EngagementHooks.EngagementTracker = {
       this.pushEvent("engagement_batch", { events });
     };
 
-    this.flushTimer = setInterval(this.flush, FLUSH_INTERVAL_MS);
+    // On exam pages (`data-heartbeat="true"`) every tick also pings the
+    // server unconditionally, even when `flush()` above had nothing queued
+    // - that's what lets the server notice *silence* (tracking JS
+    // disabled/tampered) instead of only ever seeing suspicious events. A
+    // student who patches just the listeners below (visibilitychange,
+    // IntersectionObserver, BroadcastChannel) can't quietly stop this too
+    // without also breaking their own `pushEvent`-based ability to answer
+    // and submit.
+    this.flushTimer = setInterval(() => {
+      this.flush();
+      if (this.el.dataset.heartbeat === "true") this.pushEvent("engagement_heartbeat", {});
+    }, FLUSH_INTERVAL_MS);
 
     this.observer = new IntersectionObserver(
       (entries) => {
@@ -311,11 +322,13 @@ EngagementHooks.AttachmentOpenTracker = {
 // Blocks copy/cut/right-click on a question-prompt container (raises the
 // bar against a quick Ctrl+C, not bulletproof - a determined student can
 // still retype, screenshot, or use devtools) and reports the attempts as
-// `copy_attempt`/`cut_attempt` telemetry. Only ever mounted on exam pages
-// (`quiz_exam`/`ticket_exam`) - see `AthenaWeb.BlockComponents.
-// render_quiz_question/1`. Right-click is blocked as a UX deterrent only
-// and is not logged - by itself it doesn't prove anything was copied, and
-// counting it would just add noise to the risk indicator.
+// `copy_attempt`/`cut_attempt`/`right_click_attempt` telemetry. Only ever
+// mounted on exam pages (`quiz_exam`/`ticket_exam`) - see
+// `AthenaWeb.BlockComponents.render_quiz_question/1`. Right-click still
+// gets blocked as a UX deterrent either way, but unlike copy/cut it has
+// ordinary innocent causes (inspecting layout, a misclick), so the server
+// only ever treats it as a cohort-relative behavioral-outlier signal, not
+// hard evidence - see `Athena.Engagement.Proctoring`.
 EngagementHooks.NoCopyGuard = {
   mounted() {
     const blockId = this.el.dataset.blockId || this.el.closest("[data-block-id]")?.dataset.blockId;
@@ -342,7 +355,10 @@ EngagementHooks.NoCopyGuard = {
       e.preventDefault();
       report("cut_attempt");
     };
-    this.onContextMenu = (e) => e.preventDefault();
+    this.onContextMenu = (e) => {
+      e.preventDefault();
+      report("right_click_attempt");
+    };
 
     this.el.addEventListener("copy", this.onCopy);
     this.el.addEventListener("cut", this.onCut);

@@ -62,9 +62,19 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
        accounts: accounts,
        submissions: submissions_by_account,
        proctoring_subscribed_ids: proctoring_subscribed_ids,
-       live_results: %{}
+       live_results: %{},
+       show_methodology_modal: false
      )
      |> refresh_live_results(submissions_by_account)}
+  end
+
+  @impl true
+  def handle_event("open_methodology_modal", _, socket) do
+    {:noreply, assign(socket, show_methodology_modal: true)}
+  end
+
+  def handle_event("close_methodology_modal", _, socket) do
+    {:noreply, assign(socket, show_methodology_modal: false)}
   end
 
   defp subscribe_to_member({account_id, sub}, block) do
@@ -215,7 +225,15 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
         </div>
       </div>
 
-      <.risk_explanation />
+      <div class="space-y-2">
+        <.risk_explanation />
+        <.details_button event="open_methodology_modal" />
+      </div>
+
+      <.methodology_modal
+        show={@show_methodology_modal}
+        on_cancel={JS.push("close_methodology_modal")}
+      />
 
       <div class="bg-base-100 border border-base-200 rounded-box overflow-hidden">
         <table class="table">
