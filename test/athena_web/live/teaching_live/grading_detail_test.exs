@@ -163,7 +163,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
       assert html =~ "No violations"
     end
 
-    test "clicking Learn more shows this submission's concrete counts, rates and rationale", %{
+    test "clicking Learn more shows the points, what counted and the measurements", %{
       conn: conn
     } do
       student = insert(:account, login: "sneaky_student")
@@ -174,16 +174,27 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
           account_id: student.id,
           block_id: block.id,
           content: %{
-            "hard_evidence_count" => 3,
+            "hard_evidence_count" => 1,
             "outlier_metrics" => %{"paste_ratio" => 95.0},
             "risk_level" => "red",
-            "event_counts" => %{"copy_attempt" => 1, "printscreen_attempt" => 2},
+            "points" => 4,
+            "signals" => [
+              %{"key" => "copy_attempt", "points" => 2, "value" => 1, "basis" => "count"},
+              %{
+                "key" => "paste_ratio",
+                "points" => 2,
+                "value" => 0.8,
+                "percentile" => 95.0,
+                "basis" => "percentile"
+              }
+            ],
+            "event_counts" => %{"copy_attempt" => 1, "printscreen_attempt" => 0},
             "rates" => %{"paste_ratio" => 0.8},
             "metric_percentiles" => %{"paste_ratio" => 95.0},
             "elapsed_minutes" => 22.0,
-            "allowed_blur_attempts" => 3,
-            "blur_overage_count" => 0,
             "heartbeat_silence_seconds" => 12,
+            "away_incidents" => 1,
+            "away_total_seconds" => 30,
             "questions" => [],
             "answers" => %{}
           },
@@ -201,9 +212,9 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
 
       assert has_element?(lv, "#proctoring-detail-modal.modal-open")
       assert html =~ "Why this submission was flagged"
-      assert html =~ "Flagged because:"
-      assert html =~ "3 piece(s) of direct evidence"
-      assert html =~ "1 unusual behavior metric(s)"
+      assert html =~ "What counted"
+      assert html =~ "4 points"
+      assert html =~ "Copy attempts on the question"
       assert html =~ "95th percentile"
 
       html =
@@ -212,6 +223,79 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
         |> render_click()
 
       refute html =~ "Why this submission was flagged"
+    end
+
+    test "the Timeline tab lists what the student actually did", %{conn: conn} do
+      student = insert(:account)
+      section = insert(:section)
+      block = insert(:block, section: section, type: :quiz_exam)
+      started_at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.add(-600, :second)
+
+      sub =
+        insert(:submission,
+          account_id: student.id,
+          block_id: block.id,
+          content: %{
+            "risk_level" => "yellow",
+            "hard_evidence_count" => 0,
+            "outlier_metrics" => %{},
+            "started_at" => DateTime.to_iso8601(started_at),
+            "questions" => []
+          },
+          status: :needs_review
+        )
+
+      Athena.Engagement.record_events(student.id, nil, Ecto.UUID.generate(), [
+        %{
+          block_id: block.id,
+          section_id: section.id,
+          event_type: :tab_visible,
+          payload: %{"duration_ms" => 45_000},
+          occurred_at: DateTime.add(started_at, 300, :second)
+        }
+      ])
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{sub.id}")
+
+      lv |> element("button[phx-click='open_proctoring_modal']") |> render_click()
+      html = lv |> element("#proctoring-tab-timeline") |> render_click()
+
+      assert has_element?(lv, "#proctoring-timeline")
+      assert html =~ "Left the tab for 45s"
+      assert html =~ "04:15"
+    end
+
+    test "a teacher can record a review that stays on the submission", %{conn: conn} do
+      student = insert(:account)
+      block = insert(:block, type: :quiz_exam)
+
+      sub =
+        insert(:submission,
+          account_id: student.id,
+          block_id: block.id,
+          content: %{
+            "risk_level" => "red",
+            "hard_evidence_count" => 0,
+            "outlier_metrics" => %{},
+            "questions" => []
+          },
+          status: :needs_review
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{sub.id}")
+      lv |> element("button[phx-click='open_proctoring_modal']") |> render_click()
+
+      lv
+      |> form("#proctoring-review-form", review: %{note: "Spoke to them, router crashed."})
+      |> render_submit(%{"status" => "dismissed"})
+
+      review = Athena.Repo.get!(Submission, sub.id).content["proctoring_review"]
+      assert review["status"] == "dismissed"
+      assert review["note"] == "Spoke to them, router crashed."
+      assert review["by"] not in [nil, ""]
+
+      # The recorded signals themselves are untouched.
+      assert Athena.Repo.get!(Submission, sub.id).content["risk_level"] == "red"
     end
 
     test "does not render the academic integrity panel for a non-exam submission", %{

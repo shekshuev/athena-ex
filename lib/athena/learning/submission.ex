@@ -106,7 +106,7 @@ defmodule Athena.Learning.Submission do
   def filter_has_cheats(query, %Flop.Filter{value: value}, _opts) do
     if value in [true, "true"] do
       import Ecto.Query
-      where(query, [s], fragment("(?.content->>'cheat_count')::int > 0", s))
+      where(query, [s], fragment("?.content->>'risk_level' in ('yellow', 'red')", s))
     else
       query
     end

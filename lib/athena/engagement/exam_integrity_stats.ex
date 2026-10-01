@@ -36,6 +36,7 @@ defmodule Athena.Engagement.ExamIntegrityStats do
           | :answer_changed_per_minute
           | :paste_ratio
           | :right_click_per_minute
+          | :mouse_away_seconds_per_minute
 
   # Public API
 
@@ -66,7 +67,7 @@ defmodule Athena.Engagement.ExamIntegrityStats do
   @doc """
   Approximate percentile rank (0-100) of `value` within the cohort's
   current distribution for `metric`, or `nil` when fewer than
-  `min_sample_size_for_percentile` other submissions have reported a value
+  `exam_min_peers` other submissions have reported a value
   yet - not enough peers to say anything about "relative to the group".
   """
   @spec percentile_rank(binary() | nil, binary(), metric(), number()) :: float() | nil
@@ -222,7 +223,7 @@ defmodule Athena.Engagement.ExamIntegrityStats do
   end
 
   defp config, do: Application.get_env(:athena, Athena.Engagement, [])
-  defp min_sample_size, do: Keyword.get(config(), :min_sample_size_for_percentile, 15)
+  defp min_sample_size, do: Keyword.get(config(), :exam_min_peers, 8)
 
   defp idle_timeout_seconds do
     Keyword.get(config(), :proctoring_monitor_idle_timeout_minutes, 180) * 60

@@ -87,8 +87,6 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
   end
 
   defp refresh_live_results(socket, submissions_by_account) do
-    allowed_blur_attempts = socket.assigns.block.content["allowed_blur_attempts"] || 3
-
     live_results =
       submissions_by_account
       |> Enum.filter(fn {_account_id, sub} -> sub && sub.status == :pending end)
@@ -97,8 +95,7 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
          Engagement.evaluate_live_proctoring(
            sub.id,
            socket.assigns.cohort.id,
-           socket.assigns.block.id,
-           allowed_blur_attempts
+           socket.assigns.block.id
          )}
       end)
 
@@ -154,14 +151,11 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp put_live_result(socket, submission_id) do
-    allowed_blur_attempts = socket.assigns.block.content["allowed_blur_attempts"] || 3
-
     fields =
       Engagement.evaluate_live_proctoring(
         submission_id,
         socket.assigns.cohort.id,
-        socket.assigns.block.id,
-        allowed_blur_attempts
+        socket.assigns.block.id
       )
 
     assign(socket, :live_results, Map.put(socket.assigns.live_results, submission_id, fields))

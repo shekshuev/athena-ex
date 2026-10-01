@@ -76,14 +76,14 @@ defmodule Athena.Engagement do
   Live (non-destructive) risk evaluation for an in-progress exam attempt -
   what the group-monitoring view and a single submission's badge both read
   while the student is still taking the exam. Does not touch
-  `ExamIntegrityStats`'s cohort baseline (see `finalize_proctoring/4` for
+  `ExamIntegrityStats`'s cohort baseline (see `finalize_proctoring/3` for
   the one-time, mutating version called when the attempt ends).
   """
-  @spec evaluate_live_proctoring(binary(), binary() | nil, binary(), non_neg_integer()) :: map()
-  def evaluate_live_proctoring(submission_id, cohort_id, block_id, allowed_blur_attempts) do
+  @spec evaluate_live_proctoring(binary(), binary() | nil, binary()) :: map()
+  def evaluate_live_proctoring(submission_id, cohort_id, block_id) do
     submission_id
     |> ProctoringMonitor.snapshot()
-    |> Proctoring.evaluate(cohort_id, block_id, allowed_blur_attempts)
+    |> Proctoring.evaluate(cohort_id, block_id)
   end
 
   @doc """
@@ -93,12 +93,12 @@ defmodule Athena.Engagement do
   taking the exam), and returns the final `hard_evidence_count`/
   `outlier_metrics`/`risk_level` fields to merge into `Submission.content`.
   """
-  @spec finalize_proctoring(binary(), binary() | nil, binary(), non_neg_integer()) :: map()
-  def finalize_proctoring(submission_id, cohort_id, block_id, allowed_blur_attempts) do
+  @spec finalize_proctoring(binary(), binary() | nil, binary()) :: map()
+  def finalize_proctoring(submission_id, cohort_id, block_id) do
     fields =
       submission_id
       |> ProctoringMonitor.finalize()
-      |> Proctoring.evaluate(cohort_id, block_id, allowed_blur_attempts)
+      |> Proctoring.evaluate(cohort_id, block_id)
 
     ExamIntegrityStats.forget(cohort_id, block_id, submission_id)
 
@@ -110,6 +110,11 @@ defmodule Athena.Engagement do
 
   @doc "Full per-event breakdown of a submission's proctoring data, or `nil` if it has none."
   defdelegate proctoring_detail(content), to: Proctoring, as: :detail
+
+  @doc "Chronological account of what happened during an exam attempt - see `ProctoringTimeline`."
+  defdelegate proctoring_timeline(submission),
+    to: Athena.Engagement.ProctoringTimeline,
+    as: :build
 
   @doc "The config thresholds `Proctoring` uses, for display in the methodology modal."
   defdelegate proctoring_thresholds(), to: Proctoring, as: :thresholds

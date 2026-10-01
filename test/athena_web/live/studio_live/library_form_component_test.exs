@@ -109,7 +109,7 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponentTest do
       assert block != nil
       assert block.type == :ticket_exam
       assert block.content["slots"] == []
-      assert block.content["allowed_blur_attempts"] == 3
+      assert block.content["require_fullscreen"] == false
       assert is_nil(block.content["time_limit"])
     end
 

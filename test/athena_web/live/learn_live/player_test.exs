@@ -853,7 +853,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       s1 = insert(:section, course: course)
 
       block =
-        insert(:block, section: s1, type: :quiz_exam, content: %{"allowed_blur_attempts" => 3})
+        insert(:block, section: s1, type: :quiz_exam, content: %{"count" => 10})
 
       insert(:submission,
         account_id: user.id,
@@ -867,27 +867,6 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       assert html =~ "Assessment Completed"
       assert html =~ "85 / 100"
-      refute html =~ "Start Assessment"
-    end
-
-    test "renders failed state if cheat limit exceeded", %{conn: conn, course: course, user: user} do
-      s1 = insert(:section, course: course)
-
-      block =
-        insert(:block, section: s1, type: :quiz_exam, content: %{"allowed_blur_attempts" => 3})
-
-      insert(:submission,
-        account_id: user.id,
-        block_id: block.id,
-        status: :graded,
-        score: 0,
-        content: %{"type" => "quiz_exam", "cheat_count" => 3}
-      )
-
-      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
-
-      assert html =~ "Assessment Failed (Violations)"
-      refute html =~ "Assessment Completed"
       refute html =~ "Start Assessment"
     end
 

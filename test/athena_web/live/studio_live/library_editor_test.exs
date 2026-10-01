@@ -156,7 +156,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
           "content" => %{
             "count" => "25",
             "time_limit" => "60",
-            "allowed_blur_attempts" => "5"
+            "require_fullscreen" => "true"
           }
         },
         "tags_mandatory" => "elixir, hard",
@@ -168,7 +168,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       {:ok, updated_block} = Content.get_library_block(block.id)
       assert updated_block.content["count"] == 25
       assert updated_block.content["time_limit"] == 60
-      assert updated_block.content["allowed_blur_attempts"] == 5
+      assert updated_block.content["require_fullscreen"] == true
       assert updated_block.content["mandatory_tags"] == ["elixir", "hard"]
       assert updated_block.content["include_tags"] == ["medium"]
       assert updated_block.content["exclude_tags"] == ["draft"]
@@ -186,7 +186,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
         "library_block" => %{
           "content" => %{
             "time_limit" => "45",
-            "allowed_blur_attempts" => "2",
+            "require_fullscreen" => "true",
             "slots" => %{
               "0" => %{"id" => "s1", "tags_string" => "db, theory"},
               "1" => %{"id" => "s2", "tags_string" => "  db  ,  practice  "}
@@ -198,7 +198,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
 
       {:ok, updated_block} = Content.get_library_block(block.id)
       assert updated_block.content["time_limit"] == 45
-      assert updated_block.content["allowed_blur_attempts"] == 2
+      assert updated_block.content["require_fullscreen"] == true
 
       slots = updated_block.content["slots"]
       assert length(slots) == 2

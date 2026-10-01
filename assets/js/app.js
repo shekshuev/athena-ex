@@ -49,7 +49,12 @@ import ImageResize from "tiptap-extension-resize-image";
 import topbar from "../vendor/topbar";
 import { Dialogue, DialogueLine, insertDialogue } from "./tiptap/dialogue";
 import { ChartsHooks } from "./charts_hooks";
-import { EngagementHooks, engagementTrackingActive } from "./engagement_hooks";
+import {
+  EngagementHooks,
+  engagementTrackingActive,
+  proctoringActive,
+} from "./engagement_hooks";
+import { attachInputTelemetry } from "./input_telemetry";
 import { MessengerHooks } from "./messenger_hooks";
 
 const lowlight = createLowlight(common);
@@ -214,6 +219,44 @@ Hooks.TippyTooltip = {
   },
 };
 
+// Shared by every answer editor: forwards the input-telemetry module's
+// reports through the hook's own `pushEvent` as ordinary engagement events.
+function answerTelemetryReporter(hook, blockId) {
+  return (eventType, payload) => {
+    try {
+      hook.pushEvent("engagement_batch", {
+        events: [
+          {
+            block_id: blockId,
+            event_type: eventType,
+            payload,
+            occurred_at: new Date().toISOString(),
+          },
+        ],
+      });
+    } catch {
+      // The hook may already be torn down (final typing summary on unmount).
+    }
+  };
+}
+
+// Plain-text exam answers (`exact_match`) are a bare <input>; this gives
+// them the same input telemetry the rich editors get.
+Hooks.ProctoredInput = {
+  mounted() {
+    const blockId = this.el.dataset.blockId;
+    if (!blockId || !proctoringActive()) return;
+    this.detachTelemetry = attachInputTelemetry(this.el, {
+      trackPaste: true,
+      report: answerTelemetryReporter(this, blockId),
+    });
+  },
+
+  destroyed() {
+    if (this.detachTelemetry) this.detachTelemetry();
+  },
+};
+
 Hooks.CodeEditor = {
   mounted() {
     const isReadOnly = this.el.dataset.readonly === "true";
@@ -360,10 +403,17 @@ Hooks.CodeEditor = {
         });
       };
       this.editor.dom.addEventListener("paste", this.handlePaste);
+
+      if (proctoringActive()) {
+        this.detachTelemetry = attachInputTelemetry(this.editor.contentDOM, {
+          report: answerTelemetryReporter(this, answerBlockId),
+        });
+      }
     }
   },
 
   destroyed() {
+    if (this.detachTelemetry) this.detachTelemetry();
     if (this.editor) this.editor.destroy();
     window.removeEventListener("phx:set-theme", this.applyCmTheme);
     if (this.observer) this.observer.disconnect();
@@ -800,6 +850,20 @@ Hooks.TiptapEditor = {
       },
     });
 
+    // Student open-answer field on an exam page (see the paste handler
+    // above for why only `open-answer-*` inputs count). Paste is already
+    // reported by that handler, so this only adds drop, bulk-insert and
+    // typing-shape telemetry.
+    if (
+      !isReadOnly &&
+      (this.el.dataset.inputId || "").startsWith("open-answer-") &&
+      proctoringActive()
+    ) {
+      this.detachTelemetry = attachInputTelemetry(this.editor.view.dom, {
+        report: answerTelemetryReporter(this, blockId),
+      });
+    }
+
     if (!isReadOnly) {
       const wrapper = this.el.closest(".editor-wrapper");
       const toolbar = wrapper ? wrapper.querySelector(".fixed-toolbar") : null;
@@ -1182,6 +1246,7 @@ Hooks.TiptapEditor = {
   },
 
   destroyed() {
+    if (this.detachTelemetry) this.detachTelemetry();
     if (this.editor) this.editor.destroy();
     if (this.handleInsertMedia) {
       window.removeEventListener("phx:insert_media", this.handleInsertMedia);

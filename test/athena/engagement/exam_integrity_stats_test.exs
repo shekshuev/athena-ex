@@ -88,7 +88,7 @@ defmodule Athena.Engagement.ExamIntegrityStatsTest do
 
       # Exactly at the minimum sample size - removing even one submission
       # must drop the effective count below the threshold.
-      for i <- 1..15 do
+      for i <- 1..8 do
         ExamIntegrityStats.report_rate(cohort_id, block_id, "peer-#{i}", :paste_ratio, 0.1)
       end
 

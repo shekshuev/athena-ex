@@ -371,6 +371,26 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                   placeholder={gettext("Optional")}
                   min="1"
                 />
+
+                <label class="label cursor-pointer justify-start gap-3 items-start">
+                  <input type="hidden" name="block[content][require_fullscreen]" value="false" />
+                  <input
+                    type="checkbox"
+                    id="require-fullscreen-toggle-quiz"
+                    name="block[content][require_fullscreen]"
+                    value="true"
+                    checked={@block.content["require_fullscreen"] == true}
+                    class="checkbox checkbox-sm checkbox-primary mt-0.5"
+                  />
+                  <div>
+                    <span class="label-text">{gettext("Require fullscreen")}</span>
+                    <p class="text-xs text-base-content/50">
+                      {gettext(
+                        "Questions stay hidden until the student enters fullscreen; leaving it is recorded. Not applied in the builder's test run."
+                      )}
+                    </p>
+                  </div>
+                </label>
               </div>
 
               <div class="flex items-center justify-between mb-2 mt-6">
@@ -499,6 +519,26 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                   min="1"
                   phx-debounce="500"
                 />
+
+                <label class="label cursor-pointer justify-start gap-3 items-start">
+                  <input type="hidden" name="block[content][require_fullscreen]" value="false" />
+                  <input
+                    type="checkbox"
+                    id="require-fullscreen-toggle-ticket"
+                    name="block[content][require_fullscreen]"
+                    value="true"
+                    checked={@block.content["require_fullscreen"] == true}
+                    class="checkbox checkbox-sm checkbox-primary mt-0.5"
+                  />
+                  <div>
+                    <span class="label-text">{gettext("Require fullscreen")}</span>
+                    <p class="text-xs text-base-content/50">
+                      {gettext(
+                        "Questions stay hidden until the student enters fullscreen; leaving it is recorded. Not applied in the builder's test run."
+                      )}
+                    </p>
+                  </div>
+                </label>
               </div>
 
               <div class="flex items-center justify-between mb-2 mt-6">

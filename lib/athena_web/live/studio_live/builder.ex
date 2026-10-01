@@ -1042,7 +1042,7 @@ defmodule AthenaWeb.StudioLive.Builder do
         "after_id" => clean_after_id(params["after_id"]),
         "content" => %{
           "time_limit" => nil,
-          "allowed_blur_attempts" => 3,
+          "require_fullscreen" => false,
           "slots" => []
         }
       }

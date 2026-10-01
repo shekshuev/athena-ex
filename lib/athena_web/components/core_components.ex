@@ -1589,6 +1589,7 @@ defmodule AthenaWeb.CoreComponents do
   attr :on_confirm, JS, default: nil
   attr :confirm_label, :string, default: "Confirm"
   attr :danger, :boolean, default: false
+  attr :box_class, :string, default: nil
   slot :inner_block
 
   def modal(assigns) do
@@ -1599,7 +1600,7 @@ defmodule AthenaWeb.CoreComponents do
       phx-window-keydown={@show && @on_cancel}
       phx-key="escape"
     >
-      <div class="modal-box rounded-sm border border-base-300">
+      <div class={["modal-box rounded-sm border border-base-300", @box_class]}>
         <h3 :if={@title} class="font-bold text-lg">{@title}</h3>
         <p :if={@description} class="py-4 text-base-content/70">{@description}</p>
 

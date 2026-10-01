@@ -149,7 +149,45 @@ defmodule Athena.Engagement.Event do
     # `BroadcastChannel`/`localStorage` handshake between tabs. Only catches
     # two tabs in the *same* browser profile - a second device or a
     # different browser is invisible to this signal.
-    :multi_tab_detected
+    :multi_tab_detected,
+
+    # Text that reached an exam answer field without being typed, beyond the
+    # plain `paste_detected` DOM event: a large insertion in one editor
+    # transaction that was not keyboard input, paste, drop or an IME/
+    # autocomplete composition - e.g. a browser extension writing straight
+    # into the DOM. Payload `{chars}`. `quiz_exam`/`ticket_exam` answer
+    # fields only. (`paste_detected` itself now also fires for drag-and-drop
+    # and replacement insertions, with `payload.source` telling them apart.)
+    :bulk_insert,
+
+    # Aggregated typing dynamics for a stretch of keystrokes - never the
+    # keystrokes themselves, no key codes and no per-key timestamps.
+    # Payload `{n, median_dwell_ms, flight_cv, pauses, max_clean_run,
+    # chars_typed, chars_deleted}`. Composition input (IME, dictation, on-
+    # screen keyboards) is excluded because it has no meaningful key timing.
+    :typing_summary,
+
+    # The browser reported itself offline (`offline` -> `online`), emitted
+    # when it comes back with the length of the outage. Payload
+    # `{duration_ms}`. A page that was offline cannot have been reporting,
+    # so this is the client's own account of what the server would
+    # otherwise only see as silence.
+    :offline_period,
+
+    # The pointer left the browser window and came back. Payload
+    # `{duration_ms}`. Catches reading a neighbouring window by hovering it
+    # (scrolling works without a click), which never fires blur or
+    # visibilitychange.
+    :mouse_left,
+
+    # The window's outer size relative to the screen changed class
+    # (maximized vs. tiled/half). Payload `{ratio, split}`. Uses outer
+    # dimensions so browser zoom and docked DevTools do not trigger it.
+    :window_geometry_changed,
+
+    # Left fullscreen during an exam that requires it, emitted on return
+    # with `{duration_ms}`. Only exams with `require_fullscreen` emit it.
+    :fullscreen_exit
   ]
 
   @derive {

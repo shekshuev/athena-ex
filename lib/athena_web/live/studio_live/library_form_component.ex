@@ -145,7 +145,7 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
   defp put_default_content(%{"type" => "ticket_exam"} = params) do
     Map.put_new(params, "content", %{
       "time_limit" => nil,
-      "allowed_blur_attempts" => 3,
+      "require_fullscreen" => false,
       "slots" => []
     })
   end

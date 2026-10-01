@@ -55,6 +55,9 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
        return_to: return_to,
        show_delete_modal: false,
        show_proctoring_modal: false,
+       proctoring_tab: "summary",
+       proctoring_timeline: [],
+       review_form: to_form(%{"note" => ""}, as: :review),
        child_submissions: child_subs,
        questions: questions,
        manual_score_override: false,
@@ -146,11 +149,55 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
   end
 
   def handle_event("open_proctoring_modal", _, socket) do
-    {:noreply, assign(socket, show_proctoring_modal: true)}
+    {:noreply, assign(socket, show_proctoring_modal: true, proctoring_tab: "summary")}
   end
 
   def handle_event("close_proctoring_modal", _, socket) do
     {:noreply, assign(socket, show_proctoring_modal: false)}
+  end
+
+  def handle_event("proctoring_tab", %{"tab" => "timeline"}, socket) do
+    {:noreply,
+     assign(socket,
+       proctoring_tab: "timeline",
+       proctoring_timeline: Engagement.proctoring_timeline(socket.assigns.submission)
+     )}
+  end
+
+  def handle_event("proctoring_tab", _params, socket) do
+    {:noreply, assign(socket, proctoring_tab: "summary")}
+  end
+
+  def handle_event(
+        "review_proctoring",
+        %{"status" => status, "review" => %{"note" => note}},
+        socket
+      )
+      when status in ["dismissed", "confirmed"] do
+    submission = socket.assigns.submission
+
+    review = %{
+      "status" => status,
+      "note" => String.trim(note),
+      "by" => Identity.display_name(socket.assigns.current_user),
+      "at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+    }
+
+    content = Map.put(submission.content || %{}, "proctoring_review", review)
+
+    case Learning.update_submission(socket.assigns.current_user, submission, %{
+           "content" => content
+         }) do
+      {:ok, updated} ->
+        {:noreply,
+         socket
+         |> assign(submission: updated)
+         |> assign(review_form: to_form(%{"note" => ""}, as: :review))
+         |> put_flash(:success, gettext("Review saved."))}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, gettext("Failed to save review."))}
+    end
   end
 
   def handle_event("confirm_delete_submission", _params, socket) do
@@ -644,7 +691,10 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
       />
       <.submission_breakdown_modal
         show={@show_proctoring_modal}
+        tab={@proctoring_tab}
         content={@submission.content}
+        timeline={@proctoring_timeline}
+        review_form={@review_form}
         on_cancel={JS.push("close_proctoring_modal")}
       />
     </.page_container>
