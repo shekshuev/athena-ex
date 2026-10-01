@@ -6481,17 +6481,17 @@ msgstr "Ваша работа отклонена преподавателем."
 #: lib/athena_web/components/proctoring_components.ex:416
 #, elixir-autogen, elixir-format
 msgid "%{count} piece(s) of direct evidence"
-msgstr "%{count} прямых улик(и)"
+msgstr "прямых нарушений: %{count}"
 
 #: lib/athena_web/components/proctoring_components.ex:420
 #, elixir-autogen, elixir-format
 msgid "%{count} unusual behavior metric(s) vs. peers"
-msgstr "%{count} метрик(и) с необычным поведением относительно сверстников"
+msgstr "показателей с отклонением от сверстников: %{count}"
 
 #: lib/athena_web/components/proctoring_components.ex:136
 #, elixir-autogen, elixir-format
 msgid "%{n} or more of these together is enough on its own to mark a submission red."
-msgstr "%{n} или больше таких событий вместе уже достаточно, чтобы пометить сабмишн красным."
+msgstr "%{n} или больше таких событий вместе уже достаточно, чтобы пометить решение красным."
 
 #: lib/athena_web/components/proctoring_components.ex:304
 #, elixir-autogen, elixir-format
@@ -6501,17 +6501,17 @@ msgstr "%{p}-й перцентиль"
 #: lib/athena_web/components/proctoring_components.ex:179
 #, elixir-autogen, elixir-format
 msgid "A metric only counts once it's at or above the %{p}th percentile among peers. %{n} or more flagged metrics together is enough to mark a submission red; even one is enough for yellow."
-msgstr "Метрика засчитывается только начиная с %{p}-го перцентиля среди сверстников. %{n} или больше отмеченных метрик вместе достаточно, чтобы пометить сабмишн красным; для жёлтого достаточно и одной."
+msgstr "Метрика засчитывается только начиная с %{p}-го перцентиля среди сверстников. %{n} или больше отмеченных метрик вместе достаточно, чтобы пометить решение красным; для жёлтого достаточно и одной."
 
 #: lib/athena_web/components/proctoring_components.ex:151
 #, elixir-autogen, elixir-format
 msgid "A raw count here means nothing by itself - an anxious student revising an answer many times can look identical, by the numbers, to a student who's cheating. These only count as evidence once they're a genuine statistical outlier relative to everyone else taking this same exam right now, which needs at least %{min} other students to already have reported a value."
-msgstr "Сырой счётчик сам по себе ничего не значит — тревожный студент, много раз меняющий ответ, по цифрам выглядит так же, как студент, который списывает. Это засчитывается как улика только если значение — настоящий статистический выброс относительно всех, кто проходит этот же экзамен прямо сейчас, а для этого нужно, чтобы хотя бы %{min} других студентов уже прислали своё значение."
+msgstr "Сырой счётчик сам по себе ничего не значит — тревожный обучающийся, много раз меняющий ответ, по цифрам выглядит так же, как обучающийся, который списывает. Это засчитывается как нарушение только если значение — настоящий статистический выброс относительно всех, кто проходит этот же экзамен прямо сейчас, а для этого нужно, чтобы хотя бы %{min} других обучающихся уже прислали своё значение."
 
 #: lib/athena_web/components/proctoring_components.ex:216
 #, elixir-autogen, elixir-format
 msgid "A telemetry-silence red flag can also mean an ordinary crash or lost connection, not tampering - always check in with the student before treating it as a verdict."
-msgstr "Красный флаг по молчанию телеметрии может означать и обычный краш или обрыв связи, а не вмешательство — прежде чем считать это вердиктом, всегда стоит связаться со студентом."
+msgstr "Красный флаг по молчанию телеметрии может означать и обычный краш или обрыв связи, а не вмешательство — прежде чем считать это вердиктом, всегда стоит связаться с обучающимся."
 
 #: lib/athena_web/components/proctoring_components.ex:333
 #, elixir-autogen, elixir-format
@@ -6553,7 +6553,7 @@ msgstr "Попытки вырезать текст вопроса"
 #: lib/athena_web/components/proctoring_components.ex:282
 #, elixir-autogen, elixir-format
 msgid "Direct evidence"
-msgstr "Прямые улики"
+msgstr "Прямые нарушения"
 
 #: lib/athena_web/components/proctoring_components.ex:275
 #, elixir-autogen, elixir-format
@@ -6563,7 +6563,7 @@ msgstr "Отмечено по следующим причинам:"
 #: lib/athena_web/components/proctoring_components.ex:95
 #, elixir-autogen, elixir-format
 msgid "How the cheating risk indicator is calculated"
-msgstr "Как рассчитывается индикатор риска читинга"
+msgstr "Как рассчитывается индикатор риска списывания"
 
 #: lib/athena_web/components/proctoring_components.ex:195
 #, elixir-autogen, elixir-format
@@ -6655,7 +6655,7 @@ msgstr "Молчание телеметрии"
 #: lib/athena_web/components/proctoring_components.ex:105
 #, elixir-autogen, elixir-format
 msgid "These are counted as-is, with no comparison to other students - there is no legitimate reason for any of them to happen at all during a locked-down question view."
-msgstr "Эти события засчитываются как есть, без сравнения с другими студентами — для них нет ни одной легитимной причины происходить во время закрытого просмотра вопроса."
+msgstr "Эти события засчитываются как есть, без сравнения с другими обучающимися — для них нет ни одной легитимной причины происходить во время закрытого просмотра вопроса."
 
 #: lib/athena_web/components/proctoring_components.ex:211
 #, elixir-autogen, elixir-format
@@ -6665,7 +6665,7 @@ msgstr "Это отслеживает только то, что может ув�
 #: lib/athena_web/components/proctoring_components.ex:260
 #, elixir-autogen, elixir-format
 msgid "Why this submission was flagged"
-msgstr "Почему этот сабмишн был отмечен"
+msgstr "Почему этот ответ был отмечен"
 
 #: lib/athena_web/components/proctoring_components.ex:426
 #, elixir-autogen, elixir-format
@@ -6675,7 +6675,7 @@ msgstr "разрыв в %{seconds} с без сигнала от браузер�
 #: lib/athena_web/components/proctoring_components.ex:118
 #, elixir-autogen, elixir-format
 msgid "a copy or cut was attempted inside the question text, which is blocked - this means the student tried, not that any text was actually captured."
-msgstr "была предпринята попытка скопировать или вырезать текст вопроса, что заблокировано — это значит, что студент пытался, а не то, что текст реально был получен."
+msgstr "была предпринята попытка скопировать или вырезать текст вопроса, что заблокировано — это значит, что обучающийся пытался, а не то, что текст реально был получен."
 
 #: lib/athena_web/components/proctoring_components.ex:165
 #, elixir-autogen, elixir-format
@@ -6700,7 +6700,7 @@ msgstr "за %{minutes} мин"
 #: lib/athena_web/components/proctoring_components.ex:173
 #, elixir-autogen, elixir-format
 msgid "right-clicking the question has ordinary innocent causes (inspecting the layout, a misclick), so on its own it is never treated as direct evidence - only an unusually high rate is."
-msgstr "у клика правой кнопкой по вопросу есть обычные невинные причины (посмотреть разметку, промах), поэтому сам по себе он никогда не считается прямой уликой — только необычно высокая частота."
+msgstr "у клика правой кнопкой по вопросу есть обычные невинные причины (посмотреть разметку, промах), поэтому сам по себе он никогда не считается прямым нарушением — только необычно высокая частота."
 
 #: lib/athena_web/components/proctoring_components.ex:112
 #, elixir-autogen, elixir-format
