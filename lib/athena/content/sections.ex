@@ -247,18 +247,24 @@ defmodule Athena.Content.Sections do
 
   @doc false
   defp flatten_nodes(nodes, block_counts, pending_reset?) do
-    Enum.flat_map_reduce(nodes, pending_reset?, fn node, pending? ->
-      pending? = pending? or reset_waterline?(node)
+    Enum.flat_map_reduce(nodes, pending_reset?, &flatten_node(&1, &2, block_counts))
+  end
 
-      if Map.get(block_counts, node.id, 0) > 0 do
-        lesson = if pending?, do: with_reset_waterline(node), else: node
-        {children, pending_after?} = flatten_nodes(node.children || [], block_counts, false)
+  # A kept node takes the pending reset itself (its children start clean); a
+  # dropped one passes it on, together with its own, to whatever comes next.
+  @doc false
+  defp flatten_node(node, pending_reset?, block_counts) do
+    pending_reset? = pending_reset? or reset_waterline?(node)
+    children = node.children || []
 
-        {[lesson | children], pending_after?}
-      else
-        flatten_nodes(node.children || [], block_counts, pending?)
-      end
-    end)
+    if Map.get(block_counts, node.id, 0) > 0 do
+      lesson = if pending_reset?, do: with_reset_waterline(node), else: node
+      {descendants, pending_after?} = flatten_nodes(children, block_counts, false)
+
+      {[lesson | descendants], pending_after?}
+    else
+      flatten_nodes(children, block_counts, pending_reset?)
+    end
   end
 
   @doc false

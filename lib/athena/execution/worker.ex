@@ -106,7 +106,8 @@ defmodule Athena.Execution.Worker do
     }
   end
 
-  defp update_submission_with_result(submission, result) do
+  @doc false
+  def update_submission_with_result(submission, result) do
     clean_test_results =
       Enum.map(result.test_results, fn tr ->
         tr
@@ -128,7 +129,14 @@ defmodule Athena.Execution.Worker do
     }
 
     case Learning.system_update_submission(submission, attrs) do
-      {:ok, _updated_sub} ->
+      {:ok, updated_sub} ->
+        # Completing the block is part of storing the result, not something
+        # left to whoever is watching. The student's page is told about the
+        # result over PubSub, which is fire-and-forget: if their connection
+        # blinked while the code was running, the message went nowhere, the
+        # result was saved, and the block (and everything it gates) stayed
+        # locked.
+        Learning.maybe_complete_from_submission(updated_sub)
         :ok
 
       {:error, changeset} ->

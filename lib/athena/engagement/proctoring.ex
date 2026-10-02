@@ -479,6 +479,26 @@ defmodule Athena.Engagement.Proctoring do
 
   def summary(_), do: nil
 
+  # Stored key and the value to read when a submission predates it.
+  @detail_fields [
+    points: {"points", nil},
+    hard_evidence_count: {"hard_evidence_count", 0},
+    outlier_metrics: {"outlier_metrics", %{}},
+    signals: {"signals", []},
+    event_counts: {"event_counts", %{}},
+    rates: {"rates", %{}},
+    group_baselines: {"group_baselines", %{}},
+    elapsed_minutes: {"elapsed_minutes", nil},
+    heartbeat_silence_seconds: {"heartbeat_silence_seconds", 0},
+    away_incidents: {"away_incidents", 0},
+    away_total_seconds: {"away_total_seconds", 0},
+    mouse_away_seconds: {"mouse_away_seconds", 0},
+    max_paste_chars: {"max_paste_chars", 0},
+    typing: {"typing", %{}},
+    incidents: {"incidents", []},
+    review: {"proctoring_review", nil}
+  ]
+
   @doc """
   The full stored breakdown for a submission - the points and the signals
   that produced them, every raw event count, every rate and what the
@@ -489,32 +509,13 @@ defmodule Athena.Engagement.Proctoring do
   empty/zero rather than crashing.
   """
   @spec detail(map() | nil) :: map() | nil
-  def detail(content) when is_map(content) do
-    case content["risk_level"] do
-      nil ->
-        nil
+  def detail(%{"risk_level" => risk_level_str} = content) when not is_nil(risk_level_str) do
+    fields =
+      Map.new(@detail_fields, fn {key, {source, default}} ->
+        {key, content[source] || default}
+      end)
 
-      risk_level_str ->
-        %{
-          risk_level: String.to_existing_atom(risk_level_str),
-          points: content["points"],
-          hard_evidence_count: content["hard_evidence_count"] || 0,
-          outlier_metrics: content["outlier_metrics"] || %{},
-          signals: content["signals"] || [],
-          event_counts: content["event_counts"] || %{},
-          rates: content["rates"] || %{},
-          group_baselines: content["group_baselines"] || %{},
-          elapsed_minutes: content["elapsed_minutes"],
-          heartbeat_silence_seconds: content["heartbeat_silence_seconds"] || 0,
-          away_incidents: content["away_incidents"] || 0,
-          away_total_seconds: content["away_total_seconds"] || 0,
-          mouse_away_seconds: content["mouse_away_seconds"] || 0,
-          max_paste_chars: content["max_paste_chars"] || 0,
-          typing: content["typing"] || %{},
-          incidents: content["incidents"] || [],
-          review: content["proctoring_review"]
-        }
-    end
+    Map.put(fields, :risk_level, String.to_existing_atom(risk_level_str))
   end
 
   def detail(_), do: nil
