@@ -230,17 +230,45 @@ defmodule Athena.Content.Sections do
     |> flatten_and_filter_tree(block_counts)
   end
 
+  # Flattens the tree into the lessons a student walks through in order,
+  # dropping nodes with no blocks of their own (a module or chapter heading).
+  #
+  # A dropped node can still carry `reset_waterline`, and that has to
+  # survive: "ignore everything before this point" set on a heading means
+  # "before the first lesson under it". Left alone the flag would vanish with
+  # the heading, because the waterline is only ever evaluated per lesson, and
+  # the student would stay locked out by an unfinished gate far above. So the
+  # flag is handed on to the first lesson that is actually kept.
   @doc false
   defp flatten_and_filter_tree(nodes, block_counts) do
-    Enum.flat_map(nodes, fn node ->
-      count = Map.get(block_counts, node.id, 0)
+    {lessons, _pending_reset?} = flatten_nodes(nodes, block_counts, false)
+    lessons
+  end
 
-      if count > 0 do
-        [node | flatten_and_filter_tree(node.children || [], block_counts)]
+  @doc false
+  defp flatten_nodes(nodes, block_counts, pending_reset?) do
+    Enum.flat_map_reduce(nodes, pending_reset?, fn node, pending? ->
+      pending? = pending? or reset_waterline?(node)
+
+      if Map.get(block_counts, node.id, 0) > 0 do
+        lesson = if pending?, do: with_reset_waterline(node), else: node
+        {children, pending_after?} = flatten_nodes(node.children || [], block_counts, false)
+
+        {[lesson | children], pending_after?}
       else
-        flatten_and_filter_tree(node.children || [], block_counts)
+        flatten_nodes(node.children || [], block_counts, pending?)
       end
     end)
+  end
+
+  @doc false
+  defp reset_waterline?(%{access_rules: %{reset_waterline: true}}), do: true
+  defp reset_waterline?(_node), do: false
+
+  @doc false
+  defp with_reset_waterline(node) do
+    rules = node.access_rules || %Athena.Content.AccessRules{}
+    %{node | access_rules: %{rules | reset_waterline: true}}
   end
 
   @doc false
