@@ -19,13 +19,98 @@ defmodule AthenaWeb.ProctoringComponents do
   attr :content, :map, default: nil
 
   def risk_badge(assigns) do
-    assigns = assign(assigns, :summary, Engagement.proctoring_summary(assigns.content))
+    assigns =
+      assigns
+      |> assign(:summary, Engagement.proctoring_summary(assigns.content))
+      |> assign(:review, review_of(assigns.content))
 
     ~H"""
-    <.badge :if={@summary} tone={risk_tone(@summary.risk_level)} class="tracking-wide gap-1">
-      <.icon name={risk_icon(@summary.risk_level)} class="size-3.5" />
-      {risk_label(@summary.risk_level)}
-    </.badge>
+    <span :if={@summary} class="proctoring-risk-badge inline-flex items-center">
+      <%!-- A teacher's decision replaces the automatic colour instead of sitting
+      next to it: "no violations" beside "violation confirmed" is a contradiction. --%>
+      <span
+        :if={@review}
+        class="proctoring-review-badge"
+        title={gettext("Automatic verdict: %{label}", label: risk_label(@summary.risk_level))}
+      >
+        <.badge tone={review_tone(@review["status"])} class="tracking-wide gap-1">
+          <.icon name={review_icon(@review["status"])} class="size-3.5" />
+          {review_label(@review["status"])}
+        </.badge>
+      </span>
+      <.badge
+        :if={!@review}
+        tone={risk_tone(@summary.risk_level)}
+        class="tracking-wide gap-1"
+      >
+        <.icon name={risk_icon(@summary.risk_level)} class="size-3.5" />
+        {risk_label(@summary.risk_level)}
+      </.badge>
+    </span>
+    """
+  end
+
+  @doc """
+  Warns that a stored verdict predates the points model. Such a submission
+  was evaluated by the old rules (no pastes, no time away, nothing without
+  15 peers), so its zeros say nothing about what the timeline shows.
+  Renders nothing for current verdicts and for submissions without one.
+  """
+  attr :id, :string, default: "proctoring-legacy-notice"
+  attr :content, :map, default: nil
+
+  def legacy_verdict_notice(assigns) do
+    assigns = assign(assigns, :legacy?, legacy_verdict?(assigns.content))
+
+    ~H"""
+    <div
+      :if={@legacy?}
+      id={@id}
+      class="rounded-sm border border-warning/40 bg-warning/10 p-3 text-xs text-base-content/80"
+    >
+      {gettext(
+        "This verdict was calculated by an earlier version of the check, which did not count pastes or time away. The counters here may read zero even though the timeline shows activity - rely on the timeline."
+      )}
+    </div>
+    """
+  end
+
+  defp legacy_verdict?(%{"risk_level" => level} = content) when not is_nil(level),
+    do: not Map.has_key?(content, "signals")
+
+  defp legacy_verdict?(_content), do: false
+
+  @doc """
+  The teacher's recorded review of a verdict (who, when, their note), shown
+  next to the risk badge so a decision is visible without opening the
+  details modal. Renders nothing until a review exists.
+  """
+  attr :review, :map, default: nil
+
+  def review_summary(assigns) do
+    ~H"""
+    <div
+      :if={@review}
+      id="proctoring-review-summary"
+      class={[
+        "rounded-sm border p-3 text-xs space-y-1",
+        if(@review["status"] == "confirmed",
+          do: "border-error/30 bg-error/5",
+          else: "border-success/30 bg-success/5"
+        )
+      ]}
+    >
+      <div class="flex items-center gap-1.5 font-bold text-base-content/80">
+        <.icon name={review_icon(@review["status"])} class="size-4" />
+        {review_label(@review["status"])}
+      </div>
+      <p :if={@review["note"] not in [nil, ""]} class="whitespace-pre-wrap text-base-content/80">
+        {@review["note"]}
+      </p>
+      <p class="text-base-content/50">
+        {@review["by"]} · {format_review_time(@review["at"])}
+      </p>
+    </div>
     """
   end
 
@@ -183,21 +268,22 @@ defmodule AthenaWeb.ProctoringComponents do
           </h4>
           <p class="text-base-content/70">
             {gettext(
-              "A raw count here means nothing by itself - an anxious student revising an answer many times can look identical, by the numbers, to a student who's cheating. A rate only counts when it is at or above the %{p}th percentile among everyone taking this same exam right now and also above a minimum absolute level. Rates per minute are not judged during the first %{min} minutes.",
-              p: @t.percentile_outlier_threshold,
+              "A raw count here means nothing by itself - an anxious student revising an answer many times can look identical, by the numbers, to a student who's cheating. So a rate is compared with what the other students taking this same exam do, and only counts when it is clearly higher: at least %{ratio} times their typical value, and never below a minimum absolute level. Rates per minute are not judged during the first %{min} minutes, and need a few actual events behind them.",
+              ratio: @t.baseline_ratio,
               min: @t.min_minutes_for_rates
             )}
           </p>
           <p class="text-base-content/70">
             {gettext(
-              "When fewer than %{peers} others are taking the exam, there is nothing to compare against, so a fixed upper limit is used instead and the detail view says so.",
-              peers: @t.min_peers
+              "This works from a group of %{n}. In a small group (fewer than %{trusted} others) the others are a weak witness of what is normal, so they can only raise the bar, never lower it below half of the fixed upper limit. With nobody to compare against, only the fixed upper limit applies. A rate of twice that limit counts whatever the group does. Students who already handed in stay in the comparison.",
+              n: @t.min_baseline_peers + 1,
+              trusted: @t.trusted_group_peers
             )}
           </p>
           <ul class="space-y-1.5 list-disc list-inside">
             <li>
               <span class="font-semibold">{gettext("Switching away, per minute")}</span>
-              - {gettext("how often the tab or window lost focus (2 points).")}
+              - {gettext("how often the tab or window lost focus (1 point).")}
             </li>
             <li>
               <span class="font-semibold">{gettext("Pasted text ratio")}</span>
@@ -350,9 +436,13 @@ defmodule AthenaWeb.ProctoringComponents do
             </.badge>
             <span :if={@detail[:points]} class="text-xs text-base-content/60">
               {gettext("%{points} points", points: @detail[:points])} · {gettext(
-                "over %{minutes} min", minutes: format_number(@detail[:elapsed_minutes]))}
+                "over %{minutes} min",
+                minutes: format_number(@detail[:elapsed_minutes])
+              )}
             </span>
           </div>
+
+          <.legacy_verdict_notice id="proctoring-legacy-notice-modal" content={@content} />
 
           <.review_panel review={@detail[:review]} form={@review_form} />
 
@@ -397,13 +487,13 @@ defmodule AthenaWeb.ProctoringComponents do
                 <div class="text-right shrink-0">
                   <span class="font-mono">{row.value}</span>
                   <span
-                    :if={row.percentile}
+                    :if={row.peers > 0}
                     class={["ml-2 text-xs", row.flagged? && "text-warning font-bold"]}
                   >
-                    {gettext("%{p}th percentile", p: format_percentile(row.percentile))}
+                    {gettext("others usually: %{v} (%{n} compared)", v: row.typical, n: row.peers)}
                   </span>
-                  <span :if={!row.percentile} class="ml-2 text-xs text-base-content/40">
-                    {gettext("not enough peer data yet")}
+                  <span :if={row.peers == 0} class="ml-2 text-xs text-base-content/40">
+                    {gettext("nobody to compare with")}
                   </span>
                 </div>
               </div>
@@ -495,10 +585,10 @@ defmodule AthenaWeb.ProctoringComponents do
       <h4 class="font-bold text-base-content">{gettext("Teacher review")}</h4>
       <div :if={@review} class="text-xs text-base-content/70 space-y-1">
         <div class="flex items-center gap-2">
-          <.badge tone={if @review["status"] == "confirmed", do: "error", else: "success"}>
+          <.badge tone={review_tone(@review["status"])}>
             {review_label(@review["status"])}
           </.badge>
-          <span>{@review["by"]}</span>
+          <span>{@review["by"]} · {format_review_time(@review["at"])}</span>
         </div>
         <p :if={@review["note"] not in [nil, ""]} class="text-base-content/80">{@review["note"]}</p>
       </div>
@@ -552,7 +642,7 @@ defmodule AthenaWeb.ProctoringComponents do
 
   defp measurement_rows(detail) do
     rates = detail[:rates] || %{}
-    percentiles = detail[:metric_percentiles] || %{}
+    baselines = detail[:group_baselines] || %{}
     outliers = detail[:outlier_metrics] || %{}
 
     [
@@ -567,7 +657,8 @@ defmodule AthenaWeb.ProctoringComponents do
       %{
         label: label,
         value: format_metric(rates[key], kind),
-        percentile: percentiles[key],
+        peers: get_in(baselines, [key, "peers"]) || 0,
+        typical: format_metric(get_in(baselines, [key, "median"]), kind),
         flagged?: Map.has_key?(outliers, key)
       }
     end)
@@ -610,6 +701,28 @@ defmodule AthenaWeb.ProctoringComponents do
   defp signal_note(%{"key" => "silence"} = signal),
     do: gettext("longest gap: %{n}s", n: signal["value"])
 
+  defp signal_note(%{"basis" => "group"} = signal),
+    do:
+      gettext("others usually: %{v}, the bar was %{bar} (%{n} compared)",
+        v: format_number(signal["baseline"]),
+        bar: format_number(signal["threshold"]),
+        n: signal["peers"] || 0
+      )
+
+  defp signal_note(%{"basis" => "absolute"} = signal),
+    do:
+      if((signal["peers"] || 0) > 0,
+        do:
+          gettext("above the fixed limit of %{bar}, whatever the others do",
+            bar: format_number(signal["threshold"])
+          ),
+        else:
+          gettext("above the fixed limit of %{bar} (nobody to compare with)",
+            bar: format_number(signal["threshold"])
+          )
+      )
+
+  # Verdicts stored before the group baseline was reworked.
   defp signal_note(%{"basis" => "percentile"} = signal),
     do:
       gettext("%{p}th percentile among peers",
@@ -623,23 +736,23 @@ defmodule AthenaWeb.ProctoringComponents do
   defp signal_note(%{"value" => value}), do: gettext("occurrences: %{n}", n: value)
   defp signal_note(_signal), do: ""
 
-  defp timeline_label(%{type: :tab_away, duration_ms: ms}),
-    do: gettext("Left the tab for %{sec}s", sec: div(ms || 0, 1000))
+  defp timeline_label(%{type: :tab_away, duration_ms: ms} = e),
+    do: with_fullscreen_note(gettext("Left the tab for %{sec}s", sec: seconds(ms)), e)
 
-  defp timeline_label(%{type: :window_away, duration_ms: ms}),
-    do: gettext("Window out of focus for %{sec}s", sec: div(ms || 0, 1000))
+  defp timeline_label(%{type: :window_away, duration_ms: ms} = e),
+    do: with_fullscreen_note(gettext("Window out of focus for %{sec}s", sec: seconds(ms)), e)
 
   defp timeline_label(%{type: :fullscreen_exit, duration_ms: ms}),
-    do: gettext("Left fullscreen for %{sec}s", sec: div(ms || 0, 1000))
+    do: gettext("Left fullscreen for %{sec}s", sec: seconds(ms))
 
   defp timeline_label(%{type: :offline_period, duration_ms: ms}),
-    do: gettext("Browser was offline for %{sec}s", sec: div(ms || 0, 1000))
+    do: gettext("Browser was offline for %{sec}s", sec: seconds(ms))
 
   defp timeline_label(%{type: :mouse_left, duration_ms: ms}),
-    do: gettext("Pointer outside the window for %{sec}s", sec: div(ms || 0, 1000))
+    do: gettext("Pointer outside the window for %{sec}s", sec: seconds(ms))
 
   defp timeline_label(%{type: :silence, duration_ms: ms}),
-    do: gettext("No signal from the browser for %{sec}s", sec: div(ms || 0, 1000))
+    do: gettext("No signal from the browser for %{sec}s", sec: seconds(ms))
 
   defp timeline_label(%{type: :paste_detected, chars: chars, source: source}),
     do:
@@ -674,6 +787,20 @@ defmodule AthenaWeb.ProctoringComponents do
 
   defp timeline_label(%{type: type}), do: to_string(type)
 
+  # Whole seconds, at least 1 - a 1.9 s absence reads "2 s", never "1 s", and
+  # nothing that really happened reads "0 s".
+  defp seconds(ms), do: max(round((ms || 0) / 1000), 1)
+
+  # One merged absence can also have been a fullscreen exit; say so rather
+  # than dropping it from the line.
+  defp with_fullscreen_note(label, %{kinds: kinds}) when is_list(kinds) do
+    if :fullscreen_exit in kinds,
+      do: label <> " " <> gettext("(fullscreen was also exited)"),
+      else: label
+  end
+
+  defp with_fullscreen_note(label, _entry), do: label
+
   defp with_count(label, %{count: count}) when count > 1, do: "#{label} ×#{count}"
   defp with_count(label, _entry), do: label
 
@@ -689,6 +816,24 @@ defmodule AthenaWeb.ProctoringComponents do
   defp timeline_icon(:window_geometry_changed), do: "hero-squares-2x2"
   defp timeline_icon(:multi_tab_detected), do: "hero-document-duplicate"
   defp timeline_icon(_type), do: "hero-exclamation-triangle"
+
+  defp review_of(%{"proctoring_review" => %{"status" => _} = review}), do: review
+  defp review_of(_content), do: nil
+
+  defp review_tone("confirmed"), do: "error"
+  defp review_tone(_status), do: "success"
+
+  defp review_icon("confirmed"), do: "hero-shield-exclamation"
+  defp review_icon(_status), do: "hero-shield-check"
+
+  defp format_review_time(iso) when is_binary(iso) do
+    case DateTime.from_iso8601(iso) do
+      {:ok, at, _offset} -> Calendar.strftime(at, "%Y-%m-%d %H:%M UTC")
+      _ -> ""
+    end
+  end
+
+  defp format_review_time(_iso), do: ""
 
   defp review_label("confirmed"), do: gettext("Violation confirmed")
   defp review_label(_status), do: gettext("Reviewed - no violation")

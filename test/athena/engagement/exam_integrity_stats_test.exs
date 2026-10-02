@@ -6,106 +6,81 @@ defmodule Athena.Engagement.ExamIntegrityStatsTest do
 
   alias Athena.Engagement.ExamIntegrityStats
 
-  describe "percentile_rank/4" do
-    test "nil when there are fewer peers than the minimum sample size" do
+  describe "baselines/3" do
+    defp report(cohort_id, block_id, id, metric, value),
+      do: ExamIntegrityStats.report_rate(cohort_id, block_id, id, metric, value)
+
+    test "a metric nobody has reported has no peers" do
+      baselines = ExamIntegrityStats.baselines(Ecto.UUID.generate(), Ecto.UUID.generate(), nil)
+
+      assert baselines[:paste_ratio] == nil
+    end
+
+    test "is the median of the others, so it already works for a group of three" do
       cohort_id = Ecto.UUID.generate()
       block_id = Ecto.UUID.generate()
 
-      for i <- 1..5 do
-        ExamIntegrityStats.report_rate(cohort_id, block_id, "peer-#{i}", :paste_ratio, 0.5)
-      end
+      report(cohort_id, block_id, "me", :paste_ratio, 0.9)
+      report(cohort_id, block_id, "a", :paste_ratio, 0.1)
+      report(cohort_id, block_id, "b", :paste_ratio, 0.3)
 
-      assert ExamIntegrityStats.percentile_rank(cohort_id, block_id, :paste_ratio, 0.9) == nil
+      assert %{n: 2, median: median} =
+               ExamIntegrityStats.baselines(cohort_id, block_id, "me")[:paste_ratio]
+
+      assert_in_delta median, 0.2, 1.0e-9
     end
 
-    test "a value at the mean lands around the 50th percentile once there's enough peer data" do
+    test "never includes the student being judged" do
       cohort_id = Ecto.UUID.generate()
       block_id = Ecto.UUID.generate()
 
-      for i <- 1..30 do
-        rate = 1.0 + :rand.normal() * 0.1
+      report(cohort_id, block_id, "me", :paste_ratio, 0.9)
+      report(cohort_id, block_id, "a", :paste_ratio, 0.1)
 
-        ExamIntegrityStats.report_rate(
-          cohort_id,
-          block_id,
-          "peer-#{i}",
-          :tab_hidden_per_minute,
-          rate
-        )
-      end
-
-      percentile =
-        ExamIntegrityStats.percentile_rank(cohort_id, block_id, :tab_hidden_per_minute, 1.0)
-
-      assert_in_delta percentile, 50.0, 20.0
+      assert %{n: 1} = ExamIntegrityStats.baselines(cohort_id, block_id, "me")[:paste_ratio]
+      assert %{n: 2} = ExamIntegrityStats.baselines(cohort_id, block_id, nil)[:paste_ratio]
     end
 
-    test "a far-above-average value lands near the top of the distribution" do
+    test "one wild peer does not drag the typical value - that is why it is a median" do
       cohort_id = Ecto.UUID.generate()
       block_id = Ecto.UUID.generate()
 
-      for i <- 1..30 do
-        ExamIntegrityStats.report_rate(
-          cohort_id,
-          block_id,
-          "peer-#{i}",
-          :answer_changed_per_minute,
-          0.2
-        )
+      for {id, v} <- [{"a", 0.1}, {"b", 0.1}, {"c", 0.1}, {"d", 5.0}] do
+        report(cohort_id, block_id, id, :answer_changed_per_minute, v)
       end
 
-      percentile =
-        ExamIntegrityStats.percentile_rank(cohort_id, block_id, :answer_changed_per_minute, 10.0)
+      baseline =
+        ExamIntegrityStats.baselines(cohort_id, block_id, "me")[:answer_changed_per_minute]
 
-      assert percentile > 95.0
+      assert_in_delta baseline.median, 0.1, 1.0e-9
     end
 
-    test "a submission's own later report replaces its earlier one instead of accumulating as a new peer" do
+    test "spread is zero for identical peers and grows with disagreement" do
       cohort_id = Ecto.UUID.generate()
       block_id = Ecto.UUID.generate()
 
-      for i <- 1..20 do
-        ExamIntegrityStats.report_rate(cohort_id, block_id, "peer-#{i}", :paste_ratio, 0.1)
-      end
+      for id <- ["a", "b", "c"], do: report(cohort_id, block_id, id, :paste_ratio, 0.2)
 
-      submission_id = "the-student"
-      ExamIntegrityStats.report_rate(cohort_id, block_id, submission_id, :paste_ratio, 0.9)
-      ExamIntegrityStats.report_rate(cohort_id, block_id, submission_id, :paste_ratio, 0.1)
+      for {id, v} <- [{"a", 0.1}, {"b", 0.5}, {"c", 0.9}],
+          do: report(cohort_id, block_id, id, :right_click_per_minute, v)
 
-      # If the earlier 0.9 report had lingered as a second "peer" instead of
-      # being replaced, the mean/variance (and thus this student's own
-      # percentile at 0.1) would be measurably different from a cohort
-      # where every value, including this student's own, is 0.1.
-      percentile = ExamIntegrityStats.percentile_rank(cohort_id, block_id, :paste_ratio, 0.1)
-      assert_in_delta percentile, 50.0, 5.0
+      baselines = ExamIntegrityStats.baselines(cohort_id, block_id, nil)
+
+      assert baselines[:paste_ratio].spread == 0.0
+      assert baselines[:right_click_per_minute].spread > 0.0
     end
-  end
 
-  describe "forget/3" do
-    test "removes a submission's contribution, shrinking the effective sample size" do
+    test "a submission's own later report replaces its earlier one instead of becoming a second peer" do
       cohort_id = Ecto.UUID.generate()
       block_id = Ecto.UUID.generate()
 
-      # Exactly at the minimum sample size - removing even one submission
-      # must drop the effective count below the threshold.
-      for i <- 1..8 do
-        ExamIntegrityStats.report_rate(cohort_id, block_id, "peer-#{i}", :paste_ratio, 0.1)
-      end
+      report(cohort_id, block_id, "a", :paste_ratio, 0.9)
+      report(cohort_id, block_id, "a", :paste_ratio, 0.1)
 
-      assert ExamIntegrityStats.percentile_rank(cohort_id, block_id, :paste_ratio, 0.9) != nil
+      assert %{n: 1, median: median} =
+               ExamIntegrityStats.baselines(cohort_id, block_id, nil)[:paste_ratio]
 
-      ExamIntegrityStats.forget(cohort_id, block_id, "peer-1")
-
-      # `forget` is a cast - round-trip a synchronous call on the same
-      # process first, so this assertion only runs after it's processed.
-      _ = ExamIntegrityStats.percentile_rank(cohort_id, block_id, :paste_ratio, 0.9)
-
-      assert ExamIntegrityStats.percentile_rank(cohort_id, block_id, :paste_ratio, 0.9) == nil
-    end
-
-    test "is a no-op when no process is running for that exam" do
-      assert ExamIntegrityStats.forget(Ecto.UUID.generate(), Ecto.UUID.generate(), "nobody") ==
-               :ok
+      assert_in_delta median, 0.1, 1.0e-9
     end
   end
 

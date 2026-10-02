@@ -115,4 +115,64 @@ defmodule Athena.Engagement.ProctoringTimelineTest do
     assert [%{type: :silence, offset: 200, duration_ms: 75_000}] =
              ProctoringTimeline.build(submission)
   end
+
+  describe "one absence is one line" do
+    test "an Alt-Tab that fired both tab_visible and window_focus is a single entry", ctx do
+      record(ctx, ctx.block.id, :window_focus, 100, %{"duration_ms" => 20_000})
+      record(ctx, ctx.block.id, :tab_visible, 99, %{"duration_ms" => 18_000})
+
+      assert [%{type: :tab_away, offset: 80, duration_ms: 20_000, kinds: kinds}] =
+               ProctoringTimeline.build(ctx.submission)
+
+      assert Enum.sort(kinds) == [:tab_away, :window_away]
+    end
+
+    test "separate absences stay separate", ctx do
+      record(ctx, ctx.block.id, :tab_visible, 100, %{"duration_ms" => 10_000})
+      record(ctx, ctx.block.id, :window_focus, 200, %{"duration_ms" => 10_000})
+
+      assert [%{offset: 90, type: :tab_away}, %{offset: 190, type: :window_away}] =
+               ProctoringTimeline.build(ctx.submission)
+    end
+
+    test "a window that merely lost focus is a window entry, not a tab entry", ctx do
+      record(ctx, ctx.block.id, :window_focus, 100, %{"duration_ms" => 10_000})
+
+      assert [%{type: :window_away}] = ProctoringTimeline.build(ctx.submission)
+    end
+
+    test "leaving fullscreen while already away is folded into that absence", ctx do
+      record(ctx, ctx.block.id, :tab_visible, 100, %{"duration_ms" => 30_000})
+      record(ctx, ctx.block.id, :fullscreen_exit, 101, %{"duration_ms" => 31_000})
+
+      assert [%{type: :tab_away, offset: 70, duration_ms: 31_000, kinds: kinds}] =
+               ProctoringTimeline.build(ctx.submission)
+
+      assert :fullscreen_exit in kinds
+    end
+
+    test "the pointer being outside the window during an absence adds nothing", ctx do
+      record(ctx, ctx.block.id, :tab_visible, 100, %{"duration_ms" => 30_000})
+      record(ctx, ctx.block.id, :mouse_left, 98, %{"duration_ms" => 20_000})
+
+      assert [%{type: :tab_away}] = ProctoringTimeline.build(ctx.submission)
+    end
+
+    test "a pointer excursion outside any absence is still listed", ctx do
+      record(ctx, ctx.block.id, :tab_visible, 100, %{"duration_ms" => 10_000})
+      record(ctx, ctx.block.id, :mouse_left, 300, %{"duration_ms" => 20_000})
+
+      assert [%{type: :tab_away}, %{type: :mouse_left, offset: 280}] =
+               ProctoringTimeline.build(ctx.submission)
+    end
+
+    test "the timeline and the verdict agree on how many absences there were", ctx do
+      # Same three raw events the monitor merges into two absences.
+      record(ctx, ctx.block.id, :tab_visible, 100, %{"duration_ms" => 20_000})
+      record(ctx, ctx.block.id, :window_focus, 101, %{"duration_ms" => 21_000})
+      record(ctx, ctx.block.id, :window_focus, 500, %{"duration_ms" => 12_000})
+
+      assert length(ProctoringTimeline.build(ctx.submission)) == 2
+    end
+  end
 end

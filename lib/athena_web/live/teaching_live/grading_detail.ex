@@ -88,22 +88,26 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
 
     # Children first: the parent's update is what the student's player
     # listens to, and it re-reads per-question feedback on that broadcast.
-    update_all_child_grades(socket, params["child_grades"] || %{}, status)
+    # A child that fails to save aborts the whole save - silently dropping
+    # an instructor's per-question score or comment is worse than an error.
+    with :ok <- update_all_child_grades(socket, params["child_grades"] || %{}, status),
+         {:ok, _updated_sub} <-
+           Learning.update_submission(
+             socket.assigns.current_user,
+             socket.assigns.submission,
+             attrs
+           ) do
+      msg =
+        if action == "reject",
+          do: gettext("Submission rejected!"),
+          else: gettext("Submission graded successfully!")
 
-    case Learning.update_submission(socket.assigns.current_user, socket.assigns.submission, attrs) do
-      {:ok, _updated_sub} ->
-        msg =
-          if action == "reject",
-            do: gettext("Submission rejected!"),
-            else: gettext("Submission graded successfully!")
-
-        {:noreply,
-         socket
-         |> put_flash(:success, msg)
-         |> push_navigate(to: socket.assigns.return_to)}
-
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, gettext("Failed to save grade."))}
+      {:noreply,
+       socket
+       |> put_flash(:success, msg)
+       |> push_navigate(to: socket.assigns.return_to)}
+    else
+      _error -> {:noreply, put_flash(socket, :error, gettext("Failed to save grade."))}
     end
   end
 
@@ -174,26 +178,28 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
         socket
       )
       when status in ["dismissed", "confirmed"] do
-    submission = socket.assigns.submission
+    # Re-read instead of trusting the mounted copy: the review is merged into
+    # `content`, which the exam flow also writes to, so a stale copy would
+    # silently revert whatever changed since this page opened.
+    user = socket.assigns.current_user
+    submission = Learning.get_submission!(user, socket.assigns.submission.id)
 
     review = %{
       "status" => status,
       "note" => String.trim(note),
-      "by" => Identity.display_name(socket.assigns.current_user),
+      "by" => Identity.display_name(user),
       "at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
     }
 
     content = Map.put(submission.content || %{}, "proctoring_review", review)
 
-    case Learning.update_submission(socket.assigns.current_user, submission, %{
-           "content" => content
-         }) do
+    case Learning.update_submission(user, submission, %{"content" => content}) do
       {:ok, updated} ->
         {:noreply,
          socket
-         |> assign(submission: updated)
+         |> assign(submission: updated, show_proctoring_modal: false)
          |> assign(review_form: to_form(%{"note" => ""}, as: :review))
-         |> put_flash(:success, gettext("Review saved."))}
+         |> put_flash(:success, review_flash(status))}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, gettext("Failed to save review."))}
@@ -310,10 +316,13 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
   end
 
   defp update_all_child_grades(socket, child_grades, status) do
-    Enum.each(child_grades, fn {child_block_id, grade_data} ->
-      child_sub = Map.get(socket.assigns.child_submissions, child_block_id)
-      update_single_child_grade(socket.assigns.current_user, child_sub, grade_data, status)
-    end)
+    results =
+      Enum.map(child_grades, fn {child_block_id, grade_data} ->
+        child_sub = Map.get(socket.assigns.child_submissions, child_block_id)
+        update_single_child_grade(socket.assigns.current_user, child_sub, grade_data, status)
+      end)
+
+    if Enum.all?(results, &(&1 == :ok)), do: :ok, else: :error
   end
 
   defp update_single_child_grade(_user, nil, _grade_data, _status), do: :ok
@@ -325,13 +334,18 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
         :error -> child_sub.score || 0
       end
 
+    # A comment missing from the params is "untouched", not "cleared" - only
+    # an explicitly empty textarea clears it.
     child_attrs = %{
       "score" => child_score,
-      "feedback" => grade_data["feedback"],
+      "feedback" => Map.get(grade_data, "feedback", child_sub.feedback),
       "status" => status
     }
 
-    Learning.update_submission(user, child_sub, child_attrs)
+    case Learning.update_submission(user, child_sub, child_attrs) do
+      {:ok, _updated} -> :ok
+      {:error, _reason} -> :error
+    end
   end
 
   @impl true
@@ -554,8 +568,11 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
           <% end %>
         </div>
 
-        <div class="w-full lg:w-100 shrink-0 bg-base-100 rounded-sm border border-base-300 sticky top-8 flex flex-col overflow-hidden">
-          <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-300">
+        <div
+          id="grading-panel"
+          class="w-full lg:w-100 shrink-0 bg-base-100 rounded-sm border border-base-300 flex flex-col overflow-hidden lg:sticky lg:top-8 lg:max-h-[calc(100vh-4rem)]"
+        >
+          <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-300 shrink-0">
             <div>
               <div class="text-[10px] font-bold text-base-content/50 uppercase tracking-widest mb-0.5">
                 {gettext("Grading Panel")}
@@ -569,7 +586,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
             </.badge>
           </div>
 
-          <div class="p-6 space-y-6">
+          <div class="p-6 space-y-6 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
             <.form for={@form} id="grading-form" phx-change="validate_grade" phx-submit="save_grade">
               <div class="space-y-4 mb-6">
                 <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider">
@@ -616,6 +633,8 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                     </div>
                     <.risk_badge content={@submission.content} />
                   </div>
+                  <.review_summary review={@submission.content["proctoring_review"]} />
+                  <.legacy_verdict_notice content={@submission.content} />
                   <div class="text-sm text-base-content/70">
                     {gettext("Direct evidence: %{count}",
                       count: proctoring_summary.hard_evidence_count
@@ -636,7 +655,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
             </.form>
           </div>
 
-          <div class="p-6 border-t border-base-300 flex flex-col gap-4">
+          <div class="p-6 border-t border-base-300 flex flex-col gap-4 shrink-0">
             <div class="flex gap-4">
               <button
                 form="grading-form"
@@ -700,6 +719,9 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
     </.page_container>
     """
   end
+
+  defp review_flash("confirmed"), do: gettext("Violation confirmed.")
+  defp review_flash(_status), do: gettext("Marked as reviewed - no violation.")
 
   defp status_tone(status) when status in [:graded, :accepted], do: "success"
   defp status_tone(:needs_review), do: "warning"

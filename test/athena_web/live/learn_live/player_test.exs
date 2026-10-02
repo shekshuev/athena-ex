@@ -670,7 +670,6 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
           feedback: "Solid work overall.",
           content: %{
             "type" => "quiz_exam",
-            "cheat_count" => 0,
             "questions" => [%{"id" => q1}, %{"id" => q2}]
           }
         )
@@ -780,7 +779,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         block_id: block.id,
         status: :time_limit_exceeded,
         score: 50,
-        content: %{"type" => "quiz_exam", "cheat_count" => 0}
+        content: %{"type" => "quiz_exam"}
       )
 
       {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
@@ -822,7 +821,6 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       assert sub.status == :pending
       assert sub.block_id == block.id
       assert sub.content["type"] == "quiz_exam" or sub.content["type"] == :quiz_exam
-      assert sub.content["cheat_count"] == 0
     end
 
     test "renders continue button if exam is pending", %{conn: conn, course: course, user: user} do
@@ -833,7 +831,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         account_id: user.id,
         block_id: block.id,
         status: :pending,
-        content: %{"type" => "quiz_exam", "cheat_count" => 0, "started_at" => DateTime.utc_now()}
+        content: %{"type" => "quiz_exam", "started_at" => DateTime.utc_now()}
       )
 
       {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
@@ -860,7 +858,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         block_id: block.id,
         status: :graded,
         score: 85,
-        content: %{"type" => "quiz_exam", "cheat_count" => 1}
+        content: %{"type" => "quiz_exam"}
       )
 
       {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
@@ -883,7 +881,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
           account_id: user.id,
           block_id: block.id,
           status: :needs_review,
-          content: %{"type" => "quiz_exam", "cheat_count" => 0}
+          content: %{"type" => "quiz_exam"}
         )
 
       {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
@@ -958,7 +956,6 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         status: :pending,
         content: %{
           "type" => "ticket_exam",
-          "cheat_count" => 0,
           "started_at" => DateTime.utc_now()
         }
       )

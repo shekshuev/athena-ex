@@ -94,7 +94,7 @@ defmodule Athena.Engagement.ProctoringTest do
                signals: [],
                event_counts: %{},
                rates: %{},
-               metric_percentiles: %{},
+               group_baselines: %{},
                elapsed_minutes: nil,
                heartbeat_silence_seconds: 0,
                away_incidents: 0,
@@ -253,36 +253,195 @@ defmodule Athena.Engagement.ProctoringTest do
       block_id = Ecto.UUID.generate()
       seed_peers(cohort_id, block_id, :tab_hidden_per_minute, 0.0)
 
-      young = %{counts: Map.put(@base_counts, :tab_hidden, 3), elapsed_minutes: 1.0}
+      young = %{counts: @base_counts, away_count: 3, elapsed_minutes: 1.0}
       fields = Proctoring.evaluate(young, cohort_id, block_id)
 
       assert fields["outlier_metrics"] == %{}
       # ...but the rate is still stored for display.
       assert fields["rates"]["tab_hidden_per_minute"] == 3.0
-      assert fields["metric_percentiles"]["tab_hidden_per_minute"] == nil
+      # The group is still described for display.
+      assert %{"peers" => 20} = fields["group_baselines"]["tab_hidden_per_minute"]
     end
 
     test "with too few peers, a fixed upper limit is used instead of silently doing nothing" do
       fields = evaluate(reading(%{paste_ratio: 0.95}))
 
-      assert fields["outlier_metrics"] == %{"paste_ratio" => nil}
-      assert [%{"key" => "paste_ratio", "basis" => "fallback"}] = fields["signals"]
+      assert fields["outlier_metrics"] == %{"paste_ratio" => 0.95}
+      assert [%{"key" => "paste_ratio", "basis" => "absolute", "peers" => 0}] = fields["signals"]
     end
 
     test "with too few peers, a value below the fixed limit is not flagged" do
       assert evaluate(reading(%{paste_ratio: 0.3}))["outlier_metrics"] == %{}
     end
 
-    test "window_blur folds into the same rate as tab_hidden" do
-      fields = evaluate(reading(%{tab_hidden: 3, window_blur: 3}))
+    test "the switch rate counts distinct absences, so one Alt-Tab is one switch" do
+      # One Alt-Tab fires both tab_hidden and window_blur; the monitor has
+      # already merged them into a single absence.
+      fields = evaluate(reading(%{tab_hidden: 3, window_blur: 3}, %{away_count: 3}))
 
-      assert fields["rates"]["tab_hidden_per_minute"] == 0.6
+      assert fields["rates"]["tab_hidden_per_minute"] == 0.3
+    end
+
+    test "one Alt-Tab in a clean cohort is yellow, not red - the same absence is not charged twice" do
+      cohort_id = Ecto.UUID.generate()
+      block_id = Ecto.UUID.generate()
+      seed_peers(cohort_id, block_id, :tab_hidden_per_minute, 0.0)
+
+      fields =
+        Proctoring.evaluate(
+          reading(%{tab_hidden: 1, window_blur: 1}, %{
+            away_count: 1,
+            away_incidents: 1,
+            away_total_seconds: 12
+          }),
+          cohort_id,
+          block_id
+        )
+
+      assert [%{"key" => "away"}] = fields["signals"]
+      assert fields["risk_level"] == "yellow"
+    end
+
+    test "a single stray event on a short attempt is not an outlier even above the rate floor" do
+      cohort_id = Ecto.UUID.generate()
+      block_id = Ecto.UUID.generate()
+      seed_peers(cohort_id, block_id, :right_click_per_minute, 0.0)
+
+      # 1 right-click in 4 minutes = 0.25/min, above the 0.2 floor.
+      fields =
+        Proctoring.evaluate(
+          reading(%{right_click_attempt: 1}, %{}) |> Map.put(:elapsed_minutes, 4.0),
+          cohort_id,
+          block_id
+        )
+
+      assert fields["outlier_metrics"] == %{}
+    end
+
+    test "many short switches are a soft signal of their own" do
+      cohort_id = Ecto.UUID.generate()
+      block_id = Ecto.UUID.generate()
+      seed_peers(cohort_id, block_id, :tab_hidden_per_minute, 0.0)
+
+      fields =
+        Proctoring.evaluate(
+          reading(%{}, %{away_count: 4, away_incidents: 0, away_total_seconds: 12}),
+          cohort_id,
+          block_id
+        )
+
+      assert [%{"key" => "tab_hidden_per_minute", "points" => 1}] = fields["signals"]
+      assert fields["risk_level"] == "green"
+    end
+
+    test "one large paste is a direct violation only - it does not also trip the paste ratio" do
+      cohort_id = Ecto.UUID.generate()
+      block_id = Ecto.UUID.generate()
+      seed_peers(cohort_id, block_id, :paste_ratio, 0.0)
+
+      fields =
+        Proctoring.evaluate(reading(%{large_paste: 1, paste_ratio: 0.4}), cohort_id, block_id)
+
+      assert [%{"key" => "large_paste"}] = fields["signals"]
+      assert fields["risk_level"] == "yellow"
     end
 
     test "time with the pointer outside the window is a per-minute rate" do
       fields = evaluate(reading(%{}, %{mouse_away_seconds: 100}))
 
       assert fields["rates"]["mouse_away_seconds_per_minute"] == 10.0
+    end
+  end
+
+  describe "evaluate/3 - small groups" do
+    defp evaluate_in(cohort_id, block_id, reading, opts \\ []),
+      do: Proctoring.evaluate(reading, cohort_id, block_id, opts)
+
+    defp group(metric, values) do
+      cohort_id = Ecto.UUID.generate()
+      block_id = Ecto.UUID.generate()
+
+      values
+      |> Enum.with_index(1)
+      |> Enum.each(fn {value, i} ->
+        ExamIntegrityStats.report_rate(cohort_id, block_id, "peer-#{i}", metric, value)
+      end)
+
+      {cohort_id, block_id}
+    end
+
+    test "a group of three (two classmates) is already compared against" do
+      {c, b} = group(:paste_ratio, [0.0, 0.0])
+
+      fields = evaluate_in(c, b, reading(%{paste_ratio: 0.5}))
+
+      assert [%{"key" => "paste_ratio", "basis" => "group", "peers" => 2}] = fields["signals"]
+      assert fields["risk_level"] == "yellow"
+    end
+
+    test "in a small group the others cannot lower the bar below half the fixed limit" do
+      {c, b} = group(:paste_ratio, [0.0, 0.0])
+
+      # Fixed limit 0.8, so the bar is 0.4: 0.3 is not enough even though
+      # both classmates pasted nothing.
+      assert evaluate_in(c, b, reading(%{paste_ratio: 0.3}))["signals"] == []
+    end
+
+    test "when the others do it too, nobody is singled out" do
+      {c, b} = group(:answer_changed_per_minute, [4.0, 5.0, 4.5])
+
+      # 4/min is above the fixed limit (3/min) but the group's typical value
+      # is 4.5/min: the bar is 3x that.
+      fields = evaluate_in(c, b, reading(%{answer_changed: 40}))
+
+      assert fields["signals"] == []
+    end
+
+    test "a rate at twice the fixed limit counts even when the whole group does it" do
+      {c, b} = group(:tab_hidden_per_minute, [3.0, 3.0, 3.0])
+
+      fields = evaluate_in(c, b, reading(%{}, %{away_count: 25}))
+
+      assert [%{"key" => "tab_hidden_per_minute", "basis" => "absolute", "peers" => 3}] =
+               fields["signals"]
+    end
+
+    test "with a single classmate there is no group, only the fixed limit" do
+      {c, b} = group(:paste_ratio, [0.0])
+
+      assert evaluate_in(c, b, reading(%{paste_ratio: 0.5}))["signals"] == []
+
+      assert [%{"basis" => "absolute"}] =
+               evaluate_in(c, b, reading(%{paste_ratio: 0.85}))["signals"]
+    end
+
+    test "the student is never one of the others they are compared with" do
+      {c, b} = group(:paste_ratio, [0.0, 0.0])
+      ExamIntegrityStats.report_rate(c, b, "me", :paste_ratio, 0.9)
+
+      fields = evaluate_in(c, b, reading(%{paste_ratio: 0.9}), submission_id: "me")
+
+      assert [%{"peers" => 2, "baseline" => baseline}] = fields["signals"]
+      assert baseline == 0.0
+    end
+
+    test "a large group uses the same rule without the small-group floor" do
+      {c, b} = group(:paste_ratio, List.duplicate(0.1, 10))
+
+      # Bar is 3 x 0.1 = 0.3, lower than a small group's 0.4.
+      assert [%{"basis" => "group", "peers" => 10}] =
+               evaluate_in(c, b, reading(%{paste_ratio: 0.35}))["signals"]
+
+      assert evaluate_in(c, b, reading(%{paste_ratio: 0.25}))["signals"] == []
+    end
+
+    test "the group is described next to every rate, flagged or not" do
+      {c, b} = group(:right_click_per_minute, [0.1, 0.3, 0.2])
+
+      baseline =
+        evaluate_in(c, b, reading(%{}))["group_baselines"]["right_click_per_minute"]
+
+      assert baseline == %{"peers" => 3, "median" => 0.2}
     end
   end
 
@@ -358,7 +517,7 @@ defmodule Athena.Engagement.ProctoringTest do
       refute Map.has_key?(fields["event_counts"], "paste_ratio")
       assert fields["rates"]["right_click_per_minute"] == 0.4
       assert fields["elapsed_minutes"] == 10.0
-      assert Map.has_key?(fields["metric_percentiles"], "right_click_per_minute")
+      assert %{"peers" => 0} = fields["group_baselines"]["right_click_per_minute"]
     end
 
     test "two split-screen reports are worth more than one" do

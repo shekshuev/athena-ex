@@ -298,6 +298,79 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
       assert Athena.Repo.get!(Submission, sub.id).content["risk_level"] == "red"
     end
 
+    test "a verdict stored before the points model carries a notice; a current one does not",
+         %{conn: conn} do
+      student = insert(:account)
+      block = insert(:block, type: :quiz_exam)
+
+      legacy =
+        insert(:submission,
+          account_id: student.id,
+          block_id: block.id,
+          content: %{"risk_level" => "green", "hard_evidence_count" => 0, "questions" => []},
+          status: :needs_review
+        )
+
+      current =
+        insert(:submission,
+          account_id: insert(:account).id,
+          block_id: block.id,
+          content: %{
+            "risk_level" => "green",
+            "points" => 0,
+            "signals" => [],
+            "questions" => []
+          },
+          status: :needs_review
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{legacy.id}")
+      assert has_element?(lv, "#proctoring-legacy-notice")
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{current.id}")
+      refute has_element?(lv, "#proctoring-legacy-notice")
+    end
+
+    test "a recorded review shows on the grading panel without opening the modal", %{conn: conn} do
+      student = insert(:account)
+      block = insert(:block, type: :quiz_exam)
+
+      sub =
+        insert(:submission,
+          account_id: student.id,
+          block_id: block.id,
+          content: %{
+            "risk_level" => "yellow",
+            "hard_evidence_count" => 0,
+            "outlier_metrics" => %{},
+            "questions" => []
+          },
+          status: :needs_review
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{sub.id}")
+      refute has_element?(lv, "#proctoring-review-summary")
+
+      lv |> element("button[phx-click='open_proctoring_modal']") |> render_click()
+
+      lv
+      |> form("#proctoring-review-form", review: %{note: "Saw the phone on camera."})
+      |> render_submit(%{"status" => "confirmed"})
+
+      # The decision replaces the automatic colour - never both at once.
+      refute has_element?(lv, ".proctoring-risk-badge > .badge")
+      assert has_element?(lv, ".proctoring-risk-badge .proctoring-review-badge .badge")
+
+      # Modal closed, decision visible on the page itself.
+      refute has_element?(lv, "#proctoring-detail-modal")
+      assert has_element?(lv, "#proctoring-review-summary", "Saw the phone on camera.")
+      assert has_element?(lv, ".proctoring-review-badge")
+
+      # And it survives a reopen.
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{sub.id}")
+      assert has_element?(lv, "#proctoring-review-summary", "Saw the phone on camera.")
+    end
+
     test "does not render the academic integrity panel for a non-exam submission", %{
       conn: conn
     } do
@@ -393,7 +466,6 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
           account_id: student.id,
           block_id: block.id,
           content: %{
-            "cheat_count" => 0,
             "questions" => [
               %{"id" => q1.id, "type" => "quiz_question", "content" => q1.content}
             ]
@@ -611,6 +683,102 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
       assert updated_sub.status == :rejected
       assert updated_sub.score == 0
       assert updated_sub.feedback == "Very bad!"
+    end
+  end
+
+  describe "Grading an exam's questions" do
+    setup do
+      student = insert(:account)
+      section = insert(:section, course: insert(:course))
+
+      q1 =
+        insert(:block,
+          section: section,
+          type: :quiz_question,
+          content: %{"question_type" => "open"}
+        )
+
+      q2 =
+        insert(:block,
+          section: section,
+          type: :quiz_question,
+          content: %{"question_type" => "open"}
+        )
+
+      exam = insert(:block, section: section, type: :quiz_exam)
+
+      parent =
+        insert(:submission,
+          account_id: student.id,
+          block_id: exam.id,
+          status: :needs_review,
+          score: 0,
+          content: %{
+            "questions" => [
+              %{"id" => q1.id, "type" => "quiz_question", "content" => q1.content},
+              %{"id" => q2.id, "type" => "quiz_question", "content" => q2.content}
+            ]
+          }
+        )
+
+      children =
+        for q <- [q1, q2] do
+          insert(:submission,
+            account_id: student.id,
+            block_id: q.id,
+            parent_submission_id: parent.id,
+            status: :needs_review,
+            score: 0
+          )
+        end
+
+      %{parent: parent, q1: q1, q2: q2, children: children}
+    end
+
+    test "per-question scores and comments are saved and shown again on reopen", ctx do
+      %{conn: conn, parent: parent, q1: q1, q2: q2} = ctx
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{parent.id}")
+
+      lv
+      |> form("#grading-form", %{"score" => "50", "feedback" => "Overall comment"})
+      |> render_submit(%{
+        "action" => "grade",
+        "child_grades" => %{
+          q1.id => %{"score" => "100", "feedback" => "Perfect"},
+          q2.id => %{"score" => "0", "feedback" => "Missed the point"}
+        }
+      })
+
+      children = Athena.Learning.get_child_submissions(parent.id)
+      assert children[q1.id].score == 100
+      assert children[q1.id].feedback == "Perfect"
+      assert children[q1.id].status == :graded
+      assert children[q2.id].feedback == "Missed the point"
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{parent.id}")
+
+      assert has_element?(lv, ~s|input[name="child_grades[#{q1.id}][score]"][value="100"]|)
+      assert render(lv) =~ "Perfect"
+      assert render(lv) =~ "Missed the point"
+      assert render(lv) =~ "Overall comment"
+    end
+
+    test "a question left out of the form keeps its stored comment", ctx do
+      %{conn: conn, parent: parent, q1: q1, q2: q2, children: [c1, _c2]} = ctx
+
+      {:ok, _} = Athena.Learning.update_submission(ctx.admin, c1, %{"feedback" => "Keep me"})
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{parent.id}")
+
+      lv
+      |> form("#grading-form", %{"score" => "10", "feedback" => ""})
+      |> render_submit(%{
+        "action" => "grade",
+        "child_grades" => %{q1.id => %{"score" => "10"}, q2.id => %{"score" => "10"}}
+      })
+
+      assert Athena.Learning.get_child_submissions(parent.id)[q1.id].feedback == "Keep me"
     end
   end
 

@@ -114,6 +114,7 @@ defmodule Athena.Engagement.ProctoringMonitor do
           max_silence_seconds: non_neg_integer(),
           max_offline_seconds: non_neg_integer(),
           away_incidents: non_neg_integer(),
+          away_count: non_neg_integer(),
           away_total_seconds: non_neg_integer(),
           mouse_away_seconds: non_neg_integer(),
           max_paste_chars: non_neg_integer(),
@@ -469,7 +470,7 @@ defmodule Athena.Engagement.ProctoringMonitor do
       )
 
     silence_seconds = current_silence_seconds(state)
-    {away_incidents, away_total_seconds} = away_stats(state.away_intervals)
+    {away_incidents, away_count, away_total_seconds} = away_stats(state.away_intervals)
 
     %{
       counts: Map.put(state.counts, :paste_ratio, paste_ratio(state.paste_totals)),
@@ -478,6 +479,7 @@ defmodule Athena.Engagement.ProctoringMonitor do
       max_silence_seconds: max(state.max_silence_seconds, silence_seconds),
       max_offline_seconds: state.max_offline_seconds,
       away_incidents: away_incidents,
+      away_count: away_count,
       away_total_seconds: away_total_seconds,
       mouse_away_seconds: div(state.mouse_away_ms, 1000),
       max_paste_chars: state.max_paste_chars,
@@ -494,6 +496,7 @@ defmodule Athena.Engagement.ProctoringMonitor do
       max_silence_seconds: 0,
       max_offline_seconds: 0,
       away_incidents: 0,
+      away_count: 0,
       away_total_seconds: 0,
       mouse_away_seconds: 0,
       max_paste_chars: 0,
@@ -503,8 +506,8 @@ defmodule Athena.Engagement.ProctoringMonitor do
   end
 
   # Merges overlapping intervals into distinct absences, then returns
-  # `{absences_that_lasted_long_enough_to_matter, total_seconds_away}`.
-  defp away_stats([]), do: {0, 0}
+  # `{absences_that_lasted_long_enough_to_matter, all_absences, total_seconds_away}`.
+  defp away_stats([]), do: {0, 0, 0}
 
   defp away_stats(intervals) do
     merged =
@@ -521,7 +524,7 @@ defmodule Athena.Engagement.ProctoringMonitor do
     min_ms = Proctoring.thresholds().away_incident_min_seconds * 1000
     total_ms = merged |> Enum.map(fn {s, e} -> e - s end) |> Enum.sum()
 
-    {Enum.count(merged, fn {s, e} -> e - s >= min_ms end), div(total_ms, 1000)}
+    {Enum.count(merged, fn {s, e} -> e - s >= min_ms end), length(merged), div(total_ms, 1000)}
   end
 
   # A floor, never zero - `elapsed_minutes` is used as a division

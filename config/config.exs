@@ -129,8 +129,18 @@ config :athena, Athena.Engagement,
   exam_paste_ratio_threshold: 0.6,
   exam_risk_yellow_points: 2,
   exam_risk_red_points: 4,
-  exam_percentile_outlier_threshold: 95,
-  exam_min_peers: 8,
+  # How a rate is judged against the others sitting the same exam: from
+  # `min_baseline_peers` others on, it counts when it clears
+  # max(floor, ratio * median, median + spread_k * spread); below
+  # `trusted_group_peers` others that bar is also never lower than
+  # `small_group_fallback_share` of the absolute limit, and a value of
+  # `extreme_factor` times the absolute limit counts whatever the group does.
+  exam_min_baseline_peers: 2,
+  exam_trusted_group_peers: 8,
+  exam_baseline_ratio: 3,
+  exam_baseline_spread: 3,
+  exam_small_group_fallback_share: 0.5,
+  exam_extreme_factor: 2,
   exam_min_minutes_for_rates: 3,
   exam_large_paste_chars: 150,
   exam_away_incident_min_seconds: 10,
