@@ -1898,7 +1898,7 @@ defmodule AthenaWeb.BlockComponents do
     --%>
     <div
       id={@block_id && "tiptap-toolbar-#{@mode}-#{@block_id}"}
-      class="fixed-toolbar hidden group-focus-within/tiptap:flex flex-wrap gap-2 bg-base-100 border border-base-300 rounded-sm p-1.5 mb-3 sticky top-2 z-10 items-center"
+      class="fixed-toolbar hidden group-focus-within/tiptap:flex flex-wrap gap-2 bg-base-100 border border-base-300 rounded-sm p-1.5 mb-3 sticky top-[var(--sticky-offset,0.5rem)] z-10 items-center"
     >
       <div class="join flex-wrap">
         <button

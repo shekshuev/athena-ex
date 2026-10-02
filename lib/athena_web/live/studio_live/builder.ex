@@ -1805,7 +1805,8 @@ defmodule AthenaWeb.StudioLive.Builder do
       </div>
 
       <div class="flex-1 min-w-0 flex flex-col relative overflow-hidden bg-base-200">
-        <div class="flex-1 overflow-y-auto p-8 relative">
+        <%!-- `--sticky-offset` keeps a block editor's own sticky toolbar clear of the canvas header --%>
+        <div class="flex-1 overflow-y-auto p-8 relative" style="--sticky-offset: 2.5rem">
           <div class="max-w-3xl mx-auto min-h-full min-w-0 flex flex-col gap-4">
             <.live_component
               module={AthenaWeb.StudioLive.Builder.CanvasComponent}

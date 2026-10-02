@@ -432,7 +432,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
   def render(assigns) do
     ~H"""
     <.page_container size="wide" class="pb-20">
-      <div class="flex items-center gap-4 mb-8 border-b border-base-200 pb-6">
+      <.sticky_header id="grading-detail-header" class="flex items-center gap-4">
         <.link
           navigate={@return_to}
           class="btn btn-ghost btn-sm btn-square rounded-sm hover:bg-base-200"
@@ -463,7 +463,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
             </span>
           </div>
         </div>
-      </div>
+      </.sticky_header>
 
       <div class="flex flex-col lg:flex-row items-start gap-8">
         <div class="flex-1 w-full min-w-0 space-y-6 ">
@@ -570,7 +570,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
 
         <div
           id="grading-panel"
-          class="w-full lg:w-100 shrink-0 bg-base-100 rounded-sm border border-base-300 flex flex-col overflow-hidden lg:sticky lg:top-8 lg:max-h-[calc(100vh-4rem)]"
+          class="w-full lg:w-100 shrink-0 bg-base-100 rounded-sm border border-base-300 flex flex-col overflow-hidden lg:sticky lg:top-20 lg:max-h-[calc(100vh-8rem)]"
         >
           <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-300 shrink-0">
             <div>

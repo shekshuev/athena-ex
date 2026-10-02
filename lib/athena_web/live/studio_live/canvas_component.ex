@@ -9,7 +9,16 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
   def render(assigns) do
     ~H"""
     <div class="flex-1 flex flex-col relative h-full min-w-0">
-      <div class="flex items-center gap-3 mb-8 border-b border-base-300 pb-6 min-w-0">
+      <%!-- Sticks to the top of the scrolling canvas, pulled up over its p-8 padding.
+      `top` counts from the inner edge of that padding, so -top-14 = 2rem of padding
+      + 1.5rem of the header's own top padding tucked out of sight. --%>
+      <div
+        id="builder-header"
+        class={[
+          "sticky -top-14 z-20 -mt-8 pt-8 bg-base-200",
+          "flex items-center gap-3 border-b border-base-300 pb-6 min-w-0"
+        ]}
+      >
         <nav
           id="builder-breadcrumbs"
           aria-label={gettext("Breadcrumbs")}
@@ -92,10 +101,10 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         icon="hero-document-magnifying-glass"
         title={gettext("No section selected")}
         description={gettext("Select a section from the sidebar to view its blocks.")}
-        class="flex-1 flex flex-col items-center justify-center"
+        class="flex-1 flex flex-col items-center justify-center mt-8"
       />
 
-      <div :if={@active_section_id != nil} class="flex-1 flex flex-col">
+      <div :if={@active_section_id != nil} class="flex-1 flex flex-col mt-8">
         <div
           id="canvas-blocks-list"
           phx-hook={if @mode == :edit, do: "Sortable"}

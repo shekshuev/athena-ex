@@ -202,7 +202,7 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
   def render(assigns) do
     ~H"""
     <.page_container size="wide" class="space-y-6 pb-20">
-      <div class="flex items-center gap-4">
+      <.sticky_header id="grading-monitor-header" class="flex items-center gap-4">
         <.link
           navigate={~p"/teaching/grading?block_id=#{@block.id}"}
           class="btn btn-ghost btn-sm btn-square rounded-sm hover:bg-base-200"
@@ -217,7 +217,7 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
             {gettext("Group %{cohort} - live risk for this assessment.", cohort: @cohort.name)}
           </p>
         </div>
-      </div>
+      </.sticky_header>
 
       <div class="space-y-2">
         <.risk_explanation />
