@@ -452,6 +452,50 @@ defmodule AthenaWeb.CoreComponents do
   end
 
   @doc """
+  A page header that stays put while the page scrolls underneath it.
+
+  The dashboard layout scrolls `<main>`, which has its own padding (1rem,
+  2rem from `sm`). Two things follow from that:
+
+    * the header pulls itself up over the top of that padding (negative
+      margin), so it starts flush with the top edge;
+    * `top` on a sticky element is measured from the *inner* edge of the
+      scroll container's padding, not from its outer edge. So `top` is
+      `-(padding) - (how far above the screen to tuck the header)`: that
+      pushes the header's own top padding out of sight and leaves the title
+      0.5rem from the top, with nothing scrolling by above it.
+
+  Meant for the `dashboard` layout. For a header inside a different scroll
+  container (the builder canvas, a side panel) apply the same arithmetic by
+  hand with that container's padding.
+
+  ## Examples
+
+      <.sticky_header>
+        <h1>Submission from ...</h1>
+      </.sticky_header>
+  """
+  attr :id, :string, default: nil
+  attr :class, :any, default: nil
+  slot :inner_block, required: true
+
+  def sticky_header(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class={[
+        "sticky -top-6 z-30 bg-base-100 sm:-top-14",
+        "-mt-4 pt-4 sm:-mt-8 sm:pt-8",
+        "mb-8 border-b border-base-300 pb-6",
+        @class
+      ]}
+    >
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
+  @doc """
   Renders the canonical "operation in progress" indicator — a spinning
   arrow-path icon. The one loading treatment the app should use, instead of
   mixing this with daisyUI's `loading` component or a static, non-animated
@@ -1589,6 +1633,7 @@ defmodule AthenaWeb.CoreComponents do
   attr :on_confirm, JS, default: nil
   attr :confirm_label, :string, default: "Confirm"
   attr :danger, :boolean, default: false
+  attr :box_class, :string, default: nil
   slot :inner_block
 
   def modal(assigns) do
@@ -1599,7 +1644,7 @@ defmodule AthenaWeb.CoreComponents do
       phx-window-keydown={@show && @on_cancel}
       phx-key="escape"
     >
-      <div class="modal-box rounded-sm border border-base-300">
+      <div class={["modal-box rounded-sm border border-base-300", @box_class]}>
         <h3 :if={@title} class="font-bold text-lg">{@title}</h3>
         <p :if={@description} class="py-4 text-base-content/70">{@description}</p>
 

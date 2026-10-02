@@ -185,8 +185,8 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
   @impl true
   def render(assigns) do
     ~H"""
-    <.page_container size="wide" class="pb-20 pt-4">
-      <div class="flex items-center gap-4 mb-8 border-b border-base-300 pb-6">
+    <.page_container size="wide" class="pb-20">
+      <.sticky_header id="announcement-form-header" class="flex items-center gap-4">
         <.link
           navigate={~p"/admin/announcements"}
           class="btn btn-ghost btn-sm btn-square rounded-sm hover:bg-base-200"
@@ -195,7 +195,7 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
           <.icon name="hero-arrow-left" class="size-5" />
         </.link>
         <h1 class="text-2xl font-black font-display tracking-tight">{@page_title}</h1>
-      </div>
+      </.sticky_header>
 
       <.form for={@form} id="announcement-form" phx-change="validate" phx-submit="save">
         <div class="max-w-3xl space-y-6">

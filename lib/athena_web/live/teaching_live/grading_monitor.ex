@@ -62,9 +62,19 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
        accounts: accounts,
        submissions: submissions_by_account,
        proctoring_subscribed_ids: proctoring_subscribed_ids,
-       live_results: %{}
+       live_results: %{},
+       show_methodology_modal: false
      )
      |> refresh_live_results(submissions_by_account)}
+  end
+
+  @impl true
+  def handle_event("open_methodology_modal", _, socket) do
+    {:noreply, assign(socket, show_methodology_modal: true)}
+  end
+
+  def handle_event("close_methodology_modal", _, socket) do
+    {:noreply, assign(socket, show_methodology_modal: false)}
   end
 
   defp subscribe_to_member({account_id, sub}, block) do
@@ -77,8 +87,6 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
   end
 
   defp refresh_live_results(socket, submissions_by_account) do
-    allowed_blur_attempts = socket.assigns.block.content["allowed_blur_attempts"] || 3
-
     live_results =
       submissions_by_account
       |> Enum.filter(fn {_account_id, sub} -> sub && sub.status == :pending end)
@@ -87,8 +95,7 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
          Engagement.evaluate_live_proctoring(
            sub.id,
            socket.assigns.cohort.id,
-           socket.assigns.block.id,
-           allowed_blur_attempts
+           socket.assigns.block.id
          )}
       end)
 
@@ -144,14 +151,11 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp put_live_result(socket, submission_id) do
-    allowed_blur_attempts = socket.assigns.block.content["allowed_blur_attempts"] || 3
-
     fields =
       Engagement.evaluate_live_proctoring(
         submission_id,
         socket.assigns.cohort.id,
-        socket.assigns.block.id,
-        allowed_blur_attempts
+        socket.assigns.block.id
       )
 
     assign(socket, :live_results, Map.put(socket.assigns.live_results, submission_id, fields))
@@ -198,7 +202,7 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
   def render(assigns) do
     ~H"""
     <.page_container size="wide" class="space-y-6 pb-20">
-      <div class="flex items-center gap-4">
+      <.sticky_header id="grading-monitor-header" class="flex items-center gap-4">
         <.link
           navigate={~p"/teaching/grading?block_id=#{@block.id}"}
           class="btn btn-ghost btn-sm btn-square rounded-sm hover:bg-base-200"
@@ -213,9 +217,17 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
             {gettext("Group %{cohort} - live risk for this assessment.", cohort: @cohort.name)}
           </p>
         </div>
+      </.sticky_header>
+
+      <div class="space-y-2">
+        <.risk_explanation />
+        <.details_button event="open_methodology_modal" />
       </div>
 
-      <.risk_explanation />
+      <.methodology_modal
+        show={@show_methodology_modal}
+        on_cancel={JS.push("close_methodology_modal")}
+      />
 
       <div class="bg-base-100 border border-base-200 rounded-box overflow-hidden">
         <table class="table">

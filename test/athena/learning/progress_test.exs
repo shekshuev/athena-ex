@@ -6,6 +6,7 @@ defmodule Athena.Learning.ProgressTest do
   alias Athena.Content.CompletionRule
   alias Athena.Repo
   import Athena.Factory
+  import Ecto.Query
 
   setup do
     user = insert(:account)
@@ -216,6 +217,148 @@ defmodule Athena.Learning.ProgressTest do
       assert s1.id in accessible
       assert s2.id in accessible
       assert s3.id in accessible
+    end
+  end
+
+  describe "accessible_section_ids/6 - completion that was never recorded" do
+    setup %{user: user} do
+      course = insert(:course)
+      s1 = insert(:section, course: course)
+      s2 = insert(:section, course: course)
+
+      gate =
+        insert(:block,
+          section: s1,
+          type: :code,
+          completion_rule: %CompletionRule{type: :pass_auto_grade, min_score: 60}
+        )
+
+      %{course: course, s1: s1, s2: s2, gate: gate, user: user}
+    end
+
+    defp access(ctx, cohort_id \\ nil),
+      do:
+        Progress.accessible_section_ids(
+          ctx.user,
+          ctx.course.id,
+          [ctx.s1, ctx.s2],
+          [],
+          cohort_id
+        )
+
+    defp progress_rows(ctx),
+      do: Repo.all(from bp in BlockProgress, where: bp.block_id == ^ctx.gate.id)
+
+    test "a passing graded submission opens what follows, and the completion is recorded", ctx do
+      insert(:submission,
+        account_id: ctx.user.id,
+        block_id: ctx.gate.id,
+        status: :graded,
+        score: 80
+      )
+
+      assert ctx.s2.id in access(ctx)
+      assert [%{status: :completed}] = progress_rows(ctx)
+    end
+
+    test "a submission below the required score does not", ctx do
+      insert(:submission,
+        account_id: ctx.user.id,
+        block_id: ctx.gate.id,
+        status: :graded,
+        score: 59
+      )
+
+      refute ctx.s2.id in access(ctx)
+      assert progress_rows(ctx) == []
+    end
+
+    test "an older failing attempt does not hide a later passing one", ctx do
+      insert(:submission,
+        account_id: ctx.user.id,
+        block_id: ctx.gate.id,
+        status: :graded,
+        score: 0
+      )
+
+      insert(:submission,
+        account_id: ctx.user.id,
+        block_id: ctx.gate.id,
+        status: :graded,
+        score: 100
+      )
+
+      assert ctx.s2.id in access(ctx)
+    end
+
+    test "a submission that is still being checked does not", ctx do
+      for status <- [:pending, :processing, :draft] do
+        insert(:submission,
+          account_id: ctx.user.id,
+          block_id: ctx.gate.id,
+          status: status,
+          score: 100
+        )
+      end
+
+      refute ctx.s2.id in access(ctx)
+    end
+
+    test "another student's submission is not mine", ctx do
+      insert(:submission,
+        account_id: insert(:account).id,
+        block_id: ctx.gate.id,
+        status: :graded,
+        score: 100
+      )
+
+      refute ctx.s2.id in access(ctx)
+    end
+
+    test "a pending exam attempt never completes its block", ctx do
+      exam =
+        insert(:block,
+          section: ctx.s1,
+          type: :quiz_exam,
+          completion_rule: %CompletionRule{type: :submit}
+        )
+
+      insert(:submission, account_id: ctx.user.id, block_id: exam.id, status: :pending)
+
+      insert(:submission,
+        account_id: ctx.user.id,
+        block_id: ctx.gate.id,
+        status: :graded,
+        score: 100
+      )
+
+      refute ctx.s2.id in access(ctx)
+      assert Repo.all(from bp in BlockProgress, where: bp.block_id == ^exam.id) == []
+    end
+
+    test "a team's submission counts for the team", %{team: team} = ctx do
+      insert(:submission,
+        account_id: insert(:account).id,
+        cohort_id: team.id,
+        block_id: ctx.gate.id,
+        status: :graded,
+        score: 90
+      )
+
+      assert ctx.s2.id in access(ctx, team.id)
+    end
+
+    test "is idempotent - asking again changes nothing", ctx do
+      insert(:submission,
+        account_id: ctx.user.id,
+        block_id: ctx.gate.id,
+        status: :graded,
+        score: 90
+      )
+
+      first = access(ctx)
+      assert first == access(ctx)
+      assert length(progress_rows(ctx)) == 1
     end
   end
 

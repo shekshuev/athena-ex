@@ -127,9 +127,31 @@ config :athena, Athena.Engagement,
   student_radar_default_window_days: 7,
   exam_focus_loss_threshold: 3,
   exam_paste_ratio_threshold: 0.6,
-  exam_hard_evidence_red_threshold: 2,
-  exam_behavioral_outliers_red_threshold: 2,
-  exam_percentile_outlier_threshold: 90,
+  exam_risk_yellow_points: 2,
+  exam_risk_red_points: 4,
+  # How a rate is judged against the others sitting the same exam: from
+  # `min_baseline_peers` others on, it counts when it clears
+  # max(floor, ratio * median, median + spread_k * spread); below
+  # `trusted_group_peers` others that bar is also never lower than
+  # `small_group_fallback_share` of the absolute limit, and a value of
+  # `extreme_factor` times the absolute limit counts whatever the group does.
+  exam_min_baseline_peers: 2,
+  exam_trusted_group_peers: 8,
+  exam_baseline_ratio: 3,
+  exam_baseline_spread: 3,
+  exam_small_group_fallback_share: 0.5,
+  exam_extreme_factor: 2,
+  exam_min_minutes_for_rates: 3,
+  exam_large_paste_chars: 150,
+  exam_away_incident_min_seconds: 10,
+  exam_away_red_incidents: 3,
+  exam_away_red_seconds: 60,
+  exam_heartbeat_silence_yellow_threshold_seconds: 45,
+  exam_heartbeat_silence_red_threshold_seconds: 120,
+  exam_machine_typing_min_keys: 50,
+  exam_machine_typing_max_dwell_ms: 5,
+  exam_clean_typing_min_chars: 500,
+  exam_clean_typing_max_correction_ratio: 0.01,
   proctoring_monitor_idle_timeout_minutes: 180
 
 # Import environment specific config. This must remain at the bottom

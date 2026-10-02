@@ -375,6 +375,10 @@ defmodule Athena.Learning.Progress do
   Returns a list of all section IDs the student is allowed to access.
   Implements Retrograde Locking: if an old section has an uncompleted gate,
   everything after it becomes locked.
+
+  Also heals: a gate whose submission already satisfies it but whose
+  completion was never recorded is completed on the spot (see
+  `heal_missing_completions/4`), so a lost write can't lock a student out.
   """
   @spec accessible_section_ids(
           map(),
@@ -395,6 +399,9 @@ defmodule Athena.Learning.Progress do
     gate_blocks = get_gate_blocks(linear_sections, user, overrides, opts)
     completed_ids = fetch_completed_gate_ids(gate_blocks, user, cohort_id)
 
+    completed_ids =
+      completed_ids ++ heal_missing_completions(gate_blocks, completed_ids, user, cohort_id)
+
     uncompleted_gates_by_section =
       gate_blocks
       |> Enum.reject(&(&1.id in completed_ids))
@@ -406,6 +413,52 @@ defmodule Athena.Learning.Progress do
       end)
 
     Enum.reverse(accessible_reversed)
+  end
+
+  # A block's completion is recorded as a side effect of its submission being
+  # saved, and a side effect can be lost (a crash between the two writes, a
+  # result stored while nobody was listening, data from before the write was
+  # made durable). The submission itself is the source of truth, so a gate
+  # whose submission already satisfies it is completed here instead of
+  # leaving the student locked out of everything behind it. Only submissions
+  # in a finished state count: a pending exam attempt must never complete
+  # its block, and a test-run draft is not an attempt at all.
+  @healable_statuses [:graded, :accepted, :needs_review]
+
+  @doc false
+  defp heal_missing_completions(gate_blocks, completed_ids, user, cohort_id) do
+    open_gates = Enum.reject(gate_blocks, &(&1.id in completed_ids))
+
+    if open_gates == [] do
+      []
+    else
+      submissions_by_block =
+        open_gates
+        |> Enum.map(& &1.id)
+        |> finished_submissions(user, cohort_id)
+        |> Enum.group_by(& &1.block_id)
+
+      for block <- open_gates,
+          Enum.any?(Map.get(submissions_by_block, block.id, []), &block_solved?(block, &1)),
+          {:ok, _progress} <- [mark_completed(user.id, block.id, cohort_id)] do
+        block.id
+      end
+    end
+  end
+
+  defp finished_submissions(block_ids, user, cohort_id) do
+    base =
+      from s in Submission,
+        where:
+          s.block_id in ^block_ids and is_nil(s.parent_submission_id) and
+            s.status in ^@healable_statuses
+
+    query =
+      if cohort_id,
+        do: where(base, [s], s.cohort_id == ^cohort_id),
+        else: where(base, [s], s.account_id == ^user.id and is_nil(s.cohort_id))
+
+    Repo.all(query)
   end
 
   @doc """

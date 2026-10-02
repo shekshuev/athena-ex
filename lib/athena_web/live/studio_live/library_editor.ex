@@ -838,11 +838,13 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
       )
 
     ~H"""
-    <div class={
-      @course_bank_mode && "fixed inset-0 z-50 bg-base-100 overflow-y-auto p-4 pb-20 sm:p-8"
-    }>
-      <.page_container size="wide" class={not @course_bank_mode && "pb-20 pt-4"}>
-        <div class="flex items-center gap-4 mb-8 border-b border-base-300 pb-6">
+    <%!-- `--sticky-offset` keeps the editor's own sticky toolbar clear of the sticky header --%>
+    <div
+      class={@course_bank_mode && "fixed inset-0 z-50 bg-base-100 overflow-y-auto p-4 pb-20 sm:p-8"}
+      style="--sticky-offset: 3.75rem"
+    >
+      <.page_container size="wide" class={not @course_bank_mode && "pb-20"}>
+        <.sticky_header id="library-editor-header" class="flex items-center gap-4">
           <.link
             id="library-editor-back"
             navigate={@return_path}
@@ -871,7 +873,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
             <.icon name="hero-square-2-stack" class="size-5" />
             <span class="hidden sm:inline">{gettext("Duplicate")}</span>
           </.button>
-        </div>
+        </.sticky_header>
 
         <div class="flex flex-col lg:flex-row items-start gap-8">
           <div class="flex-1 w-full min-w-0 lg:min-w-125 space-y-6">
@@ -893,7 +895,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
           <div
             :if={@role in [:owner, :writer]}
-            class="w-full lg:w-80 xl:w-100 shrink-0 bg-base-100 rounded-sm border border-base-300 xl:sticky xl:top-8 flex flex-col overflow-hidden"
+            class="w-full lg:w-80 xl:w-100 shrink-0 bg-base-100 rounded-sm border border-base-300 xl:sticky xl:top-16 flex flex-col overflow-hidden"
           >
             <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-300">
               <div>

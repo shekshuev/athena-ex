@@ -20,38 +20,63 @@ defmodule Athena.Engagement.ProctoringMonitor do
   point of accumulating here instead of writing a row per event during a
   live, timed exam.
 
-  On every update this also pushes the attempt's current per-minute rates
-  into `Athena.Engagement.ExamIntegrityStats` (keyed by the exam's
+  On every update this also pushes the attempt's current rates into
+  `Athena.Engagement.ExamIntegrityStats` (keyed by the exam's
   `{cohort_id, block_id}`) - that's what lets the live risk indicator
-  compare this student to peers taking the same exam right now, instead of
+  compare this attempt to peers taking the same exam right now, instead of
   just against a flat number.
+
+  Besides plain counters it keeps a few aggregates that a counter can't
+  express: the merged "away from the exam" intervals (tab hidden, window
+  blurred, fullscreen exited - overlapping ones are one absence, not
+  several), the longest stretch the telemetry channel itself went quiet
+  (and a short list of those incidents, so they survive into the
+  submission), typing-dynamics totals (never individual keystrokes), and
+  the longest single paste.
   """
 
   use GenServer
 
-  alias Athena.Engagement.ExamIntegrityStats
+  alias Athena.Engagement.{ExamIntegrityStats, Proctoring}
 
   @registry Athena.Engagement.ProctoringMonitorRegistry
   @supervisor Athena.Engagement.ProctoringMonitorSupervisor
 
-  # Every event type this monitor's counters care about. `paste_detected`
-  # feeds a running ratio (not a plain count - see `paste_totals`);
-  # everything else here is a plain counter. Anything not in this list
-  # (viewport_enter, scroll_milestone, video_*, ...) is silently ignored -
-  # it physically cannot arrive from an exam page's sub-questions anyway
-  # (see `Athena.Engagement.Event`'s catalog for which block types emit
-  # what), but filtering defensively costs nothing.
-  @tracked_event_types [
+  @max_incidents 100
+  @max_away_intervals 500
+
+  # Event types that are a plain `counts` bump.
+  @counted_event_types [
     :tab_hidden,
     :window_blur,
     :printscreen_attempt,
     :copy_attempt,
     :cut_attempt,
     :multi_tab_detected,
-    :paste_detected,
     :answer_changed,
-    :code_run_attempt
+    :code_run_attempt,
+    :right_click_attempt,
+    :bulk_insert,
+    :offline_period,
+    :mouse_left,
+    :fullscreen_exit
   ]
+
+  # Event types with bespoke handling (an interval, an aggregate, a ratio).
+  @special_event_types [
+    :paste_detected,
+    :typing_summary,
+    :tab_visible,
+    :window_focus,
+    :window_geometry_changed
+  ]
+
+  # Every event type this monitor's counters care about. Anything not in
+  # this list (viewport_enter, scroll_milestone, video_*, ...) is silently
+  # ignored - it physically cannot arrive from an exam page's sub-questions
+  # anyway (see `Athena.Engagement.Event`'s catalog for which block types
+  # emit what), but filtering defensively costs nothing.
+  @tracked_event_types @counted_event_types ++ @special_event_types
 
   @type counts :: %{
           tab_hidden: non_neg_integer(),
@@ -62,10 +87,40 @@ defmodule Athena.Engagement.ProctoringMonitor do
           multi_tab_detected: non_neg_integer(),
           answer_changed: non_neg_integer(),
           code_run_attempt: non_neg_integer(),
+          right_click_attempt: non_neg_integer(),
+          bulk_insert: non_neg_integer(),
+          offline_period: non_neg_integer(),
+          mouse_left: non_neg_integer(),
+          fullscreen_exit: non_neg_integer(),
+          large_paste: non_neg_integer(),
+          split_screen: non_neg_integer(),
           paste_ratio: float()
         }
 
-  @type reading :: %{counts: counts(), elapsed_minutes: float()}
+  @type typing :: %{
+          keys: non_neg_integer(),
+          dwell_sum: float(),
+          cv_sum: float(),
+          pauses: non_neg_integer(),
+          max_clean_run: non_neg_integer(),
+          chars_typed: non_neg_integer(),
+          chars_deleted: non_neg_integer()
+        }
+
+  @type reading :: %{
+          counts: counts(),
+          elapsed_minutes: float(),
+          silence_seconds: non_neg_integer(),
+          max_silence_seconds: non_neg_integer(),
+          max_offline_seconds: non_neg_integer(),
+          away_incidents: non_neg_integer(),
+          away_count: non_neg_integer(),
+          away_total_seconds: non_neg_integer(),
+          mouse_away_seconds: non_neg_integer(),
+          max_paste_chars: non_neg_integer(),
+          typing: typing(),
+          incidents: [map()]
+        }
 
   # Public API
 
@@ -105,6 +160,20 @@ defmodule Athena.Engagement.ProctoringMonitor do
   end
 
   @doc """
+  A liveness ping, distinct from `report_events/4` - always starts the
+  monitor (even with nothing to report) so "an empty batch" and "the
+  telemetry channel has gone completely silent" stay distinguishable. Sent
+  by the client on every flush tick regardless of whether anything
+  interesting happened, so a gap between two of these is itself a signal
+  (see `Athena.Engagement.Proctoring` for how it factors into risk level).
+  """
+  @spec heartbeat(binary(), binary() | nil, binary()) :: :ok
+  def heartbeat(submission_id, cohort_id, block_id) do
+    {:ok, pid} = get_or_start(submission_id, cohort_id, block_id)
+    GenServer.cast(pid, :heartbeat)
+  end
+
+  @doc """
   Current counts and elapsed minutes, live. Returns an all-zero reading
   (not an error) if no process is running - either nothing has happened
   yet, or the attempt already finalized.
@@ -113,7 +182,7 @@ defmodule Athena.Engagement.ProctoringMonitor do
   def snapshot(submission_id) do
     case Registry.lookup(@registry, submission_id) do
       [{pid, _}] -> GenServer.call(pid, :snapshot)
-      [] -> %{counts: initial_counts(), elapsed_minutes: min_elapsed_minutes()}
+      [] -> empty_reading()
     end
   end
 
@@ -162,29 +231,34 @@ defmodule Athena.Engagement.ProctoringMonitor do
        started_at: now,
        counts: initial_counts(),
        paste_totals: %{pasted_chars: 0, total_chars: 0},
-       last_event_at: now
+       max_paste_chars: 0,
+       last_event_at: now,
+       max_silence_seconds: 0,
+       max_offline_seconds: 0,
+       incidents: [],
+       away_intervals: [],
+       mouse_away_ms: 0,
+       typing: initial_typing(),
+       tab_hidden: false
      }}
   end
 
   @impl true
   def handle_cast({:events, events}, state) do
-    {counts, paste_totals} =
-      Enum.reduce(events, {state.counts, state.paste_totals}, &apply_event/2)
-
-    state = %{
-      state
-      | counts: counts,
-        paste_totals: paste_totals,
-        last_event_at: DateTime.utc_now()
-    }
+    state = note_activity(state)
+    state = Enum.reduce(events, state, &apply_event/2)
+    state = %{state | tab_hidden: Enum.reduce(events, state.tab_hidden, &apply_tab_hidden/2)}
 
     report_rates_to_exam_integrity_stats(state)
+    broadcast_updated(state)
 
-    Phoenix.PubSub.broadcast(
-      Athena.PubSub,
-      "proctoring:#{state.submission_id}",
-      {:proctoring_updated, state.submission_id}
-    )
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast(:heartbeat, state) do
+    state = note_activity(state)
+    broadcast_updated(state)
 
     {:noreply, state}
   end
@@ -201,6 +275,15 @@ defmodule Athena.Engagement.ProctoringMonitor do
     if idle_for_ms >= idle_timeout_seconds() * 1000 do
       {:stop, :normal, state}
     else
+      # A silent-but-not-yet-idle gap doesn't get its own cast to trigger a
+      # broadcast (that's the whole point - nothing is arriving), so this
+      # otherwise-idle-only tick doubles as the only thing that pushes a
+      # growing silence out to live viewers (the group monitor) while the
+      # attempt is still technically in progress.
+      if current_silence_seconds(state) > notable_silence_seconds() do
+        broadcast_updated(state)
+      end
+
       schedule_idle_check()
       {:noreply, state}
     end
@@ -208,24 +291,176 @@ defmodule Athena.Engagement.ProctoringMonitor do
 
   # Internals
 
-  defp apply_event(%{event_type: :paste_detected} = event, {counts, paste_totals}) do
-    pasted = event.payload["pasted_chars"] || 0
-    total = event.payload["total_chars"] || 0
+  defp apply_event(%{event_type: :paste_detected} = event, state) do
+    payload = payload(event)
+    pasted = payload["pasted_chars"] || 0
+    total = payload["total_chars"] || 0
 
-    {counts,
-     %{
-       paste_totals
-       | pasted_chars: paste_totals.pasted_chars + pasted,
-         total_chars: paste_totals.total_chars + total
-     }}
+    paste_totals = %{
+      state.paste_totals
+      | pasted_chars: state.paste_totals.pasted_chars + pasted,
+        total_chars: state.paste_totals.total_chars + total
+    }
+
+    counts =
+      if pasted >= Proctoring.thresholds().large_paste_chars,
+        do: Map.update!(state.counts, :large_paste, &(&1 + 1)),
+        else: state.counts
+
+    %{
+      state
+      | paste_totals: paste_totals,
+        counts: counts,
+        max_paste_chars: max(state.max_paste_chars, pasted)
+    }
   end
 
-  defp apply_event(%{event_type: event_type} = _event, {counts, paste_totals})
-       when event_type in @tracked_event_types do
-    {Map.update!(counts, event_type, &(&1 + 1)), paste_totals}
+  defp apply_event(%{event_type: :typing_summary} = event, state) do
+    p = payload(event)
+    keys = int(p["n"])
+
+    typing = %{
+      state.typing
+      | keys: state.typing.keys + keys,
+        dwell_sum: state.typing.dwell_sum + num(p["median_dwell_ms"]) * keys,
+        cv_sum: state.typing.cv_sum + num(p["flight_cv"]) * keys,
+        pauses: state.typing.pauses + int(p["pauses"]),
+        max_clean_run: max(state.typing.max_clean_run, int(p["max_clean_run"])),
+        chars_typed: state.typing.chars_typed + int(p["chars_typed"]),
+        chars_deleted: state.typing.chars_deleted + int(p["chars_deleted"])
+    }
+
+    %{state | typing: typing}
   end
 
-  defp apply_event(_event, acc), do: acc
+  defp apply_event(%{event_type: type} = event, state)
+       when type in [:tab_visible, :window_focus] do
+    add_away_interval(state, event)
+  end
+
+  defp apply_event(%{event_type: :window_geometry_changed} = event, state) do
+    if payload(event)["split"] == true,
+      do: %{state | counts: Map.update!(state.counts, :split_screen, &(&1 + 1))},
+      else: state
+  end
+
+  defp apply_event(%{event_type: :fullscreen_exit} = event, state) do
+    state
+    |> bump(:fullscreen_exit)
+    |> add_away_interval(event)
+  end
+
+  defp apply_event(%{event_type: :offline_period} = event, state) do
+    seconds = div(int(payload(event)["duration_ms"]), 1000)
+
+    state
+    |> bump(:offline_period)
+    |> Map.update!(:max_offline_seconds, &max(&1, seconds))
+  end
+
+  defp apply_event(%{event_type: :mouse_left} = event, state) do
+    state
+    |> bump(:mouse_left)
+    |> Map.update!(:mouse_away_ms, &(&1 + int(payload(event)["duration_ms"])))
+  end
+
+  defp apply_event(%{event_type: type}, state) when type in @counted_event_types,
+    do: bump(state, type)
+
+  defp apply_event(_event, state), do: state
+
+  defp bump(state, key), do: %{state | counts: Map.update!(state.counts, key, &(&1 + 1))}
+
+  # The interval ends when the "back" event was recorded and began
+  # `duration_ms` earlier; overlapping intervals (Alt+Tab fires both
+  # `window_focus` and, if the browser got fully covered, `tab_visible`)
+  # are merged on read, so one absence is never counted twice.
+  defp add_away_interval(state, event) do
+    duration_ms = int(payload(event)["duration_ms"])
+
+    if duration_ms > 0 do
+      finished_ms = finished_at_ms(event)
+      interval = {finished_ms - duration_ms, finished_ms}
+      %{state | away_intervals: Enum.take([interval | state.away_intervals], @max_away_intervals)}
+    else
+      state
+    end
+  end
+
+  defp finished_at_ms(%{occurred_at: %DateTime{} = at}), do: DateTime.to_unix(at, :millisecond)
+  defp finished_at_ms(_event), do: System.os_time(:millisecond)
+
+  defp payload(%{payload: payload}) when is_map(payload), do: payload
+  defp payload(_event), do: %{}
+
+  defp int(value) when is_integer(value) and value > 0, do: value
+  defp int(value) when is_float(value) and value > 0, do: trunc(value)
+  defp int(_value), do: 0
+
+  defp num(value) when is_number(value) and value > 0, do: value * 1.0
+  defp num(_value), do: 0.0
+
+  defp apply_tab_hidden(%{event_type: :tab_hidden}, _tab_hidden), do: true
+  defp apply_tab_hidden(%{event_type: :tab_visible}, _tab_hidden), do: false
+  defp apply_tab_hidden(_event, tab_hidden), do: tab_hidden
+
+  # Bumps `last_event_at` and folds the gap since the previous activity
+  # (event batch or heartbeat, whichever was more recent) into the running
+  # max - called from both `{:events, _}` and `:heartbeat` casts so a real
+  # event closes out a silent gap exactly the same way a heartbeat does.
+  # A gap long enough to matter is also remembered as an incident (when it
+  # started and how long it lasted) so it survives into the submission and
+  # shows up on the teacher's timeline - the max alone can't say *when*.
+  defp note_activity(state) do
+    now = DateTime.utc_now()
+    gap = current_silence_seconds(state, now)
+
+    incidents =
+      if gap >= Proctoring.thresholds().heartbeat_silence_yellow_threshold_seconds do
+        incident = %{
+          "type" => "silence",
+          "at" => DateTime.to_iso8601(state.last_event_at),
+          "seconds" => gap
+        }
+
+        Enum.take(state.incidents ++ [incident], -@max_incidents)
+      else
+        state.incidents
+      end
+
+    %{
+      state
+      | last_event_at: now,
+        max_silence_seconds: max(state.max_silence_seconds, gap),
+        incidents: incidents
+    }
+  end
+
+  defp broadcast_updated(state) do
+    Phoenix.PubSub.broadcast(
+      Athena.PubSub,
+      "proctoring:#{state.submission_id}",
+      {:proctoring_updated, state.submission_id}
+    )
+  end
+
+  # The live, still-open gap since the last activity of any kind - not the
+  # same as `max_silence_seconds`, which is the largest *closed* gap so
+  # far. Deliberately `0` while the tab is legitimately backgrounded
+  # (`tab_hidden`) - that case is already covered by the away-time signal
+  # itself and going quiet while backgrounded is expected, not suspicious.
+  defp current_silence_seconds(state, now \\ DateTime.utc_now())
+
+  defp current_silence_seconds(%{tab_hidden: true}, _now), do: 0
+
+  defp current_silence_seconds(state, now),
+    do: DateTime.diff(now, state.last_event_at, :second)
+
+  # Threshold for the idle-check tick to bother broadcasting a live update
+  # purely because of silence - deliberately below the configured yellow
+  # threshold, so the monitor's live badge is already trending before it
+  # flips color, not appearing to jump straight there.
+  defp notable_silence_seconds, do: 20
 
   defp reading(state) do
     elapsed_minutes =
@@ -234,47 +469,90 @@ defmodule Athena.Engagement.ProctoringMonitor do
         min_elapsed_minutes()
       )
 
-    paste_ratio = paste_ratio(state.paste_totals)
+    silence_seconds = current_silence_seconds(state)
+    {away_incidents, away_count, away_total_seconds} = away_stats(state.away_intervals)
 
-    %{counts: Map.put(state.counts, :paste_ratio, paste_ratio), elapsed_minutes: elapsed_minutes}
+    %{
+      counts: Map.put(state.counts, :paste_ratio, paste_ratio(state.paste_totals)),
+      elapsed_minutes: elapsed_minutes,
+      silence_seconds: silence_seconds,
+      max_silence_seconds: max(state.max_silence_seconds, silence_seconds),
+      max_offline_seconds: state.max_offline_seconds,
+      away_incidents: away_incidents,
+      away_count: away_count,
+      away_total_seconds: away_total_seconds,
+      mouse_away_seconds: div(state.mouse_away_ms, 1000),
+      max_paste_chars: state.max_paste_chars,
+      typing: state.typing,
+      incidents: state.incidents
+    }
+  end
+
+  defp empty_reading do
+    %{
+      counts: initial_counts(),
+      elapsed_minutes: min_elapsed_minutes(),
+      silence_seconds: 0,
+      max_silence_seconds: 0,
+      max_offline_seconds: 0,
+      away_incidents: 0,
+      away_count: 0,
+      away_total_seconds: 0,
+      mouse_away_seconds: 0,
+      max_paste_chars: 0,
+      typing: initial_typing(),
+      incidents: []
+    }
+  end
+
+  # Merges overlapping intervals into distinct absences, then returns
+  # `{absences_that_lasted_long_enough_to_matter, all_absences, total_seconds_away}`.
+  defp away_stats([]), do: {0, 0, 0}
+
+  defp away_stats(intervals) do
+    merged =
+      intervals
+      |> Enum.sort()
+      |> Enum.reduce([], fn
+        {start_ms, end_ms}, [{prev_start, prev_end} | rest] when start_ms <= prev_end ->
+          [{prev_start, max(prev_end, end_ms)} | rest]
+
+        interval, acc ->
+          [interval | acc]
+      end)
+
+    min_ms = Proctoring.thresholds().away_incident_min_seconds * 1000
+    total_ms = merged |> Enum.map(fn {s, e} -> e - s end) |> Enum.sum()
+
+    {Enum.count(merged, fn {s, e} -> e - s >= min_ms end), length(merged), div(total_ms, 1000)}
   end
 
   # A floor, never zero - `elapsed_minutes` is used as a division
-  # denominator in `Athena.Engagement.Proctoring.evaluate/4` (rates per
-  # minute), and this same floor is what `snapshot/1` falls back to when no
-  # process has started yet (nothing reported = zero elapsed time by
-  # definition, but zero would make that division blow up).
+  # denominator in `Athena.Engagement.Proctoring` (rates per minute), and
+  # this same floor is what `snapshot/1` falls back to when no process has
+  # started yet (nothing reported = zero elapsed time by definition, but
+  # zero would make that division blow up).
   defp min_elapsed_minutes, do: 1 / 60
 
   defp paste_ratio(%{total_chars: 0}), do: 0.0
   defp paste_ratio(%{pasted_chars: pasted, total_chars: total}), do: pasted / total
 
+  # The cohort baseline is built from exactly the same `Proctoring.rates/1`
+  # the evaluation compares against, so the percentile is always
+  # apples-to-apples (and rates are withheld while still too early in the
+  # attempt to be stable - one switch at second 30 would read as 2/min).
   defp report_rates_to_exam_integrity_stats(state) do
-    %{counts: counts, elapsed_minutes: elapsed_minutes} = reading(state)
+    for {metric, value} <- Proctoring.rates(reading(state)) do
+      ExamIntegrityStats.report_rate(
+        state.cohort_id,
+        state.block_id,
+        state.submission_id,
+        metric,
+        value
+      )
+    end
 
-    ExamIntegrityStats.report_rate(
-      state.cohort_id,
-      state.block_id,
-      state.submission_id,
-      :tab_hidden_per_minute,
-      counts.tab_hidden / elapsed_minutes
-    )
-
-    ExamIntegrityStats.report_rate(
-      state.cohort_id,
-      state.block_id,
-      state.submission_id,
-      :answer_changed_per_minute,
-      counts.answer_changed / elapsed_minutes
-    )
-
-    ExamIntegrityStats.report_rate(
-      state.cohort_id,
-      state.block_id,
-      state.submission_id,
-      :paste_ratio,
-      counts.paste_ratio
-    )
+    :ok
   end
 
   defp initial_counts do
@@ -287,7 +565,26 @@ defmodule Athena.Engagement.ProctoringMonitor do
       multi_tab_detected: 0,
       answer_changed: 0,
       code_run_attempt: 0,
+      right_click_attempt: 0,
+      bulk_insert: 0,
+      offline_period: 0,
+      mouse_left: 0,
+      fullscreen_exit: 0,
+      large_paste: 0,
+      split_screen: 0,
       paste_ratio: 0.0
+    }
+  end
+
+  defp initial_typing do
+    %{
+      keys: 0,
+      dwell_sum: 0.0,
+      cv_sum: 0.0,
+      pauses: 0,
+      max_clean_run: 0,
+      chars_typed: 0,
+      chars_deleted: 0
     }
   end
 

@@ -19,9 +19,9 @@ defmodule Athena.Engagement do
     counts (focus loss, PrintScreen, copy/cut attempts, paste ratio,
     answer-change rate, ...), accumulated in memory during a timed
     `quiz_exam`/`ticket_exam` attempt.
-  - `ExamIntegrityStats`: warm, per-(cohort, exam block) live distribution
-    of a few behavioral rates, so a student's rate can be judged relative
-    to peers taking the same exam right now, not against a flat number.
+  - `ExamIntegrityStats`: warm, per-(cohort, exam block) record of a few
+    behavioral rates, so a student's rate can be judged against the others
+    sitting the same exam (typical value and spread), not a flat number.
   - `Proctoring`: turns a `ProctoringMonitor` reading (plus an
     `ExamIntegrityStats` lookup) into the risk-level fields persisted on a
     submission, and the summary read back out of them.
@@ -32,8 +32,7 @@ defmodule Athena.Engagement do
     BlockStats,
     Metrics,
     Proctoring,
-    ProctoringMonitor,
-    ExamIntegrityStats
+    ProctoringMonitor
   }
 
   @doc """
@@ -67,41 +66,55 @@ defmodule Athena.Engagement do
     to: ProctoringMonitor,
     as: :report_events
 
+  @doc "Liveness ping for one exam attempt - see `ProctoringMonitor.heartbeat/3`."
+  defdelegate report_proctoring_heartbeat(submission_id, cohort_id, block_id),
+    to: ProctoringMonitor,
+    as: :heartbeat
+
   @doc """
   Live (non-destructive) risk evaluation for an in-progress exam attempt -
   what the group-monitoring view and a single submission's badge both read
-  while the student is still taking the exam. Does not touch
-  `ExamIntegrityStats`'s cohort baseline (see `finalize_proctoring/4` for
-  the one-time, mutating version called when the attempt ends).
+  while the student is still taking the exam. Read-only; see
+  `finalize_proctoring/3` for the version called once when the attempt ends.
   """
-  @spec evaluate_live_proctoring(binary(), binary() | nil, binary(), non_neg_integer()) :: map()
-  def evaluate_live_proctoring(submission_id, cohort_id, block_id, allowed_blur_attempts) do
+  @spec evaluate_live_proctoring(binary(), binary() | nil, binary()) :: map()
+  def evaluate_live_proctoring(submission_id, cohort_id, block_id) do
     submission_id
     |> ProctoringMonitor.snapshot()
-    |> Proctoring.evaluate(cohort_id, block_id, allowed_blur_attempts)
+    |> Proctoring.evaluate(cohort_id, block_id, submission_id: submission_id)
   end
 
   @doc """
-  Reads the final reading for one exam attempt, stops accumulating,
-  removes it from the cohort's live baseline (so a finished student's
-  now-frozen rate doesn't keep skewing comparisons for students still
-  taking the exam), and returns the final `hard_evidence_count`/
-  `outlier_metrics`/`risk_level` fields to merge into `Submission.content`.
+  Reads the final reading for one exam attempt, stops accumulating, and
+  returns the final `hard_evidence_count`/`outlier_metrics`/`risk_level`
+  fields to merge into `Submission.content`. The attempt deliberately stays
+  in the cohort's baseline: the group must not shrink as students hand in,
+  or the same behaviour would be judged differently depending on who
+  finished first.
   """
-  @spec finalize_proctoring(binary(), binary() | nil, binary(), non_neg_integer()) :: map()
-  def finalize_proctoring(submission_id, cohort_id, block_id, allowed_blur_attempts) do
+  @spec finalize_proctoring(binary(), binary() | nil, binary()) :: map()
+  def finalize_proctoring(submission_id, cohort_id, block_id) do
     fields =
       submission_id
       |> ProctoringMonitor.finalize()
-      |> Proctoring.evaluate(cohort_id, block_id, allowed_blur_attempts)
-
-    ExamIntegrityStats.forget(cohort_id, block_id, submission_id)
+      |> Proctoring.evaluate(cohort_id, block_id, submission_id: submission_id)
 
     fields
   end
 
   @doc "Risk-level summary of a submission's proctoring data, or `nil` if it has none."
   defdelegate proctoring_summary(content), to: Proctoring, as: :summary
+
+  @doc "Full per-event breakdown of a submission's proctoring data, or `nil` if it has none."
+  defdelegate proctoring_detail(content), to: Proctoring, as: :detail
+
+  @doc "Chronological account of what happened during an exam attempt - see `ProctoringTimeline`."
+  defdelegate proctoring_timeline(submission),
+    to: Athena.Engagement.ProctoringTimeline,
+    as: :build
+
+  @doc "The config thresholds `Proctoring` uses, for display in the methodology modal."
+  defdelegate proctoring_thresholds(), to: Proctoring, as: :thresholds
 
   defdelegate get_metrics(scope), to: Metrics
   defdelegate funnel(block_id, cohort_id \\ nil), to: Metrics

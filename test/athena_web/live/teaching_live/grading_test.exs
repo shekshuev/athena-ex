@@ -133,7 +133,7 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
       refute html =~ "solo_boy"
     end
 
-    test "filters by cheat count (has_cheats checkbox)", %{conn: conn} do
+    test "filters by integrity risk (has_cheats checkbox)", %{conn: conn} do
       student1 = insert(:account, login: "cheater")
       student2 = insert(:account, login: "honest")
       block = insert(:block)
@@ -141,13 +141,13 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
       insert(:submission,
         account_id: student1.id,
         block_id: block.id,
-        content: %{"cheat_count" => 3}
+        content: %{"risk_level" => "red"}
       )
 
       insert(:submission,
         account_id: student2.id,
         block_id: block.id,
-        content: %{"cheat_count" => 0}
+        content: %{"risk_level" => "green"}
       )
 
       {:ok, lv, _html} = live(conn, ~p"/teaching/grading")

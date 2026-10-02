@@ -2113,7 +2113,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       content = %{
         "count" => 5,
         "time_limit" => 600,
-        "allowed_blur_attempts" => 2,
+        "require_fullscreen" => true,
         "mandatory_tags" => ["core"],
         "include_tags" => ["bonus"],
         "exclude_tags" => ["deprecated"],
@@ -2125,7 +2125,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
 
       assert lib.content["count"] == 5
       assert lib.content["time_limit"] == 600
-      assert lib.content["allowed_blur_attempts"] == 2
+      assert lib.content["require_fullscreen"] == true
       assert lib.content["mandatory_tags"] == ["core"]
       assert lib.content["include_tags"] == ["bonus"]
       assert lib.content["exclude_tags"] == ["deprecated"]
@@ -2139,7 +2139,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
     } do
       content = %{
         "time_limit" => 1200,
-        "allowed_blur_attempts" => 1,
+        "require_fullscreen" => true,
         "slots" => [%{"id" => "slot-1", "tags" => ["sql"]}]
       }
 
@@ -2147,7 +2147,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       lib = save_block_to_library(conn, course, section, block, "Ticket Exam Template")
 
       assert lib.content["time_limit"] == 1200
-      assert lib.content["allowed_blur_attempts"] == 1
+      assert lib.content["require_fullscreen"] == true
       assert [%{"id" => "slot-1", "tags" => ["sql"]}] = lib.content["slots"]
     end
 

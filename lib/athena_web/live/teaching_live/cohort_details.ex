@@ -210,7 +210,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   def render(assigns) do
     ~H"""
     <div class="space-y-8">
-      <div class="flex items-center gap-4">
+      <.sticky_header id="cohort-header" class="flex items-center gap-4">
         <.button navigate={index_path(@cohort)} class="btn btn-circle btn-ghost btn-sm">
           <.icon name="hero-arrow-left" class="size-5" />
         </.button>
@@ -222,7 +222,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
               else: gettext("Cohort Dashboard")}
           </p>
         </div>
-      </div>
+      </.sticky_header>
 
       <h2 class="card-title text-xl mb-4">{gettext("Overview")}</h2>
       <.list>

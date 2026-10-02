@@ -446,6 +446,114 @@ defmodule Athena.Content.SectionsTest do
     end
   end
 
+  describe "reset_waterline on a heading" do
+    # A heading ("Module 2") has no blocks of its own; its lessons do. A waterline
+    # reset set on the heading must reach the first lesson under it, or it is
+    # silently lost together with the heading.
+    setup %{admin: admin} do
+      course = insert(:course, owner_id: admin.id)
+      mk = &Sections.create_section(admin, Map.merge(%{"course_id" => course.id}, &1))
+
+      {:ok, before_heading} = mk.(%{"title" => "Before", "order" => 1})
+      {:ok, heading} = mk.(%{"title" => "Heading", "order" => 2})
+
+      {:ok, lesson1} =
+        mk.(%{"title" => "Lesson 1", "order" => 1, "parent_id" => heading.id})
+
+      {:ok, lesson2} =
+        mk.(%{"title" => "Lesson 2", "order" => 2, "parent_id" => heading.id})
+
+      for section <- [before_heading, lesson1, lesson2],
+          do: insert(:block, section: nil, section_id: section.id)
+
+      %{
+        admin: admin,
+        course: course,
+        before_heading: before_heading,
+        heading: heading,
+        lesson1: lesson1,
+        lesson2: lesson2
+      }
+    end
+
+    defp reset_on(section) do
+      section
+      |> Ecto.Changeset.change(access_rules: %Athena.Content.AccessRules{reset_waterline: true})
+      |> Athena.Repo.update!()
+    end
+
+    test "is handed on to the first lesson under the heading, and only that one", ctx do
+      reset_on(ctx.heading)
+
+      [_before, first, second] = Sections.list_linear_lessons(ctx.course.id)
+
+      assert first.id == ctx.lesson1.id
+      assert first.access_rules.reset_waterline
+      refute second.access_rules && second.access_rules.reset_waterline
+    end
+
+    test "a heading without a reset changes nothing", ctx do
+      lessons = Sections.list_linear_lessons(ctx.course.id)
+
+      refute Enum.any?(lessons, &(&1.access_rules && &1.access_rules.reset_waterline))
+    end
+
+    test "unlocks the lessons under it despite an unfinished gate above", ctx do
+      insert(:block,
+        section: nil,
+        section_id: ctx.before_heading.id,
+        completion_rule: %Athena.Content.CompletionRule{type: :submit}
+      )
+
+      lessons = Sections.list_linear_lessons(ctx.course.id)
+
+      locked = Athena.Learning.Progress.accessible_section_ids(ctx.admin, ctx.course.id, lessons)
+      assert ctx.before_heading.id in locked
+      refute ctx.lesson1.id in locked
+
+      reset_on(ctx.heading)
+      lessons = Sections.list_linear_lessons(ctx.course.id)
+
+      unlocked =
+        Athena.Learning.Progress.accessible_section_ids(ctx.admin, ctx.course.id, lessons)
+
+      assert ctx.lesson1.id in unlocked
+      assert ctx.lesson2.id in unlocked
+    end
+
+    test "a reset on a heading nested in an empty heading still reaches the first lesson", ctx do
+      {:ok, outer} =
+        Sections.create_section(ctx.admin, %{
+          "title" => "Outer",
+          "course_id" => ctx.course.id,
+          "order" => 3
+        })
+
+      {:ok, inner} =
+        Sections.create_section(ctx.admin, %{
+          "title" => "Inner",
+          "course_id" => ctx.course.id,
+          "order" => 1,
+          "parent_id" => outer.id
+        })
+
+      {:ok, deep} =
+        Sections.create_section(ctx.admin, %{
+          "title" => "Deep lesson",
+          "course_id" => ctx.course.id,
+          "order" => 1,
+          "parent_id" => inner.id
+        })
+
+      insert(:block, section: nil, section_id: deep.id)
+      reset_on(outer)
+
+      deep_lesson = Enum.find(Sections.list_linear_lessons(ctx.course.id), &(&1.id == deep.id))
+
+      assert deep_lesson.access_rules.reset_waterline
+    end
+  end
+
   describe "get_course_tree/3 with cohort overrides" do
     test ":all mode ignores overrides and returns full tree", %{admin: admin} do
       course = insert(:course, owner_id: admin.id)

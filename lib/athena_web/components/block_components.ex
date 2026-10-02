@@ -700,6 +700,9 @@ defmodule AthenaWeb.BlockComponents do
     <div class="flex flex-col gap-2 max-w-md">
       <input
         type="text"
+        id={"exact-answer-#{@block.id}"}
+        phx-hook={if @mode == :play, do: "ProctoredInput"}
+        data-block-id={@block.id}
         name="answer"
         value={@answer_content}
         placeholder={if @mode == :play, do: gettext("Type your answer..."), else: ""}
@@ -1112,11 +1115,6 @@ defmodule AthenaWeb.BlockComponents do
       <div class="mt-8">
         <%= if @submission do %>
           <%= cond do %>
-            <% @submission.status == :graded && (@submission.content["cheat_count"] || 0) >= (@block.content["allowed_blur_attempts"] || 3) -> %>
-              <div class="text-xs font-bold uppercase tracking-widest mt-2">
-                <.icon name="hero-x-circle-solid" class="size-6" />
-                {gettext("Assessment Failed (Violations)")}
-              </div>
             <% @submission.status in [:graded, :needs_review, :rejected, :time_limit_exceeded] -> %>
               <div class="inline-flex flex-col items-center gap-2">
                 <div class={[
@@ -1900,7 +1898,7 @@ defmodule AthenaWeb.BlockComponents do
     --%>
     <div
       id={@block_id && "tiptap-toolbar-#{@mode}-#{@block_id}"}
-      class="fixed-toolbar hidden group-focus-within/tiptap:flex flex-wrap gap-2 bg-base-100 border border-base-300 rounded-sm p-1.5 mb-3 sticky top-2 z-10 items-center"
+      class="fixed-toolbar hidden group-focus-within/tiptap:flex flex-wrap gap-2 bg-base-100 border border-base-300 rounded-sm p-1.5 mb-3 sticky top-[var(--sticky-offset,0.5rem)] z-10 items-center"
     >
       <div class="join flex-wrap">
         <button

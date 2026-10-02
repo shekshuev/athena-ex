@@ -247,9 +247,14 @@ defmodule Athena.Learning.Submissions do
   @spec update_submission(map(), Submission.t(), map()) ::
           {:ok, Submission.t()} | {:error, Ecto.Changeset.t() | atom()}
   def update_submission(user, %Submission{} = submission, attrs) do
+    # `scope_submissions/3` only ever matches top-level submissions, so an
+    # exam question's child submission is authorized through its parent -
+    # the instructor who may grade the exam may grade its questions.
+    root_id = submission.parent_submission_id || submission.id
+
     has_access? =
       Submission
-      |> where([s], s.id == ^submission.id)
+      |> where([s], s.id == ^root_id)
       |> scope_submissions(user, "grading.update")
       |> Repo.exists?()
 
@@ -866,8 +871,7 @@ defmodule Athena.Learning.Submissions do
         content = %{
           "started_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
           "questions" => questions,
-          "type" => type,
-          "cheat_count" => 0
+          "type" => type
         }
 
         %Submission{}

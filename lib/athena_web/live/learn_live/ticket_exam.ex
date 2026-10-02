@@ -538,6 +538,16 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     {:noreply, socket}
   end
 
+  def handle_event("engagement_heartbeat", _params, socket) do
+    Engagement.report_proctoring_heartbeat(
+      socket.assigns.submission.id,
+      socket.assigns.cohort_id,
+      socket.assigns.block.id
+    )
+
+    {:noreply, socket}
+  end
+
   defp execute_run_code(socket, block_id) do
     socket = EngagementSignals.emit_code_run_attempt(socket, block_id)
     submission_to_run = resolve_submission_for_run(socket, block_id)
@@ -735,6 +745,15 @@ defmodule AthenaWeb.LearnLive.TicketExam do
       id="engagement-tracker"
       phx-hook="EngagementTracker"
       data-session-id={@engagement_session_id}
+      data-heartbeat={to_string(!@test_run)}
+      data-fullscreen={to_string(!@test_run && require_fullscreen?(@block))}
+      data-fs-title={gettext("Fullscreen required")}
+      data-fs-text={
+        gettext(
+          "This assessment runs in fullscreen mode only. The questions are hidden until you enter fullscreen, and leaving it is recorded."
+        )
+      }
+      data-fs-button={gettext("Enter fullscreen")}
       class="flex flex-col min-h-screen"
     >
       <div
@@ -1133,14 +1152,12 @@ defmodule AthenaWeb.LearnLive.TicketExam do
 
   defp submit_and_exit(socket, submission, course_id, reason) do
     block = Map.get(socket.assigns, :block)
-    allowed_blur_attempts = (block && block.content["allowed_blur_attempts"]) || 3
 
     proctoring_fields =
       Engagement.finalize_proctoring(
         submission.id,
         Map.get(socket.assigns, :cohort_id),
-        block && block.id,
-        allowed_blur_attempts
+        block && block.id
       )
 
     updated_content = Map.merge(submission.content || %{}, proctoring_fields)
@@ -1202,6 +1219,8 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     Phoenix.PubSub.broadcast(Athena.PubSub, "team_progress:#{team_id}", :team_progress_updated)
     Phoenix.PubSub.broadcast(Athena.PubSub, "leaderboard:#{course_id}", :update_leaderboard)
   end
+
+  defp require_fullscreen?(block), do: (block.content || %{})["require_fullscreen"] == true
 
   defp get_time_limit_sec(block) do
     content = block.content || %{}

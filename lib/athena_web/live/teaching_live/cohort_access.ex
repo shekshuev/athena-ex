@@ -173,7 +173,10 @@ defmodule AthenaWeb.TeachingLive.CohortAccess do
     ~H"""
     <div class="flex h-[calc(100vh)] lg:h-screen -m-4 sm:-m-6 lg:-m-8 bg-base-100 overflow-hidden">
       <div class="w-80 shrink-0 border-r border-base-200 flex flex-col bg-base-100 overflow-y-auto">
-        <div class="p-4 border-b border-base-200 bg-base-50 shrink-0">
+        <div
+          id="course-tree-header"
+          class="p-4 border-b border-base-200 bg-base-100 shrink-0 sticky top-0 z-10"
+        >
           <.link
             navigate={cohort_show_path(@cohort)}
             class="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-base-content/50 hover:text-primary transition-colors mb-2"

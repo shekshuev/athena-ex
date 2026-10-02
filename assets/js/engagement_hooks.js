@@ -26,6 +26,14 @@ export function engagementTrackingActive() {
   return document.getElementById(TRACKER_ROOT_ID) != null;
 }
 
+// True only on a real (non-test-run) exam page: the server sets
+// `data-heartbeat="true"` on the tracker root there and nowhere else, so the
+// extra integrity telemetry (typing shape, offline, pointer, window size,
+// fullscreen) never runs in ordinary lessons or in the builder's sandbox.
+export function proctoringActive() {
+  return document.getElementById(TRACKER_ROOT_ID)?.dataset.heartbeat === "true";
+}
+
 export const EngagementHooks = {};
 
 EngagementHooks.EngagementTracker = {
@@ -54,7 +62,18 @@ EngagementHooks.EngagementTracker = {
       this.pushEvent("engagement_batch", { events });
     };
 
-    this.flushTimer = setInterval(this.flush, FLUSH_INTERVAL_MS);
+    // On exam pages (`data-heartbeat="true"`) every tick also pings the
+    // server unconditionally, even when `flush()` above had nothing queued
+    // - that's what lets the server notice *silence* (tracking JS
+    // disabled/tampered) instead of only ever seeing suspicious events. A
+    // student who patches just the listeners below (visibilitychange,
+    // IntersectionObserver, BroadcastChannel) can't quietly stop this too
+    // without also breaking their own `pushEvent`-based ability to answer
+    // and submit.
+    this.flushTimer = setInterval(() => {
+      this.flush();
+      if (this.el.dataset.heartbeat === "true") this.pushEvent("engagement_heartbeat", {});
+    }, FLUSH_INTERVAL_MS);
 
     this.observer = new IntersectionObserver(
       (entries) => {
@@ -108,11 +127,20 @@ EngagementHooks.EngagementTracker = {
     this.observeBlocks();
 
     this.tabHiddenAt = null;
+    this.blurredAt = null;
+    this.lastSwitchKeyAt = 0;
+
+    // Alt/Meta/Tab pressed just before losing focus means a keyboard window
+    // switch (Alt+Tab, Cmd+Tab, Win key) rather than a click elsewhere. Only
+    // annotates the event for the teacher's timeline; it never changes the
+    // verdict, the loss of focus itself is what counts.
+    this.awayPayload = (extra = {}) =>
+      Date.now() - this.lastSwitchKeyAt < 800 ? { ...extra, trigger: "keyboard" } : extra;
 
     this.handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
         this.tabHiddenAt = Date.now();
-        this.enqueue(this.currentBlockId, "tab_hidden");
+        this.enqueue(this.currentBlockId, "tab_hidden", this.awayPayload());
       } else {
         const durationMs = this.tabHiddenAt != null ? Date.now() - this.tabHiddenAt : null;
         this.tabHiddenAt = null;
@@ -124,20 +152,39 @@ EngagementHooks.EngagementTracker = {
     // Complements visibilitychange - catches switching to another top-level
     // window in setups where visibilitychange doesn't reliably fire (varies
     // by OS/window manager/multi-monitor).
-    this.handleWindowBlur = () => this.enqueue(this.currentBlockId, "window_blur");
-    this.handleWindowFocus = () => this.enqueue(this.currentBlockId, "window_focus");
+    this.handleWindowBlur = () => {
+      this.blurredAt = Date.now();
+      this.enqueue(this.currentBlockId, "window_blur", this.awayPayload());
+    };
+    this.handleWindowFocus = () => {
+      const durationMs = this.blurredAt != null ? Date.now() - this.blurredAt : null;
+      this.blurredAt = null;
+      this.enqueue(this.currentBlockId, "window_focus", { duration_ms: durationMs });
+    };
     window.addEventListener("blur", this.handleWindowBlur);
     window.addEventListener("focus", this.handleWindowFocus);
 
-    // PrintScreen keydown - Windows only. macOS screenshot shortcuts
-    // (Cmd+Shift+3/4/5) are OS-level and invisible to any web page JS, so
-    // this can never catch those - see Athena.Engagement.Event.
+    // PrintScreen - Windows only, and there the browser only ever receives
+    // the key's `keyup` (the OS swallows the `keydown`), so both are
+    // listened to and de-duplicated. Win+Shift+S, screenshot tools and
+    // macOS shortcuts (Cmd+Shift+3/4/5) are OS-level and invisible to any
+    // web page, so this can never catch those - see Athena.Engagement.Event.
+    this.lastPrintScreenAt = 0;
     this.handleKeyDown = (e) => {
-      if (e.key === "PrintScreen") {
+      if (["Alt", "Meta", "Tab", "OS"].includes(e.key)) this.lastSwitchKeyAt = Date.now();
+      if (e.key === "PrintScreen" && Date.now() - this.lastPrintScreenAt > 500) {
+        this.lastPrintScreenAt = Date.now();
+        this.enqueue(this.currentBlockId, "printscreen_attempt");
+      }
+    };
+    this.handleKeyUp = (e) => {
+      if (e.key === "PrintScreen" && Date.now() - this.lastPrintScreenAt > 500) {
+        this.lastPrintScreenAt = Date.now();
         this.enqueue(this.currentBlockId, "printscreen_attempt");
       }
     };
     document.addEventListener("keydown", this.handleKeyDown);
+    document.addEventListener("keyup", this.handleKeyUp);
 
     // Idle detection - distinct from tab_hidden: the tab can stay focused
     // and in view while the student has simply stepped away, which
@@ -170,19 +217,191 @@ EngagementHooks.EngagementTracker = {
 
     this.handleBeforeUnload = () => this.flush();
     window.addEventListener("beforeunload", this.handleBeforeUnload);
+
+    if (this.el.dataset.heartbeat === "true") this.startProctoring();
   },
 
   updated() {
     this.observeBlocks();
   },
 
+  disconnected() {
+    this.isConnected = false;
+    this.checkOutage?.();
+  },
+
+  reconnected() {
+    this.isConnected = true;
+    this.checkOutage?.();
+  },
+
+  // Integrity telemetry that only makes sense on a real exam page (see
+  // `proctoringActive/0`): the browser's own account of a connection
+  // outage, the pointer leaving the window, the window sharing the screen,
+  // and - for exams that require it - the fullscreen gate.
+  startProctoring() {
+    this.isConnected = true;
+    this.isOnline = navigator.onLine;
+    this.outageStartedAt = null;
+
+    // One outage = from the first moment either the network or the socket
+    // went away until both are back; short blips are normal LiveView
+    // reconnects and not worth reporting.
+    this.checkOutage = () => {
+      const healthy = this.isOnline && this.isConnected;
+      if (!healthy && this.outageStartedAt == null) {
+        this.outageStartedAt = Date.now();
+      } else if (healthy && this.outageStartedAt != null) {
+        const durationMs = Date.now() - this.outageStartedAt;
+        this.outageStartedAt = null;
+        if (durationMs >= 5_000) {
+          this.enqueue(this.currentBlockId, "offline_period", { duration_ms: durationMs });
+        }
+      }
+    };
+    this.handleOffline = () => {
+      this.isOnline = false;
+      this.checkOutage();
+    };
+    this.handleOnline = () => {
+      this.isOnline = true;
+      this.checkOutage();
+    };
+    window.addEventListener("offline", this.handleOffline);
+    window.addEventListener("online", this.handleOnline);
+
+    // The pointer leaving the window catches reading a neighbouring window
+    // by hovering it (scrolling works without a click), which never fires
+    // blur or visibilitychange.
+    this.pointerLeftAt = null;
+    this.handleMouseLeave = () => {
+      this.pointerLeftAt = Date.now();
+    };
+    this.handleMouseEnter = () => {
+      if (this.pointerLeftAt == null) return;
+      const durationMs = Date.now() - this.pointerLeftAt;
+      this.pointerLeftAt = null;
+      if (durationMs >= 2_000) {
+        this.enqueue(this.currentBlockId, "mouse_left", { duration_ms: durationMs });
+      }
+    };
+    document.documentElement.addEventListener("mouseleave", this.handleMouseLeave);
+    document.documentElement.addEventListener("mouseenter", this.handleMouseEnter);
+
+    this.startGeometryWatch();
+    if (this.el.dataset.fullscreen === "true") this.startFullscreenGate();
+  },
+
+  // "Window shares the screen" = the browser's *outer* width is a fraction
+  // of the screen's usable width. Outer dimensions, not `innerWidth`: zoom
+  // and a docked DevTools change the inner size but not the outer one.
+  // Touch devices and small screens are skipped, and a change must hold for
+  // ten seconds before it is reported so dragging a window doesn't spam.
+  startGeometryWatch() {
+    const SPLIT_RATIO = 0.65;
+    let reported = false;
+    let pending = null;
+
+    const classify = () => {
+      if (document.fullscreenElement) return false;
+      if (window.matchMedia("(pointer: coarse)").matches) return false;
+      if (screen.availWidth < 1000) return false;
+      return window.outerWidth / screen.availWidth <= SPLIT_RATIO;
+    };
+
+    const evaluate = () => {
+      const split = classify();
+      clearTimeout(pending);
+      if (split === reported) return;
+      pending = setTimeout(() => {
+        if (classify() !== split) return;
+        reported = split;
+        this.enqueue(this.currentBlockId, "window_geometry_changed", {
+          split,
+          ratio: Number((window.outerWidth / screen.availWidth).toFixed(2)),
+        });
+      }, 10_000);
+    };
+
+    this.handleResize = evaluate;
+    window.addEventListener("resize", this.handleResize);
+    this.geometryTimer = setInterval(evaluate, 5_000);
+    evaluate();
+  },
+
+  // A blocking overlay until the page is fullscreen. Fullscreen can only be
+  // entered from a user gesture, so entering is a button, not automatic.
+  // Leaving it (Esc, F11) brings the overlay back over the questions and is
+  // reported with how long the student was out. The overlay lives on
+  // <body>, outside what LiveView patches. Browsers without the API get no
+  // gate and no penalty.
+  startFullscreenGate() {
+    const root = document.documentElement;
+    if (!root.requestFullscreen) return;
+
+    const overlay = document.createElement("div");
+    overlay.id = "fullscreen-gate";
+    overlay.className =
+      "fixed inset-0 z-[10000] flex items-center justify-center bg-base-100 p-6 text-center";
+    overlay.innerHTML = `
+      <div class="max-w-md space-y-4">
+        <h2 class="text-2xl font-black"></h2>
+        <p class="text-base-content/70"></p>
+        <button type="button" class="btn btn-primary"></button>
+      </div>`;
+    overlay.querySelector("h2").textContent = this.el.dataset.fsTitle || "";
+    overlay.querySelector("p").textContent = this.el.dataset.fsText || "";
+    const button = overlay.querySelector("button");
+    button.textContent = this.el.dataset.fsButton || "";
+    button.addEventListener("click", () => root.requestFullscreen().catch(() => {}));
+    document.body.appendChild(overlay);
+
+    this.fullscreenOverlay = overlay;
+    this.fullscreenLeftAt = null;
+
+    this.handleFullscreenChange = () => {
+      if (document.fullscreenElement) {
+        overlay.classList.add("hidden");
+        if (this.fullscreenLeftAt != null) {
+          const durationMs = Date.now() - this.fullscreenLeftAt;
+          this.fullscreenLeftAt = null;
+          this.enqueue(this.currentBlockId, "fullscreen_exit", { duration_ms: durationMs });
+        }
+      } else {
+        overlay.classList.remove("hidden");
+        if (this.fullscreenLeftAt == null && this.hasBeenFullscreen) {
+          this.fullscreenLeftAt = Date.now();
+        }
+      }
+      if (document.fullscreenElement) this.hasBeenFullscreen = true;
+    };
+    document.addEventListener("fullscreenchange", this.handleFullscreenChange);
+  },
+
+  stopProctoring() {
+    window.removeEventListener("offline", this.handleOffline);
+    window.removeEventListener("online", this.handleOnline);
+    document.documentElement.removeEventListener("mouseleave", this.handleMouseLeave);
+    document.documentElement.removeEventListener("mouseenter", this.handleMouseEnter);
+    window.removeEventListener("resize", this.handleResize);
+    clearInterval(this.geometryTimer);
+
+    if (this.handleFullscreenChange) {
+      document.removeEventListener("fullscreenchange", this.handleFullscreenChange);
+    }
+    this.fullscreenOverlay?.remove();
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  },
+
   destroyed() {
     clearInterval(this.flushTimer);
     clearTimeout(this.idleTimer);
     this.flush();
+    this.stopProctoring?.();
     if (this.observer) this.observer.disconnect();
     document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     document.removeEventListener("keydown", this.handleKeyDown);
+    document.removeEventListener("keyup", this.handleKeyUp);
     window.removeEventListener("blur", this.handleWindowBlur);
     window.removeEventListener("focus", this.handleWindowFocus);
     window.removeEventListener("beforeunload", this.handleBeforeUnload);
@@ -311,11 +530,13 @@ EngagementHooks.AttachmentOpenTracker = {
 // Blocks copy/cut/right-click on a question-prompt container (raises the
 // bar against a quick Ctrl+C, not bulletproof - a determined student can
 // still retype, screenshot, or use devtools) and reports the attempts as
-// `copy_attempt`/`cut_attempt` telemetry. Only ever mounted on exam pages
-// (`quiz_exam`/`ticket_exam`) - see `AthenaWeb.BlockComponents.
-// render_quiz_question/1`. Right-click is blocked as a UX deterrent only
-// and is not logged - by itself it doesn't prove anything was copied, and
-// counting it would just add noise to the risk indicator.
+// `copy_attempt`/`cut_attempt`/`right_click_attempt` telemetry. Only ever
+// mounted on exam pages (`quiz_exam`/`ticket_exam`) - see
+// `AthenaWeb.BlockComponents.render_quiz_question/1`. Right-click still
+// gets blocked as a UX deterrent either way, but unlike copy/cut it has
+// ordinary innocent causes (inspecting layout, a misclick), so the server
+// only ever treats it as a cohort-relative behavioral-outlier signal, not
+// hard evidence - see `Athena.Engagement.Proctoring`.
 EngagementHooks.NoCopyGuard = {
   mounted() {
     const blockId = this.el.dataset.blockId || this.el.closest("[data-block-id]")?.dataset.blockId;
@@ -342,7 +563,10 @@ EngagementHooks.NoCopyGuard = {
       e.preventDefault();
       report("cut_attempt");
     };
-    this.onContextMenu = (e) => e.preventDefault();
+    this.onContextMenu = (e) => {
+      e.preventDefault();
+      report("right_click_attempt");
+    };
 
     this.el.addEventListener("copy", this.onCopy);
     this.el.addEventListener("cut", this.onCut);
