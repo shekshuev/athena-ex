@@ -133,6 +133,10 @@ defmodule Athena.Bench.EngagementBenchTest do
       Engagement.cohort_flag_profile(cohort.id, course.id, opts)
     end)
 
+    measure("gradebook engagement layer", fn ->
+      Engagement.gradebook_engagement(cohort.id, course.id)
+    end)
+
     measure("get_metrics(section)", fn ->
       Engagement.get_metrics(%{
         resource_type: :section,

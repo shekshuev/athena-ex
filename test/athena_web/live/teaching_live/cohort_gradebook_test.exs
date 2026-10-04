@@ -280,4 +280,117 @@ defmodule AthenaWeb.TeachingLive.CohortGradebookTest do
       assert response(conn, 403)
     end
   end
+
+  describe "scores + engagement layer" do
+    setup ctx do
+      text = Athena.Repo.get_by!(Athena.Content.Block, section_id: ctx.loops.id, type: :text)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      # Ivanov was on the quiz (so active) but never opened the text in front of it.
+      Athena.Engagement.record_events(ctx.ivanov.id, ctx.cohort.id, Ecto.UUID.generate(), [
+        %{
+          block_id: ctx.quiz.id,
+          section_id: ctx.loops.id,
+          event_type: :viewport_enter,
+          occurred_at: now
+        }
+      ])
+
+      submit(ctx.ivanov, ctx.quiz, :graded, 30)
+      %{text: text}
+    end
+
+    defp engagement(ctx, query \\ "") do
+      {:ok, lv, _html} = live(ctx.conn, gb_path(ctx, "?layer=engagement" <> query))
+      render_async(lv)
+      lv
+    end
+
+    test "switching modes keeps it in the URL and marks skipped theory", ctx do
+      {:ok, lv, _html} = live(ctx.conn, gb_path(ctx))
+      assert has_element?(lv, "#mode-scores[aria-pressed=true]")
+
+      lv |> element("#mode-engagement") |> render_click()
+      assert_patch(lv, gb_path(ctx, "?layer=engagement"))
+      render_async(lv)
+
+      assert has_element?(lv, "#cell-#{ctx.ivanov.id}-#{ctx.quiz.id} [data-marker=theory]")
+      refute has_element?(lv, "#cell-#{ctx.ivanov.id}-#{ctx.code.id} [data-marker]")
+      assert has_element?(lv, "#layer-legend")
+
+      lv |> element("#mode-scores") |> render_click()
+      assert_patch(lv, gb_path(ctx))
+      refute has_element?(lv, "[data-marker]")
+    end
+
+    test "clicking a cell explains it against the theory in front of it", ctx do
+      lv = engagement(ctx)
+
+      lv |> element("#cell-#{ctx.ivanov.id}-#{ctx.quiz.id}") |> render_click()
+
+      assert has_element?(lv, "#cell-inspector")
+      theory = lv |> element("#inspector-theory") |> render()
+      assert theory =~ "Loops · 1. Text"
+      assert theory =~ "never opened"
+      assert lv |> element("#inspector-verdict") |> render() =~ "Most likely the topic"
+      assert has_element?(lv, "#inspector-open-answer")
+
+      render_click(lv, "close_inspect")
+      refute has_element?(lv, "#cell-inspector")
+    end
+
+    test "theory columns show how every student went through the content", ctx do
+      lv = engagement(ctx)
+      refute has_element?(lv, "#theory-col-#{ctx.text.id}")
+
+      lv |> element("#toggle-theory") |> render_click()
+      assert_patch(lv, gb_path(ctx, "?layer=engagement&theory=1"))
+
+      assert has_element?(lv, "#theory-col-#{ctx.text.id}")
+
+      assert lv |> element("#theory-#{ctx.ivanov.id}-#{ctx.text.id}") |> render() =~
+               "hero-minus-mini"
+    end
+
+    test "rows can be filtered by Group Radar status", ctx do
+      lv = engagement(ctx)
+
+      lv |> element("#gradebook-filters") |> render_change(%{"level" => "inactive"})
+      assert_patch(lv, gb_path(ctx, "?layer=engagement&level=inactive"))
+
+      assert has_element?(lv, "#row-#{ctx.petrova.id}")
+      refute has_element?(lv, "#row-#{ctx.ivanov.id}")
+
+      lv |> element("#gradebook-filters") |> render_change(%{"level" => "not_mastering"})
+      assert has_element?(lv, "#row-#{ctx.ivanov.id}")
+      refute has_element?(lv, "#row-#{ctx.petrova.id}")
+    end
+
+    test "an exam attempt flagged by the cheating monitor is marked", ctx do
+      insert(:submission,
+        account_id: ctx.petrova.id,
+        block_id: ctx.exam.id,
+        status: :graded,
+        score: 90,
+        content: %{"risk_level" => "red"}
+      )
+
+      lv = engagement(ctx)
+      assert has_element?(lv, "#cell-#{ctx.petrova.id}-#{ctx.exam.id} [data-marker=integrity]")
+
+      lv |> element("#cell-#{ctx.petrova.id}-#{ctx.exam.id}") |> render_click()
+      assert has_element?(lv, "#inspector-integrity")
+    end
+
+    test "without engagement.read there is no layer, whatever the URL says", ctx do
+      role = insert(:role, permissions: ["cohorts.read", "courses.read", "grading.read"])
+      teacher = insert(:account, role: role)
+      Athena.Repo.update!(Ecto.Changeset.change(ctx.cohort, owner_id: teacher.id))
+      conn = build_conn() |> init_test_session(%{"account_id" => teacher.id})
+
+      {:ok, lv, _html} = live(conn, gb_path(ctx, "?layer=engagement"))
+      refute has_element?(lv, "#gradebook-mode")
+      refute has_element?(lv, "[data-marker]")
+    end
+  end
 end

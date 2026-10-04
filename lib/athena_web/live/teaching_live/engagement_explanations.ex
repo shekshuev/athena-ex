@@ -366,6 +366,62 @@ defmodule AthenaWeb.TeachingLive.EngagementExplanations do
   defp skim_label(:shallow_scroll), do: gettext("not read to the end")
   defp skim_label(:video_skipped), do: gettext("video skipped")
 
+  @doc "How a student went through one theory block, in a few words."
+  @spec theory_status_label(map()) :: String.t()
+  def theory_status_label(%{status: :skipped}), do: gettext("never opened")
+
+  def theory_status_label(%{status: :superficial, flags: flags}),
+    do:
+      gettext("skimmed (%{how})", how: flags |> Map.keys() |> Enum.map_join(", ", &skim_label/1))
+
+  def theory_status_label(%{status: :ok}), do: gettext("studied normally")
+
+  @doc """
+  One-sentence reading of a gradebook cell next to the theory in front of
+  it: is a low score most likely about skipped theory, or about the topic?
+  `cell` is a gradebook cell (or `nil` - not started), `reviews` the
+  student's theory reviews for that task.
+  """
+  @spec cell_verdict(map() | nil, [map()], integer()) :: String.t()
+  def cell_verdict(cell, reviews, threshold) do
+    weak? = Enum.any?(reviews, &(&1.status in [:skipped, :superficial]))
+
+    cond do
+      is_nil(cell) and weak? ->
+        gettext("Not started yet - and the theory in front of it hasn't been studied either.")
+
+      is_nil(cell) ->
+        gettext("Not started yet.")
+
+      cell.state == :review ->
+        gettext("Waiting for a teacher's grade.")
+
+      cell.state == :in_progress ->
+        gettext("Being checked right now.")
+
+      cell.score < threshold and weak? ->
+        gettext(
+          "Most likely the topic wasn't learned: the theory in front of the task was skipped or skimmed."
+        )
+
+      cell.score < threshold and reviews == [] ->
+        gettext("Below the pass mark. There is no theory in front of this task to compare with.")
+
+      cell.score < threshold ->
+        gettext(
+          "The theory was studied, yet the task failed - the topic itself may be unclear; worth going through it together."
+        )
+
+      weak? ->
+        gettext(
+          "Passed even though the theory was skipped or skimmed - they may have known the topic already."
+        )
+
+      true ->
+        gettext("Passed, with the theory studied normally.")
+    end
+  end
+
   # Recommendations
 
   @doc """

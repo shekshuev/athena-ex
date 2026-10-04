@@ -33,11 +33,11 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
 
   alias Athena.{Content, Engagement, Identity, Learning}
   alias Athena.Content.Block
-  alias AthenaWeb.TeachingLive.{ChartConfig, GradebookTable}
+  alias AthenaWeb.TeachingLive.ChartConfig
   import AthenaWeb.TeachingLive.CourseTreeComponents, only: [course_tree_nav: 1]
 
   import AthenaWeb.TeachingLive.CohortAnalyticsComponents,
-    only: [analytics_tabs: 1, gradebook_path: 2]
+    only: [analytics_tabs: 1, gradebook_path: 2, block_index: 1]
 
   import AthenaWeb.TeachingLive.GroupRadarComponents
 
@@ -968,34 +968,6 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
       ChartConfig.line_config(trend_points, dataset_label: "Active students")
     )
   end
-
-  # Readable names for every block of the course ("Loops · 2. Exam"), used
-  # by the explanations, plus which section each block lives in (for links
-  # into the course radar).
-  defp block_index(tree) do
-    sections = flatten_tree(tree)
-
-    blocks_by_section =
-      sections
-      |> Enum.map(& &1.id)
-      |> Content.list_blocks_by_section_ids()
-      |> Enum.group_by(& &1.section_id)
-
-    for section <- sections,
-        {block, number} <-
-          blocks_by_section
-          |> Map.get(section.id, [])
-          |> Enum.sort_by(& &1.order)
-          |> Enum.with_index(1),
-        reduce: {%{}, %{}} do
-      {names, sections_by_block} ->
-        name = "#{section.title} · #{number}. #{GradebookTable.type_label(block.type)}"
-        {Map.put(names, block.id, name), Map.put(sections_by_block, block.id, section.id)}
-    end
-  end
-
-  defp flatten_tree(sections),
-    do: Enum.flat_map(sections, &[&1 | flatten_tree(&1.children)])
 
   @level_order Engagement.assessment_levels()
 

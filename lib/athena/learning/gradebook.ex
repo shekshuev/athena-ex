@@ -55,7 +55,8 @@ defmodule Athena.Learning.Gradebook do
           status: atom(),
           attempts: pos_integer(),
           submission_id: binary(),
-          submitted_at: DateTime.t()
+          submitted_at: DateTime.t(),
+          integrity: :confirmed | :red | :yellow | nil
         }
 
   @doc "Attempt policies `build/3` accepts, default first."
@@ -254,7 +255,9 @@ defmodule Athena.Learning.Gradebook do
         block_id: s.block_id,
         status: s.status,
         score: s.score,
-        inserted_at: s.inserted_at
+        inserted_at: s.inserted_at,
+        risk_level: fragment("?->>'risk_level'", s.content),
+        review_status: fragment("?->'proctoring_review'->>'status'", s.content)
       }
     )
     |> scope_to_rows(cohort, row_ids)
@@ -293,9 +296,18 @@ defmodule Athena.Learning.Gradebook do
       status: chosen.status,
       attempts: length(attempts),
       submission_id: chosen.id,
-      submitted_at: chosen.inserted_at
+      submitted_at: chosen.inserted_at,
+      integrity: integrity(chosen)
     }
   end
+
+  # The cheating monitor's verdict on the shown attempt: a teacher's own
+  # review always wins over the automatic risk level.
+  defp integrity(%{review_status: "confirmed"}), do: :confirmed
+  defp integrity(%{review_status: "dismissed"}), do: nil
+  defp integrity(%{risk_level: "red"}), do: :red
+  defp integrity(%{risk_level: "yellow"}), do: :yellow
+  defp integrity(_attempt), do: nil
 
   defp choose_attempt(attempts, :first), do: List.first(attempts)
   defp choose_attempt(attempts, :last), do: List.last(attempts)

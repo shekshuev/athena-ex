@@ -9,7 +9,8 @@ defmodule AthenaWeb.TeachingLive.CohortAnalyticsComponents do
   """
   use AthenaWeb, :html
 
-  alias Athena.Identity
+  alias Athena.{Content, Identity}
+  alias AthenaWeb.TeachingLive.GradebookTable
 
   attr :cohort, :map, required: true
   attr :course, :map, required: true
@@ -109,4 +110,35 @@ defmodule AthenaWeb.TeachingLive.CohortAnalyticsComponents do
     do: ~p"/teaching/teams/#{id}/engagement/#{course.id}"
 
   defp content_path(%{id: id}, course), do: ~p"/teaching/cohorts/#{id}/engagement/#{course.id}"
+
+  @doc """
+  Readable names for every block of a course tree (`"Loops · 2. Exam"`),
+  plus which section each block lives in: `{%{block_id => name},
+  %{block_id => section_id}}`. Used by every screen that has to name a
+  block in plain words.
+  """
+  def block_index(tree) do
+    sections = flatten_tree(tree)
+
+    blocks_by_section =
+      sections
+      |> Enum.map(& &1.id)
+      |> Content.list_blocks_by_section_ids()
+      |> Enum.group_by(& &1.section_id)
+
+    for section <- sections,
+        {block, number} <-
+          blocks_by_section
+          |> Map.get(section.id, [])
+          |> Enum.sort_by(& &1.order)
+          |> Enum.with_index(1),
+        reduce: {%{}, %{}} do
+      {names, sections_by_block} ->
+        name = "#{section.title} · #{number}. #{GradebookTable.type_label(block.type)}"
+        {Map.put(names, block.id, name), Map.put(sections_by_block, block.id, section.id)}
+    end
+  end
+
+  defp flatten_tree(sections),
+    do: Enum.flat_map(sections, &[&1 | flatten_tree(&1.children)])
 end

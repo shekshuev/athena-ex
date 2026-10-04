@@ -10,6 +10,7 @@ defmodule AthenaWeb.TeachingLive.GradebookParams do
   out, so a pristine gradebook has a clean URL.
   """
 
+  alias Athena.Engagement
   alias Athena.Learning.Gradebook
 
   @types ~w(code quiz_question quiz_exam ticket_exam file_assignment)a
@@ -30,7 +31,10 @@ defmodule AthenaWeb.TeachingLive.GradebookParams do
           compact: boolean(),
           collapsed: [binary()],
           sort: String.t(),
-          dir: :asc | :desc
+          dir: :asc | :desc,
+          layer: :scores | :engagement,
+          theory: boolean(),
+          level: atom() | nil
         }
 
   @doc "Gradable block types, in the order filter chips show them."
@@ -55,7 +59,10 @@ defmodule AthenaWeb.TeachingLive.GradebookParams do
       compact: false,
       collapsed: [],
       sort: "name",
-      dir: :asc
+      dir: :asc,
+      layer: :scores,
+      theory: false,
+      level: nil
     }
   end
 
@@ -76,7 +83,10 @@ defmodule AthenaWeb.TeachingLive.GradebookParams do
       compact: params["compact"] == "1",
       collapsed: params["collapsed"] |> csv() |> Enum.filter(&uuid?/1),
       sort: sort(params["sort"]),
-      dir: if(params["dir"] == "desc", do: :desc, else: :asc)
+      dir: if(params["dir"] == "desc", do: :desc, else: :asc),
+      layer: one_of(params["layer"], [:scores, :engagement], defaults.layer),
+      theory: params["theory"] == "1",
+      level: one_of(params["level"], Engagement.assessment_levels(), nil)
     }
   end
 
@@ -98,7 +108,10 @@ defmodule AthenaWeb.TeachingLive.GradebookParams do
       {"compact", if(filters.compact, do: "1")},
       {"collapsed", join(filters.collapsed)},
       {"sort", unless_default(filters.sort, defaults.sort)},
-      {"dir", unless_default(filters.dir, defaults.dir)}
+      {"dir", unless_default(filters.dir, defaults.dir)},
+      {"layer", unless_default(filters.layer, defaults.layer)},
+      {"theory", if(filters.theory, do: "1")},
+      {"level", filters.level}
     ]
     |> Enum.reject(fn {_key, value} -> value in [nil, ""] end)
     |> Map.new(fn {key, value} -> {key, to_string(value)} end)
@@ -117,7 +130,8 @@ defmodule AthenaWeb.TeachingLive.GradebookParams do
         filters.block_ids != nil,
         filters.types != [],
         filters.from != nil or filters.to != nil,
-        filters.status != :all
+        filters.status != :all,
+        filters.level != nil
       ],
       & &1
     )

@@ -10,13 +10,25 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
   rebuilt. The student/block pickers are native `popover`s inside that same
   form, so they stay open while the table refreshes behind them.
 
-  This is the plain "scores only" mode: it never reads engagement data.
+  Two modes (`?layer=`): plain scores, which never read engagement data,
+  and "scores + engagement" (`AthenaWeb.TeachingLive.GradebookLayerComponents`),
+  which loads `Athena.Engagement.gradebook_engagement/3` once, off the
+  LiveView process, and draws theory markers, optional theory columns, a
+  filter by Group Radar status and a per-cell "why" inspector on top.
+  Team cohorts (one row per team) only have the scores mode.
   """
   use AthenaWeb, :live_view
 
-  alias Athena.{Content, Identity, Learning}
+  require Logger
+
+  alias Athena.{Content, Engagement, Identity, Learning}
   alias AthenaWeb.TeachingLive.{GradebookParams, GradebookTable}
-  import AthenaWeb.TeachingLive.CohortAnalyticsComponents, only: [analytics_tabs: 1]
+  alias AthenaWeb.TeachingLive.EngagementExplanations, as: Explanations
+
+  import AthenaWeb.TeachingLive.CohortAnalyticsComponents,
+    only: [analytics_tabs: 1, block_index: 1]
+
+  import AthenaWeb.TeachingLive.GradebookLayerComponents
 
   on_mount {AthenaWeb.Hooks.Permission, "grading.read"}
 
@@ -31,6 +43,12 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
        |> assign(:cohort, cohort)
        |> assign(:course, course)
        |> assign(:can_open_submissions?, Identity.can?(user, "grading.update"))
+       |> assign(:can_engagement?, Identity.can?(user, "engagement.read"))
+       |> assign(:layer, nil)
+       |> assign(:layer_loading, false)
+       |> assign(:inspect, nil)
+       |> assign(:block_names, nil)
+       |> assign(:block_sections, %{})
        |> assign(:student_q, "")
        |> assign(:block_q, "")
        |> assign(:page_title, gettext("Gradebook: %{course}", course: course.title))}
@@ -45,7 +63,7 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
 
   @impl true
   def handle_params(params, _url, socket) do
-    filters = GradebookParams.parse(params)
+    filters = params |> GradebookParams.parse() |> restrict_layer(socket.assigns)
 
     gradebook =
       Learning.build_gradebook(socket.assigns.cohort, socket.assigns.course.id, %{
@@ -61,7 +79,75 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
      socket
      |> assign(:filters, filters)
      |> assign(:gradebook, gradebook)
-     |> assign(:table, GradebookTable.prepare(gradebook, filters))}
+     |> maybe_load_layer()
+     |> rebuild_table()}
+  end
+
+  # The engagement layer needs engagement.read, and has nothing to say about
+  # a team row (radar levels and theory are per student).
+  defp restrict_layer(filters, %{can_engagement?: true, cohort: %{type: type}})
+       when type != :team,
+       do: filters
+
+  defp restrict_layer(filters, _assigns),
+    do: %{filters | layer: :scores, theory: false, level: nil}
+
+  defp layer_available?(%{can_engagement?: can?, cohort: cohort}),
+    do: can? and cohort.type != :team
+
+  # Loaded once per visit (it covers the whole course, whatever the
+  # filters), never on the dead render.
+  defp maybe_load_layer(
+         %{assigns: %{filters: %{layer: :engagement}, layer: nil, layer_loading: false}} = socket
+       ) do
+    if connected?(socket) do
+      cohort_id = socket.assigns.cohort.id
+      course_id = socket.assigns.course.id
+
+      socket
+      |> assign(:layer_loading, true)
+      |> assign_block_names()
+      |> start_async(:layer, fn -> Engagement.gradebook_engagement(cohort_id, course_id) end)
+    else
+      socket
+    end
+  end
+
+  defp maybe_load_layer(socket), do: socket
+
+  defp assign_block_names(%{assigns: %{block_names: nil}} = socket) do
+    {names, sections} = socket.assigns.course.id |> Content.get_course_tree(:all) |> block_index()
+    socket |> assign(:block_names, names) |> assign(:block_sections, sections)
+  end
+
+  defp assign_block_names(socket), do: socket
+
+  defp rebuild_table(socket) do
+    %{gradebook: gradebook, filters: filters, layer: layer} = socket.assigns
+    assign(socket, :table, GradebookTable.prepare(by_level(gradebook, filters, layer), filters))
+  end
+
+  # The Group Radar status filter only applies once the layer has loaded.
+  defp by_level(gradebook, %{layer: :engagement, level: level}, %{levels: levels})
+       when not is_nil(level) do
+    %{gradebook | rows: Enum.filter(gradebook.rows, &(Map.get(levels, &1.id) == level))}
+  end
+
+  defp by_level(gradebook, _filters, _layer), do: gradebook
+
+  @impl true
+  def handle_async(:layer, {:ok, layer}, socket) do
+    {:noreply,
+     socket |> assign(:layer, layer) |> assign(:layer_loading, false) |> rebuild_table()}
+  end
+
+  def handle_async(:layer, {:exit, reason}, socket) do
+    Logger.error("Gradebook engagement layer failed: #{inspect(reason)}")
+
+    {:noreply,
+     socket
+     |> assign(:layer_loading, false)
+     |> put_flash(:error, gettext("Could not load engagement data. Please try again."))}
   end
 
   @impl true
@@ -85,7 +171,12 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
         threshold: pick(params, "threshold", filters, :threshold),
         display: pick(params, "display", filters, :display),
         compact:
-          if(Map.has_key?(params, "compact"), do: params["compact"] == "1", else: filters.compact)
+          if(Map.has_key?(params, "compact"), do: params["compact"] == "1", else: filters.compact),
+        level:
+          if(Map.has_key?(params, "level"),
+            do: GradebookParams.parse(%{"level" => params["level"]}).level,
+            else: filters.level
+          )
     }
 
     {:noreply,
@@ -94,6 +185,21 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
      |> assign(:block_q, params["block_q"] || socket.assigns.block_q)
      |> patch_if_changed(new_filters)}
   end
+
+  def handle_event("set_layer", %{"layer" => "engagement"}, socket),
+    do: {:noreply, update_filters(socket, layer: :engagement)}
+
+  def handle_event("set_layer", _params, socket),
+    do: {:noreply, update_filters(socket, layer: :scores, theory: false, level: nil)}
+
+  def handle_event("toggle_theory", _params, socket),
+    do: {:noreply, update_filters(socket, theory: !socket.assigns.filters.theory)}
+
+  def handle_event("inspect", %{"row" => row_id, "block" => block_id}, socket),
+    do: {:noreply, assign(socket, :inspect, {row_id, block_id})}
+
+  def handle_event("close_inspect", _params, socket),
+    do: {:noreply, assign(socket, :inspect, nil)}
 
   def handle_event("toggle_review", _params, socket) do
     status = if socket.assigns.filters.status == :review, do: :all, else: :review
@@ -285,8 +391,15 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
         </div>
       </div>
 
+      <.mode_switch
+        filters={@filters}
+        loading?={@layer_loading}
+        available?={layer_available?(assigns)}
+      />
+
       <.filter_bar
         filters={@filters}
+        layer={@layer}
         gradebook={@gradebook}
         student_q={@student_q}
         block_q={@block_q}
@@ -319,17 +432,79 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
             gradebook={@gradebook}
             filters={@filters}
             can_open_submissions?={@can_open_submissions?}
+            layer={@filters.layer == :engagement && @layer}
+            block_names={@block_names || %{}}
           />
           <.legend filters={@filters} />
+          <.layer_legend filters={@filters} />
       <% end %>
+
+      <.inspector_for {assigns} />
     </div>
     """
+  end
+
+  defp inspector_for(%{inspect: {row_id, block_id}, layer: layer} = assigns)
+       when not is_nil(layer) do
+    row = Enum.find(assigns.gradebook.rows, &(&1.id == row_id))
+    column = Enum.find(assigns.gradebook.columns, &(&1.block.id == block_id))
+
+    if row && column do
+      cell = Map.get(assigns.gradebook.cells, {row_id, block_id})
+
+      assigns =
+        assign(assigns,
+          row: row,
+          column: column,
+          cell: cell,
+          reviews: task_reviews(layer, row_id, block_id),
+          summary:
+            Map.get(assigns.table.column_summaries, block_id) ||
+              %{average: nil, passed: 0, submitted: 0, total: 0},
+          submission_path:
+            assigns.can_open_submissions? && cell && ~p"/teaching/grading/#{cell.submission_id}",
+          radar_path: student_radar_path(assigns.cohort, assigns.course, row_id),
+          block_path: &course_radar_block_path(assigns, row_id, &1)
+        )
+
+      ~H"""
+      <.cell_inspector
+        row={@row}
+        column={@column}
+        cell={@cell}
+        reviews={@reviews}
+        summary={@summary}
+        threshold={@filters.threshold}
+        block_names={@block_names || %{}}
+        submission_path={@submission_path || nil}
+        radar_path={@radar_path}
+        block_path={@block_path}
+      />
+      """
+    else
+      ~H""
+    end
+  end
+
+  defp inspector_for(assigns), do: ~H""
+
+  defp student_radar_path(%{type: :team}, _course, _row_id), do: nil
+
+  defp student_radar_path(cohort, course, row_id),
+    do:
+      ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?view=students&window=all&student=#{row_id}"
+
+  defp course_radar_block_path(assigns, row_id, block_id) do
+    section_id = Map.get(assigns.block_sections, block_id, "")
+
+    ~p"/teaching/cohorts/#{assigns.cohort.id}/engagement/#{assigns.course.id}?section_id=#{section_id}&block_id=#{block_id}&account_id=#{row_id}"
   end
 
   attr :filters, :map, required: true
   attr :gradebook, :map, required: true
   attr :student_q, :string, required: true
   attr :block_q, :string, required: true
+  attr :layer, :map, default: nil
 
   defp filter_bar(assigns) do
     assigns = assign(assigns, :active_count, GradebookParams.active_count(assigns.filters))
@@ -382,6 +557,25 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
             selected={@filters.status == value}
           >
             {label}
+          </option>
+        </select>
+      </label>
+
+      <label :if={@filters.layer == :engagement} class="flex flex-col gap-1">
+        <span class="filter-label">{gettext("Group Radar status")}</span>
+        <select
+          id="gradebook-level"
+          name="level"
+          class="select select-sm rounded-sm w-52"
+          disabled={is_nil(@layer)}
+        >
+          <option value="" selected={is_nil(@filters.level)}>{gettext("Any status")}</option>
+          <option
+            :for={{level, _rule} <- Explanations.level_rules()}
+            value={level}
+            selected={@filters.level == level}
+          >
+            {Explanations.level_label(level)}
           </option>
         </select>
       </label>
@@ -744,8 +938,22 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
   attr :gradebook, :map, required: true
   attr :filters, :map, required: true
   attr :can_open_submissions?, :boolean, required: true
+  attr :layer, :any, default: false, doc: "loaded engagement layer, or false"
+  attr :block_names, :map, default: %{}
 
   defp grade_table(assigns) do
+    show_theory? = assigns.filters.theory and is_map(assigns.layer)
+    layer = if is_map(assigns.layer), do: assigns.layer
+
+    assigns =
+      assigns
+      |> assign(:layer, layer)
+      |> assign(
+        :items,
+        Map.new(assigns.table.groups, &{&1.section.id, group_items(&1, layer, show_theory?)})
+      )
+      |> assign(:row_ids, Enum.map(assigns.table.rows, & &1.row.id))
+
     ~H"""
     <div class="flex items-center justify-end gap-3 text-xs -mb-2">
       <button type="button" phx-click="collapse_all" class="link link-hover text-base-content/60">
@@ -771,7 +979,7 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
             </th>
             <th
               :for={group <- @table.groups}
-              colspan={if group.collapsed?, do: 1, else: length(group.columns)}
+              colspan={if group.collapsed?, do: 1, else: length(@items[group.section.id])}
               class="sticky top-0 z-20 bg-base-100 border-b border-r border-base-200 px-2 py-1.5 text-left font-normal"
             >
               <button
@@ -800,30 +1008,36 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
                   {gettext("Avg")}
                 </th>
               <% else %>
-                <th
-                  :for={column <- group.columns}
-                  id={"col-#{column.block.id}"}
-                  class="sticky top-8 z-20 bg-base-100 border-b border-base-200 px-1 py-1.5 font-normal min-w-14"
-                  title={column_tooltip(column)}
-                >
-                  <button
-                    type="button"
-                    phx-click="sort"
-                    phx-value-key={"block:#{column.block.id}"}
-                    class={[
-                      "flex flex-col items-center gap-0.5 w-full rounded-sm px-1 py-0.5 hover:bg-base-200 transition-colors",
-                      @filters.sort == "block:#{column.block.id}" && "text-primary"
-                    ]}
-                  >
-                    <.icon name={GradebookTable.type_icon(column.block.type)} class="size-4" />
-                    <span class="text-xs font-bold tabular-nums">
-                      {column.number}<.sort_arrow
-                        :if={@filters.sort == "block:#{column.block.id}"}
-                        dir={@filters.dir}
-                      />
-                    </span>
-                  </button>
-                </th>
+                <%= for item <- @items[group.section.id] do %>
+                  <%= case item do %>
+                    <% {:theory, block} -> %>
+                      <.theory_header block={block} name={Map.get(@block_names, block.id, "")} />
+                    <% {:task, column} -> %>
+                      <th
+                        id={"col-#{column.block.id}"}
+                        class="sticky top-8 z-20 bg-base-100 border-b border-base-200 px-1 py-1.5 font-normal min-w-14"
+                        title={column_tooltip(column)}
+                      >
+                        <button
+                          type="button"
+                          phx-click="sort"
+                          phx-value-key={"block:#{column.block.id}"}
+                          class={[
+                            "flex flex-col items-center gap-0.5 w-full rounded-sm px-1 py-0.5 hover:bg-base-200 transition-colors",
+                            @filters.sort == "block:#{column.block.id}" && "text-primary"
+                          ]}
+                        >
+                          <.icon name={GradebookTable.type_icon(column.block.type)} class="size-4" />
+                          <span class="text-xs font-bold tabular-nums">
+                            {column.number}<.sort_arrow
+                              :if={@filters.sort == "block:#{column.block.id}"}
+                              dir={@filters.dir}
+                            />
+                          </span>
+                        </button>
+                      </th>
+                  <% end %>
+                <% end %>
               <% end %>
             <% end %>
           </tr>
@@ -861,14 +1075,26 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
                   filters={@filters}
                 />
               <% else %>
-                <.grade_cell
-                  :for={column <- group.columns}
-                  cell={Map.get(@gradebook.cells, {row.id, column.block.id})}
-                  row={row}
-                  column={column}
-                  filters={@filters}
-                  can_open_submissions?={@can_open_submissions?}
-                />
+                <%= for item <- @items[group.section.id] do %>
+                  <%= case item do %>
+                    <% {:theory, block} -> %>
+                      <.theory_cell
+                        review={Map.get(@layer.reviews, {row.id, block.id})}
+                        row_id={row.id}
+                        block_id={block.id}
+                        name={Map.get(@block_names, block.id, "")}
+                      />
+                    <% {:task, column} -> %>
+                      <.grade_cell
+                        cell={Map.get(@gradebook.cells, {row.id, column.block.id})}
+                        row={row}
+                        column={column}
+                        filters={@filters}
+                        can_open_submissions?={@can_open_submissions?}
+                        reviews={@layer && task_reviews(@layer, row.id, column.block.id)}
+                      />
+                  <% end %>
+                <% end %>
               <% end %>
             <% end %>
           </tr>
@@ -884,24 +1110,28 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
                   {format_average(average_of_columns(@table, group))}
                 </td>
               <% else %>
-                <td
-                  :for={column <- group.columns}
-                  class="sticky bottom-0 z-20 bg-base-200 border-t border-base-300 px-1 py-2 text-center"
-                >
-                  <% summary = @table.column_summaries[column.block.id] %>
-                  <div class={[
-                    "text-xs font-bold tabular-nums",
-                    summary.average && band_text(summary.average, @filters.threshold)
-                  ]}>
-                    {format_average(summary.average)}
-                  </div>
-                  <div
-                    class="text-[10px] text-base-content/50 tabular-nums"
-                    title={gettext("Share of students at or above the pass mark")}
-                  >
-                    {percent(summary.passed, summary.total)}%
-                  </div>
-                </td>
+                <%= for item <- @items[group.section.id] do %>
+                  <%= case item do %>
+                    <% {:theory, block} -> %>
+                      <.theory_footer layer={@layer} block_id={block.id} row_ids={@row_ids} />
+                    <% {:task, column} -> %>
+                      <td class="sticky bottom-0 z-20 bg-base-200 border-t border-base-300 px-1 py-2 text-center">
+                        <% summary = @table.column_summaries[column.block.id] %>
+                        <div class={[
+                          "text-xs font-bold tabular-nums",
+                          summary.average && band_text(summary.average, @filters.threshold)
+                        ]}>
+                          {format_average(summary.average)}
+                        </div>
+                        <div
+                          class="text-[10px] text-base-content/50 tabular-nums"
+                          title={gettext("Share of students at or above the pass mark")}
+                        >
+                          {percent(summary.passed, summary.total)}%
+                        </div>
+                      </td>
+                  <% end %>
+                <% end %>
               <% end %>
             <% end %>
           </tr>
@@ -947,6 +1177,7 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
   attr :column, :map, required: true
   attr :filters, :map, required: true
   attr :can_open_submissions?, :boolean, required: true
+  attr :reviews, :any, default: nil, doc: "theory reviews in engagement mode, else nil"
 
   defp grade_cell(assigns) do
     matches? =
@@ -959,16 +1190,26 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
     assigns =
       assigns
       |> assign(:dimmed?, not matches?)
-      |> assign(:href, cell_href(assigns.cell, assigns.can_open_submissions?))
+      |> assign(:inspectable?, is_list(assigns.reviews))
+      |> assign(
+        :href,
+        if(is_list(assigns.reviews),
+          do: nil,
+          else: cell_href(assigns.cell, assigns.can_open_submissions?)
+        )
+      )
 
     ~H"""
     <td
       id={"cell-#{@row.id}-#{@column.block.id}"}
       class={[
-        "border-b border-base-200 p-0.5 text-center transition-opacity",
-        @dimmed? && "opacity-25"
+        "relative border-b border-base-200 p-0.5 text-center transition-opacity",
+        @dimmed? && "opacity-25",
+        @inspectable? && "cursor-pointer hover:bg-base-200/70"
       ]}
+      phx-click={@inspectable? && JS.push("inspect", value: %{row: @row.id, block: @column.block.id})}
     >
+      <.cell_markers :if={@inspectable?} cell={@cell} reviews={@reviews} />
       <.cell_body
         cell={@cell}
         href={@href}

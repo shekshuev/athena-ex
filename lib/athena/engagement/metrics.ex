@@ -392,7 +392,57 @@ defmodule Athena.Engagement.Metrics do
 
   defp do_student_radar(cohort_id, course_id, opts) do
     since = Keyword.get(opts, :since, default_since())
-    index = build_scope_index(course_id, cohort_id, since, opts)
+
+    course_id
+    |> build_scope_index(cohort_id, since, opts)
+    |> radar_from_index(cohort_id, course_id, opts)
+  end
+
+  @doc """
+  What the gradebook's engagement layer draws on top of the scores, over
+  the whole course: every student's radar `level`, which theory blocks each
+  graded task builds on (`theory_by_task`, see
+  `Athena.Engagement.TheoryLinks`), how each student went through each of
+  those theory blocks (`reviews`, `%{{account_id, block_id} => review}`,
+  `status` `:ok`/`:superficial`/`:skipped`), and every section's content
+  (non-graded) blocks in course order (`content_blocks`) for theory columns.
+  """
+  @spec gradebook_engagement(binary(), binary(), keyword()) :: map()
+  def gradebook_engagement(cohort_id, course_id, opts \\ []) do
+    opts = Keyword.put(opts, :since, nil)
+
+    cached(:gradebook_engagement, cohort_id, course_id, opts, fn ->
+      index = build_scope_index(course_id, cohort_id, nil, opts)
+      rows = radar_from_index(index, cohort_id, course_id, opts)
+      gradable = Enum.filter(index.all_blocks, &Block.gradable?/1)
+
+      theory_by_task =
+        Map.new(gradable, fn block ->
+          theory = TheoryLinks.theory_blocks_for(block, index.sections, index.blocks_by_section)
+          {block.id, Enum.map(theory, & &1.id)}
+        end)
+
+      theory_ids = theory_by_task |> Map.values() |> List.flatten() |> MapSet.new()
+      theory_blocks = Enum.filter(index.all_blocks, &MapSet.member?(theory_ids, &1.id))
+
+      reviews =
+        for %{account_id: account_id} <- rows, block <- theory_blocks, into: %{} do
+          {{account_id, block.id}, theory_review(block, account_id, index, index)}
+        end
+
+      %{
+        levels: Map.new(rows, &{&1.account_id, &1.level}),
+        theory_by_task: theory_by_task,
+        reviews: reviews,
+        content_blocks:
+          Map.new(index.blocks_by_section, fn {section_id, blocks} ->
+            {section_id, Enum.reject(blocks, &Block.gradable?/1)}
+          end)
+      }
+    end)
+  end
+
+  defp radar_from_index(index, cohort_id, course_id, opts) do
     blocks = radar_blocks(index, Keyword.get(opts, :section_id))
     students = students_in_cohort(cohort_id)
 
