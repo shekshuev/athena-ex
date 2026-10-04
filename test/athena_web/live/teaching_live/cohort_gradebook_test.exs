@@ -361,7 +361,8 @@ defmodule AthenaWeb.TeachingLive.CohortGradebookTest do
       assert has_element?(lv, "#row-#{ctx.petrova.id}")
       refute has_element?(lv, "#row-#{ctx.ivanov.id}")
 
-      lv |> element("#gradebook-filters") |> render_change(%{"level" => "not_mastering"})
+      # One failed task alone doesn't make "not mastering" - Ivanov is fine.
+      lv |> element("#gradebook-filters") |> render_change(%{"level" => "on_track"})
       assert has_element?(lv, "#row-#{ctx.ivanov.id}")
       refute has_element?(lv, "#row-#{ctx.petrova.id}")
     end

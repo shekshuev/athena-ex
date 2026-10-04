@@ -712,6 +712,56 @@ defmodule Athena.Learning.SubmissionsTest do
 
       assert submissions == []
     end
+
+    test "sees their group's students' own work on the group's courses, nothing else of theirs",
+         %{instructor: instructor, student: student} do
+      other_admin = insert(:account)
+      group_course = insert(:course, owner_id: other_admin.id)
+      other_course = insert(:course, owner_id: other_admin.id)
+      block = insert(:block, section: insert(:section, course: group_course))
+      other_block = insert(:block, section: insert(:section, course: other_course))
+
+      group = insert(:cohort, type: :academic, owner_id: other_admin.id)
+      instructor_profile = insert(:instructor, owner_id: instructor.id)
+      insert(:cohort_instructor, instructor_id: instructor_profile.id, cohort_id: group.id)
+      insert(:cohort_membership, account_id: student.id, cohort_id: group.id)
+      insert(:enrollment, cohort_id: group.id, course_id: group_course.id)
+
+      someone_elses_team = insert(:cohort, type: :team, owner_id: other_admin.id)
+
+      own = insert(:submission, account_id: student.id, block_id: block.id)
+      # The same student's work on a course the group isn't taking...
+      insert(:submission, account_id: student.id, block_id: other_block.id)
+      # ...and their share of another teacher's team work, stay hidden.
+      insert(:submission,
+        account_id: student.id,
+        block_id: block.id,
+        cohort_id: someone_elses_team.id
+      )
+
+      {:ok, {submissions, _meta}} = Submissions.list_submissions(instructor, %{})
+
+      assert Enum.map(submissions, & &1.id) == [own.id]
+    end
+
+    test "owning a group counts as much as being assigned to it", %{
+      instructor: instructor,
+      student: student
+    } do
+      other_admin = insert(:account)
+      course = insert(:course, owner_id: other_admin.id)
+      block = insert(:block, section: insert(:section, course: course))
+
+      group = insert(:cohort, type: :academic, owner_id: instructor.id)
+      insert(:cohort_membership, account_id: student.id, cohort_id: group.id)
+      insert(:enrollment, cohort_id: group.id, course_id: course.id)
+
+      own = insert(:submission, account_id: student.id, block_id: block.id)
+
+      {:ok, {submissions, _meta}} = Submissions.list_submissions(instructor, %{})
+
+      assert Enum.map(submissions, & &1.id) == [own.id]
+    end
   end
 
   describe "delete_submission_with_rollback/2" do

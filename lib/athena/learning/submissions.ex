@@ -57,6 +57,38 @@ defmodule Athena.Learning.Submissions do
   defp filters_on_origin?(_params), do: false
 
   @doc """
+  Flop custom filter (`in_cohort`): the submissions that belong to a cohort,
+  which means two different things depending on its type -
+
+    * a **team** shares one progress: a submission is the whole team's, and
+      carries the team's id in `Submission.cohort_id`;
+    * an academic **group** is just a set of students working on their own:
+      their submissions have no `cohort_id` (see
+      `list_group_submissions_for_block/2`), so the group's work is its
+      members' individual submissions. A member's work for some team they
+      are also on is not the group's.
+
+  An unknown cohort id matches nothing.
+  """
+  def filter_in_cohort(query, %Flop.Filter{value: cohort_id}, _opts) when is_binary(cohort_id) do
+    case Repo.get(Cohort, cohort_id) do
+      %Cohort{type: :team} ->
+        where(query, [s], s.cohort_id == ^cohort_id)
+
+      %Cohort{} ->
+        members =
+          from(cm in CohortMembership, where: cm.cohort_id == ^cohort_id, select: cm.account_id)
+
+        where(query, [s], s.account_id in subquery(members) and is_nil(s.cohort_id))
+
+      nil ->
+        where(query, [s], false)
+    end
+  end
+
+  def filter_in_cohort(query, _filter, _opts), do: query
+
+  @doc """
   Gets a single submission by its ID. Enforces grading.read ACL through custom scoping.
   Raises `Ecto.NoResultsError` if the Submission does not exist or access is denied.
   """
@@ -89,21 +121,47 @@ defmodule Athena.Learning.Submissions do
         policies = Map.get(user.role.policies || %{}, permission, [])
 
         if "own_only" in policies do
-          my_cohort_ids =
+          instructor_cohort_ids =
             from ci in CohortInstructor,
               join: i in Instructor,
               on: ci.instructor_id == i.id,
               where: i.owner_id == ^user.id,
               select: ci.cohort_id
 
+          # "Mine" means the same as for reading cohorts: owned, or instructed.
+          my_cohort_ids =
+            from c in Cohort,
+              where: c.owner_id == ^user.id or c.id in subquery(instructor_cohort_ids),
+              select: c.id
+
+          # An academic group's submissions carry no cohort_id (only a team's
+          # shared work does), so a group's work is found through its members:
+          # their own submissions, on the courses the group is enrolled in -
+          # not whatever else those students do in other teachers' courses.
+          my_group_students_work =
+            from cm in CohortMembership,
+              join: c in Cohort,
+              on: c.id == cm.cohort_id,
+              join: e in Enrollment,
+              on: e.cohort_id == cm.cohort_id,
+              where: c.type == :academic and c.id in subquery(my_cohort_ids),
+              where:
+                cm.account_id == parent_as(:submission).account_id and
+                  e.course_id == parent_as(:submission_section).course_id,
+              select: 1
+
           my_course_ids = Content.list_accessible_course_ids(user)
 
-          query
+          from(s in query, as: :submission)
           |> join(:inner, [s], b in Block, on: s.block_id == b.id)
-          |> join(:inner, [s, b], sec in Section, on: b.section_id == sec.id)
+          |> join(:inner, [s, b], sec in Section,
+            on: b.section_id == sec.id,
+            as: :submission_section
+          )
           |> where(
             [s, b, sec],
-            s.cohort_id in subquery(my_cohort_ids) or sec.course_id in ^my_course_ids
+            s.cohort_id in subquery(my_cohort_ids) or sec.course_id in ^my_course_ids or
+              (is_nil(s.cohort_id) and exists(my_group_students_work))
           )
         else
           query

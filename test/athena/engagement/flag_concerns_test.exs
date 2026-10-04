@@ -77,9 +77,14 @@ defmodule Athena.Engagement.FlagConcernsTest do
       refute :video_skipped in result.slacking
     end
 
-    test ":no_debug_cycle fires when there was no run attempt and some paste happened" do
-      result = Metrics.flag_concerns(%{debug_cycle_present?: false, paste_ratio: 0.5})
+    test ":no_debug_cycle fires when most of the code was pasted and never run" do
+      result = Metrics.flag_concerns(%{debug_cycle_present?: false, paste_ratio: 0.8})
       assert :no_debug_cycle in result.slacking
+    end
+
+    test ":no_debug_cycle ignores a small paste" do
+      result = Metrics.flag_concerns(%{debug_cycle_present?: false, paste_ratio: 0.3})
+      refute :no_debug_cycle in result.slacking
     end
 
     test ":no_debug_cycle does not fire when a debug cycle did happen, even with heavy paste" do
@@ -143,9 +148,9 @@ defmodule Athena.Engagement.FlagConcernsTest do
       refute :hesitation in result.struggling
     end
 
-    test ":backtracked fires on any backtrack" do
-      result = Metrics.flag_concerns(%{backtrack_count: 1})
-      assert :backtracked in result.struggling
+    test ":backtracked is never a student's struggling flag" do
+      result = Metrics.flag_concerns(%{backtrack_count: 50})
+      refute :backtracked in result.struggling
     end
 
     test ":backtracked does not fire with zero backtracks" do
@@ -230,7 +235,9 @@ defmodule Athena.Engagement.FlagConcernsTest do
         })
 
       assert result.slacking == []
-      assert :backtracked in result.struggling
+      # Going back is how people read, not a student problem - it only
+      # matters cohort-wide, as a content flag.
+      refute :backtracked in result.struggling
       assert :high_backtrack_rate in result.content
     end
   end

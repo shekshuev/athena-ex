@@ -297,12 +297,16 @@ defmodule Athena.Engagement.StudentRadarTest do
   end
 
   describe "student_radar/3 - level and signals" do
-    test "a low score after skimming the theory explains itself", %{
+    test "low scores after skimming the theory explain themselves", %{
       course: course,
       cohort: cohort,
+      section: section,
       text_block: text_block,
       quiz_block: quiz_block
     } do
+      # Two failed tasks make "not mastering"; one alone doesn't.
+      quiz2 = insert(:block, section: section, type: :quiz_question, order: 30)
+
       skimmer = insert(:account)
       skipper = insert(:account)
       join_cohort(skimmer, cohort)
@@ -321,6 +325,8 @@ defmodule Athena.Engagement.StudentRadarTest do
         status: :graded,
         score: 20
       )
+
+      insert(:submission, account_id: skimmer.id, block_id: quiz2.id, status: :graded, score: 20)
 
       # Never opened the text, but was active on the quiz.
       record(skipper.id, cohort.id, Ecto.UUID.generate(), quiz_block, :viewport_enter, now)

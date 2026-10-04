@@ -301,6 +301,8 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       # Two superficial-learning signals: 5s on a 100s text, a pasted answer.
       record_fast_dwell(student, cohort, block, section, now)
       record_heavy_paste(student, cohort, quiz_block, section, now)
+      # A third rushed block: rushing counts as a pattern from 3 blocks on.
+      record_fast_dwell(student, cohort, extra_text(section), section, now)
       record_fast_dwell(calm, cohort, block, section, DateTime.add(now, -400 * 86_400))
       record(calm.id, cohort.id, Ecto.UUID.generate(), quiz_block, :viewport_enter, now)
 
@@ -335,6 +337,8 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
 
       record_fast_dwell(student, cohort, block, section, old_at)
       record_heavy_paste(student, cohort, quiz_block, section, old_at)
+      # A third rushed block: rushing counts as a pattern from 3 blocks on.
+      record_fast_dwell(student, cohort, extra_text(section), section, old_at)
 
       {:ok, lv, _html} = live(conn, students_path(cohort, course))
       render_async(lv)
@@ -394,6 +398,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       conn: conn,
       cohort: cohort,
       course: course,
+      section: section,
       quiz_block: quiz_block,
       student: student
     } do
@@ -407,6 +412,11 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
         status: :graded,
         score: 20
       )
+
+      # A second failed task: one alone doesn't make "not mastering".
+      quiz2 = insert(:block, section: section, type: :quiz_question, order: 40)
+
+      insert(:submission, account_id: student.id, block_id: quiz2.id, status: :graded, score: 20)
 
       {:ok, lv, _html} =
         live(conn, students_path(cohort, course) <> "&student=#{student.id}")
@@ -433,6 +443,8 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       now = DateTime.utc_now() |> DateTime.truncate(:second)
       record_fast_dwell(student, cohort, block, section, now)
       record_heavy_paste(student, cohort, quiz_block, section, now)
+      # A third rushed block: rushing counts as a pattern from 3 blocks on.
+      record_fast_dwell(student, cohort, extra_text(section), section, now)
       record(calm.id, cohort.id, Ecto.UUID.generate(), quiz_block, :viewport_enter, now)
 
       {:ok, lv, _html} = live(conn, students_path(cohort, course))
@@ -1067,6 +1079,15 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
     Engagement.record_events(account_id, cohort_id, session_id, [
       %{block_id: block.id, section_id: block.section_id, event_type: event_type, occurred_at: at}
     ])
+  end
+
+  defp extra_text(section) do
+    insert(:block,
+      section: section,
+      type: :text,
+      order: 30,
+      engagement_rule: %EngagementRule{expected_seconds: 100}
+    )
   end
 
   defp students_path(cohort, course),

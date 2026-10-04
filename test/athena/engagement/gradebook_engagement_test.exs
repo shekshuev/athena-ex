@@ -49,7 +49,9 @@ defmodule Athena.Engagement.GradebookEngagementTest do
 
     visit.(reader, 120)
     visit.(skimmer, 5)
+    quiz2 = insert(:block, section: loops, type: :quiz_question, order: 20)
     insert(:submission, account_id: skimmer.id, block_id: quiz.id, status: :graded, score: 10)
+    insert(:submission, account_id: skimmer.id, block_id: quiz2.id, status: :graded, score: 10)
 
     layer = Engagement.gradebook_engagement(cohort.id, course.id)
 

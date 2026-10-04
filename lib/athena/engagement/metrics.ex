@@ -692,18 +692,8 @@ defmodule Athena.Engagement.Metrics do
         students: length(students),
         progress_sum: rows |> Enum.map(& &1.progress_percent) |> Enum.sum(),
         levels: Enum.frequencies_by(rows, & &1.level),
-        slacking_students:
-          Enum.count(
-            rows,
-            &(in_category.(&1, :slacking) >=
-                Keyword.get(config, :student_radar_slacking_threshold, 2))
-          ),
-        struggling_students:
-          Enum.count(
-            rows,
-            &(in_category.(&1, :struggling) >=
-                Keyword.get(config, :student_radar_struggling_threshold, 2))
-          ),
+        slacking_students: Enum.count(rows, & &1.pattern.slacking.fires?),
+        struggling_students: Enum.count(rows, & &1.pattern.struggling.fires?),
         integrity_students: Enum.count(rows, &(in_category.(&1, :integrity) > 0)),
         scored: length(scores),
         score_sum: Enum.sum(scores),
@@ -789,7 +779,16 @@ defmodule Athena.Engagement.Metrics do
         completed: completed_by_account,
         progress: Map.new(rows, &{&1.account_id, &1.progress_percent}),
         window_start: window_start,
-        theory: theory
+        theory: theory,
+        visited:
+          Enum.reduce(blocks, %{}, fn block, visited ->
+            Enum.reduce(rows, visited, fn row, acc ->
+              case Map.get(index.acc_by_account_block, {row.account_id, block.id}) do
+                %{event_count: n} when n > 0 -> Map.update(acc, row.account_id, 1, &(&1 + 1))
+                _ -> acc
+              end
+            end)
+          end)
       })
 
     gradable_ids = for block <- blocks, Block.gradable?(block), do: block.id
@@ -921,7 +920,6 @@ defmodule Athena.Engagement.Metrics do
     :no_debug_cycle,
     :slow_dwell,
     :hesitation,
-    :backtracked,
     :panic_debugging,
     :printscreen_attempted,
     :copy_attempted,
@@ -1531,9 +1529,11 @@ defmodule Athena.Engagement.Metrics do
   end
 
   defp slacking_flags(metrics, config) do
+    # Pasting a line or two and submitting is normal; pasting most of the
+    # solution and never running it is the pattern worth noticing.
     no_debug_cycle? =
       metrics[:debug_cycle_present?] == false and is_number(metrics[:paste_ratio]) and
-        metrics[:paste_ratio] > 0
+        metrics[:paste_ratio] > Keyword.get(config, :no_debug_paste_ratio, 0.5)
 
     []
     |> add_if_true(fast_dwell?(metrics, config), :fast_dwell)
@@ -1559,7 +1559,6 @@ defmodule Athena.Engagement.Metrics do
     []
     |> add_if_true(slow_dwell?(metrics, config), :slow_dwell)
     |> add_if_true(hesitation?(metrics, config), :hesitation)
-    |> add_if(metrics[:backtrack_count], &(&1 > 0), :backtracked)
     |> add_if_true(metrics[:panic_debugging?] == true, :panic_debugging)
   end
 

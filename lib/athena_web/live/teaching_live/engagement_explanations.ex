@@ -64,25 +64,31 @@ defmodule AthenaWeb.TeachingLive.EngagementExplanations do
         ),
       not_mastering:
         gettext(
-          "A task scored below %{score}, or %{gap}+ points below the group's median, or two tasks that took many more attempts than usual.",
+          "At least %{count} tasks scored below %{score} while the group passed them (or %{gap}+ points below the group's median), or two tasks that took many more attempts than usual and still ended below the pass mark. A task most of the group fails is a problem with the task, not the student - see the course map.",
+          count: get.(:not_mastering_min_low_scores, 2),
           score: get.(:low_score_threshold, 50),
           gap: get.(:low_score_group_gap, 30)
         ),
       behind:
         gettext(
-          "Course progress %{gap}+ points behind the group's median, or %{count}+ blocks that most of the group has already completed.",
+          "Course progress %{gap}+ points behind the group's median, or skipped at least %{count} blocks (and %{share}% of them) that most of the group has already completed.",
           gap: get.(:behind_progress_gap, 20),
-          count: get.(:missed_blocks_for_behind, 3)
+          count: get.(:missed_blocks_for_behind, 5),
+          share: round(get.(:missed_blocks_share, 0.1) * 100)
         ),
       superficial:
         gettext(
-          "%{count}+ signs of rushing through material: much less time than the group, not scrolling to the end, skipping video, pasting answers.",
-          count: get.(:student_radar_slacking_threshold, 2)
+          "Rushes through at least %{share}% of the blocks they open (and %{min}+ blocks), %{factor}× more often than is usual in the group: much less time than the group, not reading to the end, skipping video, pasting most of the answer.",
+          share: round(get.(:pattern_block_share, 0.25) * 100),
+          min: get.(:pattern_min_blocks, 3),
+          factor: get.(:pattern_group_factor, 2)
         ),
       struggling:
         gettext(
-          "%{count}+ signs of getting stuck: much more time than the group, changing answers again and again, going back to earlier blocks, re-running code within seconds.",
-          count: get.(:student_radar_struggling_threshold, 2)
+          "Gets stuck on at least %{share}% of the blocks they open (and %{min}+ blocks), %{factor}× more often than is usual in the group: much more time than the group, changing answers again and again, re-running code within seconds.",
+          share: round(get.(:pattern_block_share, 0.25) * 100),
+          min: get.(:pattern_min_blocks, 3),
+          factor: get.(:pattern_group_factor, 2)
         ),
       on_track: gettext("None of the above.")
     }
@@ -165,6 +171,32 @@ defmodule AthenaWeb.TeachingLive.EngagementExplanations do
   def categories, do: @categories
 
   defp category_rank(category), do: Enum.find_index(@categories, &(&1 == category)) || 99
+
+  @doc """
+  One line about a rushing / getting-stuck pattern for the student card:
+  "Rushing on 32% of opened blocks (usually 9% in this group)".
+  """
+  @spec pattern_line(atom(), map()) :: String.t()
+  def pattern_line(kind, %{share: share, blocks: blocks, group_share: group_share}) do
+    group = if group_share, do: share(group_share), else: "—"
+
+    case kind do
+      :slacking ->
+        gettext(
+          "Rushing on %{share} of opened blocks (%{blocks}); usually %{group} in this group",
+          share: share(share),
+          blocks: blocks,
+          group: group
+        )
+
+      :struggling ->
+        gettext("Stuck on %{share} of opened blocks (%{blocks}); usually %{group} in this group",
+          share: share(share),
+          blocks: blocks,
+          group: group
+        )
+    end
+  end
 
   @doc "Label of a signal category."
   @spec category_label(atom()) :: String.t()

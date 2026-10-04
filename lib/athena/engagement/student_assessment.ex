@@ -63,6 +63,9 @@ defmodule Athena.Engagement.StudentAssessment do
     config = Application.get_env(:athena, Athena.Engagement, [])
     group = group_stats(context, config)
 
+    patterns = Map.new(context.students, &{&1, block_pattern(&1, context)})
+    group_shares = group_pattern_shares(patterns, config)
+
     Map.new(context.students, fn account_id ->
       signals =
         activity_signals(account_id, context) ++
@@ -70,31 +73,90 @@ defmodule Athena.Engagement.StudentAssessment do
           performance_signals(account_id, context, group, config) ++
           progress_signals(account_id, context, group, config)
 
-      {account_id, %{level: level(signals, config), signals: signals}}
+      pattern = judge_pattern(Map.fetch!(patterns, account_id), group_shares, config)
+      facts = Map.put(pattern, :missed_enough?, missed_enough?(signals, group, config))
+
+      {account_id, %{level: level(signals, facts, config), signals: signals, pattern: pattern}}
     end)
   end
 
+  # How many of the blocks a student visited in the window show rushing /
+  # getting stuck - a share, so a 400-block course and a 20-block course
+  # are judged alike.
+  defp block_pattern(account_id, context) do
+    flagged = Map.get(context.flagged_blocks, account_id, [])
+    visited = Map.get(context.visited, account_id, 0)
+
+    %{
+      visited: visited,
+      slacking_blocks: Enum.count(flagged, &(&1.slacking_flags != [])),
+      struggling_blocks: Enum.count(flagged, &(&1.struggling_flags != []))
+    }
+  end
+
+  defp group_pattern_shares(patterns, config) do
+    min_peers = Keyword.get(config, :min_group_for_baseline, 5)
+    visited = patterns |> Map.values() |> Enum.filter(&(&1.visited > 0))
+
+    %{
+      slacking: median_if(Enum.map(visited, &(&1.slacking_blocks / &1.visited)), min_peers),
+      struggling: median_if(Enum.map(visited, &(&1.struggling_blocks / &1.visited)), min_peers)
+    }
+  end
+
+  # A pattern counts when it covers enough blocks, a big enough share of the
+  # visited ones, and clearly more than is usual in this group.
+  defp judge_pattern(pattern, group_shares, config) do
+    judge = fn blocks, group_share ->
+      share = if pattern.visited > 0, do: blocks / pattern.visited, else: 0.0
+
+      fires? =
+        blocks >= Keyword.get(config, :pattern_min_blocks, 3) and
+          share >= Keyword.get(config, :pattern_block_share, 0.25) and
+          (is_nil(group_share) or
+             share >= Keyword.get(config, :pattern_group_factor, 2) * group_share)
+
+      %{blocks: blocks, share: share, group_share: group_share, fires?: fires?}
+    end
+
+    %{
+      visited: pattern.visited,
+      slacking: judge.(pattern.slacking_blocks, group_shares.slacking),
+      struggling: judge.(pattern.struggling_blocks, group_shares.struggling)
+    }
+  end
+
+  defp missed_enough?(signals, group, config) do
+    missed = Enum.count(signals, &(&1.key == :missed_block))
+
+    missed >= Keyword.get(config, :missed_blocks_for_behind, 5) and
+      group.group_done_blocks > 0 and
+      missed / group.group_done_blocks >= Keyword.get(config, :missed_blocks_share, 0.1)
+  end
+
   @doc """
-  The level a list of signals adds up to - the first rule that matches,
-  most urgent first:
+  The level a student's signals and patterns add up to - the first rule
+  that matches, most urgent first:
 
     * `:inactive` - no activity at all in the window;
     * `:integrity` - at least `student_radar_integrity_threshold` exam
       integrity signals;
-    * `:not_mastering` - a low score, or at least two tasks needing many
-      attempts;
-    * `:behind` - overall progress well behind the cohort, or at least
-      `missed_blocks_for_behind` blocks the cohort has done and they haven't;
-    * `:superficial` - at least `student_radar_slacking_threshold`
-      superficial-learning signals;
-    * `:struggling` - at least `student_radar_struggling_threshold` signs of
-      getting stuck;
+    * `:not_mastering` - at least `not_mastering_min_low_scores` low scores
+      (below the group, see `low_score/3`), or at least two tasks that took
+      many more attempts than usual *and* still ended below the pass mark -
+      retrying until it works is persistence, not a problem;
+    * `:behind` - overall progress well behind the cohort, or missing enough
+      of the blocks the cohort has done (`facts.missed_enough?`);
+    * `:superficial` / `:struggling` - rushing / getting stuck as a pattern
+      across the visited blocks (`facts.slacking.fires?` /
+      `facts.struggling.fires?`), not a single block;
     * `:on_track` - otherwise.
   """
-  @spec level([signal()], keyword()) :: atom()
-  def level(signals, config \\ []) do
+  @spec level([signal()], map(), keyword()) :: atom()
+  def level(signals, facts \\ %{}, config \\ []) do
     count = fn key -> Enum.count(signals, &(&1.key == key)) end
     in_category = fn category -> Enum.count(signals, &(&1.category == category)) end
+    fires? = fn key -> match?(%{fires?: true}, Map.get(facts, key)) end
 
     cond do
       count.(:inactive) > 0 ->
@@ -103,17 +165,17 @@ defmodule Athena.Engagement.StudentAssessment do
       in_category.(:integrity) >= Keyword.get(config, :student_radar_integrity_threshold, 1) ->
         :integrity
 
-      count.(:low_score) > 0 or count.(:many_attempts) >= 2 ->
+      count.(:low_score) >= Keyword.get(config, :not_mastering_min_low_scores, 2) or
+          Enum.count(signals, &(&1.key == :many_attempts and &1[:unresolved?])) >= 2 ->
         :not_mastering
 
-      count.(:behind_progress) > 0 or
-          count.(:missed_block) >= Keyword.get(config, :missed_blocks_for_behind, 3) ->
+      count.(:behind_progress) > 0 or Map.get(facts, :missed_enough?, false) ->
         :behind
 
-      in_category.(:slacking) >= Keyword.get(config, :student_radar_slacking_threshold, 2) ->
+      fires?.(:slacking) ->
         :superficial
 
-      in_category.(:struggling) >= Keyword.get(config, :student_radar_struggling_threshold, 2) ->
+      fires?.(:struggling) ->
         :struggling
 
       true ->
@@ -157,12 +219,14 @@ defmodule Athena.Engagement.StudentAssessment do
       end)
 
     progress = Enum.map(students, &Map.get(context.progress, &1, 0.0))
+    share = Keyword.get(config, :missed_block_group_share, 0.6)
 
     %{
       per_block: per_block,
       completion_share: completion_share,
       enough_students?: length(students) >= min_peers,
       progress_median: median_if(progress, min_peers),
+      group_done_blocks: Enum.count(completion_share, fn {_id, s} -> s >= share end),
       any_active?: MapSet.size(context.active) > 0
     }
   end
@@ -231,7 +295,10 @@ defmodule Athena.Engagement.StudentAssessment do
     median = stats.score_median
 
     cond do
-      score < threshold ->
+      # A task most of the group fails is a problem with the task (it shows
+      # up on the Course Map), not with this student - below the pass mark
+      # only counts when the group itself passes it.
+      score < threshold and (is_nil(median) or median >= threshold) ->
         [
           %{
             key: :low_score,
@@ -261,7 +328,7 @@ defmodule Athena.Engagement.StudentAssessment do
 
   defp low_score(_cell, _stats, _config), do: []
 
-  defp many_attempts(%{attempts: attempts}, stats, config) do
+  defp many_attempts(%{attempts: attempts} = cell, stats, config) do
     min = Keyword.get(config, :many_attempts_min, 3)
     factor = Keyword.get(config, :many_attempts_group_factor, 2)
 
@@ -278,7 +345,10 @@ defmodule Athena.Engagement.StudentAssessment do
           value: attempts,
           baseline: stats.attempts_median,
           basis: if(stats.attempts_median, do: :group, else: :absolute),
-          peers: stats.attempts_peers
+          peers: stats.attempts_peers,
+          unresolved?:
+            not (cell.state == :scored and
+                   cell.score >= Keyword.get(config, :low_score_threshold, 50))
         }
       ],
       else: []

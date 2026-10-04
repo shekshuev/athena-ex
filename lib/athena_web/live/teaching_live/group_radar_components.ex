@@ -271,6 +271,22 @@ defmodule AthenaWeb.TeachingLive.GroupRadarComponents do
             <span class="text-xs text-base-content/50">{@window_label}</span>
           </div>
           <p class="text-sm text-base-content/70">{@rule}</p>
+          <ul :if={@row[:pattern]} id="student-patterns" class="space-y-0.5 text-xs">
+            <li
+              :for={kind <- [:slacking, :struggling]}
+              :if={@row.pattern[kind].blocks > 0}
+              class={[
+                "flex items-center gap-1.5",
+                if(@row.pattern[kind].fires?, do: "text-info font-bold", else: "text-base-content/50")
+              ]}
+            >
+              <.icon
+                name={if kind == :slacking, do: "hero-forward-mini", else: "hero-lifebuoy-mini"}
+                class="size-3.5"
+              />
+              {Explanations.pattern_line(kind, @row.pattern[kind])}
+            </li>
+          </ul>
         </header>
 
         <div class="flex-1 overflow-y-auto p-6 space-y-6">

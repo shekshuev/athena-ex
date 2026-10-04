@@ -598,7 +598,7 @@ defmodule Athena.Engagement.MetricsTest do
 
       assert profile.fast_dwell == 1.0
       assert profile.heavy_paste == 0.0
-      assert profile.backtracked == 0.0
+      refute Map.has_key?(profile, :backtracked)
       assert profile.panic_debugging == 0.0
     end
 
