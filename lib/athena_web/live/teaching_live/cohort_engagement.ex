@@ -32,6 +32,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
   alias Athena.Content.Block
   alias AthenaWeb.TeachingLive.ChartConfig
   import AthenaWeb.TeachingLive.CourseTreeComponents, only: [course_tree_nav: 1]
+  import AthenaWeb.TeachingLive.CohortAnalyticsComponents, only: [analytics_tabs: 1]
 
   on_mount {AthenaWeb.Hooks.Permission, "engagement.read"}
 
@@ -262,20 +263,13 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
               <.icon name="hero-arrow-left" class="size-4" />
               {back_to_cohort_label(@cohort)}
             </.link>
-            <div class="join">
-              <.link
-                patch={radar_path(assigns, @radar_window)}
-                class={["btn btn-sm join-item rounded-sm", @view == :students && "btn-primary"]}
-              >
-                {gettext("Group Radar")}
-              </.link>
-              <.link
-                patch={content_view_path(assigns)}
-                class={["btn btn-sm join-item rounded-sm", @view == :content && "btn-primary"]}
-              >
-                {gettext("Course Radar")}
-              </.link>
-            </div>
+            <.analytics_tabs
+              cohort={@cohort}
+              course={@course}
+              current_user={@current_user}
+              active={@view}
+              students_path={radar_path(assigns, @radar_window)}
+            />
 
             <.button
               variant="ghost"
@@ -936,17 +930,6 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
     )
     |> assign(:correction_rate_chart_config, ChartConfig.correction_rate_config(correction_rows))
   end
-
-  defp content_view_path(assigns_or_socket) do
-    {cohort, course, _section, _block, _account} = path_context(assigns_or_socket)
-    content_view_path(cohort, course)
-  end
-
-  defp content_view_path(%{type: :team, id: id}, course),
-    do: ~p"/teaching/teams/#{id}/engagement/#{course.id}"
-
-  defp content_view_path(%{id: id}, course),
-    do: ~p"/teaching/cohorts/#{id}/engagement/#{course.id}"
 
   # Deep-links a "Student radar" row straight into the existing "Course
   # radar" block detail view, pre-filtered to this student and already

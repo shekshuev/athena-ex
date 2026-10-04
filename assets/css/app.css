@@ -844,3 +844,62 @@
   user-select: none;
   -webkit-user-select: none;
 }
+
+/* Teacher gradebook (`AthenaWeb.TeachingLive.CohortGradebook`). Kept in
+   the components layer so per-use utilities (`w-7!`, `bg-*`) still win. */
+@layer components {
+  .filter-label {
+    font-size: 0.625rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
+  }
+
+  .summary-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    padding: 0.75rem 1rem;
+    background: var(--color-base-100);
+    border: 1px solid var(--color-base-200);
+    border-radius: var(--radius-field, 0.25rem);
+  }
+
+  .summary-value {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 900;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .summary-label {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+  }
+
+  .grade-cell {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.125rem;
+    width: 2.75rem;
+    height: 1.875rem;
+    border-radius: 0.25rem;
+    font-size: 0.8125rem;
+    transition:
+      transform 120ms ease,
+      box-shadow 120ms ease,
+      background-color 150ms ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .grade-cell {
+      transition: none;
+    }
+  }
+}

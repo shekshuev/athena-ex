@@ -16,6 +16,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   alias Athena.{Identity, Learning}
   alias AthenaWeb.TeachingLive.MembershipFormComponent
   alias AthenaWeb.TeachingLive.EnrollmentFormComponent
+  import AthenaWeb.TeachingLive.CohortAnalyticsComponents, only: [gradebook_path: 2]
 
   on_mount {AthenaWeb.Hooks.Permission, ["cohorts.read", "teams.read"]}
 
@@ -298,6 +299,18 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
               >
                 <.icon name="hero-chart-bar" class="size-4" />
                 <span class="hidden sm:inline">{gettext("Engagement")}</span>
+              </.button>
+
+              <.button
+                :if={Identity.can?(@current_user, "grading.read")}
+                id={"gradebook-#{enrollment.course.id}"}
+                variant="ghost"
+                size="xs"
+                class="text-primary hover:bg-primary/10"
+                navigate={gradebook_path(@cohort, enrollment.course)}
+              >
+                <.icon name="hero-table-cells" class="size-4" />
+                <span class="hidden sm:inline">{gettext("Gradebook")}</span>
               </.button>
 
               <.icon_button

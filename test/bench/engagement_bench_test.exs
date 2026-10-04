@@ -17,7 +17,8 @@ defmodule Athena.Bench.EngagementBenchTest do
   alias Athena.Content.EngagementRule
   alias Athena.Engagement
   alias Athena.Engagement.Event
-  alias Athena.Learning.BlockProgress
+  alias Athena.Learning
+  alias Athena.Learning.{BlockProgress, Submission}
   alias Athena.Repo
 
   @moduletag :bench
@@ -56,6 +57,7 @@ defmodule Athena.Bench.EngagementBenchTest do
 
     insert_events(students, blocks, cohort)
     insert_progress(students, blocks)
+    insert_submissions(students, blocks)
 
     %{course: course, cohort: cohort, sections: sections}
   end
@@ -103,6 +105,8 @@ defmodule Athena.Bench.EngagementBenchTest do
         apply(Engagement, :course_overview, [cohort.id, course.id, opts])
       end)
     end
+
+    measure("gradebook (scores only)", fn -> Learning.build_gradebook(cohort, course.id) end)
 
     measure("get_metrics(section)", fn ->
       Engagement.get_metrics(%{
@@ -218,6 +222,32 @@ defmodule Athena.Bench.EngagementBenchTest do
       occurred_at: at,
       inserted_at: at
     }
+  end
+
+  # 1-3 attempts per student on every gradable block.
+  defp insert_submissions(students, blocks) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    gradable = Enum.filter(blocks, &Athena.Content.Block.gradable?/1)
+
+    for {student, si} <- Enum.with_index(students),
+        {block, bi} <- Enum.with_index(gradable),
+        attempt <- 1..(1 + rem(si + bi, 3)) do
+      at = DateTime.add(now, -(si * 97 + bi * 31 + attempt * 600), :second)
+
+      %{
+        id: Ecto.UUID.generate(),
+        account_id: student.id,
+        block_id: block.id,
+        status: if(rem(si * bi + attempt, 7) == 0, do: :needs_review, else: :graded),
+        score: rem(si * 13 + bi * 7 + attempt * 11, 101),
+        content: %{},
+        origin: :regular,
+        inserted_at: at,
+        updated_at: at
+      }
+    end
+    |> Enum.chunk_every(5_000)
+    |> Enum.each(&Repo.insert_all(Submission, &1))
   end
 
   defp insert_progress(students, blocks) do
