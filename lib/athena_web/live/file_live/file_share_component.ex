@@ -1,7 +1,7 @@
 defmodule AthenaWeb.FileLive.FileShareComponent do
   @moduledoc """
   LiveComponent for managing a personal file's visibility and sharing
-  access — one-to-one with `AthenaWeb.StudioLive.CourseShareComponent`,
+  access – one-to-one with `AthenaWeb.StudioLive.CourseShareComponent`,
   minus the reader/writer role (a shared file has no "edit" action, only
   "can see it or not").
   """

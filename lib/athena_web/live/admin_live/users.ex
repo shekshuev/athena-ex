@@ -278,7 +278,7 @@ defmodule AthenaWeb.AdminLive.Users do
           <span class="font-bold">{acc.login}</span>
         </:col>
         <:col :let={{_id, acc}} label={gettext("Full Name")}>
-          {if acc.profile, do: Profile.full_name(acc.profile), else: "—"}
+          {if acc.profile, do: Profile.full_name(acc.profile), else: "–"}
         </:col>
         <:col :let={{_id, acc}} label={gettext("Status")} sort="status">
           <.badge tone={account_status_tone(acc.status)}>

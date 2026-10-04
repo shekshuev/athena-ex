@@ -1,12 +1,12 @@
 defmodule Athena.Gamification.Combo do
   @moduledoc """
   Tracks each account's current "no mistakes in a row" streak of graded
-  submissions — fed by `Athena.Learning`'s existing `"grading:updates"`
+  submissions – fed by `Athena.Learning`'s existing `"grading:updates"`
   PubSub broadcasts (see `Athena.Gamification.ActivityListener`), the same
   fire-and-forget channel already used to push live updates to the grading
   dashboard. No new coupling to Learning was needed for this.
 
-  Scoped to top-level submissions only (`parent_submission_id == nil`) —
+  Scoped to top-level submissions only (`parent_submission_id == nil`) –
   per-question exam submissions are internal detail, not a standalone
   "attempt" a student would recognize as one link in a combo.
   """

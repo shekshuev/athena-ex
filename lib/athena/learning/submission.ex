@@ -17,14 +17,14 @@ defmodule Athena.Learning.Submission do
 
   @derive {
     Flop.Schema,
-    filterable: ~w(status score account_id cohort_id inserted_at has_cheats block_id origin)a,
+    filterable: ~w(status score account_id cohort_id inserted_at in_cohort block_id origin)a,
     sortable: ~w(inserted_at status score)a,
     default_limit: 10,
     default_order: %{order_by: [:inserted_at], order_directions: [:desc]},
     custom_fields: [
-      has_cheats: [
-        filter: {__MODULE__, :filter_has_cheats, []},
-        ecto_type: :boolean
+      in_cohort: [
+        filter: {Athena.Learning.Submissions, :filter_in_cohort, []},
+        ecto_type: :binary_id
       ]
     ]
   }
@@ -100,16 +100,6 @@ defmodule Athena.Learning.Submission do
     |> validate_required([:status, :account_id, :block_id])
     |> validate_number(:score, greater_than_or_equal_to: 0, less_than_or_equal_to: 100)
     |> validate_expires_at()
-  end
-
-  @doc false
-  def filter_has_cheats(query, %Flop.Filter{value: value}, _opts) do
-    if value in [true, "true"] do
-      import Ecto.Query
-      where(query, [s], fragment("?.content->>'risk_level' in ('yellow', 'red')", s))
-    else
-      query
-    end
   end
 
   @doc false

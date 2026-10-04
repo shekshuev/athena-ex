@@ -5,6 +5,8 @@ defmodule AthenaWeb.TeachingLive.Grading do
   """
   use AthenaWeb, :live_view
 
+  alias AthenaWeb.TeachingLive.SubmissionLabels
+
   alias Athena.Learning
   alias Athena.Identity
   alias Athena.Content
@@ -54,11 +56,10 @@ defmodule AthenaWeb.TeachingLive.Grading do
     cohort_id = Map.get(params, "cohort_id", "")
     date_from = Map.get(params, "date_from", "")
     date_to = Map.get(params, "date_to", "")
-    has_cheats = Map.get(params, "has_cheats", "false")
     block_id = Map.get(params, "block_id", "")
 
     flop_filters =
-      build_flop_filters(status, login, cohort_id, date_from, date_to, has_cheats, block_id)
+      build_flop_filters(status, login, cohort_id, date_from, date_to, block_id)
 
     flop_params = Map.merge(params, %{"filters" => flop_filters})
 
@@ -77,7 +78,6 @@ defmodule AthenaWeb.TeachingLive.Grading do
         |> assign(:cohort_id, cohort_id)
         |> assign(:date_from, date_from)
         |> assign(:date_to, date_to)
-        |> assign(:has_cheats, has_cheats)
         |> assign(:block_id, block_id)
         |> assign(:accounts, accounts)
         |> assign(:blocks, blocks)
@@ -97,7 +97,6 @@ defmodule AthenaWeb.TeachingLive.Grading do
       "cohort_id" => params["cohort_id"],
       "date_from" => params["date_from"],
       "date_to" => params["date_to"],
-      "has_cheats" => params["has_cheats"] || "false",
       "page" => 1
     }
 
@@ -115,10 +114,15 @@ defmodule AthenaWeb.TeachingLive.Grading do
     {:noreply, push_patch(socket, to: ~p"/teaching/grading")}
   end
 
-  def handle_event("clear_block_filter", _params, socket) do
-    query_params = build_query_params(socket.assigns, %{"block_id" => "", "page" => 1})
+  # One filter at a time, from its chip (`AthenaWeb.FilterComponents`).
+  def handle_event("clear_filter", %{"key" => key}, socket)
+      when key in ~w(status cohort_id login date_from date_to block_id) do
+    cleared = if key == "status", do: "all", else: ""
+    query_params = build_query_params(socket.assigns, %{key => cleared, "page" => 1})
     {:noreply, push_patch(socket, to: ~p"/teaching/grading?#{query_params}")}
   end
+
+  def handle_event("clear_filter", _params, socket), do: {:noreply, socket}
 
   def handle_event("open_delete_modal", %{"id" => id}, socket) do
     submission = Learning.get_submission!(socket.assigns.current_user, id)
@@ -164,7 +168,69 @@ defmodule AthenaWeb.TeachingLive.Grading do
     end
   end
 
-  defp build_flop_filters(status, login, cohort_id, date_from, date_to, has_cheats, block_id) do
+  defp status_options do
+    [
+      {gettext("All Statuses"), "all"},
+      {gettext("Needs Review"), "needs_review"},
+      {gettext("Graded"), "graded"},
+      {gettext("Rejected"), "rejected"}
+    ]
+  end
+
+  # Chips for every filter currently narrowing the list.
+  defp filter_chips(assigns) do
+    [
+      assigns.current_status not in ["", "all"] &&
+        %{
+          key: "status",
+          label: gettext("Status"),
+          value: option_label(status_options(), assigns.current_status)
+        },
+      assigns.cohort_id != "" &&
+        %{
+          key: "cohort_id",
+          label: gettext("Cohort"),
+          value: option_label(assigns.cohort_options, assigns.cohort_id)
+        },
+      assigns.login not in [nil, ""] &&
+        %{key: "login", label: gettext("Student"), value: assigns.login},
+      assigns.date_from != "" &&
+        %{key: "date_from", label: gettext("From Date"), value: format_date(assigns.date_from)},
+      assigns.date_to != "" &&
+        %{key: "date_to", label: gettext("To Date"), value: format_date(assigns.date_to)},
+      assigns.block_id != "" &&
+        %{
+          key: "block_id",
+          label: gettext("Assignment"),
+          value: assignment_label(assigns.blocks[assigns.block_id])
+        }
+    ]
+    |> Enum.filter(& &1)
+  end
+
+  defp option_label(options, value) do
+    Enum.find_value(options, value, fn {label, option} -> option == value && label end)
+  end
+
+  defp format_date(iso) do
+    case Date.from_iso8601(iso) do
+      {:ok, date} -> Calendar.strftime(date, "%d.%m.%Y")
+      _ -> iso
+    end
+  end
+
+  defp assignment_label(nil), do: gettext("Deleted")
+
+  defp assignment_label(%{type: :quiz_exam}),
+    do: gettext("Assessment Session") <> " " <> gettext("Block")
+
+  defp assignment_label(%{type: :ticket_exam}),
+    do: gettext("Ticket Assessment") <> " " <> gettext("Block")
+
+  defp assignment_label(%{type: type}),
+    do: (type |> Atom.to_string() |> String.replace("_", " ")) <> " " <> gettext("Block")
+
+  defp build_flop_filters(status, login, cohort_id, date_from, date_to, block_id) do
     filters = []
 
     filters =
@@ -174,7 +240,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
 
     filters =
       if cohort_id != "",
-        do: [%{"field" => "cohort_id", "op" => "==", "value" => cohort_id} | filters],
+        do: [%{"field" => "in_cohort", "op" => "==", "value" => cohort_id} | filters],
         else: filters
 
     filters =
@@ -185,11 +251,6 @@ defmodule AthenaWeb.TeachingLive.Grading do
     # Picked dates are calendar days in the user's timezone.
     filters = add_date_bound_filter(filters, date_from, 0, ">=")
     filters = add_date_bound_filter(filters, date_to, 1, "<")
-
-    filters =
-      if has_cheats == "true",
-        do: [%{"field" => "has_cheats", "op" => "==", "value" => true} | filters],
-        else: filters
 
     filters =
       if login != "" do
@@ -233,7 +294,6 @@ defmodule AthenaWeb.TeachingLive.Grading do
       "cohort_id" => assigns.cohort_id,
       "date_from" => assigns.date_from,
       "date_to" => assigns.date_to,
-      "has_cheats" => assigns.has_cheats,
       "block_id" => assigns.block_id,
       "page" => meta.current_page,
       "page_size" => meta.page_size,
@@ -266,14 +326,6 @@ defmodule AthenaWeb.TeachingLive.Grading do
       <div class="bg-base-100 border border-base-200 rounded-box p-4">
         <div class="flex items-center justify-between mb-4">
           <h2 class="font-bold text-sm uppercase tracking-wider opacity-70">{gettext("Filters")}</h2>
-          <button
-            phx-click="reset_filters"
-            type="button"
-            class="btn btn-ghost btn-xs text-base-content/60 hover:text-error transition-colors"
-          >
-            <.icon name="hero-arrow-path" class="size-3 mr-1" />
-            {gettext("Reset All")}
-          </button>
         </div>
 
         <.form
@@ -288,12 +340,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
               type="select"
               name="status"
               value={@current_status}
-              options={[
-                {gettext("All Statuses"), "all"},
-                {gettext("Needs Review"), "needs_review"},
-                {gettext("Graded"), "graded"},
-                {gettext("Rejected"), "rejected"}
-              ]}
+              options={status_options()}
               label={gettext("Status")}
             />
             <.input
@@ -311,15 +358,6 @@ defmodule AthenaWeb.TeachingLive.Grading do
               label={gettext("Student (login or name)")}
               placeholder={gettext("Start typing...")}
             />
-            <div class="flex flex-col justify-end pb-2">
-              <.input
-                type="checkbox"
-                name="has_cheats"
-                value="true"
-                checked={@has_cheats == "true"}
-                label={gettext("Cheaters Only")}
-              />
-            </div>
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end sm:grid">
@@ -329,32 +367,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
         </.form>
       </div>
 
-      <div
-        :if={@block_id != ""}
-        class="alert alert-info bg-info/10 text-info border-info/20"
-      >
-        <.icon name="hero-funnel" class="size-5 shrink-0" />
-        <span>
-          {gettext("Showing submissions filtered by a specific assignment.")}
-          <%= if @blocks[@block_id] do %>
-            <strong class="ml-1 uppercase tracking-wider text-xs">
-              <%= cond do %>
-                <% @blocks[@block_id].type == :quiz_exam -> %>
-                  {gettext("Assessment Session")} {gettext("Block")}
-                <% @blocks[@block_id].type == :ticket_exam -> %>
-                  {gettext("Ticket Assessment")} {gettext("Block")}
-                <% true -> %>
-                  {Atom.to_string(@blocks[@block_id].type) |> String.replace("_", " ")} {gettext(
-                    "Block"
-                  )}
-              <% end %>
-            </strong>
-          <% end %>
-        </span>
-        <button phx-click="clear_block_filter" class="btn btn-sm btn-ghost">
-          {gettext("Clear Filter")}
-        </button>
-      </div>
+      <.active_filters id="grading-active-filters" filters={filter_chips(assigns)} />
 
       <div
         :if={not @has_submissions}
@@ -382,33 +395,20 @@ defmodule AthenaWeb.TeachingLive.Grading do
 
           <:col :let={{_id, sub}} label={gettext("Assignment")}>
             <span class="badge badge-neutral badge-sm font-medium tracking-wide">
-              <%= if @blocks[sub.block_id] do %>
-                <%= cond do %>
-                  <% @blocks[sub.block_id].type == :quiz_exam -> %>
-                    {gettext("Assessment Session")} {gettext("Block")}
-                  <% @blocks[sub.block_id].type == :ticket_exam -> %>
-                    {gettext("Ticket Assessment")} {gettext("Block")}
-                  <% true -> %>
-                    {Atom.to_string(@blocks[sub.block_id].type) |> String.replace("_", " ")} {gettext(
-                      "Block"
-                    )}
-                <% end %>
-              <% else %>
-                {gettext("Deleted")}
-              <% end %>
+              {assignment_label(@blocks[sub.block_id])}
             </span>
           </:col>
 
           <:col :let={{_id, sub}} label={gettext("Status")} sort="status">
             <.badge tone={status_tone(sub.status)} class="tracking-wide shrink-0">
-              {Atom.to_string(sub.status) |> String.replace("_", " ") |> String.capitalize()}
+              {SubmissionLabels.status_label(sub.status)}
             </.badge>
           </:col>
 
           <:col :let={{_id, sub}} label={gettext("Score")} sort="score">
             <div class={[
               "font-mono font-bold",
-              sub.status == :needs_review && "text-base-content/30",
+              sub.status == :needs_review && "text-base-content/50",
               sub.status in [
                 :rejected,
                 :wrong_answer,
@@ -419,10 +419,18 @@ defmodule AthenaWeb.TeachingLive.Grading do
                 :system_error
               ] && "text-error"
             ]}>
-              <%= if sub.status not in [:pending, :processing, :needs_review, :draft] do %>
-                {sub.score} <span class="text-xs opacity-50 font-normal">/ 100</span>
-              <% else %>
-                —
+              <%= cond do %>
+                <% sub.status == :needs_review -> %>
+                  <span title={
+                    gettext("Preliminary score - the answer still needs a teacher's review")
+                  }>
+                    {sub.score} <span class="text-xs opacity-50 font-normal">/ 100</span>
+                    <.icon name="hero-clock-mini" class="size-3.5 align-text-bottom" />
+                  </span>
+                <% sub.status in [:pending, :processing, :draft] -> %>
+                  –
+                <% true -> %>
+                  {sub.score} <span class="text-xs opacity-50 font-normal">/ 100</span>
               <% end %>
             </div>
           </:col>

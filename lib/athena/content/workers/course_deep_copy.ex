@@ -5,7 +5,7 @@ defmodule Athena.Content.Workers.CourseDeepCopy do
 
   This exists so a teacher can evolve a course (e.g. add new
   waterline-blocking tasks) for future cohorts without affecting cohorts
-  already enrolled in — and who may have already completed — the original:
+  already enrolled in – and who may have already completed – the original:
   the source course's sections/blocks are read-only here and never modified,
   and cohorts keep pointing at whichever `course_id` their `enrollment` was
   created against.
@@ -168,7 +168,7 @@ defmodule Athena.Content.Workers.CourseDeepCopy do
   end
 
   # Copies only the media files actually referenced by the given (source)
-  # blocks' `content` — matching `Athena.Workers.MediaCleanup`'s substring
+  # blocks' `content` – matching `Athena.Workers.MediaCleanup`'s substring
   # technique for finding references, but to select what to copy rather
   # than what to delete. Returns a map of `old_url => new_url` to rewrite
   # into the copied blocks' content.

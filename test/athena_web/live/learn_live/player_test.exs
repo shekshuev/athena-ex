@@ -452,7 +452,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       assert html =~ ~s(data-id="#{pair1_id}")
 
       # With exactly 2 pairs, the initial shuffle is guaranteed to start in the wrong
-      # order (see initial_matching_order/3's anti-trivial-solve swap) — drag the first
+      # order (see initial_matching_order/3's anti-trivial-solve swap) – drag the first
       # card down one slot to arrive at the correct order before submitting.
       render_hook(lv, "reorder_matching_answer", %{
         "blockId" => block.id,
@@ -490,7 +490,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
       # With exactly 2 pairs, the initial shuffle is guaranteed to start in the wrong
-      # order — submitting untouched should register as incorrect.
+      # order – submitting untouched should register as incorrect.
       html =
         lv
         |> form("#quiz-form-#{block.id}", %{})
@@ -2255,7 +2255,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         AthenaWeb.BlockComponents.initial_matching_order(raw_pairs, block.id, user.id)
 
       # Move the first card to the last position, then move the (new) first card to the
-      # middle — each event must be resolved against the *result* of the previous one,
+      # middle – each event must be resolved against the *result* of the previous one,
       # not just re-applied blindly to the original initial order.
       render_hook(lv, "reorder_matching_answer", %{
         "blockId" => block.id,

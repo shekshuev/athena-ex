@@ -3,7 +3,7 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
   Full-page create/edit form for announcements.
 
   A rich-text (TipTap) body doesn't fit comfortably in the narrow
-  `<.slide_over>` used by other admin CRUD pages (Users/Roles/Files) — this
+  `<.slide_over>` used by other admin CRUD pages (Users/Roles/Files) – this
   is a standalone page instead, mirroring the layout convention already
   used by `StudioLive.LibraryEditor` (back-link + title header, wide
   `<.page_container>`) rather than `AdminLive.Announcements`'s own list
@@ -13,9 +13,9 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
   "admin" bypass permission; everyone else may only search/pick from the
   cohorts they instruct (`Athena.Learning.search_postable_cohorts/2`, an
   autocomplete search box mirroring `TeachingLive.MembershipFormComponent`'s
-  "search student by login" pattern — a school can have many cohorts, so a
+  "search student by login" pattern – a school can have many cohorts, so a
   plain dropdown doesn't scale). Authorization is ultimately enforced by
-  `Athena.Announcements`, not by this LiveView — hiding options here is a
+  `Athena.Announcements`, not by this LiveView – hiding options here is a
   UX convenience, not a security boundary.
   """
   use AthenaWeb, :live_view

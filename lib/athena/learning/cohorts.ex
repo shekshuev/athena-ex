@@ -483,7 +483,7 @@ defmodule Athena.Learning.Cohorts do
 
   @doc """
   Returns a map of `%{cohort_id => Cohort}` for bulk enrichment across
-  contexts. Unscoped by design (mirrors `Identity.get_accounts_map/1`) — a
+  contexts. Unscoped by design (mirrors `Identity.get_accounts_map/1`) – a
   cohort chat participant must see the cohort's name regardless of whether
   they hold the `"cohorts.read"` permission.
   """
@@ -509,7 +509,7 @@ defmodule Athena.Learning.Cohorts do
 
   @doc """
   Cohort ids where `account_id` is a listed instructor (via `CohortInstructor`
-  + `Instructor.owner_id`). Unscoped by `cohorts.read`/`teams.read` — mirrors
+  + `Instructor.owner_id`). Unscoped by `cohorts.read`/`teams.read` – mirrors
   `co_instructor?/2`'s join, exposed publicly so other contexts can reuse it
   instead of re-deriving the join.
   """
@@ -532,7 +532,7 @@ defmodule Athena.Learning.Cohorts do
 
   @doc """
   Cohort ids `account_id` is a *member* of (student side), via
-  `CohortMembership.account_id`. Unscoped by ACL — mirrors
+  `CohortMembership.account_id`. Unscoped by ACL – mirrors
   `get_cohorts_map/1`'s "unscoped by design" precedent, since audience
   scoping for a personal feed must not depend on `cohorts.read`.
   """
@@ -546,14 +546,14 @@ defmodule Athena.Learning.Cohorts do
   Cohorts matching `query` (by name, case-insensitive substring) that
   `user` may post an announcement to: every cohort if `user` holds the
   "admin" bypass, else only cohorts they instruct. Capped at 10 results
-  for autocomplete use — mirrors `Identity.search_accounts/1`'s shape
+  for autocomplete use – mirrors `Identity.search_accounts/1`'s shape
   (`MembershipFormComponent`'s "search student by login" box), used here
   for "search cohort by name" since the plain dropdown got unwieldy once
   a school has many cohorts.
 
   Deliberately NOT gated by `cohorts.read`/`teams.read` (an instructor
   with `announcements.create` but no cohort-management permission must
-  still be able to find their own cohorts here) — mirrors
+  still be able to find their own cohorts here) – mirrors
   `get_cohorts_map/1`'s unscoped-by-design precedent rather than
   `get_cohort_options/1` (which IS gated by `cohorts.read`/`teams.read`
   and is wrong for this purpose).

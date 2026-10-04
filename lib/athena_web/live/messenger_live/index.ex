@@ -77,7 +77,7 @@ defmodule AthenaWeb.MessengerLive.Index do
   # Inserts a synthetic `%{id: "read-divider", kind: :divider}` marker
   # right before the first message the user hasn't seen yet, so the stream
   # (and `ThreadComponent`'s template) can render a "new messages" line
-  # there. Plain map, not a `Message` struct, deliberately — it flows
+  # there. Plain map, not a `Message` struct, deliberately – it flows
   # through the same stream as real messages (Phoenix.LiveView.LiveStream
   # only needs an `:id`), and `divider?/1` tells them apart.
   defp divider_items(messages, _last_read_at, false), do: messages
@@ -236,7 +236,7 @@ defmodule AthenaWeb.MessengerLive.Index do
 
   # Marking read happens when *leaving* a conversation (here, and in
   # `terminate/2` for a closed tab/navigated-away socket) rather than the
-  # instant it's opened — that's what leaves a window, however brief, for
+  # instant it's opened – that's what leaves a window, however brief, for
   # the "new messages" divider built in `apply_action/3` to actually mean
   # something.
   defp mark_current_conversation_read(socket) do

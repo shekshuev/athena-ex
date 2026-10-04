@@ -14,7 +14,7 @@ defmodule Athena.Content.Policy do
 
   `opts[:ignore_visibility?]` bypasses every visibility rule (`:hidden`,
   `:enrolled`, `:restricted`) the same way `:all` mode does, without having
-  to swap out the real user/account — used by the builder's "Test run"
+  to swap out the real user/account – used by the builder's "Test run"
   player so an instructor can preview a section they've hidden or
   access-restricted from real students.
   """

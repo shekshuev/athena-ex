@@ -1,33 +1,41 @@
 defmodule Athena.Engagement.Metrics do
   @moduledoc """
-  Turns raw `Athena.Engagement.Event` rows into the metric catalog: per-block
-  numbers a teacher or researcher can actually read, computed on demand
-  (`group_by`-style, no cache/materialized table - same style as
-  `Athena.Learning.Submissions.get_team_leaderboard/1`).
+  The engagement metric catalog: per-block numbers a teacher or researcher
+  can actually read, and the course-wide aggregates the dashboards are built
+  from.
 
-  `get_metrics/1` is the one entry point meant for a future dashboard (a
-  course-tree node plus an optional cohort/student filter); `funnel/2`,
-  `correlate/2`, and `time_series/3` are the other four "analysis methods"
-  from the plan (percentile is handled separately, in
-  `Athena.Engagement.evaluate_nudge/5`/`BlockStats`, since that one needs to
-  be cheap enough to run on every dwell, not just on a dashboard load).
+  Every metric is *defined* in `Athena.Engagement.Accumulator`: events are
+  folded into additive per-(student, block, day) counters, and metrics are
+  derived from those. Course-wide aggregates (`student_radar/3`,
+  `cohort_flag_profile/3`, `course_overview/3`, ...) read past days from the
+  pre-aggregated `Athena.Engagement.Rollups` and only today from raw events,
+  falling back to raw events for the whole window while rollups aren't
+  ready (`Athena.Engagement.Rollups.ready?/0`). Pass `source: :raw` to force
+  the raw path. Both paths produce identical numbers.
 
-  This first cut covers the metrics computable purely from events already
-  captured client-side (see `Athena.Engagement.Event`'s catalog) - dwell,
-  scroll depth, paste ratio, video controls, tab focus, attachment/image
-  interaction, and the flagship "backtracked to an earlier block" signal.
-  Metrics that need `Athena.Learning.Submission` data too (first-attempt
-  correctness, time-to-answer relative to a deadline, exam score
-  trajectories) are intentionally left for a follow-up once `Submission`
-  data is wired into the same scope - the per-type dispatch below
-  (`text_metrics/2`, `video_metrics/2`, ...) is exactly where they'd be
-  added, one function at a time, without touching the entry points.
+  Course-wide windows are whole app-timezone days: `since` is rounded down
+  to the start of its day, so "last 7 days" means the same thing whether it
+  is read from rollups or from raw events.
+
+  `get_metrics/1`, `funnel/2`, `time_series/3` (single block or section,
+  cheap) always read raw events.
   """
 
   alias Athena.Content
   alias Athena.TimeZones
   alias Athena.Content.Policy
-  alias Athena.Engagement.Events
+  alias Athena.Content.Block
+
+  alias Athena.Engagement.{
+    Accumulator,
+    CourseMap,
+    DashboardCache,
+    Events,
+    Rollups,
+    StudentAssessment,
+    TheoryLinks
+  }
+
   alias Athena.Learning
 
   @doc """
@@ -48,21 +56,9 @@ defmodule Athena.Engagement.Metrics do
   def get_metrics(%{resource_type: :block, resource_id: block_id} = scope) do
     with {:ok, block} <- Content.get_block(block_id),
          {:ok, section} <- Content.get_section(block.section_id) do
-      section_blocks =
-        section.id |> Content.list_blocks_by_section(:all) |> Enum.sort_by(& &1.order)
-
-      section_events = events_for_scope(section_blocks, scope)
-      block_events = Enum.filter(section_events, &(&1.block_id == block.id))
-      resolved_rule = Policy.resolve_engagement_rule(block, section)
-
-      compute_block_metrics(
-        block,
-        section,
-        section_blocks,
-        block_events,
-        section_events,
-        resolved_rule
-      )
+      section_blocks = Content.list_blocks_by_section(section.id, :all)
+      accumulators = section_accumulators(section_blocks, scope)
+      block_metrics(block, section, accumulators, scope)
     else
       _ -> %{}
     end
@@ -71,30 +67,46 @@ defmodule Athena.Engagement.Metrics do
   def get_metrics(%{resource_type: :section, resource_id: section_id} = scope) do
     case Content.get_section(section_id) do
       {:ok, section} ->
-        section_blocks =
-          section_id |> Content.list_blocks_by_section(:all) |> Enum.sort_by(& &1.order)
-
-        section_events = events_for_scope(section_blocks, scope)
+        section_blocks = Content.list_blocks_by_section(section_id, :all)
+        accumulators = section_accumulators(section_blocks, scope)
 
         Map.new(section_blocks, fn block ->
-          block_events = Enum.filter(section_events, &(&1.block_id == block.id))
-          resolved_rule = Policy.resolve_engagement_rule(block, section)
-
-          {block.id,
-           compute_block_metrics(
-             block,
-             section,
-             section_blocks,
-             block_events,
-             section_events,
-             resolved_rule
-           )}
+          {block.id, block_metrics(block, section, accumulators, scope)}
         end)
 
       _ ->
         %{}
     end
   end
+
+  # `%{{account_id, block_id} => accumulator}` for one section's blocks.
+  defp section_accumulators(section_blocks, scope) do
+    section_blocks
+    |> Enum.map(& &1.id)
+    |> Events.list_events_for_scope(Map.get(scope, :cohort_id), Map.get(scope, :since))
+    |> filter_by_account(Map.get(scope, :account_id))
+    |> Accumulator.build(positions(section_blocks))
+    |> Accumulator.by_account_block()
+  end
+
+  defp block_metrics(block, section, accumulators, scope) do
+    rule = Policy.resolve_engagement_rule(block, section)
+
+    case Map.get(scope, :account_id) do
+      nil ->
+        accumulators
+        |> Enum.filter(fn {{_account_id, block_id}, _acc} -> block_id == block.id end)
+        |> Enum.map(&elem(&1, 1))
+        |> Accumulator.to_cohort_metrics(block.type, rule)
+
+      account_id ->
+        accumulators
+        |> Map.get({account_id, block.id}, Accumulator.empty())
+        |> Accumulator.to_metrics(block.type, rule)
+    end
+  end
+
+  defp positions(blocks), do: Map.new(blocks, &{&1.id, {&1.section_id, &1.order}})
 
   @doc """
   Funnel (drop-off) for one block: how many distinct students reached each
@@ -166,47 +178,6 @@ defmodule Athena.Engagement.Metrics do
     |> Enum.sort_by(& &1.week, Date)
   end
 
-  @doc """
-  A flat "one row = one student × one block" table across every block in a
-  course, for every student in the given cohorts - the shape method 5
-  ("cross-cohort comparison") needs for a statistics package (R/
-  Python/SPSS): every metric as its own column, plus `cohort_id` so groups
-  can be compared. Not wired into any UI yet (see the CSV controller/route
-  that will call this) - not a priority for the September pilot, but shaped
-  now so the aggregation model doesn't need to change later just to support
-  export.
-  """
-  @spec export_wide_table(binary(), [binary()]) :: [map()]
-  def export_wide_table(course_id, cohort_ids) do
-    blocks = course_blocks(course_id)
-
-    for block <- blocks,
-        cohort_id <- cohort_ids,
-        account_id <- students_in_cohort(cohort_id) do
-      scope = %{
-        resource_type: :block,
-        resource_id: block.id,
-        cohort_id: cohort_id,
-        account_id: account_id
-      }
-
-      get_metrics(scope)
-      |> Map.merge(%{
-        cohort_id: cohort_id,
-        account_id: account_id,
-        block_id: block.id,
-        block_type: block.type
-      })
-    end
-  end
-
-  defp course_blocks(course_id) do
-    course_id
-    |> Content.get_course_tree(:all)
-    |> flatten_sections()
-    |> Enum.flat_map(&Content.list_blocks_by_section(&1.id, :all))
-  end
-
   defp flatten_sections(sections) do
     Enum.flat_map(sections, fn section -> [section | flatten_sections(section.children)] end)
   end
@@ -218,17 +189,13 @@ defmodule Athena.Engagement.Metrics do
     end
   end
 
-  # Fetches every section, block, and matching event for a whole course in a
-  # fixed, small number of queries (one for sections, one bulk query for
-  # blocks, one bulk query for events), then indexes them in memory - the
-  # shared foundation for every course-wide aggregate below
-  # (`section_flag_totals/3`, `nudge_correction_rate/3`,
-  # `cohort_flag_profile/3`, `student_radar/3`), all of which used to
-  # re-fetch a block's own section and section-blocks, and re-query events,
-  # once per (block, student) pair (an O(sections x blocks x students) DB
-  # round-trip count). `student_block_flags/4` reads this index instead of
-  # touching the database at all.
-  defp build_scope_index(course_id, cohort_id, since) do
+  # The shared foundation for every course-wide aggregate below: the
+  # course's structure (a fixed handful of queries) plus every student's
+  # accumulated activity per block over the window, read from rollups for
+  # past days and from raw events for today (or from raw events only, see
+  # the moduledoc). Nothing downstream touches the database per (block,
+  # student) pair.
+  defp build_scope_index(course_id, cohort_id, since, opts) do
     sections = course_id |> Content.get_course_tree(:all) |> flatten_sections()
     section_by_id = Map.new(sections, &{&1.id, &1})
 
@@ -239,13 +206,8 @@ defmodule Athena.Engagement.Metrics do
       |> Enum.group_by(& &1.section_id)
       |> Map.new(fn {section_id, blocks} -> {section_id, Enum.sort_by(blocks, & &1.order)} end)
 
-    all_blocks = blocks_by_section |> Map.values() |> List.flatten()
-    all_block_ids = Enum.map(all_blocks, & &1.id)
-    block_to_section_id = Map.new(all_blocks, &{&1.id, &1.section_id})
-
-    all_events = Events.list_events_for_scope(all_block_ids, cohort_id, since)
-    events_by_block = Enum.group_by(all_events, & &1.block_id)
-    events_by_section = Enum.group_by(all_events, &Map.fetch!(block_to_section_id, &1.block_id))
+    all_blocks = Enum.flat_map(sections, &Map.get(blocks_by_section, &1.id, []))
+    from_day = since && since |> TimeZones.to_app_zone() |> DateTime.to_date()
 
     resolved_rule_by_block_id =
       Map.new(all_blocks, fn block ->
@@ -257,16 +219,124 @@ defmodule Athena.Engagement.Metrics do
       sections: sections,
       section_by_id: section_by_id,
       blocks_by_section: blocks_by_section,
-      events_by_block: events_by_block,
-      events_by_section: events_by_section,
-      resolved_rule_by_block_id: resolved_rule_by_block_id
+      all_blocks: all_blocks,
+      resolved_rule_by_block_id: resolved_rule_by_block_id,
+      cohort_id: cohort_id,
+      from_day: from_day
+    }
+    |> Map.merge(load_activity(cohort_id, all_blocks, from_day, Keyword.get(opts, :source)))
+    |> then(&Map.put(&1, :baselines, group_baselines(&1.acc_by_account_block)))
+  end
+
+  # Per block, what "normal" looks like in this cohort over the window:
+  # the median of students' average time on it, and the 80th percentile of
+  # their answer changes - each only once `min_group_for_baseline`
+  # students have data, so two students never define "the group".
+  defp group_baselines(acc_by_account_block) do
+    min_peers = Keyword.get(engagement_config(), :min_group_for_baseline, 5)
+    percentile = Keyword.get(engagement_config(), :hesitation_group_percentile, 0.8)
+
+    acc_by_account_block
+    |> Enum.group_by(fn {{_account_id, block_id}, _acc} -> block_id end, &elem(&1, 1))
+    |> Map.new(fn {block_id, accs} ->
+      dwells = for %{dwell_n: n, dwell_sum: sum} <- accs, n > 0, do: sum / n
+
+      changes =
+        for %{event_count: events, answer_changed: changed} <- accs, events > 0, do: changed
+
+      {block_id,
+       %{
+         peers: length(accs),
+         dwell_median: if(length(dwells) >= min_peers, do: percentile(dwells, 0.5)),
+         answer_changes_p80: if(length(changes) >= min_peers, do: percentile(changes, percentile))
+       }}
+    end)
+  end
+
+  defp percentile(values, p) do
+    sorted = Enum.sort(values)
+    Enum.at(sorted, min(round(p * (length(sorted) - 1)), length(sorted) - 1))
+  end
+
+  defp load_activity(_cohort_id, _blocks, _from_day, :structure_only),
+    do: %{acc_by_account_block: %{}, active_by_day: %{}, hour_matrix: %{}}
+
+  defp load_activity(cohort_id, blocks, from_day, source) do
+    if cohort_id && source != :raw && Rollups.ready?() do
+      hybrid_activity(cohort_id, blocks, from_day)
+    else
+      blocks
+      |> Enum.map(& &1.id)
+      |> Events.list_events_for_scope(cohort_id, from_day && TimeZones.start_of_day(from_day))
+      |> Accumulator.build(positions(blocks))
+      |> activity_from_buckets()
+    end
+  end
+
+  # Past days from rollups + today from raw events. Today is never read
+  # from rollups, so the two never overlap.
+  defp hybrid_activity(cohort_id, blocks, from_day) do
+    block_ids = Enum.map(blocks, & &1.id)
+    today = TimeZones.today()
+
+    past =
+      if from_day && Date.compare(from_day, today) != :lt do
+        %{acc_by_account_block: %{}, active_by_day: %{}, hour_matrix: %{}}
+      else
+        yesterday = Date.add(today, -1)
+
+        %{
+          acc_by_account_block:
+            Rollups.account_block_totals(cohort_id, block_ids, from_day, yesterday),
+          active_by_day:
+            Rollups.active_students_by_day(cohort_id, block_ids, from_day, yesterday),
+          hour_matrix: Rollups.hour_matrix(cohort_id, block_ids, from_day, yesterday)
+        }
+      end
+
+    current =
+      block_ids
+      |> Events.list_events_for_scope(cohort_id, TimeZones.start_of_day(today))
+      |> Accumulator.build(positions(blocks))
+      |> activity_from_buckets()
+
+    %{
+      acc_by_account_block:
+        Map.merge(past.acc_by_account_block, current.acc_by_account_block, fn _key, a, b ->
+          Accumulator.merge(a, b)
+        end),
+      active_by_day: Map.merge(past.active_by_day, current.active_by_day),
+      hour_matrix: Map.merge(past.hour_matrix, current.hour_matrix, fn _key, a, b -> a + b end)
     }
   end
 
-  defp filter_since(events, nil), do: events
+  defp activity_from_buckets(buckets) do
+    active_by_day =
+      buckets
+      |> Enum.filter(fn {_key, acc} -> acc.event_count > 0 end)
+      |> Enum.group_by(fn {{_account, _block, day}, _acc} -> day end, fn {{account, _, _}, _} ->
+        account
+      end)
+      |> Map.new(fn {day, accounts} -> {day, accounts |> Enum.uniq() |> length()} end)
 
-  defp filter_since(events, since),
-    do: Enum.filter(events, &(DateTime.compare(&1.occurred_at, since) != :lt))
+    hour_matrix =
+      Enum.reduce(buckets, %{}, fn {{_account, _block, day}, acc}, matrix ->
+        dow = Date.day_of_week(day)
+
+        acc.hour_counts
+        |> Enum.with_index()
+        |> Enum.reduce(matrix, fn
+          {0, _hour}, m -> m
+          {count, hour}, m -> Map.update(m, {dow, hour}, count, &(&1 + count))
+        end)
+      end)
+
+    %{
+      acc_by_account_block: Accumulator.by_account_block(buckets),
+      active_by_day: active_by_day,
+      hour_matrix: hour_matrix
+    }
+  end
 
   @doc """
   The "Group Radar" screen's data: for every student in `cohort_id`, how
@@ -286,14 +356,526 @@ defmodule Athena.Engagement.Metrics do
   """
   @spec student_radar(binary(), binary(), keyword()) :: [map()]
   def student_radar(cohort_id, course_id, opts \\ []) do
-    since = Keyword.get(opts, :since, default_since())
-    index = build_scope_index(course_id, cohort_id, since)
-    blocks = radar_blocks(index, Keyword.get(opts, :section_id))
-    team_id = team_scope_id(cohort_id)
+    cached(:student_radar, cohort_id, course_id, opts, fn ->
+      do_student_radar(cohort_id, course_id, opts)
+    end)
+  end
 
-    cohort_id
-    |> students_in_cohort()
-    |> Enum.map(&student_radar_row(&1, team_id, blocks, index))
+  defp do_student_radar(cohort_id, course_id, opts) do
+    since = Keyword.get(opts, :since, default_since())
+
+    course_id
+    |> build_scope_index(cohort_id, since, opts)
+    |> radar_from_index(cohort_id, course_id, opts)
+  end
+
+  @doc """
+  What the gradebook's engagement layer draws on top of the scores, over
+  the whole course: every student's radar `level`, which theory blocks each
+  graded task builds on (`theory_by_task`, see
+  `Athena.Engagement.TheoryLinks`), how each student went through each of
+  those theory blocks (`reviews`, `%{{account_id, block_id} => review}`,
+  `status` `:ok`/`:superficial`/`:skipped`), and every section's content
+  (non-graded) blocks in course order (`content_blocks`) for theory columns.
+  """
+  @spec gradebook_engagement(binary(), binary(), keyword()) :: map()
+  def gradebook_engagement(cohort_id, course_id, opts \\ []) do
+    opts = Keyword.put(opts, :since, nil)
+
+    cached(:gradebook_engagement, cohort_id, course_id, opts, fn ->
+      index = build_scope_index(course_id, cohort_id, nil, opts)
+      rows = radar_from_index(index, cohort_id, course_id, opts)
+      gradable = Enum.filter(index.all_blocks, &Block.gradable?/1)
+
+      theory_by_task =
+        Map.new(gradable, fn block ->
+          theory = TheoryLinks.theory_blocks_for(block, index.sections, index.blocks_by_section)
+          {block.id, Enum.map(theory, & &1.id)}
+        end)
+
+      theory_ids = theory_by_task |> Map.values() |> List.flatten() |> MapSet.new()
+      theory_blocks = Enum.filter(index.all_blocks, &MapSet.member?(theory_ids, &1.id))
+
+      reviews =
+        for %{account_id: account_id} <- rows, block <- theory_blocks, into: %{} do
+          {{account_id, block.id}, theory_review(block, account_id, index, index)}
+        end
+
+      %{
+        levels: Map.new(rows, &{&1.account_id, &1.level}),
+        theory_by_task: theory_by_task,
+        reviews: reviews,
+        content_blocks:
+          Map.new(index.blocks_by_section, fn {section_id, blocks} ->
+            {section_id, Enum.reject(blocks, &Block.gradable?/1)}
+          end)
+      }
+    end)
+  end
+
+  @doc """
+  The Course Map: for every block of the course, in course order, how the
+  cohort did on it over the window - who opened it, who completed it, how
+  long they spent, how many rushed through it or got stuck, how they
+  scored - and which of that makes it a problem spot
+  (`Athena.Engagement.CourseMap`). With `account_id:` every block also
+  carries that one student's own numbers and signals next to the cohort's.
+
+  Behaviour is windowed by `:since`; completion and scores are whole-course
+  facts. Returns `%{sections: [%{section, depth, block_ids}], blocks:
+  %{block_id => block}, entries: %{block_id => entry}, students_count}`.
+  """
+  @spec course_map(binary(), binary(), keyword()) :: map()
+  def course_map(cohort_id, course_id, opts \\ []) do
+    account_id = Keyword.get(opts, :account_id)
+
+    cached({:course_map, account_id}, cohort_id, course_id, opts, fn ->
+      since = Keyword.get(opts, :since, default_since())
+      index = build_scope_index(course_id, cohort_id, since, opts)
+      students = students_in_cohort(cohort_id)
+      block_ids = Enum.map(index.all_blocks, & &1.id)
+
+      context = %{
+        index: index,
+        students: students,
+        completed:
+          Learning.completed_block_ids_by_account(students, block_ids, team_scope_id(cohort_id)),
+        cells: cohort_cells(cohort_id, course_id, students),
+        account_id: account_id,
+        config: engagement_config()
+      }
+
+      %{
+        sections:
+          Enum.map(index.sections, fn section ->
+            %{
+              section: section,
+              depth: section_depth(section),
+              block_ids: index.blocks_by_section |> Map.get(section.id, []) |> Enum.map(& &1.id)
+            }
+          end),
+        blocks: Map.new(index.all_blocks, &{&1.id, &1}),
+        entries: Map.new(index.all_blocks, &{&1.id, map_entry(&1, context)}),
+        students_count: length(students)
+      }
+    end)
+  end
+
+  defp section_depth(%{path: %{labels: labels}}) when is_list(labels),
+    do: max(length(labels) - 1, 0)
+
+  defp section_depth(_section), do: 0
+
+  defp map_entry(block, context) do
+    stats = block_cohort_stats(block, context)
+    issues = CourseMap.cohort_issues(stats, context.config)
+
+    entry = %{stats: stats, issues: issues, severity: CourseMap.severity(issues)}
+
+    case context.account_id do
+      nil ->
+        entry
+
+      account_id ->
+        Map.put(entry, :student, block_student_view(block, account_id, stats, context))
+    end
+  end
+
+  defp block_cohort_stats(block, context) do
+    %{index: index, students: students} = context
+
+    accs =
+      for account_id <- students,
+          acc = Map.get(index.acc_by_account_block, {account_id, block.id}),
+          acc != nil and acc.event_count > 0,
+          do: {account_id, acc}
+
+    flags =
+      Enum.map(accs, fn {account_id, _acc} -> student_block_flags(block, account_id, index) end)
+
+    cohort_metrics =
+      accs
+      |> Enum.map(&elem(&1, 1))
+      |> Accumulator.to_cohort_metrics(
+        block.type,
+        Map.fetch!(index.resolved_rule_by_block_id, block.id)
+      )
+
+    cells =
+      for account_id <- students,
+          cell = Map.get(context.cells, {account_id, block.id}),
+          cell != nil,
+          do: cell
+
+    scores = for %{state: :scored, score: score} <- cells, do: score
+    pass_mark = Keyword.get(context.config, :low_score_threshold, 50)
+
+    %{
+      students: length(students),
+      opened: length(accs),
+      completed:
+        Enum.count(
+          students,
+          &MapSet.member?(Map.get(context.completed, &1, MapSet.new()), block.id)
+        ),
+      avg_dwell: cohort_metrics[:avg_dwell_seconds],
+      dwell_median: get_in(index.baselines, [block.id, :dwell_median]),
+      avg_scroll: cohort_metrics[:avg_scroll_depth_percent],
+      skip_ratio: cohort_metrics[:skip_ratio],
+      skimmed: Enum.count(flags, &(&1.slacking_flags != [])),
+      stuck: Enum.count(flags, &(&1.struggling_flags != [])),
+      backtrack_rate: cohort_metrics[:backtrack_rate],
+      hesitation_rate: cohort_metrics[:hesitation_rate],
+      content_flags: flag_concerns(cohort_metrics).content,
+      scored: length(scores),
+      passed: Enum.count(scores, &(&1 >= pass_mark)),
+      score_avg: average(scores),
+      attempted: length(cells),
+      attempts_avg: cells |> Enum.map(& &1.attempts) |> average()
+    }
+  end
+
+  defp block_student_view(block, account_id, stats, context) do
+    %{index: index, config: config} = context
+    acc = Map.get(index.acc_by_account_block, {account_id, block.id})
+    metrics = if acc, do: student_block_metrics(block, acc, index), else: %{}
+    flagged = student_block_flags(block, account_id, index)
+    cell = Map.get(context.cells, {account_id, block.id})
+
+    signals = flag_signals(flagged) ++ score_signals(cell, stats, config)
+
+    %{
+      opened?: acc != nil and acc.event_count > 0,
+      completed?: MapSet.member?(Map.get(context.completed, account_id, MapSet.new()), block.id),
+      avg_dwell: metrics[:avg_dwell_seconds],
+      avg_scroll: metrics[:avg_scroll_depth_percent],
+      skip_ratio: metrics[:skip_ratio],
+      cell: cell,
+      signals: signals,
+      severity: CourseMap.student_severity(signals)
+    }
+  end
+
+  defp flag_signals(flagged) do
+    for {category, flags} <- [
+          slacking: flagged.slacking_flags,
+          struggling: flagged.struggling_flags,
+          integrity: flagged.integrity_flags
+        ],
+        flag <- flags do
+      flagged.details
+      |> Map.get(flag, %{basis: :pattern})
+      |> Map.merge(%{key: flag, category: category, block_id: flagged.block_id})
+    end
+  end
+
+  # The same rules as the Group Radar's performance signals, against this
+  # block's cohort numbers.
+  defp score_signals(nil, _stats, _config), do: []
+
+  defp score_signals(cell, stats, config) do
+    pass_mark = Keyword.get(config, :low_score_threshold, 50)
+    min_attempts = Keyword.get(config, :many_attempts_min, 3)
+
+    low =
+      if cell.state == :scored and cell.score < pass_mark,
+        do: [
+          %{
+            key: :low_score,
+            category: :performance,
+            value: cell.score,
+            baseline: stats.score_avg,
+            basis: :absolute,
+            threshold: pass_mark,
+            peers: stats.scored
+          }
+        ],
+        else: []
+
+    many =
+      if cell.attempts >= min_attempts and
+           (is_nil(stats.attempts_avg) or cell.attempts >= 2 * stats.attempts_avg),
+         do: [
+           %{
+             key: :many_attempts,
+             category: :performance,
+             value: cell.attempts,
+             baseline: stats.attempts_avg,
+             basis: :group,
+             peers: stats.attempted
+           }
+         ],
+         else: []
+
+    low ++ many
+  end
+
+  defp average([]), do: nil
+  defp average(values), do: Enum.sum(values) / length(values)
+
+  @doc """
+  One cohort's numbers for the cross-cohort comparison, as additive sums and
+  counts (never pre-averaged), so several cohorts can be combined into a
+  fair "course average" by adding them up:
+
+    * `students`, `progress_sum` (sum of progress percents), `levels`
+      (`%{level => students}` from the Group Radar);
+    * `slacking_students` / `struggling_students` - students with enough
+      rushing / getting-stuck signals to count for that level's rule;
+      `integrity_students` - with any exam-integrity signal;
+    * `scored`, `score_sum`, `attempted`, `first_try` (passed on the first
+      attempt), `flagged_attempts` (cheating monitor: high risk or a
+      confirmed violation) - whole course;
+    * `sections` - `%{section_id => %{scored, score_sum, done, total}}`,
+      per-section scores and completion (`done` of `total` student × block
+      pairs).
+
+  Behaviour is windowed by `:since`, like the radars.
+  """
+  @spec cohort_summary(binary(), binary(), keyword()) :: map()
+  def cohort_summary(cohort_id, course_id, opts \\ []) do
+    cached(:cohort_summary, cohort_id, course_id, opts, fn ->
+      since = Keyword.get(opts, :since, default_since())
+      index = build_scope_index(course_id, cohort_id, since, opts)
+      rows = radar_from_index(index, cohort_id, course_id, opts)
+      students = Enum.map(rows, & &1.account_id)
+      cells = cohort_cells(cohort_id, course_id, students)
+      config = engagement_config()
+      pass_mark = Keyword.get(config, :low_score_threshold, 50)
+
+      completed =
+        Learning.completed_block_ids_by_account(
+          students,
+          Enum.map(index.all_blocks, & &1.id),
+          team_scope_id(cohort_id)
+        )
+
+      gradable = for block <- index.all_blocks, Block.gradable?(block), do: block.id
+
+      student_cells =
+        for s <- students, b <- gradable, cell = cells[{s, b}], cell != nil, do: cell
+
+      scores = for %{state: :scored, score: score} <- student_cells, do: score
+      in_category = fn row, category -> Enum.count(row.signals, &(&1.category == category)) end
+
+      %{
+        students: length(students),
+        progress_sum: rows |> Enum.map(& &1.progress_percent) |> Enum.sum(),
+        levels: Enum.frequencies_by(rows, & &1.level),
+        slacking_students: Enum.count(rows, & &1.pattern.slacking.fires?),
+        struggling_students: Enum.count(rows, & &1.pattern.struggling.fires?),
+        integrity_students: Enum.count(rows, &(in_category.(&1, :integrity) > 0)),
+        scored: length(scores),
+        score_sum: Enum.sum(scores),
+        attempted: length(student_cells),
+        first_try:
+          Enum.count(
+            student_cells,
+            &(&1.attempts == 1 and &1.state == :scored and &1.score >= pass_mark)
+          ),
+        flagged_attempts: Enum.count(student_cells, &(&1[:integrity] in [:red, :confirmed])),
+        sections:
+          Map.new(
+            index.sections,
+            &{&1.id, section_summary(&1, index, students, cells, completed)}
+          )
+      }
+    end)
+  end
+
+  defp section_summary(section, index, students, cells, completed) do
+    blocks = Map.get(index.blocks_by_section, section.id, [])
+
+    scores =
+      for s <- students,
+          block <- blocks,
+          %{state: :scored, score: score} <- [Map.get(cells, {s, block.id})],
+          do: score
+
+    done =
+      for s <- students,
+          block <- blocks,
+          MapSet.member?(Map.get(completed, s, MapSet.new()), block.id),
+          reduce: 0,
+          do: (count -> count + 1)
+
+    %{
+      scored: length(scores),
+      score_sum: Enum.sum(scores),
+      done: done,
+      total: length(students) * length(blocks)
+    }
+  end
+
+  defp radar_from_index(index, cohort_id, course_id, opts) do
+    blocks = radar_blocks(index, Keyword.get(opts, :section_id))
+    students = students_in_cohort(cohort_id)
+
+    completed_by_account =
+      Learning.completed_block_ids_by_account(
+        students,
+        Enum.map(blocks, & &1.id),
+        team_scope_id(cohort_id)
+      )
+
+    rows =
+      Enum.map(students, fn account_id ->
+        student_radar_row(account_id, Map.fetch!(completed_by_account, account_id), blocks, index)
+      end)
+
+    assess_rows(rows, cohort_id, course_id, blocks, completed_by_account, index, opts)
+  end
+
+  # Adds `level`, `signals` and `average_score` to every radar row (see
+  # `Athena.Engagement.StudentAssessment`).
+  defp assess_rows(rows, cohort_id, course_id, blocks, completed_by_account, index, opts) do
+    cells = cohort_cells(cohort_id, course_id, Enum.map(rows, & &1.account_id))
+    window_start = index.from_day && TimeZones.start_of_day(index.from_day)
+    theory = theory_reviewer(cells, blocks, window_start, index, opts)
+
+    assessments =
+      StudentAssessment.assess_cohort(%{
+        students: Enum.map(rows, & &1.account_id),
+        blocks: blocks,
+        flagged_blocks: Map.new(rows, &{&1.account_id, &1.flagged_blocks}),
+        active:
+          for(
+            {{account_id, _block_id}, acc} <- index.acc_by_account_block,
+            acc.event_count > 0,
+            into: MapSet.new(),
+            do: account_id
+          ),
+        cells: cells,
+        completed: completed_by_account,
+        progress: Map.new(rows, &{&1.account_id, &1.progress_percent}),
+        window_start: window_start,
+        theory: theory,
+        visited:
+          Enum.reduce(blocks, %{}, fn block, visited ->
+            Enum.reduce(rows, visited, fn row, acc ->
+              case Map.get(index.acc_by_account_block, {row.account_id, block.id}) do
+                %{event_count: n} when n > 0 -> Map.update(acc, row.account_id, 1, &(&1 + 1))
+                _ -> acc
+              end
+            end)
+          end)
+      })
+
+    gradable_ids = for block <- blocks, Block.gradable?(block), do: block.id
+
+    Enum.map(rows, fn row ->
+      scores =
+        for block_id <- gradable_ids,
+            %{state: :scored, score: score} <- [Map.get(cells, {row.account_id, block_id})],
+            do: score
+
+      row
+      |> Map.merge(Map.fetch!(assessments, row.account_id))
+      |> Map.put(
+        :average_score,
+        if(scores == [], do: nil, else: Enum.sum(scores) / length(scores))
+      )
+    end)
+  end
+
+  # Best-attempt gradebook cells keyed by student - for a team cohort every
+  # member shares the team's own cells.
+  defp cohort_cells(cohort_id, course_id, account_ids) do
+    case Learning.get_cohorts_map([cohort_id]) do
+      %{^cohort_id => cohort} ->
+        %{cells: cells} = Learning.build_gradebook(cohort, course_id)
+        expand_cells(cells, cohort.type, account_ids)
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp expand_cells(cells, :team, account_ids) do
+    for {{_team_id, block_id}, cell} <- cells, account_id <- account_ids, into: %{} do
+      {{account_id, block_id}, cell}
+    end
+  end
+
+  defp expand_cells(cells, _type, _account_ids), do: cells
+
+  # How each student went through the theory in front of a graded task
+  # (`Athena.Engagement.TheoryLinks`), over the whole course - the material
+  # may well have been read weeks before the test. Only loaded for tasks
+  # that could possibly produce a performance signal.
+  defp theory_reviewer(cells, blocks, window_start, index, opts) do
+    config = engagement_config()
+
+    suspect_score =
+      Keyword.get(config, :low_score_threshold, 50) +
+        Keyword.get(config, :low_score_group_gap, 30)
+
+    min_attempts = Keyword.get(config, :many_attempts_min, 3)
+
+    suspect_block_ids =
+      for {{_account_id, block_id}, cell} <- cells,
+          window_start == nil or DateTime.compare(cell.submitted_at, window_start) != :lt,
+          (cell.state == :scored and cell.score < suspect_score) or cell.attempts >= min_attempts,
+          into: MapSet.new(),
+          do: block_id
+
+    theory_by_block =
+      for block <- blocks,
+          MapSet.member?(suspect_block_ids, block.id),
+          into: %{},
+          do:
+            {block.id,
+             TheoryLinks.theory_blocks_for(block, index.sections, index.blocks_by_section)}
+
+    theory_blocks = theory_by_block |> Map.values() |> List.flatten() |> Enum.uniq_by(& &1.id)
+
+    theory_index =
+      cond do
+        theory_blocks == [] ->
+          %{acc_by_account_block: %{}, baselines: %{}}
+
+        index.from_day == nil ->
+          index
+
+        true ->
+          activity =
+            load_activity(index.cohort_id, theory_blocks, nil, Keyword.get(opts, :source))
+
+          Map.put(activity, :baselines, group_baselines(activity.acc_by_account_block))
+      end
+
+    fn account_id, block ->
+      theory_by_block
+      |> Map.get(block.id, [])
+      |> Enum.map(&theory_review(&1, account_id, theory_index, index))
+    end
+  end
+
+  @theory_flags [:fast_dwell, :shallow_scroll, :video_skipped]
+
+  defp theory_review(block, account_id, theory_index, index) do
+    case Map.get(theory_index.acc_by_account_block, {account_id, block.id}) do
+      acc when acc == nil or acc.event_count == 0 ->
+        %{block_id: block.id, block_type: block.type, status: :skipped}
+
+      acc ->
+        metrics =
+          acc
+          |> Accumulator.to_metrics(
+            block.type,
+            Map.fetch!(index.resolved_rule_by_block_id, block.id)
+          )
+          |> with_group_baselines(Map.get(theory_index.baselines, block.id))
+
+        flags = Enum.filter(flag_concerns(metrics).slacking, &(&1 in @theory_flags))
+
+        %{
+          block_id: block.id,
+          block_type: block.type,
+          status: if(flags == [], do: :ok, else: :superficial),
+          flags: Map.new(flags, &{&1, flag_detail(&1, metrics)})
+        }
+    end
   end
 
   # The full set of student-level flags from `slacking_flags/2` +
@@ -309,7 +891,6 @@ defmodule Athena.Engagement.Metrics do
     :no_debug_cycle,
     :slow_dwell,
     :hesitation,
-    :backtracked,
     :panic_debugging,
     :printscreen_attempted,
     :copy_attempted,
@@ -332,15 +913,21 @@ defmodule Athena.Engagement.Metrics do
   each of the `@radar_axes` flags, what fraction of every student × block
   pair in scope fired it - `0.0` to `1.0` per axis, `0.0` (not a crash)
   when there is nothing to observe yet. Folds the exact same
-  `student_block_flags/4` grid `student_radar/3` already builds, just
+  `student_block_flags/3` grid `student_radar/3` already builds, just
   tallied by flag name instead of by student, so a cohort's radar profile
   and its "Student Radar" table can never silently disagree about what
   counts as a flag firing.
   """
   @spec cohort_flag_profile(binary(), binary(), keyword()) :: %{atom() => float()}
   def cohort_flag_profile(cohort_id, course_id, opts \\ []) do
+    cached(:cohort_flag_profile, cohort_id, course_id, opts, fn ->
+      do_cohort_flag_profile(cohort_id, course_id, opts)
+    end)
+  end
+
+  defp do_cohort_flag_profile(cohort_id, course_id, opts) do
     since = Keyword.get(opts, :since, default_since())
-    index = build_scope_index(course_id, cohort_id, since)
+    index = build_scope_index(course_id, cohort_id, since, opts)
     blocks = radar_blocks(index, Keyword.get(opts, :section_id))
     students = students_in_cohort(cohort_id)
     total_observations = length(blocks) * length(students)
@@ -369,9 +956,7 @@ defmodule Athena.Engagement.Metrics do
   cohort - a tall red bar on one section means "most students are gaming
   this section", a tall yellow bar means "most students are stuck here",
   either way it is the section to look at first. Sections are always the
-  full course (unlike `student_radar/3`/`cohort_flag_profile/3`, a single
-  section's own total wouldn't need a per-section breakdown), returned in
-  the same course order `course_blocks/1`'s traversal already relies on.
+  full course, in course order.
   """
   @spec section_flag_totals(binary(), binary(), keyword()) :: [
           %{
@@ -384,10 +969,52 @@ defmodule Athena.Engagement.Metrics do
         ]
   def section_flag_totals(cohort_id, course_id, opts \\ []) do
     since = Keyword.get(opts, :since, default_since())
-    students = students_in_cohort(cohort_id)
-    index = build_scope_index(course_id, cohort_id, since)
+    index = build_scope_index(course_id, cohort_id, since, opts)
+    section_flag_totals_from_index(index, students_in_cohort(cohort_id))
+  end
 
+  defp section_flag_totals_from_index(index, students) do
     Enum.map(index.sections, fn section -> section_flag_total(section, students, index) end)
+  end
+
+  @doc """
+  Every course-wide "Course Radar" dataset in one pass - `section_flag_totals/3`,
+  `activity_heatmap/3`, `course_funnel/3`, `active_students_trend/3` and
+  `nudge_correction_rate/3` all computed off a single scope index instead of
+  each loading the same activity again.
+
+  `include_nudges: false` leaves out `nudge_correction_rate` - the one
+  dataset that needs exact event times and so can't be read from rollups;
+  a screen can load it separately so it never holds up the rest.
+  """
+  @spec course_overview(binary(), binary(), keyword()) :: %{
+          section_flag_totals: list(),
+          activity_heatmap: list(),
+          course_funnel: list(),
+          active_students_trend: list(),
+          nudge_correction_rate: list()
+        }
+  def course_overview(cohort_id, course_id, opts \\ []) do
+    cached(:course_overview, cohort_id, course_id, opts, fn ->
+      do_course_overview(cohort_id, course_id, opts)
+    end)
+  end
+
+  defp do_course_overview(cohort_id, course_id, opts) do
+    since = Keyword.get(opts, :since, default_since())
+    index = build_scope_index(course_id, cohort_id, since, opts)
+    students = students_in_cohort(cohort_id)
+
+    overview = %{
+      section_flag_totals: section_flag_totals_from_index(index, students),
+      activity_heatmap: heatmap_cells(index.hour_matrix),
+      course_funnel: course_funnel_from_index(index, cohort_id),
+      active_students_trend: trend_points(index.active_by_day)
+    }
+
+    if Keyword.get(opts, :include_nudges, true),
+      do: Map.put(overview, :nudge_correction_rate, nudge_correction_rate_from_index(index)),
+      else: overview
   end
 
   defp section_flag_total(section, students, index) do
@@ -431,24 +1058,14 @@ defmodule Athena.Engagement.Metrics do
         ]
   def activity_heatmap(cohort_id, course_id, opts \\ []) do
     since = Keyword.get(opts, :since, default_since())
-    block_ids = course_id |> course_blocks() |> Enum.map(& &1.id)
-
-    counts =
-      block_ids
-      |> Events.list_events_for_scope(cohort_id, since)
-      |> Enum.reduce(%{}, fn event, acc ->
-        key = heatmap_cell(event.occurred_at)
-        Map.update(acc, key, 1, &(&1 + 1))
-      end)
-
-    for day <- 1..7, hour <- 0..23 do
-      %{day_of_week: day, hour: hour, count: Map.get(counts, {day, hour}, 0)}
-    end
+    index = build_scope_index(course_id, cohort_id, since, opts)
+    heatmap_cells(index.hour_matrix)
   end
 
-  defp heatmap_cell(occurred_at) do
-    local = TimeZones.to_app_zone(occurred_at)
-    {local |> DateTime.to_date() |> Date.day_of_week(), local.hour}
+  defp heatmap_cells(hour_matrix) do
+    for day <- 1..7, hour <- 0..23 do
+      %{day_of_week: day, hour: hour, count: Map.get(hour_matrix, {day, hour}, 0)}
+    end
   end
 
   @doc """
@@ -457,14 +1074,11 @@ defmodule Athena.Engagement.Metrics do
   actually interacted with any block in it, and completed every block in
   it - the "Open edX Insights learner engagement funnel" view, showing
   where in the *course* (not just one block) a cohort thins out. `opened`/
-  `interacted` reuse the exact same event-type sets `funnel/2` already
-  uses, just widened from one block's events to the whole section's;
-  `completed` is only checked among students who opened the section at all
-  (anyone who never opened it trivially hasn't completed it either), via
-  the same `Athena.Learning.completed_block_ids/3` the Player's waterline
-  and `student_radar/3`'s `progress_percent` already rely on - resolving to
-  the shared team completion record (not an individual one) when
-  `cohort_id` is a `:team` cohort, via `team_scope_id/1`.
+  `interacted` use the exact same event-type sets `funnel/2` uses, widened
+  from one block to the whole section; `completed` is only checked among
+  students who opened the section at all, resolving to the shared team
+  completion record (not an individual one) when `cohort_id` is a `:team`
+  cohort, via `team_scope_id/1`.
   """
   @spec course_funnel(binary(), binary(), keyword()) :: [
           %{
@@ -477,37 +1091,52 @@ defmodule Athena.Engagement.Metrics do
         ]
   def course_funnel(cohort_id, course_id, opts \\ []) do
     since = Keyword.get(opts, :since, default_since())
-    team_id = team_scope_id(cohort_id)
 
     course_id
-    |> Content.get_course_tree(:all)
-    |> flatten_sections()
-    |> Enum.map(&section_funnel(&1, cohort_id, team_id, since))
+    |> build_scope_index(cohort_id, since, opts)
+    |> course_funnel_from_index(cohort_id)
   end
 
-  defp section_funnel(section, cohort_id, team_id, since) do
-    blocks = Content.list_blocks_by_section(section.id, :all)
-    block_ids = Enum.map(blocks, & &1.id)
-    events = Events.list_events_for_scope(block_ids, cohort_id, since)
+  # Completion is resolved in one bulk query for every student who opened
+  # anything in scope.
+  defp course_funnel_from_index(index, cohort_id) do
+    openers =
+      for {{account_id, _block_id}, acc} <- index.acc_by_account_block,
+          acc.enter_count > 0,
+          into: MapSet.new(),
+          do: account_id
 
-    opened = distinct_accounts(events, &(&1.event_type == :viewport_enter))
+    completed_by_account =
+      Learning.completed_block_ids_by_account(
+        MapSet.to_list(openers),
+        Enum.map(index.all_blocks, & &1.id),
+        team_scope_id(cohort_id)
+      )
+
+    accs_by_block =
+      Enum.group_by(
+        index.acc_by_account_block,
+        fn {{_account_id, block_id}, _acc} -> block_id end,
+        fn {{account_id, _block_id}, acc} -> {account_id, acc} end
+      )
+
+    Enum.map(index.sections, &section_funnel(&1, index, accs_by_block, completed_by_account))
+  end
+
+  defp section_funnel(section, index, accs_by_block, completed_by_account) do
+    block_ids = index.blocks_by_section |> Map.get(section.id, []) |> Enum.map(& &1.id)
+    accs = Enum.flat_map(block_ids, &Map.get(accs_by_block, &1, []))
+
+    opened =
+      for {account_id, acc} <- accs, acc.enter_count > 0, into: MapSet.new(), do: account_id
 
     interacted =
-      events
-      |> distinct_accounts(
-        &(&1.event_type in [
-            :viewport_exit,
-            :paste_detected,
-            :video_play,
-            :attachment_open,
-            :image_zoom
-          ])
-      )
+      for({account_id, acc} <- accs, acc.interact_count > 0, into: MapSet.new(), do: account_id)
       |> MapSet.intersection(opened)
 
     completed_count =
       Enum.count(opened, fn account_id ->
-        completed_ids = MapSet.new(Learning.completed_block_ids(account_id, section.id, team_id))
+        completed_ids = Map.get(completed_by_account, account_id, MapSet.new())
         block_ids != [] and Enum.all?(block_ids, &MapSet.member?(completed_ids, &1))
       end)
 
@@ -526,24 +1155,21 @@ defmodule Athena.Engagement.Metrics do
   per calendar day that had at least one event anywhere in `course_id`,
   counting distinct `account_id`s that day - a DAU (daily active students)
   reading. Only days with activity are returned (not a zero-filled
-  calendar range) - a chart can still plot a sparse series, and this way
-  the result never has to guess where "today" is relative to `opts[:since]`.
-  Day boundaries are app-timezone calendar days, the same simplification
-  `activity_heatmap/3` already documents.
+  calendar range). Day boundaries are app-timezone calendar days, the same
+  simplification `activity_heatmap/3` already documents.
   """
   @spec active_students_trend(binary(), binary(), keyword()) :: [
           %{date: Date.t(), active_count: non_neg_integer()}
         ]
   def active_students_trend(cohort_id, course_id, opts \\ []) do
     since = Keyword.get(opts, :since, default_since())
-    block_ids = course_id |> course_blocks() |> Enum.map(& &1.id)
+    index = build_scope_index(course_id, cohort_id, since, opts)
+    trend_points(index.active_by_day)
+  end
 
-    block_ids
-    |> Events.list_events_for_scope(cohort_id, since)
-    |> Enum.group_by(&(&1.occurred_at |> TimeZones.to_app_zone() |> DateTime.to_date()))
-    |> Enum.map(fn {date, events} ->
-      %{date: date, active_count: events |> Enum.map(& &1.account_id) |> Enum.uniq() |> length()}
-    end)
+  defp trend_points(active_by_day) do
+    active_by_day
+    |> Enum.map(fn {date, count} -> %{date: date, active_count: count} end)
     |> Enum.sort_by(& &1.date, Date)
   end
 
@@ -552,18 +1178,18 @@ defmodule Athena.Engagement.Metrics do
   fired and, of those, how many times the *same* student did **not**
   trigger the *same*-named flag again on any block visited afterward - an
   ASSISTments-style "did the hint change the next attempt" measure, applied
-  to nudges instead of hints, and the one genuinely new piece of
-  methodology in this batch (every other aggregation here is a re-fold of
-  signals `flag_concerns/1` already defines).
+  to nudges instead of hints.
 
   `reason` is read straight from each `nudge_shown` event's payload
   (`"fast_dwell"`, `"shallow_scroll"`, `"heavy_paste"`, `"video_skipped"` -
   `player.ex` passes the flag name itself as the reason, so no separate
-  mapping table is needed here); "corrected" means `student_block_flags/4`
-  never reports that same flag name for that student on any of the
-  course's blocks at any point strictly after the nudge fired.
-  `correction_rate` is `nil` (not `0.0`) when `nudged_count` is `0` -
-  nothing to divide, not "0% effective".
+  mapping table is needed here); "corrected" means that same flag never
+  fires for that student on any of the course's blocks, counting only what
+  they did strictly after the nudge. `correction_rate` is `nil` (not
+  `0.0`) when `nudged_count` is `0` - nothing to divide, not "0% effective".
+
+  Needs exact event times, so it always reads raw events - but only the
+  nudges themselves and the nudged students' later activity.
   """
   @spec nudge_correction_rate(binary(), binary(), keyword()) :: [
           %{
@@ -574,18 +1200,57 @@ defmodule Athena.Engagement.Metrics do
           }
         ]
   def nudge_correction_rate(cohort_id, course_id, opts \\ []) do
-    since = Keyword.get(opts, :since, default_since())
-    index = build_scope_index(course_id, cohort_id, since)
-    blocks = index.blocks_by_section |> Map.values() |> List.flatten()
+    cached(:nudge_correction_rate, cohort_id, course_id, opts, fn ->
+      since = Keyword.get(opts, :since, default_since())
 
-    index.events_by_block
-    |> Map.values()
-    |> List.flatten()
-    |> Enum.filter(&(&1.event_type == :nudge_shown))
+      course_id
+      |> build_scope_index(cohort_id, since, Keyword.put(opts, :source, :structure_only))
+      |> nudge_correction_rate_from_index()
+    end)
+  end
+
+  defp nudge_correction_rate_from_index(index) do
+    block_ids = Enum.map(index.all_blocks, & &1.id)
+    since = index.from_day && TimeZones.start_of_day(index.from_day)
+
+    nudges =
+      Events.list_events_for_scope(block_ids, index.cohort_id, since, event_types: [:nudge_shown])
+
+    reasons = nudges |> Enum.map(&nudge_reason/1) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    # Only blocks where one of the observed reasons could fire again at all.
+    candidate_ids =
+      for block <- index.all_blocks,
+          Enum.any?(reasons, &can_fire?(&1, block, index)),
+          do: block.id
+
+    later_events =
+      case {nudges, candidate_ids} do
+        {[], _} ->
+          %{}
+
+        {_, []} ->
+          %{}
+
+        {nudges, candidate_ids} ->
+          first_nudge_at = nudges |> Enum.map(& &1.occurred_at) |> Enum.min(DateTime)
+
+          candidate_ids
+          |> Events.list_events_for_scope(index.cohort_id, first_nudge_at,
+            account_ids: nudges |> Enum.map(& &1.account_id) |> Enum.uniq()
+          )
+          |> Enum.group_by(&{&1.account_id, &1.block_id})
+      end
+
+    blocks_by_id = Map.new(index.all_blocks, &{&1.id, &1})
+
+    nudges
     |> Enum.map(&{nudge_reason(&1), &1})
     |> Enum.reject(fn {reason, _event} -> is_nil(reason) end)
     |> Enum.group_by(fn {reason, _event} -> reason end, fn {_reason, event} -> event end)
-    |> Enum.map(fn {reason, nudges} -> reason_correction(reason, nudges, blocks, index) end)
+    |> Enum.map(fn {reason, nudges} ->
+      reason_correction(reason, nudges, later_events, blocks_by_id, index)
+    end)
   end
 
   defp nudge_reason(%{payload: %{"reason" => reason}}) when is_binary(reason) do
@@ -596,9 +1261,11 @@ defmodule Athena.Engagement.Metrics do
 
   defp nudge_reason(_event), do: nil
 
-  defp reason_correction(reason, nudges, blocks, index) do
+  defp reason_correction(reason, nudges, later_events, blocks_by_id, index) do
     nudged_count = length(nudges)
-    corrected_count = Enum.count(nudges, &(!flag_fires_again?(reason, &1, blocks, index)))
+
+    corrected_count =
+      Enum.count(nudges, &(!flag_fires_again?(reason, &1, later_events, blocks_by_id, index)))
 
     %{
       reason: reason,
@@ -608,19 +1275,68 @@ defmodule Athena.Engagement.Metrics do
     }
   end
 
-  defp flag_fires_again?(reason, nudge, blocks, index) do
+  # Only blocks that can fire `reason` at all, and only their own events
+  # after the nudge: slacking flags never depend on the rest of the section
+  # (backtracking is a struggling signal), so no section context is needed.
+  defp flag_fires_again?(reason, nudge, later_events, blocks_by_id, index) do
     after_at = DateTime.add(nudge.occurred_at, 1, :second)
 
-    Enum.any?(blocks, fn block ->
-      flags = student_block_flags(block, nudge.account_id, index, after_at)
-      reason in flags.slacking_flags
+    Enum.any?(later_events, fn
+      {{account_id, block_id}, events} when account_id == nudge.account_id ->
+        block = Map.fetch!(blocks_by_id, block_id)
+
+        can_fire?(reason, block, index) and
+          events
+          |> Enum.filter(&(DateTime.compare(&1.occurred_at, after_at) != :lt))
+          |> fires_on_block?(reason, block, index)
+
+      _other ->
+        false
     end)
   end
 
-  defp radar_blocks(index, nil), do: index.blocks_by_section |> Map.values() |> List.flatten()
+  defp fires_on_block?([], _reason, _block, _index), do: false
+
+  defp fires_on_block?(events, reason, block, index) do
+    events
+    |> Accumulator.build()
+    |> Accumulator.by_account_block()
+    |> Map.values()
+    |> Accumulator.merge_all()
+    |> then(&(reason in block_flags(block, &1, index).slacking))
+  end
+
+  defp can_fire?(:fast_dwell, block, index),
+    do: Map.fetch!(index.resolved_rule_by_block_id, block.id)[:expected_seconds] != nil
+
+  defp can_fire?(:shallow_scroll, block, _index), do: block.type == :text
+  defp can_fire?(:heavy_paste, block, _index), do: block.type in [:quiz_question, :code]
+  defp can_fire?(:video_skipped, block, _index), do: block.type == :video
+  defp can_fire?(:no_debug_cycle, block, _index), do: block.type == :code
+  defp can_fire?(_reason, _block, _index), do: true
+
+  # Windows are whole days (see the moduledoc), so the window's first day -
+  # not the exact `since` instant - is what identifies a result. Forced raw
+  # reads (`source: :raw`) bypass the cache.
+  defp cached(name, cohort_id, course_id, opts, fun) do
+    if Keyword.get(opts, :source) == :raw do
+      fun.()
+    else
+      since = Keyword.get(opts, :since, default_since())
+      from_day = since && since |> TimeZones.to_app_zone() |> DateTime.to_date()
+
+      key =
+        {name, cohort_id, course_id, from_day, Keyword.get(opts, :section_id),
+         Keyword.get(opts, :include_nudges, true)}
+
+      DashboardCache.fetch(key, fun)
+    end
+  end
+
+  defp radar_blocks(index, nil), do: index.all_blocks
   defp radar_blocks(index, section_id), do: Map.get(index.blocks_by_section, section_id, [])
 
-  defp student_radar_row(account_id, team_id, blocks, index) do
+  defp student_radar_row(account_id, completed_ids, blocks, index) do
     flagged_blocks =
       blocks
       |> Enum.map(&student_block_flags(&1, account_id, index))
@@ -645,7 +1361,7 @@ defmodule Athena.Engagement.Metrics do
 
     %{
       account_id: account_id,
-      progress_percent: progress_percent(account_id, team_id, blocks),
+      progress_percent: progress_percent(completed_ids, blocks),
       slacking_index: slacking_index,
       struggling_index: struggling_index,
       integrity_index: integrity_index,
@@ -654,37 +1370,26 @@ defmodule Athena.Engagement.Metrics do
     }
   end
 
-  defp student_block_flags(block, account_id, index, since_override \\ nil) do
-    section = Map.fetch!(index.section_by_id, block.section_id)
-    section_blocks = Map.fetch!(index.blocks_by_section, block.section_id)
-    resolved_rule = Map.fetch!(index.resolved_rule_by_block_id, block.id)
+  # A block the student never touched has no accumulator and can't fire
+  # anything - the common case on a cohort-wide grid.
+  defp student_block_flags(block, account_id, index) do
+    {flags, metrics} =
+      case Map.get(index.acc_by_account_block, {account_id, block.id}) do
+        nil ->
+          {%{slacking: [], struggling: [], integrity: []}, %{}}
 
-    block_events =
-      index.events_by_block
-      |> Map.get(block.id, [])
-      |> filter_by_account(account_id)
-      |> filter_since(since_override)
+        acc ->
+          metrics = student_block_metrics(block, acc, index)
+          {flag_concerns(metrics), metrics}
+      end
 
-    section_events =
-      index.events_by_section
-      |> Map.get(block.section_id, [])
-      |> filter_by_account(account_id)
-      |> filter_since(since_override)
-
-    metrics =
-      compute_block_metrics(
-        block,
-        section,
-        section_blocks,
-        block_events,
-        section_events,
-        resolved_rule
-      )
-
-    flags = flag_concerns(metrics)
+    all_flags = flags.slacking ++ flags.struggling ++ flags.integrity
 
     %{
       block_id: block.id,
+      block_type: block.type,
+      details: Map.new(all_flags, &{&1, flag_detail(&1, metrics)}),
+      section_id: block.section_id,
       flags: flags.slacking ++ flags.struggling ++ flags.integrity,
       slacking_flags: flags.slacking,
       struggling_flags: flags.struggling,
@@ -695,28 +1400,24 @@ defmodule Athena.Engagement.Metrics do
     }
   end
 
-  # Whole-course fact, not a windowed behavior - reuses the same
-  # `Athena.Learning.completed_block_ids/3` the Player's own waterline
-  # already relies on, one section at a time (the course tree has no flat
-  # "all blocks" progress query). `team_id` (from `team_scope_id/1`) is
-  # `nil` for academic cohorts (individual completion records) and the
-  # cohort id itself for `:team` cohorts, matching the shared completion
-  # records `Athena.Learning.Progress.mark_completed/3` writes.
-  defp progress_percent(_account_id, _team_id, []), do: 0.0
+  defp block_flags(block, acc, index) do
+    block |> student_block_metrics(acc, index) |> flag_concerns()
+  end
 
-  defp progress_percent(account_id, team_id, blocks) do
-    block_ids = MapSet.new(blocks, & &1.id)
+  defp student_block_metrics(block, acc, index) do
+    acc
+    |> Accumulator.to_metrics(block.type, Map.fetch!(index.resolved_rule_by_block_id, block.id))
+    |> with_group_baselines(Map.get(index.baselines, block.id))
+  end
 
-    completed_count =
-      blocks
-      |> Enum.map(& &1.section_id)
-      |> Enum.uniq()
-      |> Enum.flat_map(&Learning.completed_block_ids(account_id, &1, team_id))
-      |> Enum.filter(&MapSet.member?(block_ids, &1))
-      |> Enum.uniq()
-      |> length()
+  # Whole-course fact, not a windowed behavior. `completed_ids` comes from
+  # one bulk `Athena.Learning.completed_block_ids_by_account/3` call for the
+  # whole cohort (same team-vs-individual scoping rule as the Player's own
+  # `completed_block_ids/3` waterline), already restricted to `blocks`.
+  defp progress_percent(_completed_ids, []), do: 0.0
 
-    completed_count / MapSet.size(block_ids) * 100
+  defp progress_percent(completed_ids, blocks) do
+    MapSet.size(completed_ids) / length(blocks) * 100
   end
 
   # `cohort_id` is `nil` for a self-paced/no-cohort scope, or an
@@ -735,43 +1436,19 @@ defmodule Athena.Engagement.Metrics do
   end
 
   defp default_since do
-    days = Keyword.get(engagement_config(), :student_radar_default_window_days, 7)
-    DateTime.add(DateTime.utc_now(), -days * 86_400, :second)
+    engagement_config()
+    |> Keyword.get(:student_radar_default_window_days, 7)
+    |> window_start()
   end
 
-  # Per-block-type dispatch
-
-  defp compute_block_metrics(
-         block,
-         _section,
-         section_blocks,
-         block_events,
-         section_events,
-         resolved_rule
-       ) do
-    type_metrics = type_metrics_for(block.type, block_events)
-    shared = shared_metrics(block_events, resolved_rule)
-    backtrack = backtrack_count(block, section_blocks, section_events)
-
-    type_metrics
-    |> Map.merge(shared)
-    |> Map.put(:backtrack_count, backtrack)
-    |> Map.put(:backtrack_rate, rate(backtrack, shared.students_observed))
-    |> Map.put(:hesitation_rate, hesitating_students_rate(block_events, shared.students_observed))
+  @doc """
+  Start of a "last `days` days" window: midnight (app timezone) of the day
+  `days - 1` days ago, so the window is today plus `days - 1` whole days.
+  """
+  @spec window_start(pos_integer()) :: DateTime.t()
+  def window_start(days) when days >= 1 do
+    TimeZones.today() |> Date.add(-(days - 1)) |> TimeZones.start_of_day()
   end
-
-  # One function clause per block type (rather than a `case`) keeps each
-  # branch's complexity trivial - a `case` with this many arms in one
-  # function body is exactly what trips Credo's cyclomatic-complexity check.
-  defp type_metrics_for(:text, events), do: text_metrics(events)
-  defp type_metrics_for(:video, events), do: video_metrics(events)
-  defp type_metrics_for(:quiz_question, events), do: quiz_question_metrics(events)
-  defp type_metrics_for(:quiz_exam, events), do: exam_metrics(events)
-  defp type_metrics_for(:ticket_exam, events), do: exam_metrics(events)
-  defp type_metrics_for(:code, events), do: code_metrics(events)
-  defp type_metrics_for(:attachment, events), do: attachment_metrics(events)
-  defp type_metrics_for(:image, events), do: image_metrics(events)
-  defp type_metrics_for(:file_assignment, _events), do: %{}
 
   @doc """
   Classifies an already-computed metrics map (from `get_metrics/1`) into
@@ -823,16 +1500,14 @@ defmodule Athena.Engagement.Metrics do
   end
 
   defp slacking_flags(metrics, config) do
+    # Pasting a line or two and submitting is normal; pasting most of the
+    # solution and never running it is the pattern worth noticing.
     no_debug_cycle? =
       metrics[:debug_cycle_present?] == false and is_number(metrics[:paste_ratio]) and
-        metrics[:paste_ratio] > 0
+        metrics[:paste_ratio] > Keyword.get(config, :no_debug_paste_ratio, 0.5)
 
     []
-    |> add_if(
-      metrics[:dwell_ratio],
-      &(&1 < Keyword.get(config, :concern_dwell_ratio_threshold, 0.5)),
-      :fast_dwell
-    )
+    |> add_if_true(fast_dwell?(metrics, config), :fast_dwell)
     |> add_if(
       metrics[:avg_scroll_depth_percent],
       &(&1 < Keyword.get(config, :min_scroll_percent_for_text, 70)),
@@ -853,13 +1528,8 @@ defmodule Athena.Engagement.Metrics do
 
   defp struggling_flags(metrics, config) do
     []
-    |> add_if(
-      metrics[:dwell_ratio],
-      &(&1 > Keyword.get(config, :slow_dwell_ratio_threshold, 2.0)),
-      :slow_dwell
-    )
-    |> add_if(metrics[:answer_change_count], &(&1 > 0), :hesitation)
-    |> add_if(metrics[:backtrack_count], &(&1 > 0), :backtracked)
+    |> add_if_true(slow_dwell?(metrics, config), :slow_dwell)
+    |> add_if_true(hesitation?(metrics, config), :hesitation)
     |> add_if_true(metrics[:panic_debugging?] == true, :panic_debugging)
   end
 
@@ -895,224 +1565,179 @@ defmodule Athena.Engagement.Metrics do
     )
   end
 
+  # Time on a block is judged against the teacher's own expectation when the
+  # block has one (`expected_seconds`), otherwise against the cohort's
+  # median time on that same block (`dwell_group_ratio`, only present once
+  # enough students have data - see `with_group_baselines/2`).
+  defp fast_dwell?(metrics, config) do
+    cond do
+      is_number(metrics[:dwell_ratio]) ->
+        metrics[:dwell_ratio] < Keyword.get(config, :concern_dwell_ratio_threshold, 0.5)
+
+      is_number(metrics[:dwell_group_ratio]) ->
+        metrics[:dwell_group_ratio] < Keyword.get(config, :group_fast_dwell_ratio, 0.4)
+
+      true ->
+        false
+    end
+  end
+
+  defp slow_dwell?(metrics, config) do
+    cond do
+      is_number(metrics[:dwell_ratio]) ->
+        metrics[:dwell_ratio] > Keyword.get(config, :slow_dwell_ratio_threshold, 2.0)
+
+      is_number(metrics[:dwell_group_ratio]) ->
+        metrics[:dwell_group_ratio] > Keyword.get(config, :group_slow_dwell_ratio, 2.5)
+
+      true ->
+        false
+    end
+  end
+
+  # Changing an answer once is normal. It only counts as hesitation from
+  # `hesitation_min_changes` changes on, *and* more than most of the cohort
+  # (`hesitation_group_baseline`, their 80th percentile) - or, with too few
+  # peers to compare against, from `hesitation_absolute_changes` on.
+  defp hesitation?(metrics, config) do
+    changes = metrics[:answer_change_count]
+
+    cond do
+      not is_integer(changes) ->
+        false
+
+      changes < Keyword.get(config, :hesitation_min_changes, 2) ->
+        false
+
+      is_number(metrics[:hesitation_group_baseline]) ->
+        changes > metrics[:hesitation_group_baseline]
+
+      true ->
+        changes >= Keyword.get(config, :hesitation_absolute_changes, 3)
+    end
+  end
+
+  @doc """
+  Adds the cohort comparison a student's metrics on one block are judged
+  against (`flag_concerns/1` reads them): `dwell_group_ratio` (their average
+  time over the cohort median) and `hesitation_group_baseline` (the
+  cohort's 80th-percentile answer changes), each only when `baseline` has
+  enough peers behind it.
+  """
+  @spec with_group_baselines(map(), map() | nil) :: map()
+  def with_group_baselines(metrics, nil), do: metrics
+
+  def with_group_baselines(metrics, baseline) do
+    metrics
+    |> put_dwell_baseline(baseline)
+    |> Map.put(:hesitation_group_baseline, baseline[:answer_changes_p80])
+    |> Map.put(:group_peers, baseline[:peers])
+  end
+
+  defp put_dwell_baseline(metrics, %{dwell_median: median})
+       when is_number(median) and median > 0 do
+    case metrics[:avg_dwell_seconds] do
+      nil -> Map.put(metrics, :dwell_group_median, median)
+      avg -> Map.merge(metrics, %{dwell_group_median: median, dwell_group_ratio: avg / median})
+    end
+  end
+
+  defp put_dwell_baseline(metrics, _baseline), do: metrics
+
+  @doc """
+  What a student's flag on one block was measured as, against what - the
+  raw material for a human explanation. `basis` says how it was judged:
+  `:expected` (the teacher's expected time), `:group` (the cohort, with
+  `peers` students compared), `:absolute` (a fixed limit), `:count` (it
+  happened at all) or `:pattern` (a shape of behaviour, no single number).
+  """
+  @spec flag_detail(atom(), map()) :: map()
+  def flag_detail(flag, metrics) when flag in [:fast_dwell, :slow_dwell] do
+    if is_number(metrics[:dwell_ratio]) do
+      %{
+        value: metrics[:avg_dwell_seconds],
+        baseline:
+          metrics[:avg_dwell_seconds] && metrics[:avg_dwell_seconds] / metrics[:dwell_ratio],
+        basis: :expected
+      }
+    else
+      %{
+        value: metrics[:avg_dwell_seconds],
+        baseline: metrics[:dwell_group_median],
+        basis: :group,
+        peers: metrics[:group_peers]
+      }
+    end
+  end
+
+  def flag_detail(:shallow_scroll, metrics),
+    do: absolute(metrics[:avg_scroll_depth_percent], :min_scroll_percent_for_text, 70)
+
+  def flag_detail(:heavy_paste, metrics),
+    do: absolute(metrics[:paste_ratio], :paste_ratio_nudge_threshold, 0.8)
+
+  def flag_detail(:video_skipped, metrics),
+    do: absolute(metrics[:skip_ratio], :video_skip_ratio_threshold, 0.3)
+
+  def flag_detail(:hesitation, metrics) do
+    case metrics[:hesitation_group_baseline] do
+      nil ->
+        absolute(metrics[:answer_change_count], :hesitation_absolute_changes, 3)
+
+      baseline ->
+        %{
+          value: metrics[:answer_change_count],
+          baseline: baseline,
+          basis: :group,
+          peers: metrics[:group_peers]
+        }
+    end
+  end
+
+  def flag_detail(:backtracked, metrics),
+    do: %{value: metrics[:backtrack_count], basis: :count}
+
+  def flag_detail(:excessive_tab_switching, metrics),
+    do: absolute(metrics[:focus_loss_count], :exam_focus_loss_threshold, 3)
+
+  def flag_detail(:heavy_paste_on_exam, metrics),
+    do: absolute(metrics[:exam_paste_ratio], :exam_paste_ratio_threshold, 0.6)
+
+  def flag_detail(:printscreen_attempted, metrics),
+    do: %{value: metrics[:printscreen_count], basis: :count}
+
+  def flag_detail(:copy_attempted, metrics),
+    do: %{value: metrics[:copy_attempt_count], basis: :count}
+
+  def flag_detail(:cut_attempted, metrics),
+    do: %{value: metrics[:cut_attempt_count], basis: :count}
+
+  def flag_detail(:multi_tab_detected, metrics),
+    do: %{value: metrics[:multi_tab_count], basis: :count}
+
+  def flag_detail(:panic_debugging, metrics),
+    do: %{value: metrics[:run_attempt_count], basis: :pattern}
+
+  def flag_detail(:no_debug_cycle, metrics),
+    do: %{value: metrics[:paste_ratio], basis: :pattern}
+
+  def flag_detail(_flag, _metrics), do: %{basis: :pattern}
+
+  defp absolute(value, config_key, default) do
+    %{
+      value: value,
+      baseline: Keyword.get(engagement_config(), config_key, default),
+      basis: :absolute
+    }
+  end
+
   defp add_if(flags, nil, _condition?, _flag), do: flags
   defp add_if(flags, value, condition?, flag), do: add_if_true(flags, condition?.(value), flag)
 
   defp add_if_true(flags, true, flag), do: [flag | flags]
   defp add_if_true(flags, _falsy, _flag), do: flags
-
   defp rate(_count, 0), do: nil
   defp rate(count, total), do: count / total
-
-  defp hesitating_students_rate(_events, 0), do: nil
-
-  defp hesitating_students_rate(events, students_observed) do
-    events
-    |> distinct_accounts(&(&1.event_type == :answer_changed))
-    |> MapSet.size()
-    |> Kernel./(students_observed)
-  end
-
-  defp text_metrics(events) do
-    %{avg_scroll_depth_percent: avg_scroll_depth(events)}
-  end
-
-  defp video_metrics(events) do
-    %{
-      play_count: Enum.count(events, &(&1.event_type == :video_play)),
-      pause_count: Enum.count(events, &(&1.event_type == :video_pause)),
-      seek_count: Enum.count(events, &(&1.event_type == :video_seek)),
-      completion_count: Enum.count(events, &(&1.event_type == :video_ended)),
-      skip_ratio: avg_video_skip_ratio(events)
-    }
-  end
-
-  # Average, across sessions that finished the video, of how much of it was
-  # skipped over via forward seeks - independent of whether nudges were
-  # enabled for the cohort (unlike the Player's own in-the-moment nudge
-  # decision, this reads straight from `video_seek`/`video_ended`, which are
-  # always collected regardless of `cohort.nudges_enabled`).
-  defp avg_video_skip_ratio(events) do
-    events
-    |> Enum.group_by(& &1.session_id)
-    |> Enum.map(fn {_session_id, session_events} ->
-      duration =
-        session_events
-        |> Enum.find(&(&1.event_type == :video_ended))
-        |> case do
-          %{payload: %{"duration" => duration}} -> duration
-          _ -> nil
-        end
-
-      forward_skip =
-        session_events
-        |> Enum.filter(&(&1.event_type == :video_seek))
-        |> Enum.map(fn e -> max((e.payload["to_sec"] || 0) - (e.payload["from_sec"] || 0), 0) end)
-        |> Enum.sum()
-
-      if is_number(duration) and duration > 0, do: forward_skip / duration, else: nil
-    end)
-    |> Enum.reject(&is_nil/1)
-    |> avg()
-  end
-
-  defp quiz_question_metrics(events) do
-    %{
-      paste_ratio: avg_paste_ratio(events),
-      answer_change_count: Enum.count(events, &(&1.event_type == :answer_changed))
-    }
-  end
-
-  # Exam-only fields that would otherwise collide in name (but not in
-  # meaning) with `quiz_question_metrics/1`'s/`code_metrics/1`'s own
-  # `paste_ratio`/`answer_change_count`/`run_attempt_count`/
-  # `panic_debugging?` are prefixed `exam_` - `integrity_flags/2` reads
-  # these, and since a metrics map is always produced by exactly one
-  # `type_metrics_for/2` clause (never merged across block types), an
-  # unprefixed name would let e.g. a plain `quiz_question` block's own
-  # `paste_ratio` be silently mistaken for exam-integrity evidence.
-  defp exam_metrics(events) do
-    %{
-      focus_loss_count: Enum.count(events, &(&1.event_type == :tab_hidden)),
-      focus_loss_seconds: sum_duration_ms(events, :tab_visible),
-      window_blur_count: Enum.count(events, &(&1.event_type == :window_blur)),
-      printscreen_count: Enum.count(events, &(&1.event_type == :printscreen_attempt)),
-      copy_attempt_count: Enum.count(events, &(&1.event_type == :copy_attempt)),
-      cut_attempt_count: Enum.count(events, &(&1.event_type == :cut_attempt)),
-      multi_tab_count: Enum.count(events, &(&1.event_type == :multi_tab_detected)),
-      idle_seconds_total: sum_duration_ms(events, :idle_end),
-      exam_paste_ratio: avg_paste_ratio(events),
-      exam_answer_change_count: Enum.count(events, &(&1.event_type == :answer_changed)),
-      exam_run_attempt_count: Enum.count(events, &(&1.event_type == :code_run_attempt)),
-      exam_panic_debugging?: panic_debugging?(events)
-    }
-  end
-
-  defp sum_duration_ms(events, event_type) do
-    events
-    |> Enum.filter(&(&1.event_type == event_type))
-    |> Enum.map(&((&1.payload["duration_ms"] || 0) / 1000))
-    |> Enum.sum()
-  end
-
-  defp code_metrics(events) do
-    run_attempt_count = Enum.count(events, &(&1.event_type == :code_run_attempt))
-
-    %{
-      paste_ratio: avg_paste_ratio(events),
-      run_attempt_count: run_attempt_count,
-      debug_cycle_present?: run_attempt_count > 0,
-      panic_debugging?: panic_debugging?(events)
-    }
-  end
-
-  defp attachment_metrics(events) do
-    %{
-      open_count: Enum.count(events, &(&1.event_type == :attachment_open)),
-      unique_openers:
-        distinct_accounts(events, &(&1.event_type == :attachment_open)) |> MapSet.size()
-    }
-  end
-
-  defp image_metrics(events) do
-    %{zoom_count: Enum.count(events, &(&1.event_type == :image_zoom))}
-  end
-
-  defp shared_metrics(events, resolved_rule) do
-    dwells = events |> Events.pair_viewport_dwells() |> Enum.map(&elem(&1, 2))
-
-    %{
-      sample_size: length(dwells),
-      avg_dwell_seconds: avg(dwells),
-      dwell_ratio: dwell_ratio(dwells, resolved_rule[:expected_seconds]),
-      students_observed: distinct_accounts(events, fn _ -> true end) |> MapSet.size(),
-      tab_hidden_count: Enum.count(events, &(&1.event_type == :tab_hidden)),
-      avg_time_to_first_action: avg_time_to_first_action(events),
-      offtask_ratio: offtask_ratio(events)
-    }
-  end
-
-  # Share of the raw wall-clock time on this block that the student spent
-  # tabbed away entirely (Off-Task Behavior) - out of `[0, 1]`, `nil` when
-  # the block was never actually opened at all (nothing to divide by).
-  defp offtask_ratio(events) do
-    offtask_seconds =
-      events
-      |> Enum.filter(&(&1.event_type == :tab_visible))
-      |> Enum.map(&((&1.payload["duration_ms"] || 0) / 1000))
-      |> Enum.sum()
-
-    total_seconds = events |> Events.raw_viewport_window_seconds() |> Enum.sum()
-
-    if total_seconds > 0, do: min(offtask_seconds / total_seconds, 1.0), else: nil
-  end
-
-  # Time To First Action (TTFA): how long after entering the block did the
-  # student do something (first code keystroke, first quiz answer saved) -
-  # a quick TTFA is diving straight in, a long one is hesitation/avoidance
-  # before starting. `first_interaction` is emitted once per (block,
-  # session) by the Player, so there's at most one pair per session here.
-  defp avg_time_to_first_action(events) do
-    events
-    |> Enum.group_by(& &1.session_id)
-    |> Enum.map(fn {_session_id, session_events} ->
-      sorted = Enum.sort_by(session_events, & &1.occurred_at, DateTime)
-      enter = Enum.find(sorted, &(&1.event_type == :viewport_enter))
-      first_action = Enum.find(sorted, &(&1.event_type == :first_interaction))
-
-      if enter && first_action do
-        max(DateTime.diff(first_action.occurred_at, enter.occurred_at, :second), 0)
-      end
-    end)
-    |> Enum.reject(&is_nil/1)
-    |> avg()
-  end
-
-  # The flagship "went back to earlier content" signal: for each session,
-  # walk its `viewport_enter` events (restricted to this section's blocks,
-  # in chronological order) and check whether the student had already
-  # reached a later block (by `order`) before coming back to this one.
-  defp backtrack_count(block, section_blocks, section_events) do
-    order_by_id = Map.new(section_blocks, &{&1.id, &1.order})
-
-    section_events
-    |> Enum.filter(&(&1.event_type == :viewport_enter))
-    |> Enum.group_by(& &1.session_id)
-    |> Enum.count(fn {_session_id, session_events} ->
-      session_events
-      |> Enum.sort_by(& &1.occurred_at, DateTime)
-      |> backtracked_to?(block.id, block.order, order_by_id)
-    end)
-  end
-
-  defp backtracked_to?(sorted_events, target_block_id, target_order, order_by_id) do
-    # `Enum.reduce_while/3` returns the final accumulator when it never halts -
-    # here that accumulator doubles as "have we seen later content yet?", which
-    # is not the same thing as "did we backtrack". Only an explicit `:halt`
-    # means "yes"; anything else (including running out of events while
-    # `seen_later?` happens to be `true`) must resolve to `false`.
-    reduction = &backtrack_reduction(&1, &2, target_block_id, target_order, order_by_id)
-
-    case Enum.reduce_while(sorted_events, false, reduction) do
-      :backtracked -> true
-      _ -> false
-    end
-  end
-
-  defp backtrack_reduction(event, seen_later?, target_block_id, target_order, order_by_id) do
-    cond do
-      event.block_id == target_block_id and seen_later? -> {:halt, :backtracked}
-      Map.get(order_by_id, event.block_id, target_order) > target_order -> {:cont, true}
-      true -> {:cont, seen_later?}
-    end
-  end
-
-  defp events_for_scope(section_blocks, scope) do
-    section_blocks
-    |> Enum.map(& &1.id)
-    |> Events.list_events_for_scope(Map.get(scope, :cohort_id), Map.get(scope, :since))
-    |> filter_by_account(Map.get(scope, :account_id))
-  end
 
   defp filter_by_account(events, nil), do: events
 
@@ -1121,58 +1746,6 @@ defmodule Athena.Engagement.Metrics do
 
   defp distinct_accounts(events, filter_fun) do
     events |> Enum.filter(filter_fun) |> Enum.map(& &1.account_id) |> MapSet.new()
-  end
-
-  defp dwell_ratio(_dwells, nil), do: nil
-  defp dwell_ratio([], _expected_seconds), do: nil
-
-  defp dwell_ratio(dwells, expected_seconds) do
-    avg(dwells) / expected_seconds
-  end
-
-  defp avg_scroll_depth(events) do
-    events
-    |> Enum.filter(&(&1.event_type == :scroll_milestone))
-    |> Enum.group_by(& &1.session_id)
-    |> Enum.map(fn {_session_id, session_events} ->
-      session_events |> Enum.map(&(&1.payload["percent"] || 0)) |> Enum.max()
-    end)
-    |> avg()
-  end
-
-  defp avg_paste_ratio(events) do
-    events
-    |> Enum.filter(&(&1.event_type == :paste_detected))
-    |> Enum.map(fn event ->
-      pasted = event.payload["pasted_chars"] || 0
-      total = event.payload["total_chars"] || 0
-      if total > 0, do: pasted / total, else: nil
-    end)
-    |> Enum.reject(&is_nil/1)
-    |> avg()
-  end
-
-  # Error Quotient / "panic debugging" (Educational Data Mining): a student
-  # who fixes something and reruns a few minutes later is doing normal
-  # metacognitive debugging; one who mashes "Run" every few seconds without
-  # time to have actually changed anything meaningful is frustrated, not
-  # careless - a signal to intervene, not a "gaming the system" flag. Counts
-  # how many consecutive `code_run_attempt` gaps are shorter than
-  # `panic_debug_gap_seconds`; three or more such gaps is the threshold.
-  defp panic_debugging?(events) do
-    gap_seconds = Keyword.get(engagement_config(), :panic_debug_gap_seconds, 10)
-    min_bursts = Keyword.get(engagement_config(), :panic_debug_min_bursts, 3)
-
-    fast_gap_count =
-      events
-      |> Enum.filter(&(&1.event_type == :code_run_attempt))
-      |> Enum.sort_by(& &1.occurred_at, DateTime)
-      |> Enum.chunk_every(2, 1, :discard)
-      |> Enum.count(fn [a, b] ->
-        DateTime.diff(b.occurred_at, a.occurred_at, :second) < gap_seconds
-      end)
-
-    fast_gap_count >= min_bursts
   end
 
   defp engagement_config, do: Application.get_env(:athena, Athena.Engagement, [])

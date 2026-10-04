@@ -338,7 +338,7 @@ defmodule Athena.Identity.Accounts do
   @doc """
   Updates the caller's own profile (name fields, avatar, etc).
 
-  No ACL check — the caller is always allowed to edit their own profile,
+  No ACL check – the caller is always allowed to edit their own profile,
   regardless of `users.update` permissions (which gate editing *other*
   accounts via `update_admin_user/4`).
   """
@@ -370,7 +370,7 @@ defmodule Athena.Identity.Accounts do
   # unlike `Character.avatar_file_id`), so the only way to find the
   # replaced file is by parsing its key back out of the old `/media/...`
   # URL. Without this, every avatar change leaked the previous upload
-  # (S3 object + `media_files` row) forever — nothing ever cleaned it up,
+  # (S3 object + `media_files` row) forever – nothing ever cleaned it up,
   # since `Athena.Workers.MediaCleanup` only garbage-collects
   # `:course_material`/`:submission` files, not `:avatar` ones.
   @doc false

@@ -65,7 +65,7 @@ defmodule Athena.Gamification.DailyChallengesTest do
       assert DailyChallenges.today_for(account.id) == nil
     end
 
-    test "is idempotent for the same day — repeated calls return the same challenge" do
+    test "is idempotent for the same day – repeated calls return the same challenge" do
       account = insert(:account)
       section = insert(:section)
       block = insert(:block, section: section, type: :code)
@@ -182,7 +182,7 @@ defmodule Athena.Gamification.DailyChallengesTest do
                :count
              ) == 1
 
-      # 15 is the seeded base XP amount for a :code block — awarded exactly
+      # 15 is the seeded base XP amount for a :code block – awarded exactly
       # once despite handle_block_completed/1 being called twice.
       assert Athena.Gamification.total_xp(account.id) == xp_before + 15
       assert Repo.get!(DailyChallenge, challenge.id).completed_at

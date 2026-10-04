@@ -35,6 +35,7 @@ defmodule Athena do
       Learning.Cohort,
       Learning.CohortMembership,
       Learning.Enrollment,
+      Learning.Gradebook,
       Learning.BlockProgress,
       Learning.Instructor,
       Learning.CohortInstructor,

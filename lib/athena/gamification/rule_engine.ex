@@ -1,6 +1,6 @@
 defmodule Athena.Gamification.RuleEngine do
   @moduledoc """
-  Tiny interpreter for the badge rule-DSL — a JSON-shaped boolean
+  Tiny interpreter for the badge rule-DSL – a JSON-shaped boolean
   expression tree over `Athena.Gamification.Facts` (see
   `Athena.Gamification.Badge` for the grammar). Not a text/grammar parser:
   the rule is already a data structure (decoded JSON), so evaluation is a

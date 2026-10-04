@@ -40,7 +40,7 @@ defmodule AthenaWeb.Router do
   scope "/teaching", AthenaWeb do
     pipe_through :browser
 
-    get "/cohorts/:id/engagement/:course_id/export.csv", EngagementExportController, :download
+    get "/cohorts/:id/gradebook/:course_id/export.csv", GradebookExportController, :download
   end
 
   live_session :public,
@@ -87,6 +87,9 @@ defmodule AthenaWeb.Router do
       live "/messenger", MessengerLive.Index, :index
       live "/messenger/new", MessengerLive.Index, :new
       live "/messenger/:conversation_id", MessengerLive.Index, :show
+
+      live "/docs", DocsLive, :index
+      live "/docs/*path", DocsLive, :show
 
       scope "/learn", LearnLive do
         live "/", Index, :index
@@ -146,6 +149,7 @@ defmodule AthenaWeb.Router do
         live "/cohorts/:id/edit", Cohorts, :edit
         live "/cohorts/:id/access/:course_id", CohortAccess, :index
         live "/cohorts/:id/engagement/:course_id", CohortEngagement, :index
+        live "/cohorts/:id/gradebook/:course_id", CohortGradebook, :index
         live "/courses/:course_id/engagement/compare", CourseEngagementCompare, :index
 
         live "/teams", Teams, :index
@@ -156,6 +160,7 @@ defmodule AthenaWeb.Router do
         live "/teams/:id/edit", Teams, :edit
         live "/teams/:id/access/:course_id", CohortAccess, :index
         live "/teams/:id/engagement/:course_id", CohortEngagement, :index
+        live "/teams/:id/gradebook/:course_id", CohortGradebook, :index
 
         live "/instructors", Instructors, :index
         live "/instructors/new", Instructors, :new

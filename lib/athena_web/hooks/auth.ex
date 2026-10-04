@@ -21,7 +21,7 @@ defmodule AthenaWeb.Hooks.Auth do
     session user, for `AthenaWeb.LearnLive.Player` when nested inside the
     course builder's "test run" modal (see `Athena.Learning.TestRuns`). A
     no-op for every other mount, since it only acts when
-    `session["test_run_id"]` is present — which never happens for a real
+    `session["test_run_id"]` is present – which never happens for a real
     student's own `session`, only for the signed session LiveView's own
     `live_render/3` mints server-side.
   """

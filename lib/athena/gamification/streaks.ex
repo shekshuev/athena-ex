@@ -3,7 +3,7 @@ defmodule Athena.Gamification.Streaks do
   Weekly streak accounting.
 
   A week (Monday-Sunday) counts as "active" for an account if it earned any
-  XP that week — not merely logging in — which matters because this LMS
+  XP that week – not merely logging in – which matters because this LMS
   isn't reachable 24/7, so streaks track real practice, not presence.
   Computed in a weekly batch (`Athena.Gamification.Workers.WeeklyRollup`),
   not incrementally, since "did last week count" can only be answered once
@@ -15,7 +15,7 @@ defmodule Athena.Gamification.Streaks do
 
   @doc """
   Rolls the streak forward for `week_start` (a `Date`, the Monday of the
-  week being evaluated — normally the week that just ended).
+  week being evaluated – normally the week that just ended).
 
   - Accounts with XP that week: streak continues (+1) if they were also
     active the week immediately before, otherwise it restarts at 1.
@@ -47,7 +47,7 @@ defmodule Athena.Gamification.Streaks do
     stats = Repo.get_by(AccountStats, account_id: account_id)
 
     if stats && stats.last_active_week == week_start do
-      # Already rolled up for this exact week — e.g. an Oban retry re-running
+      # Already rolled up for this exact week – e.g. an Oban retry re-running
       # the whole job after a later step (snapshot_week/evaluate_league_badges)
       # failed, or a duplicate cron tick. Leave the streak as-is: recomputing
       # it here would compare `last_active_week` (== week_start, just written)
@@ -77,7 +77,7 @@ defmodule Athena.Gamification.Streaks do
     }
 
     # Always insert a fresh struct (never the loaded one) so the conflict is
-    # resolved purely by the `account_id` unique index — reusing the loaded
+    # resolved purely by the `account_id` unique index – reusing the loaded
     # struct's own `:id` here would make this insert collide with itself on
     # the primary key as well, not just on `account_id`.
     %AccountStats{}

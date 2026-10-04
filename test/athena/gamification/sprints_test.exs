@@ -196,7 +196,7 @@ defmodule Athena.Gamification.SprintsTest do
     end
   end
 
-  # Sanity check that our test setup's ACL actually grants management —
+  # Sanity check that our test setup's ACL actually grants management –
   # exercised indirectly above, but pinned here for clarity/documentation.
   test "the seeded owner role can manage its own cohort", %{owner: owner, cohort: cohort} do
     assert Cohorts.can_manage_cohort_processes?(owner, cohort)

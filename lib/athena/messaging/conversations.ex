@@ -31,7 +31,7 @@ defmodule Athena.Messaging.Conversations do
 
   @doc """
   Fetches a single conversation for the given user, provided they are a
-  participant. Returns `{:error, :not_found}` otherwise — conversations are
+  participant. Returns `{:error, :not_found}` otherwise – conversations are
   private, there is no admin/moderation override.
   """
   @spec get_conversation(map(), String.t()) :: {:ok, Conversation.t()} | {:error, :not_found}
@@ -112,7 +112,7 @@ defmodule Athena.Messaging.Conversations do
 
   @doc """
   Counts how many of the user's conversations have at least one unread
-  message — used for the sidebar badge.
+  message – used for the sidebar badge.
   """
   @spec count_unread_conversations(map()) :: non_neg_integer()
   def count_unread_conversations(user) do
@@ -129,7 +129,7 @@ defmodule Athena.Messaging.Conversations do
   end
 
   @doc """
-  Lists the accounts participating in a conversation — used to power the
+  Lists the accounts participating in a conversation – used to power the
   `@mention` autocomplete in cohort chats.
   """
   @spec list_participant_accounts(Conversation.t()) :: [Athena.Identity.Account.t()]
@@ -267,7 +267,7 @@ defmodule Athena.Messaging.Conversations do
         {:ok, conversation}
 
       {:error, %Ecto.Changeset{}} ->
-        # Race: someone else created the same DM concurrently — re-fetch it.
+        # Race: someone else created the same DM concurrently – re-fetch it.
         case Repo.get_by(Conversation, direct_key: direct_key) do
           nil -> {:error, :invalid}
           conversation -> {:ok, conversation}

@@ -4,7 +4,7 @@ defmodule Athena.Announcements.Announcement do
   (`:global`) or to the members of one specific cohort (`:cohort`).
 
   `body` stores a TipTap/ProseMirror JSON document (jsonb), not plain
-  text — rendered client-side by the same `TiptapEditor` hook used for
+  text – rendered client-side by the same `TiptapEditor` hook used for
   course content. Visibility can optionally be windowed via `starts_at`/
   `ends_at`: when both are `nil` the announcement is visible immediately
   and indefinitely; when set, `Athena.Announcements.list_for_viewer/2`
@@ -12,7 +12,7 @@ defmodule Athena.Announcements.Announcement do
   set alone).
 
   References `cohort_id` and `author_id` as bare ids with no foreign-key
-  constraint and no `belongs_to` — this schema belongs strictly to the
+  constraint and no `belongs_to` – this schema belongs strictly to the
   Announcements context and maintains loose coupling to Learning/Identity,
   the same convention `Athena.Media.File.owner_id` establishes.
   """

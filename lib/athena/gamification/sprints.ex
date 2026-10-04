@@ -1,7 +1,7 @@
 defmodule Athena.Gamification.Sprints do
   @moduledoc """
   CRUD for cohort sprints, gated by the same cohort-management check the
-  Learning context already uses for schedule overrides — no separate
+  Learning context already uses for schedule overrides – no separate
   gamification permission needed, since "who may run a sprint for this
   cohort" is exactly "who may manage this cohort". Also the active-XP-
   multiplier lookup `Athena.Gamification.XpLedger` consults when awarding

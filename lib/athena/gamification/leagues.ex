@@ -1,7 +1,7 @@
 defmodule Athena.Gamification.Leagues do
   @moduledoc """
   Weekly league standings scoped to a single academic cohort (20-40
-  people), not a school-wide leaderboard — ranked by weekly XP (practice),
+  people), not a school-wide leaderboard – ranked by weekly XP (practice),
   not final grades, and reset every week so one bad week doesn't compound
   into a lasting label.
 
@@ -9,11 +9,11 @@ defmodule Athena.Gamification.Leagues do
   whoever's at the bottom:
   - Only a `:top` tier (roughly the top 30%) is called out; there is no
     "bottom" tier shown to peers, only `:active` (ranked, visible) and
-    `:quiet` (no XP this week — hidden from other members entirely, see
+    `:quiet` (no XP this week – hidden from other members entirely, see
     `visible_standings/2`, and surfaced only to instructors as a support
     signal, not a public rank).
   - The default view is a "sandwich" (top 3 + your own ±2), not the full
-    roster — see `sandwich_view/2`.
+    roster – see `sandwich_view/2`.
   - An account can opt out of being shown to others at all via
     `Athena.Identity.Profile.metadata["show_in_league"] == false`; it still
     sees its own row.
@@ -28,7 +28,7 @@ defmodule Athena.Gamification.Leagues do
 
   @doc """
   Computes the *current, still-open* week's standings for a cohort's
-  members, ranked richest-first. Nothing is persisted — only closed weeks
+  members, ranked richest-first. Nothing is persisted – only closed weeks
   get snapshotted (`snapshot_week/1`, via the weekly rollup job).
   """
   @spec current_week_standings(String.t()) :: [map()]
@@ -43,8 +43,8 @@ defmodule Athena.Gamification.Leagues do
 
   @doc """
   Filters and shapes standings for display to `viewer_account_id`: drops
-  `:quiet` members and members who opted out (`show_in_league: false`) —
-  except the viewer's own row, which is always included — then returns the
+  `:quiet` members and members who opted out (`show_in_league: false`) –
+  except the viewer's own row, which is always included – then returns the
   default "sandwich" view (top 3 plus the viewer's own rank ±2).
   """
   @spec visible_standings(String.t(), String.t()) :: [map()]
@@ -61,8 +61,8 @@ defmodule Athena.Gamification.Leagues do
   end
 
   @doc """
-  Returns the default "sandwich" view for a standings list — top 3 plus the
-  viewer's own rank ±2 — instead of the full ranked list. Deduplicated and
+  Returns the default "sandwich" view for a standings list – top 3 plus the
+  viewer's own rank ±2 – instead of the full ranked list. Deduplicated and
   re-sorted by rank. If the viewer isn't present in `standings`, just the
   top 3 is returned.
   """
@@ -82,7 +82,7 @@ defmodule Athena.Gamification.Leagues do
   end
 
   @doc """
-  Lists members with no XP this week (`:quiet` tier) — not shown to peers,
+  Lists members with no XP this week (`:quiet` tier) – not shown to peers,
   but useful to an instructor as an outreach signal.
   """
   @spec quiet_members(String.t()) :: [map()]

@@ -125,6 +125,44 @@ config :athena, Athena.Engagement,
   student_radar_struggling_threshold: 2,
   student_radar_integrity_threshold: 1,
   student_radar_default_window_days: 7,
+  dashboard_cache_ttl_ms: 60_000,
+  # Judging a student against their own cohort (Group Radar). A group
+  # baseline is only trusted once `min_group_for_baseline` students have
+  # data for the block; below that, only absolute rules apply.
+  min_group_for_baseline: 5,
+  group_fast_dwell_ratio: 0.4,
+  group_slow_dwell_ratio: 2.5,
+  hesitation_min_changes: 2,
+  hesitation_absolute_changes: 3,
+  hesitation_group_percentile: 0.8,
+  low_score_threshold: 50,
+  low_score_group_gap: 30,
+  many_attempts_min: 3,
+  many_attempts_group_factor: 2,
+  # "Not mastering": at least this many tasks below the pass mark (and below
+  # the group) in the window - one bad task in a hundred is not a pattern.
+  not_mastering_min_low_scores: 2,
+  behind_progress_gap: 20,
+  missed_block_group_share: 0.6,
+  # Behind: missed at least this many blocks the group has done, and at
+  # least this share of them.
+  missed_blocks_for_behind: 5,
+  missed_blocks_share: 0.1,
+  # Rushing / getting stuck count as a pattern only when they show up on at
+  # least `pattern_min_blocks` blocks and `pattern_block_share` of the blocks
+  # the student visited, and at least `pattern_group_factor` times the
+  # group's median share.
+  pattern_min_blocks: 3,
+  pattern_block_share: 0.25,
+  pattern_group_factor: 2,
+  # "Pasted code without running it" only counts for a mostly pasted answer.
+  no_debug_paste_ratio: 0.5,
+  # Course Map: when a block is a problem spot for the whole cohort.
+  map_min_students: 3,
+  map_low_pass_share: 0.6,
+  map_critical_pass_share: 0.4,
+  map_attempts_avg: 2.5,
+  map_behaviour_share: 0.4,
   exam_focus_loss_threshold: 3,
   exam_paste_ratio_threshold: 0.6,
   exam_risk_yellow_points: 2,

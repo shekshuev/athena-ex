@@ -2,7 +2,7 @@ defmodule AthenaWeb.FileLive.Index do
   @moduledoc """
   Personal cloud storage: a searchable, paginated grid of the current
   user's own files, with upload/download/delete and a storage-quota
-  progress bar. Every authenticated account manages its own files here —
+  progress bar. Every authenticated account manages its own files here –
   unlike `AthenaWeb.AdminLive.Files`, access does not depend on any
   `files.*` permission.
   """

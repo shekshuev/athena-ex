@@ -25,7 +25,7 @@ defmodule Athena.Identity.Roles do
   @doc """
   Retrieves all roles without pagination.
   Useful for populating select dropdowns in the UI, such as the role picker
-  in the user creation/edit form — granted to anyone who can manage users,
+  in the user creation/edit form – granted to anyone who can manage users,
   not only to those with full `roles.read` access to the roles admin page.
   """
   @spec list_all_roles(map()) :: [Role.t()]

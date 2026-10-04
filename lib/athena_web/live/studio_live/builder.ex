@@ -82,7 +82,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   @doc """
   Best-effort cleanup if the builder LiveView goes away (tab closed, crash,
-  navigation) while a test run is still open — the modal's own "close"
+  navigation) while a test run is still open – the modal's own "close"
   handler is the normal path, this is the backstop for when that never
   fires. `Athena.Learning.Workers.TestRunCleanup`'s cron sweep is the real
   backstop for cases even this can't catch (a killed BEAM node, a network

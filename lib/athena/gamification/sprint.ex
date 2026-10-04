@@ -1,7 +1,7 @@
 defmodule Athena.Gamification.Sprint do
   @moduledoc """
   A time-boxed XP multiplier for one cohort, created by the instructor who
-  owns it — they know the real course calendar (an upcoming exam, a
+  owns it – they know the real course calendar (an upcoming exam, a
   deadline crunch) better than a central admin would. Doesn't introduce a
   separate leaderboard: it just boosts XP earned during the window, which
   then shows up in the existing weekly league and badges.
@@ -31,7 +31,7 @@ defmodule Athena.Gamification.Sprint do
   @doc """
   Builds a changeset for creating or editing a sprint. Deliberately keeps
   the multiplier to a fixed pick-list (x1.5/x2/x3) rather than free
-  numeric input — one less way to fat-finger a course's XP economy.
+  numeric input – one less way to fat-finger a course's XP economy.
   """
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(sprint, attrs) do

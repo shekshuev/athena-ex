@@ -128,7 +128,12 @@ defmodule Athena.Engagement.StudentRadarTest do
         DateTime.add(now, 250, :second)
       )
 
-      record(petrov.id, cohort.id, Ecto.UUID.generate(), quiz_block, :answer_changed, now)
+      # Three changed answers - enough to count as hesitation with no group
+      # to compare against.
+      quiz_session = Ecto.UUID.generate()
+
+      for _ <- 1..3,
+          do: record(petrov.id, cohort.id, quiz_session, quiz_block, :answer_changed, now)
 
       [row] =
         Metrics.student_radar(cohort.id, course.id, since: DateTime.add(now, -3600, :second))
@@ -288,6 +293,87 @@ defmodule Athena.Engagement.StudentRadarTest do
       assert row.slacking_index == 0
       # in-scope block exists but produced no flags of its own here
       refute Enum.any?(row.flagged_blocks, &(&1.block_id == text_block.id))
+    end
+  end
+
+  describe "student_radar/3 - level and signals" do
+    test "low scores after skimming the theory explain themselves", %{
+      course: course,
+      cohort: cohort,
+      section: section,
+      text_block: text_block,
+      quiz_block: quiz_block
+    } do
+      # Two failed tasks make "not mastering"; one alone doesn't.
+      quiz2 = insert(:block, section: section, type: :quiz_question, order: 30)
+
+      skimmer = insert(:account)
+      skipper = insert(:account)
+      join_cohort(skimmer, cohort)
+      join_cohort(skipper, cohort)
+
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      session = Ecto.UUID.generate()
+
+      # 5s on a text the teacher expects 100s for.
+      record(skimmer.id, cohort.id, session, text_block, :viewport_enter, now)
+      record(skimmer.id, cohort.id, session, text_block, :viewport_exit, DateTime.add(now, 5))
+
+      insert(:submission,
+        account_id: skimmer.id,
+        block_id: quiz_block.id,
+        status: :graded,
+        score: 20
+      )
+
+      insert(:submission, account_id: skimmer.id, block_id: quiz2.id, status: :graded, score: 20)
+
+      # Never opened the text, but was active on the quiz.
+      record(skipper.id, cohort.id, Ecto.UUID.generate(), quiz_block, :viewport_enter, now)
+
+      insert(:submission,
+        account_id: skipper.id,
+        block_id: quiz_block.id,
+        status: :graded,
+        score: 10
+      )
+
+      rows =
+        Metrics.student_radar(cohort.id, course.id, since: DateTime.add(now, -3600, :second))
+
+      skimmer_row = Enum.find(rows, &(&1.account_id == skimmer.id))
+      skipper_row = Enum.find(rows, &(&1.account_id == skipper.id))
+
+      assert skimmer_row.level == :not_mastering
+      assert skimmer_row.average_score == 20.0
+
+      assert %{theory: [%{block_id: text_id, status: :superficial, flags: %{fast_dwell: _}}]} =
+               Enum.find(skimmer_row.signals, &(&1.key == :low_score))
+
+      assert text_id == text_block.id
+
+      assert %{theory: [%{status: :skipped}]} =
+               Enum.find(skipper_row.signals, &(&1.key == :low_score))
+    end
+
+    test "nothing at all in the window, while classmates were active, is :inactive", %{
+      course: course,
+      cohort: cohort,
+      text_block: text_block
+    } do
+      active = insert(:account)
+      absent = insert(:account)
+      join_cohort(active, cohort)
+      join_cohort(absent, cohort)
+
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      record(active.id, cohort.id, Ecto.UUID.generate(), text_block, :viewport_enter, now)
+
+      rows =
+        Metrics.student_radar(cohort.id, course.id, since: DateTime.add(now, -3600, :second))
+
+      assert Enum.find(rows, &(&1.account_id == absent.id)).level == :inactive
+      assert Enum.find(rows, &(&1.account_id == active.id)).level == :on_track
     end
   end
 end

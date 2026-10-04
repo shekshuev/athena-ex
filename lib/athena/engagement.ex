@@ -120,7 +120,6 @@ defmodule Athena.Engagement do
   defdelegate funnel(block_id, cohort_id \\ nil), to: Metrics
   defdelegate correlate(measurements_a, measurements_b), to: Metrics
   defdelegate time_series(block_id, cohort_id, metric), to: Metrics
-  defdelegate export_wide_table(course_id, cohort_ids), to: Metrics
   defdelegate flag_concerns(metrics), to: Metrics
   defdelegate student_radar(cohort_id, course_id, opts \\ []), to: Metrics
   defdelegate cohort_flag_profile(cohort_id, course_id, opts \\ []), to: Metrics
@@ -130,6 +129,13 @@ defmodule Athena.Engagement do
   defdelegate course_funnel(cohort_id, course_id, opts \\ []), to: Metrics
   defdelegate active_students_trend(cohort_id, course_id, opts \\ []), to: Metrics
   defdelegate nudge_correction_rate(cohort_id, course_id, opts \\ []), to: Metrics
+  defdelegate course_overview(cohort_id, course_id, opts \\ []), to: Metrics
+  defdelegate window_start(days), to: Metrics
+  defdelegate course_map(cohort_id, course_id, opts \\ []), to: Metrics
+  defdelegate cohort_summary(cohort_id, course_id, opts \\ []), to: Metrics
+  defdelegate rank_course_map(entries, limit), to: Athena.Engagement.CourseMap, as: :rank
+  defdelegate gradebook_engagement(cohort_id, course_id, opts \\ []), to: Metrics
+  defdelegate assessment_levels(), to: Athena.Engagement.StudentAssessment, as: :levels
   defdelegate histogram(cohort_id, block_id), to: BlockStats
 
   @nudge_percentile_floor 10.0

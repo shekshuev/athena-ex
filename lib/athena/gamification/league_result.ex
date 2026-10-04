@@ -1,7 +1,7 @@
 defmodule Athena.Gamification.LeagueResult do
   @moduledoc """
   A closed week's league standing snapshot for one cohort member. Only
-  written by the weekly rollup job for weeks that have already ended — the
+  written by the weekly rollup job for weeks that have already ended – the
   current, still-open week is always computed live (see
   `Athena.Gamification.Leagues.current_week_standings/1`).
   """

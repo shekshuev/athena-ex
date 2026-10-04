@@ -57,13 +57,40 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
              live(conn, ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}")
   end
 
+  test "radars render a loading skeleton first, then the computed data", %{
+    conn: conn,
+    cohort: cohort,
+    course: course,
+    student: student
+  } do
+    insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
+    radar_path = ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?view=students"
+    course_path = ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}"
+
+    # The dead render never computes anything - it only shows the skeleton.
+    assert conn |> get(radar_path) |> html_response(200) =~ "student-radar-loading"
+    assert conn |> get(course_path) |> html_response(200) =~ "course-map-loading"
+
+    {:ok, lv, _html} = live(conn, radar_path)
+    render_async(lv)
+    refute has_element?(lv, "#student-radar-loading")
+    assert has_element?(lv, "#group-radar-table")
+
+    {:ok, lv, _html} = live(conn, course_path)
+    render_async(lv)
+    refute has_element?(lv, "#course-map-loading")
+    assert has_element?(lv, "#course-map")
+  end
+
   test "mounts and renders the course tree and default section", %{
     conn: conn,
     cohort: cohort,
     course: course,
     section: section
   } do
-    {:ok, _lv, html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}")
+    {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}")
+
+    html = render_async(lv)
 
     assert html =~ "CyberSec 101"
     assert html =~ "Advanced Hacking"
@@ -96,13 +123,21 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       }
     ])
 
-    {:ok, _lv, html} =
+    {:ok, lv, _html} =
       live(
         conn,
         ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}"
       )
 
-    assert html =~ ~r/sample size[\s\S]{0,80}?>\s*1\s*</
+    render_async(lv)
+    assert has_element?(lv, "#map-block-#{block.id}")
+
+    html =
+      lv
+      |> element("#map-block-#{block.id} a")
+      |> render_click()
+
+    assert html =~ ~r/Visits measured[\s\S]{0,80}?>\s*1\s*</
   end
 
   test "drills into a single block's metrics and shows the whole-cohort filter by default", %{
@@ -112,13 +147,15 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
     section: section,
     block: block
   } do
-    {:ok, _lv, html} =
+    {:ok, lv, _html} =
       live(
         conn,
         ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&block_id=#{block.id}"
       )
 
-    assert html =~ "Back to Section"
+    html = render_async(lv)
+
+    assert html =~ "Back to course map"
     assert html =~ "Whole cohort"
   end
 
@@ -133,21 +170,25 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
     grading_href_prefix = fn block -> "/teaching/grading?block_id=#{block.id}" end
     cohort_pair = "cohort_id=#{cohort.id}"
 
-    {:ok, _lv, html} =
+    {:ok, lv, _html} =
       live(
         conn,
         ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&block_id=#{text_block.id}"
       )
 
+    html = render_async(lv)
+
     # `text_block` isn't gradable, and this teacher lacks grading.read too -
     # the next block confirms which of the two actually gates the link.
     refute html =~ grading_href_prefix.(text_block)
 
-    {:ok, _lv, html} =
+    {:ok, lv, _html} =
       live(
         conn,
         ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&block_id=#{quiz_block.id}"
       )
+
+    html = render_async(lv)
 
     refute html =~ grading_href_prefix.(quiz_block)
 
@@ -159,11 +200,13 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
     grading_teacher = insert(:account, role: grading_role)
     grading_conn = init_test_session(conn, %{"account_id" => grading_teacher.id})
 
-    {:ok, _lv, html} =
+    {:ok, lv, _html} =
       live(
         grading_conn,
         ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&block_id=#{quiz_block.id}"
       )
+
+    html = render_async(lv)
 
     assert html =~ grading_href_prefix.(quiz_block)
     assert html =~ cohort_pair
@@ -177,7 +220,9 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
   } do
     insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
 
-    {:ok, _lv, html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}")
+    {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}")
+
+    html = render_async(lv)
 
     assert html =~ student.login
   end
@@ -190,13 +235,15 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
     block: block,
     student: student
   } do
-    {:ok, lv, html} =
+    {:ok, lv, _html} =
       live(
         conn,
         ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&block_id=#{block.id}"
       )
 
-    assert html =~ ~r/sample size[\s\S]{0,80}?>\s*0\s*</
+    html = render_async(lv)
+
+    assert html =~ ~r/Visits measured[\s\S]{0,80}?>\s*0\s*</
 
     session_id = Ecto.UUID.generate()
     now = ~U[2026-01-05 12:00:00Z]
@@ -220,7 +267,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
     # instead of sleeping for the full debounce window.
     send(lv.pid, :refresh_metrics)
 
-    assert render(lv) =~ ~r/sample size[\s\S]{0,80}?>\s*1\s*</
+    assert render(lv) =~ ~r/Visits measured[\s\S]{0,80}?>\s*1\s*</
   end
 
   describe "?view=students (\"Student Radar\")" do
@@ -229,13 +276,15 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       cohort: cohort,
       course: course
     } do
-      {:ok, _lv, html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}")
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}")
+
+      html = render_async(lv)
 
       assert html =~ "Course Radar"
       refute html =~ "Slacking index"
     end
 
-    test "renders one row per cohort member with their radar numbers", %{
+    test "shows level tiles and one row per student with the reasons behind their level", %{
       conn: conn,
       cohort: cohort,
       course: course,
@@ -244,23 +293,32 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       quiz_block: quiz_block,
       student: student
     } do
+      calm = insert(:account)
       insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
+      insert(:cohort_membership, account_id: calm.id, cohort_id: cohort.id)
 
       now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-      # Two independent slacking flags on two different blocks - fast_dwell
-      # (5s against a 100s expectation) and heavy_paste (95% pasted) - so
-      # slacking_index reaches the red threshold (>= 2).
+      # Two superficial-learning signals: 5s on a 100s text, a pasted answer.
       record_fast_dwell(student, cohort, block, section, now)
       record_heavy_paste(student, cohort, quiz_block, section, now)
+      # A third rushed block: rushing counts as a pattern from 3 blocks on.
+      record_fast_dwell(student, cohort, extra_text(section), section, now)
+      record_fast_dwell(calm, cohort, block, section, DateTime.add(now, -400 * 86_400))
+      record(calm.id, cohort.id, Ecto.UUID.generate(), quiz_block, :viewport_enter, now)
 
-      {:ok, _lv, html} =
-        live(conn, ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?view=students")
+      {:ok, lv, _html} = live(conn, students_path(cohort, course))
+      render_async(lv)
 
-      assert html =~ "Group Radar"
-      assert html =~ student.login
-      assert html =~ "badge-error"
-      assert html =~ "Needs attention"
+      assert has_element?(lv, "#radar-level-tiles")
+      assert lv |> element("#level-tile-superficial") |> render() =~ "1"
+      assert lv |> element("#level-tile-on_track") |> render() =~ "1"
+
+      row = lv |> element("#student-row-#{student.id}") |> render()
+      assert row =~ "Skimming"
+      assert row =~ "Too fast"
+      assert row =~ "Pastes answers"
+
+      assert has_element?(lv, "#student-row-#{calm.id}")
     end
 
     test "the period picker changes which window of behavior is counted", %{
@@ -279,21 +337,22 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
 
       record_fast_dwell(student, cohort, block, section, old_at)
       record_heavy_paste(student, cohort, quiz_block, section, old_at)
+      # A third rushed block: rushing counts as a pattern from 3 blocks on.
+      record_fast_dwell(student, cohort, extra_text(section), section, old_at)
 
-      {:ok, lv, html} =
-        live(conn, ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?view=students")
+      {:ok, lv, _html} = live(conn, students_path(cohort, course))
+      render_async(lv)
 
       # Default window (7 days) misses behavior from 10 days ago.
-      assert html =~ "badge-success"
-      refute html =~ "badge-error"
+      refute lv |> element("#student-row-#{student.id}") |> render() =~ "Skimming"
 
-      html =
-        lv |> element("form[phx-change=change_window]") |> render_change(%{"window" => "all"})
+      lv |> element("form[phx-change=change_window]") |> render_change(%{"window" => "all"})
+      render_async(lv)
 
-      assert html =~ "badge-error"
+      assert lv |> element("#student-row-#{student.id}") |> render() =~ "Skimming"
     end
 
-    test "clicking a flagged student deep-links into their first flagged block, pre-filtered", %{
+    test "clicking a student opens their card without recomputing the radar, and it closes", %{
       conn: conn,
       cohort: cohort,
       course: course,
@@ -303,117 +362,124 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       student: student
     } do
       insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
-
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-      record_fast_dwell(student, cohort, block, section, now)
-      record_heavy_paste(student, cohort, quiz_block, section, now)
-
-      {:ok, lv, _html} =
-        live(conn, ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?view=students")
-
-      html =
-        lv
-        |> element("a", student.login)
-        |> render_click()
-
-      assert html =~ "Back to Section"
-      # `block` (order 10) sorts before `quiz_block` (order 20), so it is
-      # the first flagged block - the deep link must land there.
-      assert_patch(
-        lv,
-        ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&block_id=#{block.id}&account_id=#{student.id}"
-      )
-    end
-
-    test "a student with no flagged behavior shows green and links to the whole-cohort view", %{
-      conn: conn,
-      cohort: cohort,
-      course: course,
-      student: student
-    } do
-      insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
-
-      {:ok, lv, html} =
-        live(conn, ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?view=students")
-
-      assert html =~ "badge-success"
-
-      html = lv |> element("a", student.login) |> render_click()
-      assert html =~ "Course Radar"
-    end
-
-    test "the scatter chart plots one point per student, matching the table's numbers", %{
-      conn: conn,
-      cohort: cohort,
-      course: course,
-      section: section,
-      block: block,
-      quiz_block: quiz_block,
-      student: student
-    } do
-      insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
-
       now = DateTime.utc_now() |> DateTime.truncate(:second)
       record_fast_dwell(student, cohort, block, section, now)
       record_heavy_paste(student, cohort, quiz_block, section, now)
 
-      {:ok, _lv, html} =
-        live(conn, ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?view=students")
+      {:ok, lv, _html} = live(conn, students_path(cohort, course))
+      render_async(lv)
 
-      config = chart_config_from_html(html, "student-radar-scatter")
-
-      assert config["type"] == "scatter"
-
-      assert [%{"x" => 2, "y" => 0, "label" => login}] =
-               config["data"]["datasets"] |> hd() |> Map.get("data")
-
-      assert login == student.login
-    end
-
-    test "clicking a scatter point drills down into that student's first flagged block", %{
-      conn: conn,
-      cohort: cohort,
-      course: course,
-      section: section,
-      block: block,
-      quiz_block: quiz_block,
-      student: student
-    } do
-      insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
-
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
-      record_fast_dwell(student, cohort, block, section, now)
-      record_heavy_paste(student, cohort, quiz_block, section, now)
-
-      {:ok, lv, _html} =
-        live(conn, ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?view=students")
-
-      render_hook(lv, "chart_point_click", %{"chart" => "student-radar-scatter", "index" => 0})
+      lv |> element("#student-row-#{student.id} a") |> render_click()
 
       assert_patch(
         lv,
-        ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&block_id=#{block.id}&account_id=#{student.id}"
+        ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?view=students&window=7&student=#{student.id}"
       )
+
+      refute has_element?(lv, "#student-radar-loading")
+      assert has_element?(lv, "#student-drawer")
+
+      signals = lv |> element("#student-signals") |> render()
+      assert signals =~ "Network Basics · 1. Text"
+      assert signals =~ "5 s"
+      assert signals =~ "Pasted most of the answer"
+      assert has_element?(lv, "#student-advice")
+
+      assert has_element?(
+               lv,
+               ~s(#drawer-course-map[href="#{~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=&block_id=&account_id=#{student.id}"}"])
+             )
+
+      lv |> element("#student-drawer header a[aria-label]") |> render_click()
+      refute has_element?(lv, "#student-drawer")
     end
 
-    test "clicking an out-of-range chart index is a no-op, not a crash", %{
+    test "a low score after skipped theory says so in the card", %{
       conn: conn,
       cohort: cohort,
-      course: course
+      course: course,
+      section: section,
+      quiz_block: quiz_block,
+      student: student
     } do
+      insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      record(student.id, cohort.id, Ecto.UUID.generate(), quiz_block, :viewport_enter, now)
+
+      insert(:submission,
+        account_id: student.id,
+        block_id: quiz_block.id,
+        status: :graded,
+        score: 20
+      )
+
+      # A second failed task: one alone doesn't make "not mastering".
+      quiz2 = insert(:block, section: section, type: :quiz_question, order: 40)
+
+      insert(:submission, account_id: student.id, block_id: quiz2.id, status: :graded, score: 20)
+
       {:ok, lv, _html} =
-        live(conn, ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?view=students")
+        live(conn, students_path(cohort, course) <> "&student=#{student.id}")
 
-      html =
-        render_hook(lv, "chart_point_click", %{"chart" => "student-radar-scatter", "index" => 5})
+      render_async(lv)
 
-      assert html =~ "Group Radar"
+      assert lv |> element("#student-row-#{student.id}") |> render() =~ "Not mastering"
+      assert lv |> element("#student-signals") |> render() =~ "never opened"
+      assert lv |> element("#student-advice") |> render() =~ "go back to"
+    end
+
+    test "level tiles filter the table and clicking the active tile clears it", %{
+      conn: conn,
+      cohort: cohort,
+      course: course,
+      section: section,
+      block: block,
+      quiz_block: quiz_block,
+      student: student
+    } do
+      calm = insert(:account)
+      insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
+      insert(:cohort_membership, account_id: calm.id, cohort_id: cohort.id)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      record_fast_dwell(student, cohort, block, section, now)
+      record_heavy_paste(student, cohort, quiz_block, section, now)
+      # A third rushed block: rushing counts as a pattern from 3 blocks on.
+      record_fast_dwell(student, cohort, extra_text(section), section, now)
+      record(calm.id, cohort.id, Ecto.UUID.generate(), quiz_block, :viewport_enter, now)
+
+      {:ok, lv, _html} = live(conn, students_path(cohort, course))
+      render_async(lv)
+
+      lv |> element("#level-tile-superficial") |> render_click()
+      assert has_element?(lv, "#student-row-#{student.id}")
+      refute has_element?(lv, "#student-row-#{calm.id}")
+
+      lv |> element("#level-tile-superficial") |> render_click()
+      assert has_element?(lv, "#student-row-#{calm.id}")
+    end
+
+    test "the methodology modal opens and closes", %{conn: conn, cohort: cohort, course: course} do
+      {:ok, lv, _html} = live(conn, students_path(cohort, course))
+      render_async(lv)
+
+      refute has_element?(lv, "#radar-methodology.modal-open")
+      lv |> element("#open-methodology") |> render_click()
+      assert has_element?(lv, "#radar-methodology.modal-open")
+      render_click(lv, "close_methodology")
+      refute has_element?(lv, "#radar-methodology.modal-open")
+    end
+
+    test "an unknown student in the URL is ignored", %{conn: conn, cohort: cohort, course: course} do
+      {:ok, lv, _html} =
+        live(conn, students_path(cohort, course) <> "&student=#{Ecto.UUID.generate()}")
+
+      render_async(lv)
+      refute has_element?(lv, "#student-drawer")
     end
   end
 
   describe "\"Course Radar\" content-flag sorting and weekly trend" do
-    test "a block that most students backtrack to is badged and sorted first", %{
+    test "a block most students come back to is a problem spot on the course map", %{
       conn: conn,
       cohort: cohort,
       course: course,
@@ -422,18 +488,10 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       quiz_block: quiz_block,
       student: student
     } do
-      # A third, earliest, never-visited block - so `block` (order 10) is
-      # not already first in the list, and moving it to the front is a real
-      # reordering, not a no-op.
       intro_block = insert(:block, section: section, type: :text, order: 5)
-
-      # Every student in the cohort first reaches `quiz_block` (order 20,
-      # later content), then returns to `block` (order 10) - "backtracking
-      # to earlier content" per `backtrack_count/3`. Most of the cohort
-      # doing this makes it a content problem, not a student one, so
-      # `block` must be badged and sorted ahead of the other two.
       other_student = insert(:account)
 
+      # Everyone reaches `quiz_block` first, then returns to `block`.
       for s <- [student, other_student] do
         insert(:cohort_membership, account_id: s.id, cohort_id: cohort.id)
         session_id = Ecto.UUID.generate()
@@ -455,37 +513,82 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
         ])
       end
 
-      {:ok, _lv, html} =
-        live(
-          conn,
-          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}"
-        )
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}")
+      render_async(lv)
 
-      assert html =~ "Content issue"
+      assert lv |> element("#map-block-#{block.id}") |> render() =~ "Students come back"
+      refute lv |> element("#map-block-#{intro_block.id}") |> render() =~ "badge"
+      assert has_element?(lv, "#problem-#{block.id}")
 
-      flagged_pos = :binary.match(html, "Content issue") |> elem(0)
-      block_pos = :binary.match(html, "block_id=#{block.id}") |> elem(0)
-      intro_pos = :binary.match(html, "block_id=#{intro_block.id}") |> elem(0)
-
-      # `block`'s card (badge included) renders before the unflagged
-      # `intro_block` card despite `intro_block` having a lower `order`.
-      assert block_pos < intro_pos
-      assert flagged_pos < intro_pos
+      lv |> element("#toggle-problems") |> render_click()
+      assert has_element?(lv, "#map-block-#{block.id}")
+      refute has_element?(lv, "#map-block-#{intro_block.id}")
     end
 
-    test "no content flags means no badge and the original block order", %{
+    test "a section picked in the tree narrows the map to it", %{
       conn: conn,
       cohort: cohort,
       course: course,
-      section: section
+      block: block
     } do
-      {:ok, _lv, html} =
+      other_section = insert(:section, course: course, title: "Crypto", order: 20)
+      other_block = insert(:block, section: other_section, type: :text, order: 1)
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}")
+      render_async(lv)
+      assert has_element?(lv, "#map-block-#{block.id}")
+      assert has_element?(lv, "#map-block-#{other_block.id}")
+
+      {:ok, lv, _html} =
         live(
           conn,
-          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}"
+          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{other_section.id}"
         )
 
-      refute html =~ "Content issue"
+      render_async(lv)
+      refute has_element?(lv, "#map-block-#{block.id}")
+      assert has_element?(lv, "#map-block-#{other_block.id}")
+      assert has_element?(lv, "#map-whole-course")
+    end
+
+    test "with nothing going on there are no problem spots", %{
+      conn: conn,
+      cohort: cohort,
+      course: course
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}")
+      render_async(lv)
+
+      assert has_element?(lv, "#problem-spots")
+      refute has_element?(lv, "#problem-spots li")
+    end
+
+    test "the student lens shows that student's numbers and their problem spots", %{
+      conn: conn,
+      cohort: cohort,
+      course: course,
+      section: section,
+      block: block,
+      student: student
+    } do
+      insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      record_fast_dwell(student, cohort, block, section, now)
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}")
+      render_async(lv)
+
+      lv
+      |> element("form[phx-change=change_student]")
+      |> render_change(%{"account_id" => student.id})
+
+      render_async(lv)
+
+      row = lv |> element("#map-block-#{block.id}") |> render()
+      assert row =~ "5 s"
+      assert row =~ "Too fast"
+      assert lv |> element("#problem-spots") |> render() =~ "Where"
+      assert has_element?(lv, "#problem-#{block.id}")
     end
 
     test "the weekly trend table renders points for a selected block and reacts to the metric picker",
@@ -515,11 +618,13 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
         }
       ])
 
-      {:ok, lv, html} =
+      {:ok, lv, _html} =
         live(
           conn,
           ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&block_id=#{block.id}"
         )
+
+      html = render_async(lv)
 
       assert html =~ "Weekly trend"
       assert html =~ Date.to_string(Date.beginning_of_week(DateTime.to_date(now)))
@@ -540,11 +645,13 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       section: section,
       block: block
     } do
-      {:ok, _lv, html} =
+      {:ok, lv, _html} =
         live(
           conn,
           ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&block_id=#{block.id}"
         )
+
+      html = render_async(lv)
 
       assert html =~ "No data yet."
     end
@@ -577,11 +684,13 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
         }
       ])
 
-      {:ok, _lv, html} =
+      {:ok, lv, _html} =
         live(
           conn,
           ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&block_id=#{block.id}"
         )
+
+      html = render_async(lv)
 
       assert html =~ "Dwell distribution"
       assert html =~ "10%"
@@ -598,11 +707,13 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       section: section,
       block: block
     } do
-      {:ok, _lv, html} =
+      {:ok, lv, _html} =
         live(
           conn,
           ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&block_id=#{block.id}"
         )
+
+      html = render_async(lv)
 
       config = chart_config_from_html(html, "dwell-histogram")
       assert Enum.sum(hd(config["data"]["datasets"])["data"]) == 0
@@ -614,99 +725,30 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       course: course,
       section: section
     } do
-      {:ok, _lv, html} =
+      {:ok, lv, _html} =
         live(
           conn,
           ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}"
         )
+
+      html = render_async(lv)
 
       refute html =~ "Dwell distribution"
     end
   end
 
-  describe "\"Course Radar\" section flag stacked bar" do
-    test "one bar per section, slacking and struggling counts summed from that section's blocks",
+  describe "\"Course Radar\" tabs and period" do
+    test "activity charts load only on their tab; a block skips them, coming back recomputes them",
          %{
            conn: conn,
            cohort: cohort,
            course: course,
            section: section,
            block: block,
-           quiz_block: quiz_block,
-           student: student
-         } do
-      insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
-
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
-      record_fast_dwell(student, cohort, block, section, now)
-      record_heavy_paste(student, cohort, quiz_block, section, now)
-
-      {:ok, _lv, html} =
-        live(
-          conn,
-          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}"
-        )
-
-      config = chart_config_from_html(html, "section-flag-stacked-bar")
-
-      assert config["type"] == "bar"
-      assert config["data"]["labels"] == [section.title]
-      slacking = Enum.find(config["data"]["datasets"], &(&1["label"] == "Slacking"))
-      struggling = Enum.find(config["data"]["datasets"], &(&1["label"] == "Struggling"))
-      # fast_dwell on `block` + heavy_paste on `quiz_block`, both in `section`.
-      assert slacking["data"] == [2]
-      assert struggling["data"] == [0]
-    end
-
-    test "the period picker changes which window of behavior is counted", %{
-      conn: conn,
-      cohort: cohort,
-      course: course,
-      section: section,
-      block: block,
-      student: student
-    } do
-      insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
-
-      old_at =
-        DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.add(-10 * 86_400, :second)
-
-      record_fast_dwell(student, cohort, block, section, old_at)
-
-      {:ok, lv, html} =
-        live(
-          conn,
-          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}"
-        )
-
-      config = chart_config_from_html(html, "section-flag-stacked-bar")
-      slacking = Enum.find(config["data"]["datasets"], &(&1["label"] == "Slacking"))
-      # Default window (7 days) misses behavior from 10 days ago.
-      assert slacking["data"] == [0]
-
-      html =
-        lv
-        |> element("form[phx-change=change_course_window]")
-        |> render_change(%{"window" => "all"})
-
-      config = chart_config_from_html(html, "section-flag-stacked-bar")
-      slacking = Enum.find(config["data"]["datasets"], &(&1["label"] == "Slacking"))
-      assert slacking["data"] == [1]
-    end
-
-    test "selecting a block skips recomputing the course-wide charts entirely, section view recomputes them again",
-         %{
-           conn: conn,
-           cohort: cohort,
-           course: course,
-           section: section,
-           block: block,
-           quiz_block: quiz_block,
            student: student
          } do
       insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
       now = DateTime.utc_now() |> DateTime.truncate(:second)
-      record_fast_dwell(student, cohort, block, section, now)
 
       {:ok, lv, _html} =
         live(
@@ -714,42 +756,34 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
           ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}"
         )
 
-      chart_before_block_selected =
-        :sys.get_state(lv.pid).socket.assigns.section_chart_config
+      render_async(lv)
+      assert has_element?(lv, "#course-map")
+      refute has_element?(lv, "#course-charts")
 
-      # New flagged behavior that WOULD change `@section_chart_config` if
-      # `refresh_course_charts/1` ran again.
-      record_heavy_paste(student, cohort, quiz_block, section, now)
+      lv |> element("#course-tab-activity") |> render_click()
+      render_async(lv)
+      assert has_element?(lv, "#course-charts")
+      heatmap_before = :sys.get_state(lv.pid).socket.assigns.heatmap_config
 
-      render_patch(
-        lv,
-        ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&block_id=#{block.id}"
-      )
-
-      chart_while_block_selected =
-        :sys.get_state(lv.pid).socket.assigns.section_chart_config
-
-      # Unchanged term - proves `refresh_course_charts/1` did not re-run
-      # while the block-detail sub-view (which never renders this chart)
-      # was active.
-      assert chart_while_block_selected == chart_before_block_selected
+      record_fast_dwell(student, cohort, block, section, now)
 
       render_patch(
         lv,
-        ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}"
+        ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&block_id=#{block.id}&account_id=&tab=activity"
       )
 
-      chart_back_on_section_view =
-        :sys.get_state(lv.pid).socket.assigns.section_chart_config
+      assert :sys.get_state(lv.pid).socket.assigns.heatmap_config == heatmap_before
 
-      # Back on the section/course-radar view, the charts recompute again
-      # and now reflect the heavy_paste event recorded while a block was
-      # selected - confirming the skip is conditional, not a permanent
-      # regression.
-      assert chart_back_on_section_view != chart_before_block_selected
+      render_patch(
+        lv,
+        ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&block_id=&account_id=&tab=activity"
+      )
+
+      render_async(lv)
+      assert :sys.get_state(lv.pid).socket.assigns.heatmap_config != heatmap_before
     end
 
-    test "changing the course window preserves the current section", %{
+    test "changing the period keeps the current section and tab", %{
       conn: conn,
       cohort: cohort,
       course: course
@@ -759,8 +793,10 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       {:ok, lv, _html} =
         live(
           conn,
-          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{other_section.id}"
+          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{other_section.id}&tab=activity"
         )
+
+      _ = render_async(lv)
 
       lv
       |> element("form[phx-change=change_course_window]")
@@ -768,8 +804,10 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
 
       assert_patch(
         lv,
-        ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{other_section.id}&account_id=&course_window=30"
+        ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{other_section.id}&block_id=&account_id=&course_window=30&tab=activity"
       )
+
+      _ = render_async(lv)
     end
   end
 
@@ -794,11 +832,13 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
         }
       ])
 
-      {:ok, _lv, html} =
+      {:ok, lv, _html} =
         live(
           conn,
-          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}"
+          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&tab=activity"
         )
+
+      html = render_async(lv)
 
       config = chart_config_from_html(html, "activity-heatmap")
 
@@ -814,11 +854,13 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       course: course,
       section: section
     } do
-      {:ok, _lv, html} =
+      {:ok, lv, _html} =
         live(
           conn,
-          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}"
+          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&tab=activity"
         )
+
+      html = render_async(lv)
 
       config = chart_config_from_html(html, "activity-heatmap")
 
@@ -856,11 +898,13 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
         }
       ])
 
-      {:ok, _lv, html} =
+      {:ok, lv, _html} =
         live(
           conn,
-          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}"
+          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&tab=activity"
         )
+
+      html = render_async(lv)
 
       config = chart_config_from_html(html, "course-funnel-chart")
 
@@ -881,11 +925,13 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       course: course,
       section: section
     } do
-      {:ok, _lv, html} =
+      {:ok, lv, _html} =
         live(
           conn,
-          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}"
+          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&tab=activity"
         )
+
+      html = render_async(lv)
 
       config = chart_config_from_html(html, "course-funnel-chart")
 
@@ -915,11 +961,13 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
         }
       ])
 
-      {:ok, _lv, html} =
+      {:ok, lv, _html} =
         live(
           conn,
-          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}"
+          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&tab=activity"
         )
+
+      html = render_async(lv)
 
       config = chart_config_from_html(html, "active-students-trend")
 
@@ -935,11 +983,13 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       course: course,
       section: section
     } do
-      {:ok, _lv, html} =
+      {:ok, lv, _html} =
         live(
           conn,
-          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}"
+          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&tab=activity"
         )
+
+      html = render_async(lv)
 
       config = chart_config_from_html(html, "active-students-trend")
 
@@ -989,16 +1039,18 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
         }
       ])
 
-      {:ok, _lv, html} =
+      {:ok, lv, _html} =
         live(
           conn,
-          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}"
+          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&tab=activity"
         )
+
+      html = render_async(lv)
 
       config = chart_config_from_html(html, "nudge-correction-rate-chart")
 
       assert config["type"] == "bar"
-      assert config["data"]["labels"] == ["fast dwell"]
+      assert config["data"]["labels"] == ["Too fast"]
       assert [%{"data" => [100.0]}] = config["data"]["datasets"]
     end
 
@@ -1008,11 +1060,13 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       course: course,
       section: section
     } do
-      {:ok, _lv, html} =
+      {:ok, lv, _html} =
         live(
           conn,
-          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}"
+          ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?section_id=#{section.id}&tab=activity"
         )
+
+      html = render_async(lv)
 
       config = chart_config_from_html(html, "nudge-correction-rate-chart")
 
@@ -1020,6 +1074,24 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       assert [%{"data" => []}] = config["data"]["datasets"]
     end
   end
+
+  defp record(account_id, cohort_id, session_id, block, event_type, at) do
+    Engagement.record_events(account_id, cohort_id, session_id, [
+      %{block_id: block.id, section_id: block.section_id, event_type: event_type, occurred_at: at}
+    ])
+  end
+
+  defp extra_text(section) do
+    insert(:block,
+      section: section,
+      type: :text,
+      order: 30,
+      engagement_rule: %EngagementRule{expected_seconds: 100}
+    )
+  end
+
+  defp students_path(cohort, course),
+    do: ~p"/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?view=students"
 
   defp record_fast_dwell(student, cohort, block, section, at) do
     session_id = Ecto.UUID.generate()

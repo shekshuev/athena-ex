@@ -5,9 +5,9 @@ defmodule AthenaWeb.DashboardLive.Index do
   Every account gets the student view: a "continue learning" shortcut,
   enrolled course progress, and upcoming access-window deadlines. Accounts
   that additionally own an `Athena.Learning.Instructor` profile (the
-  ground truth for "is this account a teacher" — not a permission or role
+  ground truth for "is this account a teacher" – not a permission or role
   name) also get a Teaching section underneath: quick links to the cohorts
-  they manage, and — for those who can also grade — a pending-review
+  they manage, and – for those who can also grade – a pending-review
   counter linking straight to the filtered queue. Both layers are gated at
   the data-loading step in `mount/3`, not just in the template.
   """
@@ -116,7 +116,7 @@ defmodule AthenaWeb.DashboardLive.Index do
 
   @doc false
   # Teaching data is only built (and only ever shown) for accounts that own an
-  # `Instructor` profile — being an instructor is a fact about the account
+  # `Instructor` profile – being an instructor is a fact about the account
   # (a row in `instructors`), not a role name, so this is checked here at the
   # data layer rather than left to a permission string alone.
   defp build_teaching_section(account) do

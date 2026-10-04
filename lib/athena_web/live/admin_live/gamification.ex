@@ -1,7 +1,7 @@
 defmodule AthenaWeb.AdminLive.Gamification do
   @moduledoc """
   Admin badge catalog. Badges are authored as a small rule-DSL (a JSON
-  condition tree over measurable facts — see `Athena.Gamification.Badge`),
+  condition tree over measurable facts – see `Athena.Gamification.Badge`),
   not free-form logic: the admin picks facts/operators/thresholds already
   known to the system, so a badge can't reference something nothing
   tracks. Includes a "test on a student" preview so an admin can sanity

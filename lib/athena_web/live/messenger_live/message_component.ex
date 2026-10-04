@@ -17,7 +17,7 @@ defmodule AthenaWeb.MessengerLive.MessageComponent do
   Renders one message row. The edit/view toggle is deliberately pure
   client-side `Phoenix.LiveView.JS` (both blocks are always in the DOM;
   only visibility is toggled) rather than a server-tracked "editing?"
-  assign — this row lives inside a `phx-update="stream"` container, and
+  assign – this row lives inside a `phx-update="stream"` container, and
   stream items are only patched by explicit `stream_insert/3` calls, never
   by an ordinary reassign, so a server-driven toggle would silently not
   re-render here.

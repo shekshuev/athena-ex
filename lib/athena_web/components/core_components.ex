@@ -121,7 +121,7 @@ defmodule AthenaWeb.CoreComponents do
   When `variant` or `size` is given, `class` is appended alongside the
   derived classes (for a one-off addition like a hover animation) rather
   than replacing them. Without either, `class` behaves as a full override,
-  same as before — this keeps older call sites that pass a complete
+  same as before – this keeps older call sites that pass a complete
   `class="btn ..."` string untouched.
 
   ## Examples
@@ -179,14 +179,14 @@ defmodule AthenaWeb.CoreComponents do
   end
 
   @doc """
-  Renders an icon-only action button — the "edit"/"delete" cluster used in
+  Renders an icon-only action button – the "edit"/"delete" cluster used in
   table rows. One shared shape instead of the half-dozen ad-hoc class
   combinations (different sizes, different hover treatments) previously
   scattered across CRUD list pages.
 
   `variant="primary"` is for the rare case where one icon action in a
   cluster is the primary way into the row (e.g. "open" next to plain
-  "edit"/"share" icons) — everything else should stay `neutral`.
+  "edit"/"share" icons) – everything else should stay `neutral`.
 
   ## Examples
 
@@ -238,7 +238,7 @@ defmodule AthenaWeb.CoreComponents do
   end
 
   @doc """
-  Renders a colored pill — status indicators and tag/type labels alike.
+  Renders a colored pill – status indicators and tag/type labels alike.
   One shared shape instead of the half-dozen independently hand-rolled
   "status → color" implementations previously scattered across the app.
 
@@ -293,7 +293,7 @@ defmodule AthenaWeb.CoreComponents do
   @doc """
   Renders a circular avatar: the given image when `src` is set, otherwise a
   colored circle with centered initials. One shared implementation instead
-  of each call site hand-rolling the daisyUI placeholder markup — which
+  of each call site hand-rolling the daisyUI placeholder markup – which
   matters here because daisyUI 5 renamed the old two-class pair
   (`avatar placeholder`) to a single `avatar-placeholder` class; the old
   pair still "works" (no error) but silently drops the centering rule,
@@ -310,7 +310,7 @@ defmodule AthenaWeb.CoreComponents do
 
   attr :initials, :string,
     default: "",
-    doc: "shown when there is no `src` — keep it short (1-2 chars)"
+    doc: "shown when there is no `src` – keep it short (1-2 chars)"
 
   attr :alt, :string, default: ""
   attr :size, :string, default: "w-10", doc: "Tailwind width class, e.g. \"w-8\", \"w-14\""
@@ -338,8 +338,8 @@ defmodule AthenaWeb.CoreComponents do
   end
 
   @doc """
-  Renders a consistent "nothing here yet" placeholder — icon, title,
-  optional description — replacing the several structurally different
+  Renders a consistent "nothing here yet" placeholder – icon, title,
+  optional description – replacing the several structurally different
   empty-state treatments previously used across the app. Also meant to be
   dropped in next to `<.table>` when `@rows == []`, which otherwise renders
   a silently-blank table body.
@@ -373,7 +373,7 @@ defmodule AthenaWeb.CoreComponents do
   end
 
   @doc """
-  Renders a "number + label" metric — one shared shape instead of the
+  Renders a "number + label" metric – one shared shape instead of the
   several unrelated ad-hoc markups previously used for the same idea (an
   XP/level pill in a header, achievement numbers on a profile, mini-stat
   cards on a dashboard).
@@ -414,21 +414,21 @@ defmodule AthenaWeb.CoreComponents do
   end
 
   @doc """
-  Renders the outer content-width wrapper for a page — three named tiers
+  Renders the outer content-width wrapper for a page – three named tiers
   instead of the five different `max-w-*` values (plus several pages with
   no limit at all) previously scattered across the app. The layout's
   `<main>` already applies consistent outer padding
   (`layouts/dashboard.html.heex`); this only controls how wide the content
   itself gets, centered via `mx-auto`.
 
-  - `narrow` (`max-w-4xl`) — reading/single-task screens (course player,
+  - `narrow` (`max-w-4xl`) – reading/single-task screens (course player,
     course overview, leaderboard, sprints).
-  - `standard` (`max-w-6xl`) — the main app pages (dashboard, My Learning).
-  - `wide` (`max-w-7xl`) — data-dense screens (grading, the content
+  - `standard` (`max-w-6xl`) – the main app pages (dashboard, My Learning).
+  - `wide` (`max-w-7xl`) – data-dense screens (grading, the content
     library, CRUD tables).
 
   Any other utility classes a page needs (vertical spacing, padding) go in
-  `class`, same as before — only the width mechanism is being unified.
+  `class`, same as before – only the width mechanism is being unified.
 
   ## Examples
 
@@ -496,7 +496,7 @@ defmodule AthenaWeb.CoreComponents do
   end
 
   @doc """
-  Renders the canonical "operation in progress" indicator — a spinning
+  Renders the canonical "operation in progress" indicator – a spinning
   arrow-path icon. The one loading treatment the app should use, instead of
   mixing this with daisyUI's `loading` component or a static, non-animated
   icon that looks the same as an inert action button.
@@ -1781,7 +1781,7 @@ defmodule AthenaWeb.CoreComponents do
                end)
 
   # Docker builds have no .git dir, so this comes from the APP_VERSION
-  # build-arg (set to the pushed tag, e.g. "v0.16.0" — see release.yml).
+  # build-arg (set to the pushed tag, e.g. "v0.16.0" – see release.yml).
   # Outside Docker (dev/test), it falls back to the local tag history.
   @app_version (if version = System.get_env("APP_VERSION") do
                   String.trim(version)

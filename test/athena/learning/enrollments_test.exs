@@ -566,7 +566,7 @@ defmodule Athena.Learning.EnrollmentsTest do
     end
   end
 
-  describe "enroll_cohort/4 — student overlap prevention" do
+  describe "enroll_cohort/4 – student overlap prevention" do
     test "allows enrolling an empty cohort to a course", %{admin: admin} do
       cohort = insert(:cohort, owner_id: admin.id)
       course = insert(:course, owner_id: admin.id)

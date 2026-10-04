@@ -453,7 +453,7 @@ defmodule AthenaWeb.BlockComponents do
 
       # A draft means the student has typed something new since their last
       # submission (submitting clears the draft, so one only exists again
-      # once they've edited past that point) — it must win over `submission`,
+      # once they've edited past that point) – it must win over `submission`,
       # or every resubmit after the first would silently re-send the
       # *previous* attempt's code instead of what's currently in the editor.
       present?(draft) ->
@@ -597,7 +597,7 @@ defmodule AthenaWeb.BlockComponents do
     live_answer = Map.get(assigns.answers || %{}, assigns.block.id)
 
     # Drafts only make sense to show while the block is actually editable
-    # (`:play`) — in `:review`/other modes there's nothing to resubmit, so
+    # (`:play`) – in `:review`/other modes there's nothing to resubmit, so
     # the last submission's own answer is always what should be shown,
     # matching `compute_code_for_mode/5`'s equivalent mode gate for code
     # blocks.
@@ -614,7 +614,7 @@ defmodule AthenaWeb.BlockComponents do
 
       # A draft means the student has typed something new since their last
       # submission (submitting clears the draft, so one only exists again
-      # once they've edited past that point) — it must win over the last
+      # once they've edited past that point) – it must win over the last
       # submission's own answer, or every resubmit after the first would
       # silently re-send the *previous* attempt's answer instead of what's
       # currently in the form.
@@ -2109,7 +2109,7 @@ defmodule AthenaWeb.BlockComponents do
           data-action="divider"
           data-tippy-content={"#{gettext("Divider")} ($mod+Enter)"}
         >
-          —
+          –
         </button>
         <button
           type="button"
@@ -2269,7 +2269,7 @@ defmodule AthenaWeb.BlockComponents do
                         </div>
                       </div>
                     <% else %>
-                      <span class="text-base-content/20 text-[10px]">—</span>
+                      <span class="text-base-content/20 text-[10px]">–</span>
                     <% end %>
                   <% end %>
                 </td>

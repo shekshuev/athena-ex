@@ -202,7 +202,7 @@ defmodule Athena.Content.Courses do
   end
 
   @doc """
-  Creates a draft copy of a course (title/description/type only — no
+  Creates a draft copy of a course (title/description/type only – no
   sections, blocks, or files yet) and enqueues `CourseDeepCopy` to deep-copy
   the rest in the background.
 

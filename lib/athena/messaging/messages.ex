@@ -11,7 +11,7 @@ defmodule Athena.Messaging.Messages do
   alias Athena.Messaging.{Conversation, ConversationParticipant, Message, MessageMention}
 
   @doc """
-  Fetches a single message by id, regardless of conversation — callers are
+  Fetches a single message by id, regardless of conversation – callers are
   expected to verify it belongs to the conversation they think it does.
   """
   @spec get_message(String.t()) :: {:ok, Message.t()} | {:error, :not_found}

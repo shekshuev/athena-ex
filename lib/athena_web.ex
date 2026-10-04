@@ -88,6 +88,8 @@ defmodule AthenaWeb do
       import Phoenix.HTML
       # Core UI components
       import AthenaWeb.CoreComponents
+      # Active-filter chips for filterable lists
+      import AthenaWeb.FilterComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

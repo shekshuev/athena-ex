@@ -2,10 +2,10 @@ defmodule Athena.Learning.CourseProgressCache do
   @moduledoc """
   Denormalized completed/total block counts for a course, keyed either by
   account (an individually-tracked enrollment) or by cohort (a `:team`
-  enrollment's shared progress — same duality as `Athena.Learning.BlockProgress`).
+  enrollment's shared progress – same duality as `Athena.Learning.BlockProgress`).
 
   Maintained incrementally by `Athena.Learning.Progress.mark_completed/3`
-  rather than recomputed from the content tree on every read — that's what
+  rather than recomputed from the content tree on every read – that's what
   this table exists to avoid. `total_count` is only set once, when a row is
   first created; it does not follow later edits to the course's block list
   (adding/removing blocks after a student starts it is rare enough, and low

@@ -37,6 +37,8 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
 
       assert html =~ "johndoe"
       assert html =~ "Needs review"
+      # A preliminary score is still shown while the answer awaits review.
+      assert html =~ "Preliminary score"
 
       assert html =~ "janedoe"
       assert html =~ "Graded"
@@ -113,52 +115,47 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
       refute html =~ "bob_jones"
     end
 
-    test "filters by cohort", %{conn: conn} do
-      cohort = insert(:cohort, name: "Special Forces")
-      student1 = insert(:account, login: "cohort_boy")
-      student2 = insert(:account, login: "solo_boy")
+    test "filtering by a team shows the team's shared submissions", %{conn: conn} do
+      team = insert(:cohort, name: "Red Team", type: :team)
+      member = insert(:account, login: "team_member")
+      solo = insert(:account, login: "solo_boy")
+      insert(:cohort_membership, account_id: member.id, cohort_id: team.id)
       block = insert(:block)
 
-      insert(:submission, account_id: student1.id, block_id: block.id, cohort_id: cohort.id)
-      insert(:submission, account_id: student2.id, block_id: block.id)
+      insert(:submission, account_id: member.id, block_id: block.id, cohort_id: team.id)
+      insert(:submission, account_id: solo.id, block_id: block.id)
 
-      {:ok, lv, _html} = live(conn, ~p"/teaching/grading")
+      {:ok, _lv, html} = live(conn, ~p"/teaching/grading?#{%{"cohort_id" => team.id}}")
 
-      html =
-        lv
-        |> form("form[phx-change='update_filters']", %{"cohort_id" => cohort.id})
-        |> render_change()
-
-      assert html =~ "cohort_boy"
+      assert html =~ "team_member"
       refute html =~ "solo_boy"
     end
 
-    test "filters by integrity risk (has_cheats checkbox)", %{conn: conn} do
-      student1 = insert(:account, login: "cheater")
-      student2 = insert(:account, login: "honest")
+    test "filtering by a group shows its members' own submissions", %{conn: conn} do
+      group = insert(:cohort, name: "Group 342", type: :academic)
+      team = insert(:cohort, name: "Red Team", type: :team)
+      member = insert(:account, login: "group_member")
+      outsider = insert(:account, login: "outsider")
+      insert(:cohort_membership, account_id: member.id, cohort_id: group.id)
       block = insert(:block)
+      team_block = insert(:block)
 
-      insert(:submission,
-        account_id: student1.id,
-        block_id: block.id,
-        content: %{"risk_level" => "red"}
-      )
+      insert(:submission, account_id: member.id, block_id: block.id)
+      insert(:submission, account_id: outsider.id, block_id: block.id)
+      # The member's work for a team is the team's, not the group's.
+      insert(:submission, account_id: member.id, block_id: team_block.id, cohort_id: team.id)
 
-      insert(:submission,
-        account_id: student2.id,
-        block_id: block.id,
-        content: %{"risk_level" => "green"}
-      )
+      # Exactly the link the engagement dashboard builds.
+      {:ok, _lv, html} =
+        live(conn, ~p"/teaching/grading?#{%{"block_id" => block.id, "cohort_id" => group.id}}")
 
-      {:ok, lv, _html} = live(conn, ~p"/teaching/grading")
+      assert html =~ "group_member"
+      refute html =~ "outsider"
 
-      html =
-        lv
-        |> form("form[phx-change='update_filters']", %{"has_cheats" => "true"})
-        |> render_change()
-
-      assert html =~ "cheater"
-      refute html =~ "honest"
+      {:ok, _lv, html} = live(conn, ~p"/teaching/grading?#{%{"cohort_id" => group.id}}")
+      assert html =~ "group_member"
+      refute html =~ "Red Team"
+      assert length(Regex.scan(~r/group_member/, html)) == 1
     end
 
     test "filters by date range", %{conn: conn} do
@@ -190,11 +187,41 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
     end
 
     test "reset filters clears all params and redirects back to base url", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, ~p"/teaching/grading?status=graded&login=foo&has_cheats=true")
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading?status=graded&login=foo")
 
-      lv |> element("button[phx-click='reset_filters']") |> render_click()
+      lv |> element("#grading-active-filters button[phx-click='reset_filters']") |> render_click()
 
       assert_patch(lv, "/teaching/grading")
+    end
+
+    test "each active filter shows as a chip and clears on its own", %{conn: conn} do
+      cohort = insert(:cohort, name: "Group 342", type: :academic)
+      member = insert(:account, login: "graded_member")
+      insert(:cohort_membership, account_id: member.id, cohort_id: cohort.id)
+      block = insert(:block)
+      insert(:submission, account_id: member.id, block_id: block.id, status: :graded)
+
+      {:ok, lv, _html} =
+        live(
+          conn,
+          ~p"/teaching/grading?#{%{"status" => "needs_review", "cohort_id" => cohort.id}}"
+        )
+
+      assert lv |> element("#grading-active-filters-status") |> render() =~ "Needs Review"
+      assert lv |> element("#grading-active-filters-cohort_id") |> render() =~ "Group 342"
+      refute render(lv) =~ "graded_member"
+
+      lv |> element("#grading-active-filters-status button") |> render_click()
+
+      # Status is gone, the group filter stays.
+      refute has_element?(lv, "#grading-active-filters-status")
+      assert has_element?(lv, "#grading-active-filters-cohort_id")
+      assert render(lv) =~ "graded_member"
+    end
+
+    test "with no filters there are no chips", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading")
+      refute has_element?(lv, "#grading-active-filters")
     end
 
     test "filters by rejected status using the select dropdown", %{conn: conn} do
@@ -216,7 +243,7 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
       refute html =~ "good_boy"
     end
 
-    test "filters by block_id via hidden url param and displays info alert", %{conn: conn} do
+    test "filters by block_id via url param, shown as a clearable chip", %{conn: conn} do
       student1 = insert(:account, login: "block1_boy")
       student2 = insert(:account, login: "block2_boy")
       block1 = insert(:block, type: :text)
@@ -230,9 +257,9 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
       assert html =~ "block1_boy"
       refute html =~ "block2_boy"
 
-      assert html =~ "Showing submissions filtered by a specific assignment"
+      assert has_element?(lv, "#grading-active-filters-block_id")
 
-      html = lv |> element("button[phx-click='clear_block_filter']") |> render_click()
+      html = lv |> element("#grading-active-filters-block_id button") |> render_click()
       assert html =~ "block2_boy"
     end
 
@@ -241,10 +268,10 @@ defmodule AthenaWeb.TeachingLive.GradingTest do
       block = insert(:block, type: :ticket_exam)
       insert(:submission, account_id: student.id, block_id: block.id)
 
-      {:ok, _lv, html} = live(conn, ~p"/teaching/grading?block_id=#{block.id}")
+      {:ok, lv, html} = live(conn, ~p"/teaching/grading?block_id=#{block.id}")
 
       assert html =~ "ticket_boy"
-      assert html =~ "Showing submissions filtered by a specific assignment"
+      assert lv |> element("#grading-active-filters-block_id") |> render() =~ "Ticket Assessment"
       assert html =~ "Ticket Assessment"
     end
   end

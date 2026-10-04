@@ -163,6 +163,8 @@ if config_env() == :prod do
 
     test_run_cleanup_cron = System.get_env("TEST_RUN_CLEANUP_CRON") || "*/15 * * * *"
 
+    engagement_rollup_cron = System.get_env("ENGAGEMENT_ROLLUP_CRON") || "*/5 * * * *"
+
     config :athena, Oban,
       plugins: [
         Oban.Plugins.Pruner,
@@ -174,7 +176,8 @@ if config_env() == :prod do
             queue: :maintenance},
            {daily_challenge_cleanup_cron, Athena.Gamification.Workers.DailyChallengeCleanup,
             queue: :maintenance},
-           {test_run_cleanup_cron, Athena.Learning.Workers.TestRunCleanup, queue: :maintenance}
+           {test_run_cleanup_cron, Athena.Learning.Workers.TestRunCleanup, queue: :maintenance},
+           {engagement_rollup_cron, Athena.Engagement.Workers.RollupWorker, queue: :maintenance}
          ]}
       ]
   end

@@ -1,10 +1,10 @@
 defmodule AthenaWeb.TeachingLive.Sprints do
   @moduledoc """
   Instructor-facing sprint management: pick a cohort you manage, a period,
-  and an XP multiplier (x1.5/x2/x3 — a fixed pick-list, not free-form
+  and an XP multiplier (x1.5/x2/x3 – a fixed pick-list, not free-form
   input, so there's less room to accidentally wreck a course's XP
   economy). A sprint boosts XP already flowing through the existing
-  weekly league and badges — there's no separate sprint leaderboard to
+  weekly league and badges – there's no separate sprint leaderboard to
   build or maintain.
   """
   use AthenaWeb, :live_view
@@ -113,7 +113,7 @@ defmodule AthenaWeb.TeachingLive.Sprints do
           {gettext("Sprints")}
         </h1>
         <p class="text-base-content/60 text-sm mt-1">
-          {gettext("Temporarily boost XP for a cohort — useful right before an exam or deadline.")}
+          {gettext("Temporarily boost XP for a cohort – useful right before an exam or deadline.")}
         </p>
       </div>
 
@@ -196,7 +196,7 @@ defmodule AthenaWeb.TeachingLive.Sprints do
                   </span>
                 </div>
                 <div class="text-xs text-base-content/50">
-                  {TimeZones.format(sprint.starts_at, "%d.%m %H:%M")} — {TimeZones.format(
+                  {TimeZones.format(sprint.starts_at, "%d.%m %H:%M")} – {TimeZones.format(
                     sprint.ends_at,
                     "%d.%m %H:%M"
                   )} · x{sprint.xp_multiplier}

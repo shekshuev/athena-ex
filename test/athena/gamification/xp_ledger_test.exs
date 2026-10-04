@@ -102,7 +102,7 @@ defmodule Athena.Gamification.XpLedgerTest do
     end
   end
 
-  describe "record_activity/1 — sprint multiplier" do
+  describe "record_activity/1 – sprint multiplier" do
     test "multiplies the awarded XP by an active sprint's multiplier" do
       role = insert(:role, permissions: ["cohorts.update", "cohorts.read"])
       instructor = insert(:account, role: role)

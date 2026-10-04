@@ -10,7 +10,7 @@ defmodule Athena.Gamification.RuleEngineTest do
     %{account: account}
   end
 
-  describe "evaluate/2 — leaf comparisons" do
+  describe "evaluate/2 – leaf comparisons" do
     test "gte", %{account: account} do
       assert RuleEngine.evaluate(
                %{"fact" => "total_xp", "op" => "gte", "value" => 500},
@@ -71,7 +71,7 @@ defmodule Athena.Gamification.RuleEngineTest do
     end
   end
 
-  describe "evaluate/2 — combinators" do
+  describe "evaluate/2 – combinators" do
     test "and requires every condition", %{account: account} do
       rule = %{
         "and" => [

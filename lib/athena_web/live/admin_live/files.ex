@@ -342,7 +342,7 @@ defmodule AthenaWeb.AdminLive.Files do
 
   defp owner_name(owners, owner_id) do
     case Map.get(owners, owner_id) do
-      nil -> "—"
+      nil -> "–"
       account -> Identity.display_name(account)
     end
   end

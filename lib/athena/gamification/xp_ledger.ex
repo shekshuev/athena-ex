@@ -6,7 +6,7 @@ defmodule Athena.Gamification.XpLedger do
   `record_activity/1` is the single entry point, driven by the
   `{:block_completed, payload}` fact `Athena.Learning` broadcasts on the
   `"learning_events"` PubSub topic (via `Athena.Gamification.ActivityListener`)
-  — Gamification never calls into Learning directly.
+  – Gamification never calls into Learning directly.
   """
   alias Athena.Repo
   alias Athena.Gamification.{XpEvent, XpRule, AccountStats, Sprints}
@@ -40,7 +40,7 @@ defmodule Athena.Gamification.XpLedger do
   end
 
   @doc """
-  Awards the flat XP bonus for solving the day's challenge — same base
+  Awards the flat XP bonus for solving the day's challenge – same base
   amount as the block's type normally earns. `source_id` is the
   `DailyChallenge` row's id, not the block id, so the ledger's
   `(account_id, source_type, source_id)` dedup index allows one award per

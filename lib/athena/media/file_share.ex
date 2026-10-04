@@ -1,7 +1,7 @@
 defmodule Athena.Media.FileShare do
   @moduledoc """
   Pivot table connecting a personal `Athena.Media.File` to an
-  `Identity.Account` it has been explicitly shared with — mirrors
+  `Identity.Account` it has been explicitly shared with – mirrors
   `Athena.Content.CourseShare`/`LibraryBlockShare`. `account_id` is a soft
   reference (no belongs_to/FK to `accounts`), same as those two, to keep
   the Media context decoupled from Identity.

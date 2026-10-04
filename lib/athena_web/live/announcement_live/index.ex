@@ -3,7 +3,7 @@ defmodule AthenaWeb.AnnouncementLive.Index do
   Personal announcements feed: every authenticated account sees global
   announcements plus announcements for any cohort they're a member of, in
   reverse-chronological order. Like `AthenaWeb.FileLive.Index`, access
-  does not depend on any `announcements.*` permission — this is a plain
+  does not depend on any `announcements.*` permission – this is a plain
   read surface, not a management page.
   """
   use AthenaWeb, :live_view
@@ -105,7 +105,7 @@ defmodule AthenaWeb.AnnouncementLive.Index do
 
   defp cohort_name(cohorts, cohort_id) do
     case Map.get(cohorts, cohort_id) do
-      nil -> "—"
+      nil -> "–"
       %{name: name, type: :team} -> "#{gettext("Team")}: #{name}"
       %{name: name} -> "#{gettext("Cohort")}: #{name}"
     end

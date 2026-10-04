@@ -1,7 +1,7 @@
 defmodule AthenaWeb.StudioLive.AvatarUploadComponent do
   @moduledoc """
   Compact inline S3 direct-upload widget for a single character avatar.
-  Unlike `MediaUploadComponent`, this isn't tied to a course/block — the
+  Unlike `MediaUploadComponent`, this isn't tied to a course/block – the
   upload key is namespaced by the owning teacher instead.
   """
   use AthenaWeb, :live_component

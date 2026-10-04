@@ -492,51 +492,6 @@ defmodule Athena.Engagement.MetricsTest do
     end
   end
 
-  describe "export_wide_table/2" do
-    test "produces one row per student per block, tagged with cohort/block ids", %{
-      course: course,
-      section: section
-    } do
-      block_a = insert(:block, section: section, type: :text, order: 10)
-      block_b = insert(:block, section: section, type: :code, order: 20)
-
-      cohort = insert(:cohort)
-      student_a = insert(:account)
-      student_b = insert(:account)
-      insert(:cohort_membership, account_id: student_a.id, cohort_id: cohort.id)
-      insert(:cohort_membership, account_id: student_b.id, cohort_id: cohort.id)
-
-      session = Ecto.UUID.generate()
-      record(student_a.id, cohort.id, session, block_a, :viewport_enter, 0)
-      record(student_a.id, cohort.id, session, block_a, :viewport_exit, 20)
-
-      rows = Metrics.export_wide_table(course.id, [cohort.id])
-
-      # 2 blocks x 2 students = 4 rows
-      assert length(rows) == 4
-
-      assert Enum.all?(rows, &(&1.cohort_id == cohort.id))
-      assert Enum.all?(rows, &(&1.account_id in [student_a.id, student_b.id]))
-      assert Enum.all?(rows, &(&1.block_id in [block_a.id, block_b.id]))
-
-      row =
-        Enum.find(rows, &(&1.block_id == block_a.id and &1.account_id == student_a.id))
-
-      assert row.block_type == :text
-      assert row.sample_size == 1
-    end
-
-    test "returns an empty list when the cohort has no members", %{
-      course: course,
-      section: section
-    } do
-      insert(:block, section: section, type: :text, order: 10)
-      cohort = insert(:cohort)
-
-      assert Metrics.export_wide_table(course.id, [cohort.id]) == []
-    end
-  end
-
   describe "get_metrics/1 - offtask_ratio" do
     test "is the share of raw window time spent tabbed away", %{section: section} do
       block = insert(:block, section: section, type: :text, order: 10)
@@ -598,7 +553,7 @@ defmodule Athena.Engagement.MetricsTest do
 
       assert profile.fast_dwell == 1.0
       assert profile.heavy_paste == 0.0
-      assert profile.backtracked == 0.0
+      refute Map.has_key?(profile, :backtracked)
       assert profile.panic_debugging == 0.0
     end
 
@@ -654,7 +609,7 @@ defmodule Athena.Engagement.MetricsTest do
 
       # `since` is set to a minute after the events above (offsets are
       # relative to the fixed 2026-01-05 12:00:00Z base `record/7` uses).
-      profile = Metrics.cohort_flag_profile(cohort.id, course.id, since: ~U[2026-01-05 12:01:00Z])
+      profile = Metrics.cohort_flag_profile(cohort.id, course.id, since: ~U[2026-01-06 00:00:00Z])
 
       assert profile.fast_dwell == 0.0
     end
@@ -792,7 +747,7 @@ defmodule Athena.Engagement.MetricsTest do
       record(account.id, cohort.id, session, block, :viewport_exit, 5)
 
       [row] =
-        Metrics.section_flag_totals(cohort.id, course.id, since: ~U[2026-01-05 12:01:00Z])
+        Metrics.section_flag_totals(cohort.id, course.id, since: ~U[2026-01-06 00:00:00Z])
 
       assert row.slacking_count == 0
     end
@@ -866,7 +821,7 @@ defmodule Athena.Engagement.MetricsTest do
 
       record(account.id, nil, Ecto.UUID.generate(), block, :viewport_enter, 0)
 
-      cells = Metrics.activity_heatmap(nil, course.id, since: ~U[2026-01-05 12:01:00Z])
+      cells = Metrics.activity_heatmap(nil, course.id, since: ~U[2026-01-06 00:00:00Z])
 
       assert Enum.all?(cells, &(&1.count == 0))
     end
@@ -963,7 +918,7 @@ defmodule Athena.Engagement.MetricsTest do
 
       record(account.id, nil, Ecto.UUID.generate(), block, :viewport_enter, 0)
 
-      [row] = Metrics.course_funnel(nil, course.id, since: ~U[2026-01-05 12:01:00Z])
+      [row] = Metrics.course_funnel(nil, course.id, since: ~U[2026-01-06 00:00:00Z])
 
       assert row.opened == 0
     end
@@ -1042,7 +997,7 @@ defmodule Athena.Engagement.MetricsTest do
 
       record(account.id, nil, Ecto.UUID.generate(), block, :viewport_enter, 0)
 
-      trend = Metrics.active_students_trend(nil, course.id, since: ~U[2026-01-05 12:01:00Z])
+      trend = Metrics.active_students_trend(nil, course.id, since: ~U[2026-01-06 00:00:00Z])
 
       assert trend == []
     end
@@ -1183,7 +1138,7 @@ defmodule Athena.Engagement.MetricsTest do
         "reason" => "heavy_paste"
       })
 
-      rows = Metrics.nudge_correction_rate(nil, course.id, since: ~U[2026-01-05 12:01:00Z])
+      rows = Metrics.nudge_correction_rate(nil, course.id, since: ~U[2026-01-06 00:00:00Z])
 
       assert rows == []
     end
@@ -1323,6 +1278,62 @@ defmodule Athena.Engagement.MetricsTest do
 
       assert small_count == large_count
       assert small_count <= 10
+    end
+  end
+
+  describe "course_overview/3" do
+    test "returns exactly what the five individual course-wide functions return" do
+      course = insert(:course)
+      cohort = insert(:cohort)
+      section_a = insert(:section, course: course, title: "Intro", order: 10)
+      section_b = insert(:section, course: course, title: "Advanced", order: 20)
+
+      block_a =
+        insert(:block,
+          section: section_a,
+          type: :text,
+          order: 10,
+          engagement_rule: %EngagementRule{expected_seconds: 100}
+        )
+
+      block_b = insert(:block, section: section_b, type: :quiz_question, order: 10)
+
+      [student_a, student_b] = insert_pair(:account)
+      insert(:cohort_membership, account_id: student_a.id, cohort_id: cohort.id)
+      insert(:cohort_membership, account_id: student_b.id, cohort_id: cohort.id)
+      Learning.mark_completed(student_a.id, block_a.id)
+
+      session = Ecto.UUID.generate()
+      record(student_a.id, cohort.id, session, block_a, :viewport_enter, 0)
+      record(student_a.id, cohort.id, session, block_a, :viewport_exit, 5)
+
+      record(student_a.id, cohort.id, session, block_a, :nudge_shown, 6, %{
+        "reason" => "fast_dwell"
+      })
+
+      record(student_b.id, cohort.id, Ecto.UUID.generate(), block_b, :viewport_enter, 30)
+
+      record(student_b.id, cohort.id, Ecto.UUID.generate(), block_b, :paste_detected, 40, %{
+        "pasted_chars" => 95,
+        "total_chars" => 100
+      })
+
+      opts = [since: ~U[2020-01-01 00:00:00Z]]
+      overview = Metrics.course_overview(cohort.id, course.id, opts)
+
+      assert overview.section_flag_totals ==
+               Metrics.section_flag_totals(cohort.id, course.id, opts)
+
+      assert overview.activity_heatmap == Metrics.activity_heatmap(cohort.id, course.id, opts)
+      assert overview.course_funnel == Metrics.course_funnel(cohort.id, course.id, opts)
+
+      assert overview.active_students_trend ==
+               Metrics.active_students_trend(cohort.id, course.id, opts)
+
+      assert overview.nudge_correction_rate ==
+               Metrics.nudge_correction_rate(cohort.id, course.id, opts)
+
+      assert [%{opened: 1, completed: 1}, %{opened: 1, completed: 0}] = overview.course_funnel
     end
   end
 end

@@ -64,7 +64,7 @@ defmodule AthenaWeb.TeachingLive.SprintsTest do
     assert sprint.starts_at == ~U[2030-10-01 11:00:00Z]
     assert sprint.ends_at == ~U[2030-10-01 15:30:00Z]
 
-    assert has_element?(lv, "#sprint-#{sprint.id}", "01.10 14:00 — 01.10 18:30")
+    assert has_element?(lv, "#sprint-#{sprint.id}", "01.10 14:00 – 01.10 18:30")
   end
 
   test "shows a permission error when the instructor doesn't manage the cohort", %{

@@ -1,7 +1,7 @@
 defmodule Athena.Gamification.ActivityListener do
   @moduledoc """
   Listens to learning-activity domain events from the Learning context and
-  reacts to them in Gamification — Learning broadcasts facts on
+  reacts to them in Gamification – Learning broadcasts facts on
   `"learning_events"` without knowing Gamification exists.
   """
   use GenServer
@@ -45,7 +45,7 @@ defmodule Athena.Gamification.ActivityListener do
 
   # A crash here would restart this singleton listener repeatedly under
   # load (or trip the app supervisor's restart intensity entirely), so
-  # failures are logged and dropped rather than propagated — consistent
+  # failures are logged and dropped rather than propagated – consistent
   # with PubSub already being a fire-and-forget, at-most-once channel.
   defp guarded(fun) do
     fun.()
