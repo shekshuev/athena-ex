@@ -1325,4 +1325,60 @@ defmodule Athena.Engagement.MetricsTest do
       assert small_count <= 10
     end
   end
+
+  describe "course_overview/3" do
+    test "returns exactly what the five individual course-wide functions return" do
+      course = insert(:course)
+      cohort = insert(:cohort)
+      section_a = insert(:section, course: course, title: "Intro", order: 10)
+      section_b = insert(:section, course: course, title: "Advanced", order: 20)
+
+      block_a =
+        insert(:block,
+          section: section_a,
+          type: :text,
+          order: 10,
+          engagement_rule: %EngagementRule{expected_seconds: 100}
+        )
+
+      block_b = insert(:block, section: section_b, type: :quiz_question, order: 10)
+
+      [student_a, student_b] = insert_pair(:account)
+      insert(:cohort_membership, account_id: student_a.id, cohort_id: cohort.id)
+      insert(:cohort_membership, account_id: student_b.id, cohort_id: cohort.id)
+      Learning.mark_completed(student_a.id, block_a.id)
+
+      session = Ecto.UUID.generate()
+      record(student_a.id, cohort.id, session, block_a, :viewport_enter, 0)
+      record(student_a.id, cohort.id, session, block_a, :viewport_exit, 5)
+
+      record(student_a.id, cohort.id, session, block_a, :nudge_shown, 6, %{
+        "reason" => "fast_dwell"
+      })
+
+      record(student_b.id, cohort.id, Ecto.UUID.generate(), block_b, :viewport_enter, 30)
+
+      record(student_b.id, cohort.id, Ecto.UUID.generate(), block_b, :paste_detected, 40, %{
+        "pasted_chars" => 95,
+        "total_chars" => 100
+      })
+
+      opts = [since: ~U[2020-01-01 00:00:00Z]]
+      overview = Metrics.course_overview(cohort.id, course.id, opts)
+
+      assert overview.section_flag_totals ==
+               Metrics.section_flag_totals(cohort.id, course.id, opts)
+
+      assert overview.activity_heatmap == Metrics.activity_heatmap(cohort.id, course.id, opts)
+      assert overview.course_funnel == Metrics.course_funnel(cohort.id, course.id, opts)
+
+      assert overview.active_students_trend ==
+               Metrics.active_students_trend(cohort.id, course.id, opts)
+
+      assert overview.nudge_correction_rate ==
+               Metrics.nudge_correction_rate(cohort.id, course.id, opts)
+
+      assert [%{opened: 1, completed: 1}, %{opened: 1, completed: 0}] = overview.course_funnel
+    end
+  end
 end

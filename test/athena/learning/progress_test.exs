@@ -369,16 +369,19 @@ defmodule Athena.Learning.ProgressTest do
 
       {:ok, _} = Progress.mark_completed(user.id, block.id)
 
+      # "learning_events" is a global topic shared with every other async
+      # test that completes a block - pin the message to this test's block.
+      block_id = block.id
+
       assert_receive {:block_completed,
                       %{
                         account_id: account_id,
-                        block_id: block_id,
+                        block_id: ^block_id,
                         block_type: :code,
                         cohort_id: nil
                       }}
 
       assert account_id == user.id
-      assert block_id == block.id
     end
 
     test "includes the cohort_id for team completions", %{user: user, team: team} do
@@ -387,7 +390,8 @@ defmodule Athena.Learning.ProgressTest do
 
       {:ok, _} = Progress.mark_completed(user.id, block.id, team.id)
 
-      assert_receive {:block_completed, %{cohort_id: cohort_id}}
+      block_id = block.id
+      assert_receive {:block_completed, %{block_id: ^block_id, cohort_id: cohort_id}}
       assert cohort_id == team.id
     end
   end
@@ -732,6 +736,53 @@ defmodule Athena.Learning.ProgressTest do
                ),
                :count
              ) == 1
+    end
+  end
+
+  describe "completed_block_ids_by_account/3" do
+    test "matches completed_block_ids/3 for every account, in one query", %{user: user} do
+      other = insert(:account)
+      section = insert(:section)
+      [block_a, block_b] = insert_pair(:block, section: section)
+      outside = insert(:block)
+
+      Progress.mark_completed(user.id, block_a.id)
+      Progress.mark_completed(user.id, outside.id)
+      Progress.mark_completed(other.id, block_b.id)
+
+      result =
+        Progress.completed_block_ids_by_account(
+          [user.id, other.id],
+          [block_a.id, block_b.id],
+          nil
+        )
+
+      assert result[user.id] == MapSet.new([block_a.id])
+      assert result[other.id] == MapSet.new([block_b.id])
+
+      assert MapSet.new(Progress.completed_block_ids(user.id, section.id)) == result[user.id]
+    end
+
+    test "with a team id, every account shares the team's completion records", %{
+      user: user,
+      team: team
+    } do
+      other = insert(:account)
+      block = insert(:block)
+      Progress.mark_completed(user.id, block.id, team.id)
+
+      result = Progress.completed_block_ids_by_account([user.id, other.id], [block.id], team.id)
+
+      assert result[user.id] == MapSet.new([block.id])
+      assert result[other.id] == MapSet.new([block.id])
+    end
+
+    test "accounts with nothing completed still get an empty set", %{user: user} do
+      assert Progress.completed_block_ids_by_account([user.id], [], nil) == %{
+               user.id => MapSet.new()
+             }
+
+      assert Progress.completed_block_ids_by_account([], [Ecto.UUID.generate()], nil) == %{}
     end
   end
 end

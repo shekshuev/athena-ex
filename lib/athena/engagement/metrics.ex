@@ -245,7 +245,15 @@ defmodule Athena.Engagement.Metrics do
 
     all_events = Events.list_events_for_scope(all_block_ids, cohort_id, since)
     events_by_block = Enum.group_by(all_events, & &1.block_id)
-    events_by_section = Enum.group_by(all_events, &Map.fetch!(block_to_section_id, &1.block_id))
+
+    # Keyed by student up front: every per-(block, student) computation
+    # below used to linearly re-filter a whole block's/section's events by
+    # `account_id`, which made a cohort-wide grid O(blocks x students x
+    # events) instead of O(events).
+    events_by_account_block = Enum.group_by(all_events, &{&1.account_id, &1.block_id})
+
+    events_by_account_section =
+      Enum.group_by(all_events, &{&1.account_id, Map.fetch!(block_to_section_id, &1.block_id)})
 
     resolved_rule_by_block_id =
       Map.new(all_blocks, fn block ->
@@ -257,8 +265,11 @@ defmodule Athena.Engagement.Metrics do
       sections: sections,
       section_by_id: section_by_id,
       blocks_by_section: blocks_by_section,
+      all_blocks: Enum.flat_map(sections, &Map.get(blocks_by_section, &1.id, [])),
+      events: all_events,
       events_by_block: events_by_block,
-      events_by_section: events_by_section,
+      events_by_account_block: events_by_account_block,
+      events_by_account_section: events_by_account_section,
       resolved_rule_by_block_id: resolved_rule_by_block_id
     }
   end
@@ -289,11 +300,18 @@ defmodule Athena.Engagement.Metrics do
     since = Keyword.get(opts, :since, default_since())
     index = build_scope_index(course_id, cohort_id, since)
     blocks = radar_blocks(index, Keyword.get(opts, :section_id))
-    team_id = team_scope_id(cohort_id)
+    students = students_in_cohort(cohort_id)
 
-    cohort_id
-    |> students_in_cohort()
-    |> Enum.map(&student_radar_row(&1, team_id, blocks, index))
+    completed_by_account =
+      Learning.completed_block_ids_by_account(
+        students,
+        Enum.map(blocks, & &1.id),
+        team_scope_id(cohort_id)
+      )
+
+    Enum.map(students, fn account_id ->
+      student_radar_row(account_id, Map.fetch!(completed_by_account, account_id), blocks, index)
+    end)
   end
 
   # The full set of student-level flags from `slacking_flags/2` +
@@ -384,10 +402,39 @@ defmodule Athena.Engagement.Metrics do
         ]
   def section_flag_totals(cohort_id, course_id, opts \\ []) do
     since = Keyword.get(opts, :since, default_since())
-    students = students_in_cohort(cohort_id)
     index = build_scope_index(course_id, cohort_id, since)
+    section_flag_totals_from_index(index, students_in_cohort(cohort_id))
+  end
 
+  defp section_flag_totals_from_index(index, students) do
     Enum.map(index.sections, fn section -> section_flag_total(section, students, index) end)
+  end
+
+  @doc """
+  Every course-wide "Course Radar" dataset in one pass - `section_flag_totals/3`,
+  `activity_heatmap/3`, `course_funnel/3`, `active_students_trend/3` and
+  `nudge_correction_rate/3` all computed off a single `build_scope_index/3`
+  (one events query) instead of each loading the same raw events again.
+  """
+  @spec course_overview(binary(), binary(), keyword()) :: %{
+          section_flag_totals: list(),
+          activity_heatmap: list(),
+          course_funnel: list(),
+          active_students_trend: list(),
+          nudge_correction_rate: list()
+        }
+  def course_overview(cohort_id, course_id, opts \\ []) do
+    since = Keyword.get(opts, :since, default_since())
+    index = build_scope_index(course_id, cohort_id, since)
+    students = students_in_cohort(cohort_id)
+
+    %{
+      section_flag_totals: section_flag_totals_from_index(index, students),
+      activity_heatmap: activity_heatmap_from_events(index.events),
+      course_funnel: course_funnel_from_index(index, cohort_id),
+      active_students_trend: active_students_trend_from_events(index.events),
+      nudge_correction_rate: nudge_correction_rate_from_index(index)
+    }
   end
 
   defp section_flag_total(section, students, index) do
@@ -431,12 +478,17 @@ defmodule Athena.Engagement.Metrics do
         ]
   def activity_heatmap(cohort_id, course_id, opts \\ []) do
     since = Keyword.get(opts, :since, default_since())
-    block_ids = course_id |> course_blocks() |> Enum.map(& &1.id)
 
+    course_id
+    |> course_blocks()
+    |> Enum.map(& &1.id)
+    |> Events.list_events_for_scope(cohort_id, since)
+    |> activity_heatmap_from_events()
+  end
+
+  defp activity_heatmap_from_events(events) do
     counts =
-      block_ids
-      |> Events.list_events_for_scope(cohort_id, since)
-      |> Enum.reduce(%{}, fn event, acc ->
+      Enum.reduce(events, %{}, fn event, acc ->
         key = heatmap_cell(event.occurred_at)
         Map.update(acc, key, 1, &(&1 + 1))
       end)
@@ -477,18 +529,31 @@ defmodule Athena.Engagement.Metrics do
         ]
   def course_funnel(cohort_id, course_id, opts \\ []) do
     since = Keyword.get(opts, :since, default_since())
-    team_id = team_scope_id(cohort_id)
 
     course_id
-    |> Content.get_course_tree(:all)
-    |> flatten_sections()
-    |> Enum.map(&section_funnel(&1, cohort_id, team_id, since))
+    |> build_scope_index(cohort_id, since)
+    |> course_funnel_from_index(cohort_id)
   end
 
-  defp section_funnel(section, cohort_id, team_id, since) do
-    blocks = Content.list_blocks_by_section(section.id, :all)
-    block_ids = Enum.map(blocks, & &1.id)
-    events = Events.list_events_for_scope(block_ids, cohort_id, since)
+  # Completion is resolved in one bulk query for every student who opened
+  # anything in scope, rather than one `completed_block_ids/3` call per
+  # (section, student) pair.
+  defp course_funnel_from_index(index, cohort_id) do
+    openers = distinct_accounts(index.events, &(&1.event_type == :viewport_enter))
+
+    completed_by_account =
+      Learning.completed_block_ids_by_account(
+        MapSet.to_list(openers),
+        Enum.map(index.all_blocks, & &1.id),
+        team_scope_id(cohort_id)
+      )
+
+    Enum.map(index.sections, &section_funnel(&1, index, completed_by_account))
+  end
+
+  defp section_funnel(section, index, completed_by_account) do
+    block_ids = index.blocks_by_section |> Map.get(section.id, []) |> Enum.map(& &1.id)
+    events = Enum.flat_map(block_ids, &Map.get(index.events_by_block, &1, []))
 
     opened = distinct_accounts(events, &(&1.event_type == :viewport_enter))
 
@@ -507,7 +572,7 @@ defmodule Athena.Engagement.Metrics do
 
     completed_count =
       Enum.count(opened, fn account_id ->
-        completed_ids = MapSet.new(Learning.completed_block_ids(account_id, section.id, team_id))
+        completed_ids = Map.get(completed_by_account, account_id, MapSet.new())
         block_ids != [] and Enum.all?(block_ids, &MapSet.member?(completed_ids, &1))
       end)
 
@@ -536,10 +601,16 @@ defmodule Athena.Engagement.Metrics do
         ]
   def active_students_trend(cohort_id, course_id, opts \\ []) do
     since = Keyword.get(opts, :since, default_since())
-    block_ids = course_id |> course_blocks() |> Enum.map(& &1.id)
 
-    block_ids
+    course_id
+    |> course_blocks()
+    |> Enum.map(& &1.id)
     |> Events.list_events_for_scope(cohort_id, since)
+    |> active_students_trend_from_events()
+  end
+
+  defp active_students_trend_from_events(events) do
+    events
     |> Enum.group_by(&(&1.occurred_at |> TimeZones.to_app_zone() |> DateTime.to_date()))
     |> Enum.map(fn {date, events} ->
       %{date: date, active_count: events |> Enum.map(& &1.account_id) |> Enum.uniq() |> length()}
@@ -575,17 +646,22 @@ defmodule Athena.Engagement.Metrics do
         ]
   def nudge_correction_rate(cohort_id, course_id, opts \\ []) do
     since = Keyword.get(opts, :since, default_since())
-    index = build_scope_index(course_id, cohort_id, since)
-    blocks = index.blocks_by_section |> Map.values() |> List.flatten()
 
-    index.events_by_block
-    |> Map.values()
-    |> List.flatten()
+    course_id
+    |> build_scope_index(cohort_id, since)
+    |> nudge_correction_rate_from_index()
+  end
+
+  defp nudge_correction_rate_from_index(index) do
+    blocks_by_id = Map.new(index.all_blocks, &{&1.id, &1})
+    index = Map.put(index, :last_activity_by_account, last_activity_by_account(index))
+
+    index.events
     |> Enum.filter(&(&1.event_type == :nudge_shown))
     |> Enum.map(&{nudge_reason(&1), &1})
     |> Enum.reject(fn {reason, _event} -> is_nil(reason) end)
     |> Enum.group_by(fn {reason, _event} -> reason end, fn {_reason, event} -> event end)
-    |> Enum.map(fn {reason, nudges} -> reason_correction(reason, nudges, blocks, index) end)
+    |> Enum.map(fn {reason, nudges} -> reason_correction(reason, nudges, blocks_by_id, index) end)
   end
 
   defp nudge_reason(%{payload: %{"reason" => reason}}) when is_binary(reason) do
@@ -596,9 +672,9 @@ defmodule Athena.Engagement.Metrics do
 
   defp nudge_reason(_event), do: nil
 
-  defp reason_correction(reason, nudges, blocks, index) do
+  defp reason_correction(reason, nudges, blocks_by_id, index) do
     nudged_count = length(nudges)
-    corrected_count = Enum.count(nudges, &(!flag_fires_again?(reason, &1, blocks, index)))
+    corrected_count = Enum.count(nudges, &(!flag_fires_again?(reason, &1, blocks_by_id, index)))
 
     %{
       reason: reason,
@@ -608,19 +684,43 @@ defmodule Athena.Engagement.Metrics do
     }
   end
 
-  defp flag_fires_again?(reason, nudge, blocks, index) do
+  # Only blocks this student has any event on after the nudge can possibly
+  # fire a flag again (see `student_block_flags/4`'s empty-events shortcut),
+  # so those are the only ones checked - not every block in the course.
+  defp flag_fires_again?(reason, nudge, blocks_by_id, index) do
     after_at = DateTime.add(nudge.occurred_at, 1, :second)
 
-    Enum.any?(blocks, fn block ->
-      flags = student_block_flags(block, nudge.account_id, index, after_at)
+    nudge.account_id
+    |> blocks_active_since(after_at, index)
+    |> Enum.any?(fn block_id ->
+      flags =
+        student_block_flags(Map.fetch!(blocks_by_id, block_id), nudge.account_id, index, after_at)
+
       reason in flags.slacking_flags
     end)
+  end
+
+  defp blocks_active_since(account_id, since, index) do
+    for {block_id, last_at} <- Map.get(index.last_activity_by_account, account_id, []),
+        DateTime.compare(last_at, since) != :lt,
+        do: block_id
+  end
+
+  # `%{account_id => [{block_id, latest occurred_at}]}`, built once per
+  # `nudge_correction_rate` pass so each nudge's "any later activity?" check
+  # is a scan over one student's blocks, not over the whole cohort's events.
+  defp last_activity_by_account(index) do
+    index.events_by_account_block
+    |> Enum.map(fn {{account_id, block_id}, events} ->
+      {account_id, {block_id, events |> Enum.map(& &1.occurred_at) |> Enum.max(DateTime)}}
+    end)
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
   end
 
   defp radar_blocks(index, nil), do: index.blocks_by_section |> Map.values() |> List.flatten()
   defp radar_blocks(index, section_id), do: Map.get(index.blocks_by_section, section_id, [])
 
-  defp student_radar_row(account_id, team_id, blocks, index) do
+  defp student_radar_row(account_id, completed_ids, blocks, index) do
     flagged_blocks =
       blocks
       |> Enum.map(&student_block_flags(&1, account_id, index))
@@ -645,7 +745,7 @@ defmodule Athena.Engagement.Metrics do
 
     %{
       account_id: account_id,
-      progress_percent: progress_percent(account_id, team_id, blocks),
+      progress_percent: progress_percent(completed_ids, blocks),
       slacking_index: slacking_index,
       struggling_index: struggling_index,
       integrity_index: integrity_index,
@@ -655,36 +755,27 @@ defmodule Athena.Engagement.Metrics do
   end
 
   defp student_block_flags(block, account_id, index, since_override \\ nil) do
-    section = Map.fetch!(index.section_by_id, block.section_id)
-    section_blocks = Map.fetch!(index.blocks_by_section, block.section_id)
-    resolved_rule = Map.fetch!(index.resolved_rule_by_block_id, block.id)
-
     block_events =
-      index.events_by_block
-      |> Map.get(block.id, [])
-      |> filter_by_account(account_id)
+      index.events_by_account_block
+      |> Map.get({account_id, block.id}, [])
       |> filter_since(since_override)
 
-    section_events =
-      index.events_by_section
-      |> Map.get(block.section_id, [])
-      |> filter_by_account(account_id)
-      |> filter_since(since_override)
-
-    metrics =
-      compute_block_metrics(
-        block,
-        section,
-        section_blocks,
-        block_events,
-        section_events,
-        resolved_rule
-      )
-
-    flags = flag_concerns(metrics)
+    # Every flag needs at least one event on the block itself (backtracking
+    # included - it is counted off this block's own `viewport_enter`), so a
+    # block the student never touched can skip the metrics pass entirely -
+    # the common case on a cohort-wide grid.
+    flags =
+      if block_events == [] do
+        %{slacking: [], struggling: [], integrity: []}
+      else
+        block
+        |> student_block_metrics(account_id, block_events, index, since_override)
+        |> flag_concerns()
+      end
 
     %{
       block_id: block.id,
+      section_id: block.section_id,
       flags: flags.slacking ++ flags.struggling ++ flags.integrity,
       slacking_flags: flags.slacking,
       struggling_flags: flags.struggling,
@@ -695,28 +786,30 @@ defmodule Athena.Engagement.Metrics do
     }
   end
 
-  # Whole-course fact, not a windowed behavior - reuses the same
-  # `Athena.Learning.completed_block_ids/3` the Player's own waterline
-  # already relies on, one section at a time (the course tree has no flat
-  # "all blocks" progress query). `team_id` (from `team_scope_id/1`) is
-  # `nil` for academic cohorts (individual completion records) and the
-  # cohort id itself for `:team` cohorts, matching the shared completion
-  # records `Athena.Learning.Progress.mark_completed/3` writes.
-  defp progress_percent(_account_id, _team_id, []), do: 0.0
+  defp student_block_metrics(block, account_id, block_events, index, since_override) do
+    section_events =
+      index.events_by_account_section
+      |> Map.get({account_id, block.section_id}, [])
+      |> filter_since(since_override)
 
-  defp progress_percent(account_id, team_id, blocks) do
-    block_ids = MapSet.new(blocks, & &1.id)
+    compute_block_metrics(
+      block,
+      Map.fetch!(index.section_by_id, block.section_id),
+      Map.fetch!(index.blocks_by_section, block.section_id),
+      block_events,
+      section_events,
+      Map.fetch!(index.resolved_rule_by_block_id, block.id)
+    )
+  end
 
-    completed_count =
-      blocks
-      |> Enum.map(& &1.section_id)
-      |> Enum.uniq()
-      |> Enum.flat_map(&Learning.completed_block_ids(account_id, &1, team_id))
-      |> Enum.filter(&MapSet.member?(block_ids, &1))
-      |> Enum.uniq()
-      |> length()
+  # Whole-course fact, not a windowed behavior. `completed_ids` comes from
+  # one bulk `Athena.Learning.completed_block_ids_by_account/3` call for the
+  # whole cohort (same team-vs-individual scoping rule as the Player's own
+  # `completed_block_ids/3` waterline), already restricted to `blocks`.
+  defp progress_percent(_completed_ids, []), do: 0.0
 
-    completed_count / MapSet.size(block_ids) * 100
+  defp progress_percent(completed_ids, blocks) do
+    MapSet.size(completed_ids) / length(blocks) * 100
   end
 
   # `cohort_id` is `nil` for a self-paced/no-cohort scope, or an

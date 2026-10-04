@@ -49,7 +49,9 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompareTest do
     elsewhere = insert(:cohort, name: "Elsewhere Cohort")
     insert(:enrollment, course_id: other_course.id, cohort_id: elsewhere.id)
 
-    {:ok, _lv, html} = live(conn, ~p"/teaching/courses/#{course.id}/engagement/compare")
+    {:ok, lv, _html} = live(conn, ~p"/teaching/courses/#{course.id}/engagement/compare")
+
+    html = render_async(lv)
 
     assert html =~ "Enrolled Cohort"
     refute html =~ "Elsewhere Cohort"
@@ -59,7 +61,9 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompareTest do
     conn: conn,
     course: course
   } do
-    {:ok, _lv, html} = live(conn, ~p"/teaching/courses/#{course.id}/engagement/compare")
+    {:ok, lv, _html} = live(conn, ~p"/teaching/courses/#{course.id}/engagement/compare")
+
+    html = render_async(lv)
 
     assert html =~ "No cohorts are enrolled in this course yet."
 
@@ -77,7 +81,9 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompareTest do
     insert(:enrollment, course_id: course.id, cohort_id: cohort_a.id)
     insert(:enrollment, course_id: course.id, cohort_id: cohort_b.id)
 
-    {:ok, _lv, html} = live(conn, ~p"/teaching/courses/#{course.id}/engagement/compare")
+    {:ok, lv, _html} = live(conn, ~p"/teaching/courses/#{course.id}/engagement/compare")
+
+    html = render_async(lv)
 
     config = chart_config_from_html(html, "cohort-compare-radar")
     labels = Enum.map(config["data"]["datasets"], & &1["label"])
@@ -96,10 +102,13 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompareTest do
 
     {:ok, lv, _html} = live(conn, ~p"/teaching/courses/#{course.id}/engagement/compare")
 
-    html =
-      lv
-      |> element("button[phx-value-cohort_id='#{cohort_a.id}']")
-      |> render_click()
+    _ = render_async(lv)
+
+    lv
+    |> element("button[phx-value-cohort_id='#{cohort_a.id}']")
+    |> render_click()
+
+    html = render_async(lv)
 
     config = chart_config_from_html(html, "cohort-compare-radar")
     labels = Enum.map(config["data"]["datasets"], & &1["label"])
@@ -160,7 +169,9 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompareTest do
       }
     ])
 
-    {:ok, _lv, html} = live(conn, ~p"/teaching/courses/#{course.id}/engagement/compare")
+    {:ok, lv, _html} = live(conn, ~p"/teaching/courses/#{course.id}/engagement/compare")
+
+    html = render_async(lv)
 
     config = chart_config_from_html(html, "cohort-compare-radar")
     axes = config["data"]["labels"]
@@ -205,7 +216,9 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompareTest do
       }
     ])
 
-    {:ok, lv, html} = live(conn, ~p"/teaching/courses/#{course.id}/engagement/compare")
+    {:ok, lv, _html} = live(conn, ~p"/teaching/courses/#{course.id}/engagement/compare")
+
+    html = render_async(lv)
 
     config = chart_config_from_html(html, "cohort-compare-radar")
     axes = config["data"]["labels"]
@@ -215,8 +228,8 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompareTest do
     # Default window (7 days) misses behavior from 10 days ago.
     assert Enum.at(dataset["data"], fast_dwell_index) == 0.0
 
-    html =
-      lv |> element("form[phx-change=change_window]") |> render_change(%{"window" => "all"})
+    lv |> element("form[phx-change=change_window]") |> render_change(%{"window" => "all"})
+    html = render_async(lv)
 
     config = chart_config_from_html(html, "cohort-compare-radar")
     dataset = hd(config["data"]["datasets"])

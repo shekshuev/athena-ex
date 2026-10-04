@@ -179,6 +179,7 @@ defmodule Athena.Learning do
 
   defdelegate mark_completed(account_id, block_id, cohort_id \\ nil), to: Progress
   defdelegate completed_block_ids(account_id, section_id, cohort_id \\ nil), to: Progress
+  defdelegate completed_block_ids_by_account(account_ids, block_ids, team_id), to: Progress
   defdelegate last_activity(account_id), to: Progress
   defdelegate course_progress(account_id, course_id, cohort_id \\ nil), to: Progress
   defdelegate course_progress_batch(account_id, enrollments), to: Progress

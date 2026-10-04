@@ -14,6 +14,8 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompare do
   """
   use AthenaWeb, :live_view
 
+  require Logger
+
   alias Athena.{Content, Engagement, Learning}
   alias AthenaWeb.TeachingLive.ChartConfig
 
@@ -36,6 +38,7 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompare do
          |> assign(:cohorts, cohorts)
          |> assign(:selected_cohort_ids, [])
          |> assign(:window, "7")
+         |> assign(:loading, false)
          |> assign(:chart_config, ChartConfig.radar_config(Engagement.radar_axes(), []))
          |> assign(:page_title, compare_title(course))}
 
@@ -150,7 +153,15 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompare do
         </div>
       </div>
 
-      <div class="bg-base-100 border border-base-200 rounded-sm p-4">
+      <div class="relative bg-base-100 border border-base-200 rounded-sm p-4">
+        <div
+          :if={@loading}
+          id="cohort-compare-loading"
+          class="absolute inset-0 z-10 flex items-center justify-center bg-base-100/70 backdrop-blur-[1px] transition-opacity"
+          aria-busy="true"
+        >
+          <span class="loading loading-spinner loading-md text-primary"></span>
+        </div>
         <canvas
           id="cohort-compare-radar"
           phx-hook="EngagementChart"
@@ -167,21 +178,53 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompare do
     ~p"/teaching/courses/#{socket.assigns.course.id}/engagement/compare?cohort_ids=#{Enum.join(cohort_ids, ",")}&window=#{window}"
   end
 
+  # Off the LiveView process, one cohort per task in parallel - each
+  # profile is an independent whole-course events scan. Skipped on the dead
+  # render, which is discarded as soon as the socket connects.
   defp refresh_profiles(socket) do
-    since = compare_since(socket.assigns.window)
+    if connected?(socket) do
+      since = compare_since(socket.assigns.window)
+      course_id = socket.assigns.course.id
 
-    series =
-      socket.assigns.cohorts
-      |> Enum.filter(&(&1.id in socket.assigns.selected_cohort_ids))
-      |> Enum.map(fn cohort ->
-        %{
-          label: cohort.name,
-          values:
-            Engagement.cohort_flag_profile(cohort.id, socket.assigns.course.id, since: since)
-        }
+      cohorts =
+        Enum.filter(socket.assigns.cohorts, &(&1.id in socket.assigns.selected_cohort_ids))
+
+      socket
+      |> assign(:loading, true)
+      |> cancel_async(:profiles)
+      |> start_async(:profiles, fn ->
+        cohorts
+        |> Task.async_stream(
+          fn cohort ->
+            %{
+              label: cohort.name,
+              values: Engagement.cohort_flag_profile(cohort.id, course_id, since: since)
+            }
+          end,
+          timeout: :infinity
+        )
+        |> Enum.map(fn {:ok, series} -> series end)
       end)
+    else
+      assign(socket, :loading, true)
+    end
+  end
 
-    assign(socket, :chart_config, ChartConfig.radar_config(Engagement.radar_axes(), series))
+  @impl true
+  def handle_async(:profiles, {:ok, series}, socket) do
+    {:noreply,
+     socket
+     |> assign(:chart_config, ChartConfig.radar_config(Engagement.radar_axes(), series))
+     |> assign(:loading, false)}
+  end
+
+  def handle_async(:profiles, {:exit, reason}, socket) do
+    Logger.error("Cohort comparison failed: #{inspect(reason)}")
+
+    {:noreply,
+     socket
+     |> assign(:loading, false)
+     |> put_flash(:error, gettext("Could not load engagement data. Please try again."))}
   end
 
   defp compare_since("30"), do: DateTime.add(DateTime.utc_now(), -30 * 86_400, :second)

@@ -154,6 +154,46 @@ defmodule Athena.Learning.Progress do
   end
 
   @doc """
+  Bulk counterpart to `completed_block_ids/3` for dashboards: completed block
+  ids among `block_ids` for every account in `account_ids`, in one query
+  instead of one per (account, section). Same scoping rule - with a
+  `team_id` every account shares the team's completion records, without one
+  each account's own individual (`cohort_id IS NULL`) records count.
+  """
+  @spec completed_block_ids_by_account([String.t()], [String.t()], String.t() | nil) ::
+          %{String.t() => MapSet.t(String.t())}
+  def completed_block_ids_by_account([], _block_ids, _team_id), do: %{}
+  def completed_block_ids_by_account(account_ids, [], _team_id), do: empty_sets(account_ids)
+
+  def completed_block_ids_by_account(account_ids, block_ids, team_id) when is_binary(team_id) do
+    completed =
+      from(bp in BlockProgress,
+        where: bp.cohort_id == ^team_id and bp.status == :completed and bp.block_id in ^block_ids,
+        select: bp.block_id
+      )
+      |> Repo.all()
+      |> MapSet.new()
+
+    Map.new(account_ids, &{&1, completed})
+  end
+
+  def completed_block_ids_by_account(account_ids, block_ids, nil) do
+    by_account =
+      from(bp in BlockProgress,
+        where:
+          bp.account_id in ^account_ids and is_nil(bp.cohort_id) and bp.status == :completed and
+            bp.block_id in ^block_ids,
+        select: {bp.account_id, bp.block_id}
+      )
+      |> Repo.all()
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+
+    Map.new(account_ids, &{&1, MapSet.new(Map.get(by_account, &1, []))})
+  end
+
+  defp empty_sets(account_ids), do: Map.new(account_ids, &{&1, MapSet.new()})
+
+  @doc """
   Returns a list of completed block IDs scoped to the team or user.
   """
   @spec completed_block_ids(String.t(), String.t(), String.t() | nil) :: [String.t()]

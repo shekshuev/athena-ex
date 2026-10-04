@@ -130,6 +130,7 @@ defmodule Athena.Engagement do
   defdelegate course_funnel(cohort_id, course_id, opts \\ []), to: Metrics
   defdelegate active_students_trend(cohort_id, course_id, opts \\ []), to: Metrics
   defdelegate nudge_correction_rate(cohort_id, course_id, opts \\ []), to: Metrics
+  defdelegate course_overview(cohort_id, course_id, opts \\ []), to: Metrics
   defdelegate histogram(cohort_id, block_id), to: BlockStats
 
   @nudge_percentile_floor 10.0

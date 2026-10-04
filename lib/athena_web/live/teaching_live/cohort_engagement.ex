@@ -26,6 +26,8 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
   """
   use AthenaWeb, :live_view
 
+  require Logger
+
   alias Athena.{Content, Engagement, Identity, Learning}
   alias Athena.Content.Block
   alias AthenaWeb.TeachingLive.ChartConfig
@@ -60,6 +62,8 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
        |> assign(:refresh_scheduled, false)
        |> assign(:radar_window, "7")
        |> assign(:student_radar, [])
+       |> assign(:student_radar_loading, false)
+       |> assign(:course_charts_loading, false)
        |> assign(:trend_metric, :avg_dwell_seconds)
        |> assign(:trend_data, [])
        |> assign(
@@ -189,6 +193,31 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
     {:noreply, socket |> assign(:refresh_scheduled, false) |> refresh_metrics()}
   end
 
+  # Both radars scan a whole course's worth of events, so they are computed
+  # off the LiveView process (`start_async/3`) - the page renders immediately
+  # with skeletons and fills in when the numbers are ready. A newer request
+  # under the same key supersedes an in-flight one (LiveView drops results
+  # whose task ref is no longer current), so a fast period/filter switch
+  # can't paint stale data.
+  @impl true
+  def handle_async(:student_radar, {:ok, rows}, socket) do
+    {:noreply, socket |> assign(:student_radar, rows) |> assign(:student_radar_loading, false)}
+  end
+
+  def handle_async(:course_overview, {:ok, overview}, socket) do
+    {:noreply, socket |> assign_course_charts(overview) |> assign(:course_charts_loading, false)}
+  end
+
+  def handle_async(key, {:exit, reason}, socket) do
+    Logger.error("Engagement dashboard #{key} failed: #{inspect(reason)}")
+
+    {:noreply,
+     socket
+     |> assign(:student_radar_loading, false)
+     |> assign(:course_charts_loading, false)
+     |> put_flash(:error, gettext("Could not load engagement data. Please try again."))}
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -261,6 +290,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
             <.student_radar_screen
               students={@students}
               rows={@student_radar}
+              loading={@student_radar_loading}
               window={@radar_window}
               student_link={fn row -> student_detail_path(assigns, row) end}
             />
@@ -404,7 +434,9 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
                 </form>
               </div>
 
-              <div class="space-y-4 mb-4">
+              <.loading_skeleton :if={@course_charts_loading} id="course-charts-loading" rows={5} />
+
+              <div :if={!@course_charts_loading} id="course-charts" class="space-y-4 mb-4">
                 <div class="bg-base-100 border border-base-200 rounded-sm p-4">
                   <h3 class="text-sm font-black uppercase tracking-widest text-base-content/50 mb-3">
                     {gettext("Flags per section")}
@@ -525,7 +557,9 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
         </form>
       </div>
 
-      <div class="bg-base-100 border border-base-200 rounded-sm p-4 mb-4">
+      <.loading_skeleton :if={@loading} id="student-radar-loading" rows={6} />
+
+      <div :if={!@loading} class="bg-base-100 border border-base-200 rounded-sm p-4 mb-4">
         <h2 class="text-xs font-black uppercase tracking-widest text-base-content/50 mb-2">
           {gettext("Slacking vs. struggling")}
         </h2>
@@ -539,7 +573,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
         </canvas>
       </div>
 
-      <div class="overflow-x-auto bg-base-100 border border-base-200 rounded-sm">
+      <div :if={!@loading} class="overflow-x-auto bg-base-100 border border-base-200 rounded-sm">
         <table class="table">
           <thead>
             <tr>
@@ -572,6 +606,30 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
             </tr>
           </tbody>
         </table>
+      </div>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :rows, :integer, default: 4
+
+  defp loading_skeleton(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="space-y-3 mb-4"
+      aria-busy="true"
+      aria-label={gettext("Loading engagement data")}
+    >
+      <div
+        :for={i <- 1..@rows}
+        class="bg-base-100 border border-base-200 rounded-sm p-4 animate-pulse"
+        style={"animation-delay: #{i * 80}ms"}
+      >
+        <div class="h-3 w-1/4 bg-base-300 rounded-sm mb-3"></div>
+        <div class="h-3 w-full bg-base-200 rounded-sm mb-2"></div>
+        <div class="h-3 w-2/3 bg-base-200 rounded-sm"></div>
       </div>
     </div>
     """
@@ -763,13 +821,24 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
     Keyword.get(Application.get_env(:athena, Athena.Engagement, []), :histogram_buckets, 10)
   end
 
+  # Not started on the dead (disconnected) render - that render is thrown
+  # away as soon as the socket connects, so computing the radar there just
+  # doubled the cost of every page load.
   defp refresh_student_radar(socket) do
-    since = radar_since(socket.assigns.radar_window)
+    if connected?(socket) do
+      since = radar_since(socket.assigns.radar_window)
+      cohort_id = socket.assigns.cohort.id
+      course_id = socket.assigns.course.id
 
-    rows =
-      Engagement.student_radar(socket.assigns.cohort.id, socket.assigns.course.id, since: since)
-
-    assign(socket, :student_radar, rows)
+      socket
+      |> assign(:student_radar_loading, true)
+      |> cancel_async(:student_radar)
+      |> start_async(:student_radar, fn ->
+        Engagement.student_radar(cohort_id, course_id, since: since)
+      end)
+    else
+      assign(socket, :student_radar_loading, true)
+    end
   end
 
   defp radar_since("30"), do: DateTime.add(DateTime.utc_now(), -30 * 86_400, :second)
@@ -811,12 +880,25 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
   end
 
   defp refresh_course_charts(socket) do
-    since = radar_since(socket.assigns.course_window)
+    if connected?(socket) do
+      since = radar_since(socket.assigns.course_window)
+      cohort_id = socket.assigns.cohort.id
+      course_id = socket.assigns.course.id
 
+      socket
+      |> assign(:course_charts_loading, true)
+      |> cancel_async(:course_overview)
+      |> start_async(:course_overview, fn ->
+        Engagement.course_overview(cohort_id, course_id, since: since)
+      end)
+    else
+      assign(socket, :course_charts_loading, true)
+    end
+  end
+
+  defp assign_course_charts(socket, overview) do
     rows =
-      socket.assigns.cohort.id
-      |> Engagement.section_flag_totals(socket.assigns.course.id, since: since)
-      |> Enum.map(fn row ->
+      Enum.map(overview.section_flag_totals, fn row ->
         %{
           label: row.section_title,
           slacking_count: row.slacking_count,
@@ -824,15 +906,8 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
         }
       end)
 
-    cells =
-      Engagement.activity_heatmap(socket.assigns.cohort.id, socket.assigns.course.id,
-        since: since
-      )
-
     funnel_rows =
-      socket.assigns.cohort.id
-      |> Engagement.course_funnel(socket.assigns.course.id, since: since)
-      |> Enum.map(fn row ->
+      Enum.map(overview.course_funnel, fn row ->
         %{
           label: row.section_title,
           opened: row.opened,
@@ -842,20 +917,18 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
       end)
 
     trend_points =
-      socket.assigns.cohort.id
-      |> Engagement.active_students_trend(socket.assigns.course.id, since: since)
-      |> Enum.map(fn row -> %{date: row.date, value: row.active_count} end)
+      Enum.map(overview.active_students_trend, fn row ->
+        %{date: row.date, value: row.active_count}
+      end)
 
     correction_rows =
-      socket.assigns.cohort.id
-      |> Engagement.nudge_correction_rate(socket.assigns.course.id, since: since)
-      |> Enum.map(fn row ->
+      Enum.map(overview.nudge_correction_rate, fn row ->
         %{label: humanize_key(row.reason), correction_rate: row.correction_rate}
       end)
 
     socket
     |> assign(:section_chart_config, ChartConfig.stacked_bar_config(rows))
-    |> assign(:heatmap_config, ChartConfig.heatmap_config(cells))
+    |> assign(:heatmap_config, ChartConfig.heatmap_config(overview.activity_heatmap))
     |> assign(:funnel_chart_config, ChartConfig.funnel_config(funnel_rows))
     |> assign(
       :trend_chart_config,
@@ -880,29 +953,26 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
   # opened on their first flagged block (slacking outranks struggling,
   # since it is the more urgent case) - a teacher should never have to
   # manually re-find what the table already told them.
+  #
+  # Called once per table row on every render, so it must not touch the
+  # database - each flagged block already carries its own `section_id`.
   defp student_detail_path(assigns, row) do
     case first_flagged_block(row) do
       nil ->
         build_path(assigns, account_id: row.account_id, section_id: nil, block_id: nil)
 
-      block_id ->
-        case Content.get_block(block_id) do
-          {:ok, block} ->
-            build_path(assigns,
-              account_id: row.account_id,
-              section_id: block.section_id,
-              block_id: block.id
-            )
-
-          _ ->
-            build_path(assigns, account_id: row.account_id, section_id: nil, block_id: nil)
-        end
+      flagged ->
+        build_path(assigns,
+          account_id: row.account_id,
+          section_id: flagged.section_id,
+          block_id: flagged.block_id
+        )
     end
   end
 
   defp first_flagged_block(row) do
-    Enum.find_value(row.flagged_blocks, fn fb -> fb.slacking_count > 0 && fb.block_id end) ||
-      Enum.find_value(row.flagged_blocks, fn fb -> fb.struggling_count > 0 && fb.block_id end)
+    Enum.find(row.flagged_blocks, &(&1.slacking_count > 0)) ||
+      Enum.find(row.flagged_blocks, &(&1.struggling_count > 0))
   end
 
   defp refresh_metrics(socket) do

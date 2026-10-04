@@ -11,5 +11,5 @@ case ExAws.S3.head_bucket(bucket) |> ExAws.request() do
     IO.puts("Error during bucket check: #{inspect(error)}")
 end
 
-ExUnit.start()
+ExUnit.start(exclude: [:bench])
 Ecto.Adapters.SQL.Sandbox.mode(Athena.Repo, :manual)
