@@ -108,6 +108,16 @@
             </span>
           </.link>
         </li>
+        <li :if={Identity.can?(@current_user, "docs.read")}>
+          <.link navigate={~p"/docs"} id="sidebar-docs" class="flex items-center">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-book-open" class="size-6 shrink-0" />
+              <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                {gettext("Documentation")}
+              </span>
+            </div>
+          </.link>
+        </li>
       </ul>
 
       <%= if Identity.can_any?(@current_user, [

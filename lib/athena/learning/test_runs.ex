@@ -5,16 +5,16 @@ defmodule Athena.Learning.TestRuns do
   progress through the entire preceding course.
 
   `start/3` seeds real `BlockProgress` "completed" rows for every gate block
-  in the sections *before* the target section — the same fact
+  in the sections *before* the target section – the same fact
   `Athena.Learning.Progress.accessible_section_ids/6` already reads to decide
-  what's unlocked — so the target section becomes reachable with zero new
+  what's unlocked – so the target section becomes reachable with zero new
   gating logic and zero changes to the course's real `access_rules`. Unlike
   `Progress.mark_completed/3`, this seeding step does not broadcast
   `:block_completed`, so it doesn't trigger gamification (XP/badges/streaks)
   for history that was never actually earned; the target section itself is
   then played for real (via `AthenaWeb.LearnLive.Player`), so anything the
   instructor actually completes there *does* run the full production path,
-  gamification included — that's the point of the feature.
+  gamification included – that's the point of the feature.
 
   The resulting ephemeral `Account` gets no `Enrollment`/`CohortMembership`
   of its own, so it structurally cannot appear in rosters or leaderboards
@@ -24,7 +24,7 @@ defmodule Athena.Learning.TestRuns do
   gamification table store `account_id` as a bare `:binary_id` with no FK to
   `accounts`, deleting the ephemeral account cascades nothing.
   `test_run_sessions` is therefore the authoritative index of what
-  `cleanup/1` must purge — used both by the builder's modal-close handler and
+  `cleanup/1` must purge – used both by the builder's modal-close handler and
   by `Athena.Learning.Workers.TestRunCleanup`, the cron backstop for crashed
   or abandoned sessions.
   """
@@ -186,7 +186,7 @@ defmodule Athena.Learning.TestRuns do
   Purges every trace of a test-run session's ephemeral account and marks the
   session `:cleaned_up`. Safe to call more than once (e.g. once from the
   builder's modal-close handler, and again from the cron sweep if that race
-  loses) — every delete is a no-op once the rows are already gone.
+  loses) – every delete is a no-op once the rows are already gone.
   """
   @spec cleanup(TestRunSession.t()) :: :ok | {:error, any()}
   def cleanup(%TestRunSession{ephemeral_account_id: account_id} = session) do
@@ -235,7 +235,7 @@ defmodule Athena.Learning.TestRuns do
 
   @doc """
   Sweeps every expired-but-still-active test run session and cleans it up.
-  Called on a cron schedule by `Athena.Learning.Workers.TestRunCleanup` — the
+  Called on a cron schedule by `Athena.Learning.Workers.TestRunCleanup` – the
   backstop for a crashed browser, dropped connection, or any other path that
   skipped the builder's normal modal-close cleanup.
   """

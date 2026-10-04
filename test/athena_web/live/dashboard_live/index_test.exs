@@ -44,7 +44,7 @@ defmodule AthenaWeb.DashboardLive.IndexTest do
       # Academic-cohort enrollment: the Enrollment belongs to the cohort
       # (not the account directly), and the account gets access via cohort
       # membership. Progress for academic (non-team) students is still
-      # recorded with a nil cohort_id on BlockProgress — same as
+      # recorded with a nil cohort_id on BlockProgress – same as
       # LearnLive.Player does via its team_id derivation (nil unless the
       # cohort is :team-type).
       cohort = insert(:cohort, type: :academic)

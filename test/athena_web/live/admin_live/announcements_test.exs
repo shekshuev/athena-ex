@@ -70,7 +70,7 @@ defmodule AthenaWeb.AdminLive.AnnouncementsTest do
       # The TipTap body is normally set client-side by the JS hook into a
       # hidden input, which Phoenix.LiveViewTest's DOM-backed `form/3`
       # override refuses to fake (hidden fields must keep their rendered
-      # value) — so, like this codebase's other TipTap-hidden-input flows
+      # value) – so, like this codebase's other TipTap-hidden-input flows
       # (e.g. player_test.exs's code/answer submissions), scrape the form
       # with `form/2` (no overrides) and pass the real payload to
       # `render_submit/2` directly instead, bypassing that DOM check.

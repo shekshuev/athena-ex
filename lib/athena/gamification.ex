@@ -9,7 +9,7 @@ defmodule Athena.Gamification do
 
   Bounded-context rule followed throughout: any reference to another
   context's data (`Identity.Account`, `Learning.Cohort`, `Content.Block`) is
-  a bare `:binary_id` field with no `belongs_to`/`references()` — a soft
+  a bare `:binary_id` field with no `belongs_to`/`references()` – a soft
   link, not a real FK. The one real FK in this context
   (`BadgeAward.badge_id → Badge`) stays inside Gamification itself.
   """
@@ -72,7 +72,7 @@ defmodule Athena.Gamification do
   @doc """
   Returns the level ladder position for a given XP total: current level
   (1-based), the XP floor of that level, and the XP ceiling of the next one
-  (`nil` at the top of the ladder). Computed on the fly — not stored.
+  (`nil` at the top of the ladder). Computed on the fly – not stored.
   """
   @spec level_for_xp(non_neg_integer()) :: %{
           level: pos_integer(),

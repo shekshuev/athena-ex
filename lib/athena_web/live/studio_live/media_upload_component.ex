@@ -132,7 +132,7 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
   @doc false
   defp error_to_string(:too_large), do: gettext("File is too large")
   defp error_to_string(:not_accepted), do: gettext("Unacceptable file type")
-  defp error_to_string(:too_many_files), do: gettext("Too many files — remove some and try again")
+  defp error_to_string(:too_many_files), do: gettext("Too many files – remove some and try again")
   defp error_to_string(:external_client_failure), do: gettext("Upload failed on client side")
   defp error_to_string({:writer_fail, _}), do: gettext("Upload writer failed")
   defp error_to_string(_), do: gettext("Upload error")

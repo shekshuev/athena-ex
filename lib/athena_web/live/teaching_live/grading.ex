@@ -428,7 +428,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
                     <.icon name="hero-clock-mini" class="size-3.5 align-text-bottom" />
                   </span>
                 <% sub.status in [:pending, :processing, :draft] -> %>
-                  —
+                  –
                 <% true -> %>
                   {sub.score} <span class="text-xs opacity-50 font-normal">/ 100</span>
               <% end %>

@@ -1,7 +1,7 @@
 defmodule Athena.Gamification.BadgeAward do
   @moduledoc """
   Records that an account earned a badge. Unique on `(account_id, badge_id)`
-  — badges are "first achievement" style and not re-awarded; a repeatable
+  – badges are "first achievement" style and not re-awarded; a repeatable
   idea (e.g. "combo x5" vs "combo x10") is modeled as separate `Badge` rows,
   not repeated awards of the same one.
   """

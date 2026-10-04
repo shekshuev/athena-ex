@@ -1,7 +1,7 @@
 defmodule AthenaWeb.MessengerLive.NewDmComponent do
   @moduledoc """
   Search for any user on the platform (by login or profile name) and start
-  a direct conversation with them. The messenger is intentionally open —
+  a direct conversation with them. The messenger is intentionally open –
   see `Athena.Identity.Accounts.search_messageable_accounts/3` for the
   deliberate ACL exception this relies on.
   """

@@ -308,7 +308,7 @@ defmodule AthenaWeb.TeachingLive.GradebookLayerComponents do
                 {gettext("Group avg")}
               </div>
               <div class="font-display text-2xl font-black tabular-nums">
-                {if @summary.average, do: round(@summary.average), else: "—"}
+                {if @summary.average, do: round(@summary.average), else: "–"}
               </div>
             </div>
           </div>
@@ -389,7 +389,7 @@ defmodule AthenaWeb.TeachingLive.GradebookLayerComponents do
     """
   end
 
-  defp cell_score(nil), do: "—"
+  defp cell_score(nil), do: "–"
   defp cell_score(%{state: :scored, score: score}), do: score
   defp cell_score(%{state: :review}), do: gettext("review")
   defp cell_score(_cell), do: "…"

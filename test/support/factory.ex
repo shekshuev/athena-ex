@@ -72,7 +72,7 @@ defmodule Athena.Factory do
 
   @doc """
   A minimal TipTap/ProseMirror JSON document containing `text` as a
-  single paragraph — `Announcement.body` is jsonb, not plain text.
+  single paragraph – `Announcement.body` is jsonb, not plain text.
   """
   def tiptap_doc(text) do
     %{

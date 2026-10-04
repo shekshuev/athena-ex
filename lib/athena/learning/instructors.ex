@@ -73,7 +73,7 @@ defmodule Athena.Learning.Instructors do
 
   @doc """
   Looks up the instructor profile owned by an account, if any. Unscoped by
-  ACL — used to answer "is this account an instructor at all" (e.g. to
+  ACL – used to answer "is this account an instructor at all" (e.g. to
   decide whether to show teaching-facing UI), not to grant access to
   instructor data.
   """

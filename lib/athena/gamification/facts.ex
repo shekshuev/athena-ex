@@ -2,7 +2,7 @@ defmodule Athena.Gamification.Facts do
   @moduledoc """
   Computes individual measurable "facts" about an account on demand, for the
   badge rule-DSL (`Athena.Gamification.RuleEngine`). Extending the catalog
-  with a new measurable fact means adding one clause here — no schema or
+  with a new measurable fact means adding one clause here – no schema or
   migration changes, and existing badges' saved `rule` trees keep working
   unchanged.
 

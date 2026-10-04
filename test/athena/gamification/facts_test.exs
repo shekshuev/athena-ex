@@ -4,7 +4,7 @@ defmodule Athena.Gamification.FactsTest do
   alias Athena.Gamification.Facts
   import Athena.Factory
 
-  describe "value/3 — account stats facts" do
+  describe "value/3 – account stats facts" do
     test "returns 0 for an account with no gamification activity" do
       account = insert(:account)
 
@@ -29,7 +29,7 @@ defmodule Athena.Gamification.FactsTest do
     end
   end
 
-  describe "value/3 — weekly_xp" do
+  describe "value/3 – weekly_xp" do
     test "sums only this week's XP events" do
       account = insert(:account)
       week_start = Date.beginning_of_week(Date.utc_today())
@@ -52,7 +52,7 @@ defmodule Athena.Gamification.FactsTest do
     end
   end
 
-  describe "value/3 — accepted_submissions_count" do
+  describe "value/3 – accepted_submissions_count" do
     test "counts accepted top-level submissions, ignoring drafts and child (exam question) ones" do
       account = insert(:account)
       block = insert(:block, type: :code)
@@ -87,7 +87,7 @@ defmodule Athena.Gamification.FactsTest do
     end
   end
 
-  describe "value/3 — first_try_accept_count" do
+  describe "value/3 – first_try_accept_count" do
     test "counts blocks accepted on the very first attempt" do
       account = insert(:account)
       block = insert(:block, type: :code)
@@ -124,7 +124,7 @@ defmodule Athena.Gamification.FactsTest do
     end
   end
 
-  describe "value/3 — unknown fact" do
+  describe "value/3 – unknown fact" do
     test "returns 0 without raising" do
       account = insert(:account)
       assert Facts.value("something_made_up", %{}, account.id) == 0

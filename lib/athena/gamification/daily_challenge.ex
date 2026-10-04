@@ -1,6 +1,6 @@
 defmodule Athena.Gamification.DailyChallenge do
   @moduledoc """
-  One account's assigned "task of the day" — a single already-solved block
+  One account's assigned "task of the day" – a single already-solved block
   picked for `assigned_date`, completed at most once. `account_id` and
   `block_id` are bare `:binary_id`s (soft references to `Identity.Account`
   and `Content.Block`, both outside this bounded context), not `belongs_to`.

@@ -103,7 +103,10 @@ defmodule Athena.MixProject do
       {:hackney, "~> 1.18"},
       {:sweet_xml, "~> 0.7"},
       {:ecto_ltree, "~> 0.3.0"},
-      {:libcluster, "~> 3.5.0"}
+      {:libcluster, "~> 3.5.0"},
+      # Built-in documentation: markdown in priv/docs compiled to HTML.
+      {:nimble_publisher, "~> 1.1"},
+      {:mdex, "~> 0.9"}
     ]
   end
 

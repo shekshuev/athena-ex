@@ -486,7 +486,7 @@ defmodule Athena.Learning.ProgressTest do
       assert Progress.course_progress(user.id, course.id).percent == 0
     end
 
-    test "within a team, progress is shared — any teammate's completion counts for everyone",
+    test "within a team, progress is shared – any teammate's completion counts for everyone",
          %{user: user, team: team} do
       course = insert(:course)
       section = insert(:section, course: course)
@@ -497,7 +497,7 @@ defmodule Athena.Learning.ProgressTest do
       insert(:cohort_membership, account_id: user.id, cohort_id: team.id)
       insert(:cohort_membership, account_id: other_student.id, cohort_id: team.id)
 
-      # `user` completes both blocks on the team's behalf — same collective
+      # `user` completes both blocks on the team's behalf – same collective
       # model Submissions.get_team_leaderboard/1 uses (one shared row per
       # (cohort_id, block_id), not per account).
       {:ok, _} = Progress.mark_completed(user.id, block1.id, team.id)
@@ -627,7 +627,7 @@ defmodule Athena.Learning.ProgressTest do
       refute Progress.block_solved?(block, partial)
     end
 
-    test "optional (:none) file_assignment never counts — not auto-gradable", %{user: user} do
+    test "optional (:none) file_assignment never counts – not auto-gradable", %{user: user} do
       block =
         insert(:block, type: :file_assignment, completion_rule: %CompletionRule{type: :none})
 

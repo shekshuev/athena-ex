@@ -169,9 +169,9 @@ defmodule AthenaWeb.TeachingLive.CohortComparison do
     %{level: level, good?: if(indicator.better == :higher, do: diff > 0, else: diff < 0)}
   end
 
-  @doc "A value for display: \"64%\", \"72\" or \"—\"."
+  @doc "A value for display: \"64%\", \"72\" or \"–\"."
   @spec format(number() | nil, map()) :: String.t()
-  def format(nil, _indicator), do: "—"
+  def format(nil, _indicator), do: "–"
   def format(value, %{kind: :percent}), do: "#{round(value)}%"
   def format(value, _indicator), do: "#{round(value)}"
 

@@ -1,7 +1,7 @@
 defmodule AthenaWeb.LearnLive.DailyChallenge do
   @moduledoc """
   Standalone "solve it here" screen for the daily challenge: one already-solved
-  `code` or `quiz_question` block, presented on its own — no course chrome, no
+  `code` or `quiz_question` block, presented on its own – no course chrome, no
   waterline, no section navigation, à la Hyperskill's daily review. Resolves
   the current account's own challenge (`Gamification.today_challenge/1`);
   there's no id in the route, so there's no access-control surface to get
@@ -9,13 +9,13 @@ defmodule AthenaWeb.LearnLive.DailyChallenge do
 
   Deliberately not layered onto `Player` (course/waterline-coupled, 1600+
   lines) or `Exam`/`TicketExam` (structured around a parent exam + per-question
-  child submissions, which doesn't apply here — a daily-challenge block is an
+  child submissions, which doesn't apply here – a daily-challenge block is an
   ordinary top-level block, submitted the same way `Player` submits one).
   Submission handling below mirrors `Player`'s proven `:code`/`:quiz_question`
   logic; the one genuinely new piece is `maybe_complete/3`, which calls
   `Learning.mark_completed/3` directly instead of the generic
   `maybe_complete_from_submission/1` (which deliberately no-ops on an
-  already-completed block — exactly wrong here, since every daily-challenge
+  already-completed block – exactly wrong here, since every daily-challenge
   candidate is, by construction, already completed).
   """
   use AthenaWeb, :live_view
@@ -57,7 +57,7 @@ defmodule AthenaWeb.LearnLive.DailyChallenge do
 
         # Deliberately not preloading the account's prior submission/draft for
         # this block: this screen is purely a "solve it again" exercise, so it
-        # always starts blank — never showing the answer (or the "Resubmit"
+        # always starts blank – never showing the answer (or the "Resubmit"
         # wording) from whenever the block was originally solved in its course.
         assign(socket,
           challenge: challenge,

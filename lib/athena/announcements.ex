@@ -12,9 +12,9 @@ defmodule Athena.Announcements do
   Audience-scoped, Flop-paginated feed for `user`: global announcements
   plus announcements for any cohort `user` is a *member* of, further
   restricted to those currently within their visibility window (see
-  `Announcement` moduledoc — `starts_at`/`ends_at`, either or both may be
+  `Announcement` moduledoc – `starts_at`/`ends_at`, either or both may be
   `nil`). Used for both the dashboard widget (call with `%{"page_size" =>
-  5}`) and the full `/announcements` page — a single paginated function
+  5}`) and the full `/announcements` page – a single paginated function
   rather than a separate unpaginated "latest N" helper, since "latest 5"
   is just "page 1, page_size 5" of the same already-ordered
   (`default_order: inserted_at desc`) query.
@@ -77,7 +77,7 @@ defmodule Athena.Announcements do
   Can `user` create/edit/delete an announcement with this `scope`/`cohort_id`?
   A `:global` announcement requires the "admin" bypass. A `:cohort`
   announcement requires the "admin" bypass OR being a listed instructor of
-  `cohort_id` — mirrors the `authorized?` boolean pattern in
+  `cohort_id` – mirrors the `authorized?` boolean pattern in
   `Content.Blocks.prepare_media_upload/4`.
   """
   @spec can_manage?(map(), :global | :cohort, String.t() | nil) :: boolean()
@@ -125,7 +125,7 @@ defmodule Athena.Announcements do
   @doc """
   Updates `announcement`. Authorization is checked against BOTH the
   announcement's current scope/cohort_id and, if `attrs` changes them, the
-  prospective new scope/cohort_id — this prevents a cohort instructor from
+  prospective new scope/cohort_id – this prevents a cohort instructor from
   re-scoping their own cohort's announcement to `:global`, or to a cohort
   they don't instruct, by simply editing the scope/cohort fields.
   """
@@ -165,7 +165,7 @@ defmodule Athena.Announcements do
 
   # The TipTap editor hook posts its JSON document through a hidden form
   # field as a *string* (`JSON.stringify(editor.getJSON())`), since HTML
-  # form fields are always strings client-side — decode it back into a
+  # form fields are always strings client-side – decode it back into a
   # map before it reaches the `:map`-typed `body` column/changeset field.
   defp decode_body(%{"body" => body} = attrs) when is_binary(body) do
     case Jason.decode(body) do

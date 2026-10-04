@@ -15,7 +15,7 @@ defmodule Athena.Gamification.StreaksTest do
 
     XpLedger.record_activity(%{account_id: account_id, block_id: block.id, block_type: :code})
 
-    # record_activity always stamps "now" — backdate the event so it lands
+    # record_activity always stamps "now" – backdate the event so it lands
     # in the week under test.
     dt = DateTime.new!(date, ~T[12:00:00], "Etc/UTC")
 
@@ -59,7 +59,7 @@ defmodule Athena.Gamification.StreaksTest do
       award_xp_at(account.id, @week2)
       Streaks.rollup_week(@week2)
 
-      # week3 has no activity for this account — rollup_week(week3) sees them
+      # week3 has no activity for this account – rollup_week(week3) sees them
       # inactive and resets. Then a later active week restarts at 1.
       Streaks.rollup_week(@week3)
 
@@ -95,7 +95,7 @@ defmodule Athena.Gamification.StreaksTest do
       assert stats.last_active_week == nil
     end
 
-    test "is idempotent — re-running the same week (e.g. an Oban retry) does not reset the streak" do
+    test "is idempotent – re-running the same week (e.g. an Oban retry) does not reset the streak" do
       account = insert(:account)
 
       award_xp_at(account.id, @week1)

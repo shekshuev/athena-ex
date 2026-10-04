@@ -40,7 +40,6 @@ defmodule AthenaWeb.Router do
   scope "/teaching", AthenaWeb do
     pipe_through :browser
 
-    get "/cohorts/:id/engagement/:course_id/export.csv", EngagementExportController, :download
     get "/cohorts/:id/gradebook/:course_id/export.csv", GradebookExportController, :download
   end
 
@@ -88,6 +87,9 @@ defmodule AthenaWeb.Router do
       live "/messenger", MessengerLive.Index, :index
       live "/messenger/new", MessengerLive.Index, :new
       live "/messenger/:conversation_id", MessengerLive.Index, :show
+
+      live "/docs", DocsLive, :index
+      live "/docs/*path", DocsLive, :show
 
       scope "/learn", LearnLive do
         live "/", Index, :index

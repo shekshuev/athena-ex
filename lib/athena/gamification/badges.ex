@@ -54,14 +54,14 @@ defmodule Athena.Gamification.Badges do
   end
 
   @doc """
-  Tests a badge's rule against one account without awarding it — the admin
+  Tests a badge's rule against one account without awarding it – the admin
   "test on a student" preview before activating a badge.
   """
   @spec test_rule(map(), String.t()) :: boolean()
   def test_rule(rule, account_id), do: RuleEngine.evaluate(rule, account_id)
 
   @doc """
-  Awards every active badge an account newly qualifies for. Idempotent —
+  Awards every active badge an account newly qualifies for. Idempotent –
   already-awarded badges are skipped (both by an in-memory check and, as a
   last line of defense, the `(account_id, badge_id)` unique index), so
   re-evaluation after every learning event is safe.

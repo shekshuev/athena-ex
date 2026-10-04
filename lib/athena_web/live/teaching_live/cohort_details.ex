@@ -230,7 +230,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         <:item title={gettext("Description")}>
           {if @cohort.description && @cohort.description != "",
             do: @cohort.description,
-            else: "—"}
+            else: "–"}
         </:item>
         <:item title={if @cohort.type == :team, do: gettext("Coaches"), else: gettext("Instructors")}>
           <div class="flex flex-wrap gap-2">

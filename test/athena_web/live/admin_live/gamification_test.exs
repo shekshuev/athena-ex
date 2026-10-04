@@ -109,7 +109,7 @@ defmodule AthenaWeb.AdminLive.GamificationTest do
 
       conn = init_test_session(base_conn, %{"account_id" => account.id})
 
-      # Mount the index page (live_action: :index — no form in the DOM at
+      # Mount the index page (live_action: :index – no form in the DOM at
       # all), then drive the "save" event directly, exactly as a modified
       # client / forged socket frame would, bypassing any UI-level guard.
       {:ok, lv, _html} = live(conn, ~p"/admin/gamification")

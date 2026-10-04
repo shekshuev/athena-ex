@@ -166,7 +166,7 @@ defmodule Athena.Gamification.LeaguesTest do
       refute Repo.get_by(LeagueResult, cohort_id: team.id)
     end
 
-    test "is idempotent — re-snapshotting the same week replaces, not duplicates" do
+    test "is idempotent – re-snapshotting the same week replaces, not duplicates" do
       cohort = insert(:cohort)
       account = insert(:account)
       insert(:cohort_membership, account_id: account.id, cohort_id: cohort.id)

@@ -28,7 +28,7 @@ defmodule Athena.Gamification.Workers.WeeklyRollup do
   end
 
   # League-top badges depend on this week's LeagueResult rows, which just
-  # got written above — re-run the badge evaluator for everyone who has a
+  # got written above – re-run the badge evaluator for everyone who has a
   # result this week rather than waiting for their next unrelated activity.
   defp evaluate_league_badges(week_start) do
     LeagueResult

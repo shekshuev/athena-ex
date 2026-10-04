@@ -178,36 +178,6 @@ defmodule Athena.Engagement.Metrics do
     |> Enum.sort_by(& &1.week, Date)
   end
 
-  @doc """
-  A flat "one row = one student × one block" table across every block in a
-  course, for every student in the given cohorts - the shape a statistics
-  package (R/Python/SPSS) wants: every metric as its own column, plus
-  `cohort_id` so groups can be compared. Whole history, one scope pass per
-  cohort.
-  """
-  @spec export_wide_table(binary(), [binary()]) :: [map()]
-  def export_wide_table(course_id, cohort_ids) do
-    indexes = Map.new(cohort_ids, &{&1, build_scope_index(course_id, &1, nil)})
-    students = Map.new(cohort_ids, &{&1, students_in_cohort(&1)})
-    blocks = cohort_ids |> List.first() |> then(&(&1 && indexes[&1].all_blocks)) || []
-
-    for block <- blocks,
-        cohort_id <- cohort_ids,
-        account_id <- Map.fetch!(students, cohort_id) do
-      index = Map.fetch!(indexes, cohort_id)
-
-      index.acc_by_account_block
-      |> Map.get({account_id, block.id}, Accumulator.empty())
-      |> Accumulator.to_metrics(block.type, Map.fetch!(index.resolved_rule_by_block_id, block.id))
-      |> Map.merge(%{
-        cohort_id: cohort_id,
-        account_id: account_id,
-        block_id: block.id,
-        block_type: block.type
-      })
-    end
-  end
-
   defp flatten_sections(sections) do
     Enum.flat_map(sections, fn section -> [section | flatten_sections(section.children)] end)
   end
@@ -225,7 +195,7 @@ defmodule Athena.Engagement.Metrics do
   # past days and from raw events for today (or from raw events only, see
   # the moduledoc). Nothing downstream touches the database per (block,
   # student) pair.
-  defp build_scope_index(course_id, cohort_id, since, opts \\ []) do
+  defp build_scope_index(course_id, cohort_id, since, opts) do
     sections = course_id |> Content.get_course_tree(:all) |> flatten_sections()
     section_by_id = Map.new(sections, &{&1.id, &1})
 

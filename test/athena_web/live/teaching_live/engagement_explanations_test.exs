@@ -93,6 +93,6 @@ defmodule AthenaWeb.TeachingLive.EngagementExplanationsTest do
     assert Explanations.duration(45) == "45 s"
     assert Explanations.duration(240) == "4 min"
     assert Explanations.duration(3900) == "1 h 5 min"
-    assert Explanations.duration(nil) == "—"
+    assert Explanations.duration(nil) == "–"
   end
 end

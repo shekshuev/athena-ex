@@ -669,7 +669,7 @@ defmodule Athena.Content.SectionsTest do
       assert tree == []
     end
 
-    test "visible parent with hidden child via override — only child removed", %{
+    test "visible parent with hidden child via override – only child removed", %{
       admin: admin,
       student: student
     } do

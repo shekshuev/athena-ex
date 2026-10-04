@@ -1,7 +1,7 @@
 defmodule Athena.Gamification.DailyChallenges do
   @moduledoc """
-  A daily "task of the day" — one already-solved, auto-gradable block
-  (`code` or `quiz_question` only — never `file_assignment`, an exam, or a
+  A daily "task of the day" – one already-solved, auto-gradable block
+  (`code` or `quiz_question` only – never `file_assignment`, an exam, or a
   passive block) re-served to the student each day, à la Hyperskill's daily
   review. Solving it again keeps XP/streak activity flowing on a slow day
   without inventing new work.
@@ -13,7 +13,7 @@ defmodule Athena.Gamification.DailyChallenges do
 
   Completion is detected reactively, off the same `{:block_completed, _}`
   fact `Athena.Learning` already broadcasts for every completion (see
-  `Athena.Gamification.ActivityListener`) — not by adding anything to the
+  `Athena.Gamification.ActivityListener`) – not by adding anything to the
   Player LiveView's submission flow. This keeps Gamification a pure
   consumer of Learning's existing events instead of Learning needing to
   know "was this submission for a daily challenge".
@@ -61,7 +61,7 @@ defmodule Athena.Gamification.DailyChallenges do
         # insert_all + re-fetch rather than Repo.insert/2: with a
         # client-generated binary_id, a conflicted Repo.insert/2 still
         # returns {:ok, struct} with a non-nil id, so it can't signal "someone
-        # else won the race for this account/day" — re-fetching always gets
+        # else won the race for this account/day" – re-fetching always gets
         # the actual row either way.
         Repo.insert_all(DailyChallenge, [attrs],
           on_conflict: :nothing,
@@ -96,7 +96,7 @@ defmodule Athena.Gamification.DailyChallenges do
         |> Enum.filter(&(&1.type in @eligible_block_types))
         |> Enum.map(& &1.id)
 
-      # A :competition course's tasks must never leak into a daily challenge —
+      # A :competition course's tasks must never leak into a daily challenge –
       # they're meant to stay exclusive to the competitive/graded context they
       # were written for.
       _ ->
@@ -173,7 +173,7 @@ defmodule Athena.Gamification.DailyChallenges do
   @doc """
   Deletes daily-challenge rows older than the retention cutoff (30 days by
   default). These rows are only a short-lived "what's assigned today, is it
-  done" pointer — any XP a challenge earned already lives permanently in
+  done" pointer – any XP a challenge earned already lives permanently in
   `gamification_xp_events` (`source_type: :daily_challenge`), so once a row
   is old there is nothing left that needs it. Returns the number of rows
   deleted. Run periodically by

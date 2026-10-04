@@ -97,7 +97,7 @@ defmodule AthenaWeb.TeachingLive.CohortGradebookTest do
     assert cell(lv, ctx.ivanov, ctx.quiz) =~ "30"
     assert cell(lv, ctx.ivanov, ctx.quiz) =~ "/teaching/grading/#{submission.id}"
     assert cell(lv, ctx.petrova, ctx.exam) =~ "hero-eye-mini"
-    assert cell(lv, ctx.ivanov, ctx.code) =~ "—"
+    assert cell(lv, ctx.ivanov, ctx.code) =~ "–"
   end
 
   test "the student picker narrows the rows and is kept in the URL", ctx do
@@ -197,7 +197,7 @@ defmodule AthenaWeb.TeachingLive.CohortGradebookTest do
     from = Athena.TimeZones.today() |> Date.add(-1) |> Date.to_iso8601()
     lv |> element("#gradebook-filters") |> render_change(%{"from" => from})
 
-    assert cell(lv, ctx.ivanov, ctx.quiz) =~ "—"
+    assert cell(lv, ctx.ivanov, ctx.quiz) =~ "–"
   end
 
   test "sorting by a task puts the best score first", ctx do

@@ -175,7 +175,7 @@ defmodule AthenaWeb.TeachingLive.GroupRadarComponents do
 
     ~H"""
     <div class="flex flex-wrap items-center gap-1">
-      <span :if={@shown == []} class="text-xs text-base-content/40">—</span>
+      <span :if={@shown == []} class="text-xs text-base-content/40">–</span>
       <span
         :for={chip <- @shown}
         class={["badge badge-sm badge-soft font-medium gap-1", "badge-#{chip.tone}"]}
@@ -502,6 +502,6 @@ defmodule AthenaWeb.TeachingLive.GroupRadarComponents do
     """
   end
 
-  defp format_score(nil), do: "—"
+  defp format_score(nil), do: "–"
   defp format_score(score), do: score |> round() |> Integer.to_string()
 end

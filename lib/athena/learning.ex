@@ -81,12 +81,12 @@ defmodule Athena.Learning do
     |> notify_submission_subscribers()
   end
 
-  # Grading (this is the ACL-gated, teacher-facing update — as opposed to
+  # Grading (this is the ACL-gated, teacher-facing update – as opposed to
   # system_update_submission/2, which also serves ~15 unrelated internal
   # transitions like :processing/:pending and test-code runs) may be the
   # first time a block's real, human-reviewed score exists. Recheck
-  # completion here so blocks that need manual review — file_assignment
-  # gates, or an exam a teacher grades by hand — actually complete once
+  # completion here so blocks that need manual review – file_assignment
+  # gates, or an exam a teacher grades by hand – actually complete once
   # they're graded, instead of only ever being checked once, synchronously,
   # back when the submission was first created and had no score yet.
   defp check_completion({:ok, submission} = result) do

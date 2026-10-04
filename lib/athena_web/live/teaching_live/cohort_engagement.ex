@@ -436,14 +436,6 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
                     </option>
                   </select>
                 </form>
-
-                <.button
-                  variant="ghost"
-                  size="sm"
-                  href={~p"/teaching/cohorts/#{@cohort.id}/engagement/#{@course.id}/export.csv"}
-                >
-                  <.icon name="hero-arrow-down-tray" class="size-4" /> {gettext("Export CSV")}
-                </.button>
               </div>
             </div>
 
@@ -813,7 +805,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
     """
   end
 
-  defp format_value(nil), do: "—"
+  defp format_value(nil), do: "–"
   defp format_value(true), do: gettext("Yes")
   defp format_value(false), do: gettext("No")
   defp format_value(value) when is_float(value), do: :erlang.float_to_binary(value, decimals: 2)

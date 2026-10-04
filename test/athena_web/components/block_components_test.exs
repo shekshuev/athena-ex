@@ -668,7 +668,7 @@ defmodule AthenaWeb.BlockComponentsTest do
         end
 
       # With 10 different students and only 6 possible permutations of 3 options, at
-      # least two distinct orders should show up — a single shared order for everyone
+      # least two distinct orders should show up – a single shared order for everyone
       # would mean the per-student seed isn't actually affecting the shuffle.
       assert orders |> Enum.uniq() |> length() > 1
     end

@@ -31,7 +31,7 @@ defmodule AthenaWeb.LearnLive.Player do
   @impl true
   # Nested `live_render/3` mounts (the builder's "test run" modal) never go
   # through the router, so `params` arrives as the literal atom
-  # `:not_mounted_at_router` instead of a map — `course_id`/`section_id` come
+  # `:not_mounted_at_router` instead of a map – `course_id`/`section_id` come
   # from the test-run session itself (stashed onto the socket by
   # `AthenaWeb.Hooks.Auth`'s `:test_run` on_mount hook) rather than the URL.
   def mount(:not_mounted_at_router, _session, %{assigns: %{test_run: true}} = socket) do

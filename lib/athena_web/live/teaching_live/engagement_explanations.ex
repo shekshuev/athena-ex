@@ -178,7 +178,7 @@ defmodule AthenaWeb.TeachingLive.EngagementExplanations do
   """
   @spec pattern_line(atom(), map()) :: String.t()
   def pattern_line(kind, %{share: share, blocks: blocks, group_share: group_share}) do
-    group = if group_share, do: share(group_share), else: "—"
+    group = if group_share, do: share(group_share), else: "–"
 
     case kind do
       :slacking ->
@@ -608,7 +608,7 @@ defmodule AthenaWeb.TeachingLive.EngagementExplanations do
 
   @doc "Seconds as a short human duration: \"45 s\", \"4 min\", \"1 h 5 min\"."
   @spec duration(number() | nil) :: String.t()
-  def duration(nil), do: "—"
+  def duration(nil), do: "–"
 
   def duration(seconds) do
     seconds = round(seconds)
@@ -620,13 +620,13 @@ defmodule AthenaWeb.TeachingLive.EngagementExplanations do
     end
   end
 
-  defp share(nil), do: "—"
+  defp share(nil), do: "–"
   defp share(ratio), do: "#{round(ratio * 100)}%"
 
-  defp percent_value(nil), do: "—"
+  defp percent_value(nil), do: "–"
   defp percent_value(value), do: "#{round(value)}%"
 
-  defp format_number(nil), do: "—"
+  defp format_number(nil), do: "–"
   defp format_number(value) when is_float(value), do: value |> round() |> Integer.to_string()
   defp format_number(value), do: to_string(value)
 end

@@ -40,7 +40,7 @@ defmodule Athena.Learning.Submissions do
 
   # Daily-challenge re-attempts (see Athena.Gamification.DailyChallenges) are
   # hidden from the default grading list so they don't clutter review of
-  # first-time work — visible only when a caller explicitly filters on
+  # first-time work – visible only when a caller explicitly filters on
   # `origin` (e.g. a teacher who wants to see them).
   defp maybe_exclude_daily_challenge(query, params) do
     if filters_on_origin?(params) do
@@ -109,7 +109,7 @@ defmodule Athena.Learning.Submissions do
       |> where([s], is_nil(s.parent_submission_id))
       |> where([s], fragment("?->>'is_test_run' IS NULL", s.content))
       # Instructor "test run" sessions (`Athena.Learning.TestRuns`) submit as a
-      # throwaway account that gets purged shortly after — no point surfacing
+      # throwaway account that gets purged shortly after – no point surfacing
       # that scratch data in the grading list before it's cleaned up.
       |> where([s], s.account_id not in subquery(test_run_account_ids))
 
@@ -393,8 +393,8 @@ defmodule Athena.Learning.Submissions do
   Picked independently of `get_latest_submissions/3`: that one prefers the
   highest score, so a rejected (score 0) or re-graded older attempt carrying
   the instructor's comment would never surface. Here, per block, the most
-  recently updated attempt that has feedback — its own, or on any of its
-  exam question children — wins.
+  recently updated attempt that has feedback – its own, or on any of its
+  exam question children – wins.
 
   Returns `%{block_id => %{feedback: String.t() | nil, status: atom(),
   questions: [%{number: pos_integer(), feedback: String.t(), score: integer()}]}}`.

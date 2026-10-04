@@ -314,7 +314,7 @@ defmodule AthenaWeb.LearnLive.TicketExamTest do
       assert html =~ ~s(data-id="#{pair1_id}")
 
       # With exactly 2 pairs, the initial shuffle is guaranteed to start in the wrong
-      # order (see initial_matching_order/3's anti-trivial-solve swap) — one drag
+      # order (see initial_matching_order/3's anti-trivial-solve swap) – one drag
       # brings it to the correct order.
       render_hook(lv, "reorder_matching_answer", %{"old_index" => 0, "new_index" => 1})
 

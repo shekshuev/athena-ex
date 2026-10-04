@@ -5,7 +5,7 @@ defmodule Athena.Gamification.ActivityListenerTest do
   import Athena.Factory
 
   # Exercises the handler logic directly (as a plain function call, in the
-  # test's own process) rather than through the live supervised GenServer —
+  # test's own process) rather than through the live supervised GenServer –
   # going through the real PubSub-delivered message would run the handler in
   # the singleton listener process, which isn't allowed onto this test's
   # sandboxed DB connection.

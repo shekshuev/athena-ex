@@ -492,51 +492,6 @@ defmodule Athena.Engagement.MetricsTest do
     end
   end
 
-  describe "export_wide_table/2" do
-    test "produces one row per student per block, tagged with cohort/block ids", %{
-      course: course,
-      section: section
-    } do
-      block_a = insert(:block, section: section, type: :text, order: 10)
-      block_b = insert(:block, section: section, type: :code, order: 20)
-
-      cohort = insert(:cohort)
-      student_a = insert(:account)
-      student_b = insert(:account)
-      insert(:cohort_membership, account_id: student_a.id, cohort_id: cohort.id)
-      insert(:cohort_membership, account_id: student_b.id, cohort_id: cohort.id)
-
-      session = Ecto.UUID.generate()
-      record(student_a.id, cohort.id, session, block_a, :viewport_enter, 0)
-      record(student_a.id, cohort.id, session, block_a, :viewport_exit, 20)
-
-      rows = Metrics.export_wide_table(course.id, [cohort.id])
-
-      # 2 blocks x 2 students = 4 rows
-      assert length(rows) == 4
-
-      assert Enum.all?(rows, &(&1.cohort_id == cohort.id))
-      assert Enum.all?(rows, &(&1.account_id in [student_a.id, student_b.id]))
-      assert Enum.all?(rows, &(&1.block_id in [block_a.id, block_b.id]))
-
-      row =
-        Enum.find(rows, &(&1.block_id == block_a.id and &1.account_id == student_a.id))
-
-      assert row.block_type == :text
-      assert row.sample_size == 1
-    end
-
-    test "returns an empty list when the cohort has no members", %{
-      course: course,
-      section: section
-    } do
-      insert(:block, section: section, type: :text, order: 10)
-      cohort = insert(:cohort)
-
-      assert Metrics.export_wide_table(course.id, [cohort.id]) == []
-    end
-  end
-
   describe "get_metrics/1 - offtask_ratio" do
     test "is the share of raw window time spent tabbed away", %{section: section} do
       block = insert(:block, section: section, type: :text, order: 10)

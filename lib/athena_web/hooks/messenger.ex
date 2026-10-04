@@ -34,7 +34,7 @@ defmodule AthenaWeb.Hooks.Messenger do
   # This hook is attached on every authenticated LiveView (for the nav
   # badge), but only `MessengerLive.Index` itself has `handle_info` clauses
   # for `{:inbox_updated, _}`, presence diffs, and `{:went_offline, _}`.
-  # Every other page must never see these — otherwise any page mounted
+  # Every other page must never see these – otherwise any page mounted
   # while another user connects/disconnects (a constant background event)
   # would crash with a `FunctionClauseError` in its own `handle_info/2`.
   defp handle_inbox_event({:inbox_updated, _conversation_id} = message, socket) do
@@ -52,7 +52,7 @@ defmodule AthenaWeb.Hooks.Messenger do
   end
 
   # Fully handled here (toast + browser Notification, see app.js) on
-  # whatever page the user happens to be on — unlike the events above,
+  # whatever page the user happens to be on – unlike the events above,
   # nothing needs this forwarded to a LiveView's own `handle_info`.
   # Suppressed when the user is already looking at that exact conversation,
   # since `MessengerLive.Index` already live-appends the message there.

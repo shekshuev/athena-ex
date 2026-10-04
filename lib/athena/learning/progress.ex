@@ -63,14 +63,14 @@ defmodule Athena.Learning.Progress do
   end
 
   @doc """
-  Whether `submission` counts as "solved" for progress/XP purposes — a
+  Whether `submission` counts as "solved" for progress/XP purposes – a
   broader question than "does it pass this block's gate". A block's
   `completion_rule` governs whether it blocks the waterline (`:submit`,
   `:pass_auto_grade`); a `:none`-type block never gates anything, but an
   auto-gradable `code`/`quiz_question` block can still be genuine practice
   work a student solved, and should count even though it never blocks
   progression. Child exam-question submissions (`parent_submission_id` set)
-  are excluded from that second path — they're graded as part of one exam
+  are excluded from that second path – they're graded as part of one exam
   completion, not as independent practice, so counting them separately
   would double-award XP on top of the exam block's own completion.
   """
@@ -243,7 +243,7 @@ defmodule Athena.Learning.Progress do
   @doc """
   Returns a plain block-completion ratio for a course, scoped to the account
   or cohort. Counts every block across all sections regardless of visibility
-  or gating rules — a simple, easy-to-reason-about "% done" for dashboards,
+  or gating rules – a simple, easy-to-reason-about "% done" for dashboards,
   not the authoritative access/unlock state (see `accessible_section_ids/5`
   for that).
   """
@@ -271,7 +271,7 @@ defmodule Athena.Learning.Progress do
   end
 
   @doc """
-  Returns `cohort_id` only if it's a `:team`-type (competition) cohort —
+  Returns `cohort_id` only if it's a `:team`-type (competition) cohort –
   the only case `course_progress/3`'s `cohort_id` argument means anything
   (see the comment on `count_completed/3`). Enrolled-via-academic-cohort
   students, and self-paced ones, both get `nil` (their own individual
@@ -283,7 +283,7 @@ defmodule Athena.Learning.Progress do
 
   def team_id_for_enrollment(%{cohort: %Ecto.Association.NotLoaded{}}) do
     # Silently falling through to "individual" here would be a much worse
-    # bug than crashing — it's exactly this mistake (mixing up team vs
+    # bug than crashing – it's exactly this mistake (mixing up team vs
     # individual progress) that caused the dashboard's 0%-progress bug this
     # function exists to prevent.
     raise ArgumentError,
@@ -294,7 +294,7 @@ defmodule Athena.Learning.Progress do
   def team_id_for_enrollment(_enrollment), do: nil
 
   @doc """
-  Batched version of `course_progress/3` for a list of enrollments — reads
+  Batched version of `course_progress/3` for a list of enrollments – reads
   `Athena.Learning.CourseProgressCache` in at most two queries (one for
   individually-tracked enrollments, one for team-shared ones) instead of
   walking each course's content tree once per enrollment. Returns a map
@@ -393,7 +393,7 @@ defmodule Athena.Learning.Progress do
     query =
       if cohort_id do
         # `cohort_id` here means "team" (a `:team`-type competition cohort,
-        # see `Athena.Learning.Cohort`), never an academic class — progress
+        # see `Athena.Learning.Cohort`), never an academic class – progress
         # for a team is deliberately shared, one `BlockProgress` row per
         # (cohort_id, block_id) regardless of which member completed it
         # (same collective model `Submissions.get_team_leaderboard/1` uses),

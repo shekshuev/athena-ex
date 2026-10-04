@@ -47,7 +47,7 @@ defmodule Athena.Media do
 
   @doc """
   Retrieves a paginated list of files other accounts have shared with the
-  given user, plus every other account's public personal file — i.e. what
+  given user, plus every other account's public personal file – i.e. what
   a Google-Drive-style "Shared with me" tab shows. Never includes the
   user's own files, even if they share one of them with themselves.
   """
@@ -130,7 +130,7 @@ defmodule Athena.Media do
 
   @doc """
   Returns the subset of `file_ids` that have been explicitly shared with at
-  least one other account — one query for a whole grid of files, so the
+  least one other account – one query for a whole grid of files, so the
   "My files" list can show a "Shared" badge without an N+1.
   """
   @spec list_shared_file_ids([String.t()]) :: MapSet.t(String.t())
@@ -327,7 +327,7 @@ defmodule Athena.Media do
   Prepares a presigned S3 upload for a user's own avatar.
 
   Unlike course material uploads, this is not scoped by course/section
-  ownership — any authenticated account may upload its own avatar.
+  ownership – any authenticated account may upload its own avatar.
   """
   @spec prepare_avatar_upload(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def prepare_avatar_upload(account_id, filename) do

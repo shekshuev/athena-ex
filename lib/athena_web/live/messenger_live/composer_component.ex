@@ -11,7 +11,7 @@ defmodule AthenaWeb.MessengerLive.ComposerComponent do
   and "send the raw @partial text").
 
   Mention detection only looks at the end of the current text (no
-  caret-position tracking) — an accepted v1 simplification.
+  caret-position tracking) – an accepted v1 simplification.
   """
   use AthenaWeb, :live_component
 

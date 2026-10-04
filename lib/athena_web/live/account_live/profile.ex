@@ -200,7 +200,7 @@ defmodule AthenaWeb.AccountLive.Profile do
     attrs = %{"metadata" => new_metadata}
 
     # A bootstrap admin created via `Athena.Release.create_admin/2` has no
-    # Profile row yet — creating one here needs the required name fields,
+    # Profile row yet – creating one here needs the required name fields,
     # so fall back to the login rather than failing the toggle outright.
     attrs =
       if account.profile,
@@ -603,7 +603,7 @@ defmodule AthenaWeb.AccountLive.Profile do
             </h2>
 
             <div :if={@awards == []} class="text-base-content/50 text-sm">
-              {gettext("No badges yet — keep practicing!")}
+              {gettext("No badges yet – keep practicing!")}
             </div>
 
             <div :if={@awards != []} class="grid grid-cols-2 sm:grid-cols-4 gap-4">

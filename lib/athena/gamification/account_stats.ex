@@ -2,7 +2,7 @@ defmodule Athena.Gamification.AccountStats do
   @moduledoc """
   Cached per-account gamification counters (1-to-1 with `Athena.Identity.Account`).
 
-  Kept as a denormalized cache — `total_xp` and `current_combo` are updated
+  Kept as a denormalized cache – `total_xp` and `current_combo` are updated
   incrementally as XP is awarded; `current_streak_weeks` and
   `longest_streak_weeks` are updated by the weekly rollup job.
   """

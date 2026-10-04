@@ -24,7 +24,7 @@ defmodule AthenaWeb.StudioLive.CharacterFormComponent do
   end
 
   # Targeted refresh pushed via `send_update/2` from the parent LiveView after
-  # the nested AvatarUploadComponent reports a new/removed avatar — messages
+  # the nested AvatarUploadComponent reports a new/removed avatar – messages
   # sent from a LiveComponent land in the parent LiveView's mailbox, not here.
   def update(assigns, socket) do
     {:ok, assign(socket, assigns)}

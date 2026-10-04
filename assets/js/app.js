@@ -1308,9 +1308,9 @@ Hooks.Sidebar = {
     });
 
     // Navigating between top-level LiveViews (Dashboard -> Files ->
-    // Announcements, etc.) fully remounts this layout — `mounted()` fires
+    // Announcements, etc.) fully remounts this layout – `mounted()` fires
     // again on every such navigation (not on same-page `push_patch`es like
-    // search/pagination) — so both of the below only need to run once here.
+    // search/pagination) – so both of the below only need to run once here.
     this.highlightActiveLink();
 
     const nav = this.el.querySelector("nav");
@@ -1373,7 +1373,7 @@ Hooks.DblClickDrillDown = {
 };
 
 // The "enable browser notifications" banner inside the messenger. Requests
-// permission only on a real click (never on page load — browsers
+// permission only on a real click (never on page load – browsers
 // penalize/ignore silent auto-prompts, and asking outside of an explicit
 // user action is exactly the annoying pattern we want to avoid). Hides
 // itself once answered, or once dismissed via "not now" (remembered per
@@ -1455,7 +1455,7 @@ document.addEventListener("click", (e) => {
 
 // Scrolls the open thread either to the bottom (new message just sent/
 // received) or to the "new messages" divider (just opened a conversation
-// with unread history) — see AthenaWeb.MessengerLive.Index.
+// with unread history) – see AthenaWeb.MessengerLive.Index.
 window.addEventListener("phx:scroll_thread", (e) => {
   const to = e.detail.to;
 
@@ -1476,7 +1476,7 @@ window.addEventListener("phx:scroll_thread", (e) => {
 });
 
 // In-app toast + (when the tab is hidden/unfocused and permission was
-// granted) a native browser Notification for a new chat message — pushed
+// granted) a native browser Notification for a new chat message – pushed
 // from AthenaWeb.Hooks.Messenger on every authenticated page, not just
 // the messenger itself, so a message still gets noticed while you're
 // elsewhere in the LMS.

@@ -271,7 +271,7 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompare do
                 {ngettext("%{count} student", "%{count} students", summary.students)}
               </div>
             </th>
-            <th class="text-center bg-base-200/50">{gettext("Average")}</th>
+            <th class="text-center bg-base-200/50">{gettext("Course average")}</th>
           </tr>
         </thead>
         <tbody>
@@ -445,7 +445,7 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompare do
   defp matrix_value(:completion, summary, section_id),
     do: Comparison.section_completion(summary, section_id)
 
-  defp format_matrix(_matrix, nil), do: "—"
+  defp format_matrix(_matrix, nil), do: "–"
   defp format_matrix(:score, value), do: "#{round(value)}"
   defp format_matrix(:completion, value), do: "#{round(value)}%"
 

@@ -535,7 +535,7 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
             placeholder={gettext("From")}
             class="input input-sm w-full"
           />
-          <span class="text-base-content/40">—</span>
+          <span class="text-base-content/40">–</span>
           <.date_picker
             id="gradebook-to"
             name="to"
@@ -859,7 +859,7 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
               <span class="text-sm truncate">
                 {column.number}. {GradebookTable.type_label(column.block.type)}
                 <span :if={column.preview != ""} class="text-base-content/50">
-                  — {column.preview}
+                  – {column.preview}
                 </span>
               </span>
             </label>
@@ -906,7 +906,7 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
       </div>
       <div class="summary-tile">
         <span class={["summary-value", @average && band_text(@average, @filters.threshold)]}>
-          {@average || "—"}
+          {@average || "–"}
         </span>
         <span class="summary-label">{gettext("Average score")}</span>
       </div>
@@ -1227,7 +1227,7 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
 
   defp cell_body(%{cell: nil} = assigns) do
     ~H"""
-    <span class="grade-cell text-base-content/25" title={@title}>—</span>
+    <span class="grade-cell text-base-content/25" title={@title}>–</span>
     """
   end
 
@@ -1373,7 +1373,7 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
         )}
       </span>
       <span class="flex items-center gap-1.5">
-        <span class="text-base-content/30 font-bold">—</span> {gettext("Not started")}
+        <span class="text-base-content/30 font-bold">–</span> {gettext("Not started")}
       </span>
       <span class="flex items-center gap-1.5">
         <span class="font-bold">80<sup class="text-[9px] opacity-60">×3</sup></span>
@@ -1497,7 +1497,7 @@ defmodule AthenaWeb.TeachingLive.CohortGradebook do
     if averages == [], do: nil, else: Enum.sum(averages) / length(averages)
   end
 
-  defp format_average(nil), do: "—"
+  defp format_average(nil), do: "–"
   defp format_average(value), do: value |> round() |> Integer.to_string()
 
   defp percent(_part, 0), do: 0

@@ -120,7 +120,6 @@ defmodule Athena.Engagement do
   defdelegate funnel(block_id, cohort_id \\ nil), to: Metrics
   defdelegate correlate(measurements_a, measurements_b), to: Metrics
   defdelegate time_series(block_id, cohort_id, metric), to: Metrics
-  defdelegate export_wide_table(course_id, cohort_ids), to: Metrics
   defdelegate flag_concerns(metrics), to: Metrics
   defdelegate student_radar(cohort_id, course_id, opts \\ []), to: Metrics
   defdelegate cohort_flag_profile(cohort_id, course_id, opts \\ []), to: Metrics

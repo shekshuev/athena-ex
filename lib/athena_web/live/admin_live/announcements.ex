@@ -7,7 +7,7 @@ defmodule AthenaWeb.AdminLive.Announcements do
   holding `announcements.read` sees only global announcements plus
   announcements for cohorts they instruct (enforced in
   `Athena.Announcements.list_for_admin/2`, not re-derived here). Create/edit
-  is a full standalone page (`AnnouncementForm`, not a slide-over — TipTap
+  is a full standalone page (`AnnouncementForm`, not a slide-over – TipTap
   needs the room); this LiveView only lists and deletes.
   """
   use AthenaWeb, :live_view
@@ -238,7 +238,7 @@ defmodule AthenaWeb.AdminLive.Announcements do
 
   defp owner_name(owners, author_id) do
     case Map.get(owners, author_id) do
-      nil -> "—"
+      nil -> "–"
       account -> Identity.display_name(account)
     end
   end
@@ -247,7 +247,7 @@ defmodule AthenaWeb.AdminLive.Announcements do
 
   defp audience_label(%{scope: :cohort, cohort_id: cohort_id}, cohorts) do
     case Map.get(cohorts, cohort_id) do
-      nil -> "—"
+      nil -> "–"
       %{name: name, type: :team} -> "#{gettext("Team")}: #{name}"
       %{name: name} -> "#{gettext("Cohort")}: #{name}"
     end
