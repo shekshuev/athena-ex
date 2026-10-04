@@ -60,6 +60,7 @@ defmodule Athena.Application do
         [
           Supervisor.child_spec({Cachex, name: :account_cache}, id: :account_cache),
           Supervisor.child_spec({Cachex, name: :draft_cache}, id: :draft_cache),
+          Athena.Engagement.DashboardCache,
           {Registry, keys: :unique, name: Athena.Engagement.BlockStatsRegistry},
           {DynamicSupervisor,
            name: Athena.Engagement.BlockStatsSupervisor, strategy: :one_for_one},

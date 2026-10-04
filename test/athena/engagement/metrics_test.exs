@@ -654,7 +654,7 @@ defmodule Athena.Engagement.MetricsTest do
 
       # `since` is set to a minute after the events above (offsets are
       # relative to the fixed 2026-01-05 12:00:00Z base `record/7` uses).
-      profile = Metrics.cohort_flag_profile(cohort.id, course.id, since: ~U[2026-01-05 12:01:00Z])
+      profile = Metrics.cohort_flag_profile(cohort.id, course.id, since: ~U[2026-01-06 00:00:00Z])
 
       assert profile.fast_dwell == 0.0
     end
@@ -792,7 +792,7 @@ defmodule Athena.Engagement.MetricsTest do
       record(account.id, cohort.id, session, block, :viewport_exit, 5)
 
       [row] =
-        Metrics.section_flag_totals(cohort.id, course.id, since: ~U[2026-01-05 12:01:00Z])
+        Metrics.section_flag_totals(cohort.id, course.id, since: ~U[2026-01-06 00:00:00Z])
 
       assert row.slacking_count == 0
     end
@@ -866,7 +866,7 @@ defmodule Athena.Engagement.MetricsTest do
 
       record(account.id, nil, Ecto.UUID.generate(), block, :viewport_enter, 0)
 
-      cells = Metrics.activity_heatmap(nil, course.id, since: ~U[2026-01-05 12:01:00Z])
+      cells = Metrics.activity_heatmap(nil, course.id, since: ~U[2026-01-06 00:00:00Z])
 
       assert Enum.all?(cells, &(&1.count == 0))
     end
@@ -963,7 +963,7 @@ defmodule Athena.Engagement.MetricsTest do
 
       record(account.id, nil, Ecto.UUID.generate(), block, :viewport_enter, 0)
 
-      [row] = Metrics.course_funnel(nil, course.id, since: ~U[2026-01-05 12:01:00Z])
+      [row] = Metrics.course_funnel(nil, course.id, since: ~U[2026-01-06 00:00:00Z])
 
       assert row.opened == 0
     end
@@ -1042,7 +1042,7 @@ defmodule Athena.Engagement.MetricsTest do
 
       record(account.id, nil, Ecto.UUID.generate(), block, :viewport_enter, 0)
 
-      trend = Metrics.active_students_trend(nil, course.id, since: ~U[2026-01-05 12:01:00Z])
+      trend = Metrics.active_students_trend(nil, course.id, since: ~U[2026-01-06 00:00:00Z])
 
       assert trend == []
     end
@@ -1183,7 +1183,7 @@ defmodule Athena.Engagement.MetricsTest do
         "reason" => "heavy_paste"
       })
 
-      rows = Metrics.nudge_correction_rate(nil, course.id, since: ~U[2026-01-05 12:01:00Z])
+      rows = Metrics.nudge_correction_rate(nil, course.id, since: ~U[2026-01-06 00:00:00Z])
 
       assert rows == []
     end

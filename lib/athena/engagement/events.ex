@@ -67,15 +67,24 @@ defmodule Athena.Engagement.Events do
   in - a permanently cumulative score would never show that. Omitting it
   (the default) preserves the exact prior behavior for every existing
   caller.
+
+  `opts` narrows further: `:event_types` (only these types) and
+  `:account_ids` (only these students).
   """
-  @spec list_events_for_scope([binary()], binary() | nil, DateTime.t() | nil) :: [Event.t()]
-  def list_events_for_scope(block_ids, cohort_id \\ nil, since \\ nil) do
+  @spec list_events_for_scope([binary()], binary() | nil, DateTime.t() | nil, keyword()) ::
+          [Event.t()]
+  def list_events_for_scope(block_ids, cohort_id \\ nil, since \\ nil, opts \\ []) do
     Event
     |> where([e], e.block_id in ^block_ids)
     |> maybe_filter_cohort(cohort_id)
     |> maybe_filter_since(since)
+    |> maybe_filter_in(:event_type, Keyword.get(opts, :event_types))
+    |> maybe_filter_in(:account_id, Keyword.get(opts, :account_ids))
     |> Repo.all()
   end
+
+  defp maybe_filter_in(query, _field, nil), do: query
+  defp maybe_filter_in(query, field, values), do: where(query, [e], field(e, ^field) in ^values)
 
   @doc """
   Normalizes one untrusted raw event map (as pushed by a client

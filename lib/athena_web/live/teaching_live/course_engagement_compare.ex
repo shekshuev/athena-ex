@@ -227,9 +227,8 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompare do
      |> put_flash(:error, gettext("Could not load engagement data. Please try again."))}
   end
 
-  defp compare_since("30"), do: DateTime.add(DateTime.utc_now(), -30 * 86_400, :second)
+  defp compare_since("30"), do: Engagement.window_start(30)
   defp compare_since("all"), do: nil
 
-  defp compare_since(_seven_or_unknown),
-    do: DateTime.add(DateTime.utc_now(), -7 * 86_400, :second)
+  defp compare_since(_seven_or_unknown), do: Engagement.window_start(7)
 end

@@ -82,3 +82,6 @@ config :athena, :server_role, "all"
 # event. Their handler logic is unit-tested directly instead (calling
 # `handle_info/2` in the test's own sandboxed process).
 config :athena, :start_background_listeners, false
+
+# Dashboards must reflect events recorded a moment earlier in the same test.
+config :athena, Athena.Engagement, dashboard_cache_ttl_ms: 0

@@ -6,6 +6,10 @@ defmodule Athena.Bench.EngagementBenchTest do
 
       mix test test/bench --only bench
 
+  `BENCH_DENSITY=10 mix test test/bench --only bench` adds that many extra
+  idle/tab-switch event pairs per student × block visit - real telemetry is
+  much chattier than the default fixture, and that is where rollups pay off.
+
   Prints one line per function: wall time and number of SQL queries. Not an
   assertion-driven test on purpose - it is a measuring stick to compare
   before/after a performance change, not a pass/fail gate.
@@ -108,6 +112,27 @@ defmodule Athena.Bench.EngagementBenchTest do
 
     measure("gradebook (scores only)", fn -> Learning.build_gradebook(cohort, course.id) end)
 
+    IO.puts("-- with rollups --")
+    measure("rollups: initial backfill", fn -> Engagement.Rollups.process_new_events() end)
+    measure("rollups: idle re-run", fn -> Engagement.Rollups.process_new_events() end)
+    measure("student_radar", fn -> Engagement.student_radar(cohort.id, course.id, opts) end)
+
+    measure("course_overview (all charts)", fn ->
+      Engagement.course_overview(cohort.id, course.id, opts)
+    end)
+
+    measure("course_overview (as the screen)", fn ->
+      Engagement.course_overview(cohort.id, course.id, opts ++ [include_nudges: false])
+    end)
+
+    measure("nudge_correction_rate", fn ->
+      Engagement.nudge_correction_rate(cohort.id, course.id, opts)
+    end)
+
+    measure("cohort_flag_profile", fn ->
+      Engagement.cohort_flag_profile(cohort.id, course.id, opts)
+    end)
+
     measure("get_metrics(section)", fn ->
       Engagement.get_metrics(%{
         resource_type: :section,
@@ -150,7 +175,7 @@ defmodule Athena.Bench.EngagementBenchTest do
       blocks
       |> Enum.with_index()
       |> Enum.flat_map(fn {block, bi} ->
-        start = DateTime.add(now, -rem(si * 7 + bi * 13, 20 * 86_400) - 3_600, :second)
+        start = DateTime.add(now, -rem(si * 7 + bi * 13, 20) * 86_400 - 3_600, :second)
         dwell = 20 + rem(si * 31 + bi * 17, 300)
         session = Ecto.UUID.generate()
         base = {student, block, cohort, session}
@@ -158,7 +183,9 @@ defmodule Athena.Bench.EngagementBenchTest do
         [
           event(base, :viewport_enter, start),
           event(base, :viewport_exit, DateTime.add(start, dwell, :second))
-        ] ++ type_events(block.type, base, start, si + bi) ++ nudge_events(base, start, si + bi)
+        ] ++
+          type_events(block.type, base, start, si + bi) ++
+          nudge_events(base, start, si + bi) ++ noise_events(base, start)
       end)
     end)
     |> Enum.chunk_every(5_000)
@@ -208,6 +235,15 @@ defmodule Athena.Bench.EngagementBenchTest do
   end
 
   defp nudge_events(_base, _start, _seed), do: []
+
+  defp noise_events(base, start) do
+    density = "BENCH_DENSITY" |> System.get_env("1") |> String.to_integer()
+
+    for i <- 1..density//1, density > 1, {type, offset} <- [idle_start: 0, idle_end: 4] do
+      payload = if type == :idle_end, do: %{"duration_ms" => 4_000}, else: %{}
+      event(base, type, DateTime.add(start, 6 + i * 7 + offset, :second), payload)
+    end
+  end
 
   defp event({student, block, cohort, session}, type, at, payload \\ %{}) do
     %{

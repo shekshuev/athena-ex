@@ -131,6 +131,8 @@ defmodule Athena.Engagement do
   defdelegate active_students_trend(cohort_id, course_id, opts \\ []), to: Metrics
   defdelegate nudge_correction_rate(cohort_id, course_id, opts \\ []), to: Metrics
   defdelegate course_overview(cohort_id, course_id, opts \\ []), to: Metrics
+  defdelegate window_start(days), to: Metrics
+  defdelegate assessment_levels(), to: Athena.Engagement.StudentAssessment, as: :levels
   defdelegate histogram(cohort_id, block_id), to: BlockStats
 
   @nudge_percentile_floor 10.0

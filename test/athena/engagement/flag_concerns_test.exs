@@ -99,14 +99,43 @@ defmodule Athena.Engagement.FlagConcernsTest do
       assert :slow_dwell in result.struggling
     end
 
+    test "without an expected time, dwell is judged against the group median" do
+      assert :fast_dwell in Metrics.flag_concerns(%{dwell_group_ratio: 0.3}).slacking
+      refute :fast_dwell in Metrics.flag_concerns(%{dwell_group_ratio: 0.5}).slacking
+      assert :slow_dwell in Metrics.flag_concerns(%{dwell_group_ratio: 2.6}).struggling
+      refute :slow_dwell in Metrics.flag_concerns(%{dwell_group_ratio: 2.4}).struggling
+    end
+
+    test "the teacher's expected time wins over the group median" do
+      result = Metrics.flag_concerns(%{dwell_ratio: 1.0, dwell_group_ratio: 0.1})
+      refute :fast_dwell in result.slacking
+    end
+
     test ":slow_dwell does not fire exactly at the threshold" do
       result = Metrics.flag_concerns(%{dwell_ratio: 2.0})
       refute :slow_dwell in result.struggling
     end
 
-    test ":hesitation fires on any answer change" do
+    test ":hesitation ignores a single changed answer" do
       result = Metrics.flag_concerns(%{answer_change_count: 1})
-      assert :hesitation in result.struggling
+      refute :hesitation in result.struggling
+    end
+
+    test ":hesitation without a group to compare needs the absolute number of changes" do
+      refute :hesitation in Metrics.flag_concerns(%{answer_change_count: 2}).struggling
+      assert :hesitation in Metrics.flag_concerns(%{answer_change_count: 3}).struggling
+    end
+
+    test ":hesitation with a group baseline fires only above most of the group" do
+      assert :hesitation in Metrics.flag_concerns(%{
+               answer_change_count: 2,
+               hesitation_group_baseline: 1
+             }).struggling
+
+      refute :hesitation in Metrics.flag_concerns(%{
+               answer_change_count: 3,
+               hesitation_group_baseline: 4
+             }).struggling
     end
 
     test ":hesitation does not fire with zero answer changes" do

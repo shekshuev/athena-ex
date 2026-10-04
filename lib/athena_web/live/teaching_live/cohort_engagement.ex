@@ -10,11 +10,14 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
     panel shows `Athena.Engagement.Metrics` numbers instead of an
     access-override form, with a student filter above it (default: whole
     cohort).
-  - **"Student radar"** (`:students`) - one row per student in the cohort,
-    from `Athena.Engagement.student_radar/3`: a slacking index, a
-    struggling index, and a color-coded status, windowed by a period picker
-    (default: last 7 days) so a teacher can actually see whether behavior
-    changes after they step in, not just a lifetime total.
+  - **"Group radar"** (`:students`) - every student's level (who needs
+    attention) and the signals behind it, from
+    `Athena.Engagement.student_radar/3`, worded by
+    `AthenaWeb.TeachingLive.EngagementExplanations` and laid out by
+    `AthenaWeb.TeachingLive.GroupRadarComponents`. The period, a level
+    filter and the open student card all live in the URL
+    (`?view=students&window=7&level=...&student=...`); only a new period
+    recomputes anything.
 
   Metrics recompute (both screens) is debounced (at most once every
   `@refresh_debounce_ms`) rather than run on every incoming PubSub event -
@@ -30,9 +33,13 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
 
   alias Athena.{Content, Engagement, Identity, Learning}
   alias Athena.Content.Block
-  alias AthenaWeb.TeachingLive.ChartConfig
+  alias AthenaWeb.TeachingLive.{ChartConfig, GradebookTable}
   import AthenaWeb.TeachingLive.CourseTreeComponents, only: [course_tree_nav: 1]
-  import AthenaWeb.TeachingLive.CohortAnalyticsComponents, only: [analytics_tabs: 1]
+
+  import AthenaWeb.TeachingLive.CohortAnalyticsComponents,
+    only: [analytics_tabs: 1, gradebook_path: 2]
+
+  import AthenaWeb.TeachingLive.GroupRadarComponents
 
   on_mount {AthenaWeb.Hooks.Permission, "engagement.read"}
 
@@ -46,13 +53,22 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
     with {:ok, cohort} <- Learning.get_cohort(user, cohort_id),
          {:ok, course} <- Content.get_course(course_id) do
       tree = Content.get_course_tree(course.id, :all)
+      {block_names, block_sections} = block_index(tree)
 
       {:ok,
        socket
        |> assign(:cohort, cohort)
        |> assign(:course, course)
        |> assign(:tree, tree)
+       |> assign(:block_names, block_names)
+       |> assign(:block_sections, block_sections)
        |> assign(:students, list_students(cohort.id))
+       |> assign(:radar_rows, [])
+       |> assign(:radar_group, %{progress_median: nil, score_median: nil})
+       |> assign(:radar_loaded_window, nil)
+       |> assign(:level_filter, nil)
+       |> assign(:selected_student_id, nil)
+       |> assign(:methodology_open, false)
        |> assign(:view, :content)
        |> assign(:active_section, nil)
        |> assign(:blocks, [])
@@ -91,12 +107,18 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
   def handle_params(%{"view" => "students"} = params, _url, socket) do
     window = if params["window"] in @radar_windows, do: params["window"], else: "7"
 
+    # Opening a student's card or filtering by level only changes the URL;
+    # the radar itself is recomputed only for a new period (or on arrival).
+    reload? = socket.assigns.view != :students or socket.assigns.radar_loaded_window != window
+
     socket =
       socket
       |> resubscribe(nil)
       |> assign(:view, :students)
       |> assign(:radar_window, window)
-      |> refresh_student_radar()
+      |> assign(:level_filter, parse_level(params["level"]))
+      |> assign(:selected_student_id, presence(params["student"]))
+      |> then(&if(reload?, do: refresh_student_radar(&1), else: &1))
 
     {:noreply, socket}
   end
@@ -140,6 +162,14 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
     end
   end
 
+  defp parse_level(value) when is_binary(value),
+    do: Enum.find(Engagement.assessment_levels(), &(Atom.to_string(&1) == value))
+
+  defp parse_level(_value), do: nil
+
+  defp presence(value) when value in [nil, ""], do: nil
+  defp presence(value), do: value
+
   # The course-wide charts (`refresh_course_charts/1`) are only rendered on
   # the section/course-radar view, never on the block-detail sub-view (see
   # the `@active_block` split in the template) - recomputing them while a
@@ -169,16 +199,11 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
      socket |> assign(:trend_metric, String.to_existing_atom(metric)) |> refresh_trend()}
   end
 
-  def handle_event(
-        "chart_point_click",
-        %{"chart" => "student-radar-scatter", "index" => index},
-        socket
-      ) do
-    case Enum.at(socket.assigns.student_radar, index) do
-      nil -> {:noreply, socket}
-      row -> {:noreply, push_patch(socket, to: student_detail_path(socket.assigns, row))}
-    end
-  end
+  def handle_event("open_methodology", _params, socket),
+    do: {:noreply, assign(socket, :methodology_open, true)}
+
+  def handle_event("close_methodology", _params, socket),
+    do: {:noreply, assign(socket, :methodology_open, false)}
 
   @impl true
   def handle_info({:engagement_event, _event}, socket) do
@@ -202,11 +227,28 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
   # can't paint stale data.
   @impl true
   def handle_async(:student_radar, {:ok, rows}, socket) do
-    {:noreply, socket |> assign(:student_radar, rows) |> assign(:student_radar_loading, false)}
+    radar_rows = radar_rows(rows, socket.assigns.students)
+
+    {:noreply,
+     socket
+     |> assign(:student_radar, rows)
+     |> assign(:radar_rows, radar_rows)
+     |> assign(:radar_group, radar_group(radar_rows))
+     |> assign(:student_radar_loading, false)}
   end
 
   def handle_async(:course_overview, {:ok, overview}, socket) do
     {:noreply, socket |> assign_course_charts(overview) |> assign(:course_charts_loading, false)}
+  end
+
+  # Loaded on its own - it is the one course chart that can't use rollups,
+  # so it must not hold up the others.
+  def handle_async(:nudge_rates, {:ok, rates}, socket) do
+    rows =
+      Enum.map(rates, &%{label: humanize_key(&1.reason), correction_rate: &1.correction_rate})
+
+    {:noreply,
+     assign(socket, :correction_rate_chart_config, ChartConfig.correction_rate_config(rows))}
   end
 
   def handle_async(key, {:exit, reason}, socket) do
@@ -281,13 +323,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
           </div>
 
           <%= if @view == :students do %>
-            <.student_radar_screen
-              students={@students}
-              rows={@student_radar}
-              loading={@student_radar_loading}
-              window={@radar_window}
-              student_link={fn row -> student_detail_path(assigns, row) end}
-            />
+            <.group_radar_screen {assigns} />
           <% else %>
             <div class="mb-6 flex items-center justify-between gap-4">
               <h1 class="text-2xl font-black truncate">
@@ -536,74 +572,112 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
     """
   end
 
-  defp student_radar_screen(assigns) do
+  defp group_radar_screen(assigns) do
+    rows =
+      if assigns.level_filter,
+        do: Enum.filter(assigns.radar_rows, &(&1.level == assigns.level_filter)),
+        else: assigns.radar_rows
+
+    selected =
+      assigns.selected_student_id &&
+        Enum.find(assigns.radar_rows, &(&1.account_id == assigns.selected_student_id))
+
+    assigns =
+      assigns
+      |> assign(:visible_rows, rows)
+      |> assign(:selected, selected)
+      |> assign(:counts, Enum.frequencies_by(assigns.radar_rows, & &1.level))
+
     ~H"""
-    <div>
-      <div class="mb-4 flex items-center justify-between gap-4">
-        <h1 class="text-2xl font-black">{gettext("Group Radar")}</h1>
+    <div id="group-radar" class="space-y-4">
+      <div class="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 class="text-2xl font-black">{gettext("Group Radar")}</h1>
+          <p class="text-sm text-base-content/60">
+            {gettext("Who needs attention, and why")} · {window_label(@radar_window)}
+          </p>
+        </div>
 
         <form phx-change="change_window">
           <select name="window" class="select select-bordered select-sm rounded-sm">
-            <option value="7" selected={@window == "7"}>{gettext("Last 7 days")}</option>
-            <option value="30" selected={@window == "30"}>{gettext("Last 30 days")}</option>
-            <option value="all" selected={@window == "all"}>{gettext("Whole course")}</option>
+            <option value="7" selected={@radar_window == "7"}>{gettext("Last 7 days")}</option>
+            <option value="30" selected={@radar_window == "30"}>{gettext("Last 30 days")}</option>
+            <option value="all" selected={@radar_window == "all"}>{gettext("Whole course")}</option>
           </select>
         </form>
       </div>
 
-      <.loading_skeleton :if={@loading} id="student-radar-loading" rows={6} />
+      <.loading_skeleton :if={@student_radar_loading} id="student-radar-loading" rows={6} />
 
-      <div :if={!@loading} class="bg-base-100 border border-base-200 rounded-sm p-4 mb-4">
-        <h2 class="text-xs font-black uppercase tracking-widest text-base-content/50 mb-2">
-          {gettext("Slacking vs. struggling")}
-        </h2>
-        <canvas
-          id="student-radar-scatter"
-          phx-hook="EngagementChart"
-          data-clickable="true"
-          data-config={Jason.encode!(student_scatter_config(@rows, @students))}
-          class="max-h-72"
-        >
-        </canvas>
-      </div>
+      <%= if !@student_radar_loading do %>
+        <.level_tiles
+          counts={@counts}
+          active={@level_filter}
+          level_path={fn level -> radar_path(assigns, @radar_window, level: level) end}
+        />
 
-      <div :if={!@loading} class="overflow-x-auto bg-base-100 border border-base-200 rounded-sm">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>{gettext("Student")}</th>
-              <th>{gettext("Progress")}</th>
-              <th>{gettext("Slacking index")}</th>
-              <th>{gettext("Struggling index")}</th>
-              <th>{gettext("Status")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={row <- @rows}>
-              <td>
-                <.link patch={@student_link.(row)} class="link link-primary font-bold">
-                  {student_login(@students, row.account_id)}
-                </.link>
-              </td>
-              <td class="font-mono">{format_value(row.progress_percent)}%</td>
-              <td class="font-mono">{row.slacking_index}</td>
-              <td class="font-mono">{row.struggling_index}</td>
-              <td>{status_badge(assigns, row.status)}</td>
-            </tr>
-            <tr :if={@rows == []}>
-              <td colspan="5">
-                <.empty_state
-                  icon="hero-user-group"
-                  title={gettext("No students in this cohort yet.")}
-                />
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+        <div class="flex flex-wrap items-center justify-between gap-2 rounded-sm bg-base-100 border border-base-200 px-4 py-2.5 text-sm">
+          <span class="flex items-center gap-2 text-base-content/70">
+            <.icon name="hero-information-circle" class="size-5 text-info shrink-0" />
+            {gettext(
+              "The status is the first rule that matches: no activity, exam violations, low scores, falling behind, rushing, getting stuck. Click a student to see exactly what counted."
+            )}
+          </span>
+          <button
+            id="open-methodology"
+            type="button"
+            phx-click="open_methodology"
+            class="btn btn-ghost btn-xs text-primary"
+          >
+            {gettext("How is this decided?")}
+          </button>
+        </div>
+
+        <.radar_table
+          rows={@visible_rows}
+          filtered?={@level_filter != nil}
+          clear_filter_path={radar_path(assigns, @radar_window)}
+          student_path={
+            fn account_id ->
+              radar_path(assigns, @radar_window, level: @level_filter, student: account_id)
+            end
+          }
+        />
+      <% end %>
+
+      <.student_drawer
+        :if={@selected}
+        row={@selected}
+        group={@radar_group}
+        block_names={@block_names}
+        window_label={window_label(@radar_window)}
+        close_path={radar_path(assigns, @radar_window, level: @level_filter)}
+        course_map_path={
+          build_path(assigns, account_id: @selected.account_id, section_id: nil, block_id: nil)
+        }
+        block_path={
+          fn block_id ->
+            build_path(assigns,
+              account_id: @selected.account_id,
+              section_id: Map.get(@block_sections, block_id),
+              block_id: block_id
+            )
+          end
+        }
+        gradebook_path={
+          Identity.can?(@current_user, "grading.read") &&
+            gradebook_path(@cohort, @course) <> "?students=#{@selected.account_id}"
+        }
+      />
+
+      <.methodology_modal show={@methodology_open} />
     </div>
     """
   end
+
+  defp window_label("30"), do: gettext("last 30 days")
+  defp window_label("all"), do: gettext("whole course")
+  defp window_label(_seven), do: gettext("last 7 days")
 
   attr :id, :string, required: true
   attr :rows, :integer, default: 4
@@ -627,45 +701,6 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
       </div>
     </div>
     """
-  end
-
-  defp status_badge(assigns, status) do
-    assigns = assign(assigns, :status, status)
-
-    ~H"""
-    <.badge tone={status_tone(@status)}>{status_label(@status)}</.badge>
-    """
-  end
-
-  defp status_tone(:red), do: "error"
-  defp status_tone(:yellow), do: "warning"
-  defp status_tone(:green), do: "success"
-
-  defp status_label(:red), do: gettext("Needs attention")
-  defp status_label(:yellow), do: gettext("Struggling")
-  defp status_label(:green), do: gettext("On track")
-
-  defp student_login(students, account_id) do
-    case Enum.find(students, &(&1 && &1.id == account_id)) do
-      %{login: login} -> login
-      _ -> account_id
-    end
-  end
-
-  # `index` in the `chart_point_click` payload is this list's position, so
-  # this must iterate `rows` in the exact same order the table above it
-  # does - no sorting/filtering here that isn't mirrored there too.
-  defp student_scatter_config(rows, students) do
-    points =
-      Enum.map(rows, fn row ->
-        %{
-          x: row.slacking_index,
-          y: row.struggling_index,
-          label: student_login(students, row.account_id)
-        }
-      end)
-
-    ChartConfig.scatter_config(points, x_label: "Slacking index", y_label: "Struggling index")
   end
 
   defp metrics_table(assigns) do
@@ -826,6 +861,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
 
       socket
       |> assign(:student_radar_loading, true)
+      |> assign(:radar_loaded_window, socket.assigns.radar_window)
       |> cancel_async(:student_radar)
       |> start_async(:student_radar, fn ->
         Engagement.student_radar(cohort_id, course_id, since: since)
@@ -835,22 +871,26 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
     end
   end
 
-  defp radar_since("30"), do: DateTime.add(DateTime.utc_now(), -30 * 86_400, :second)
+  defp radar_since("30"), do: Engagement.window_start(30)
   defp radar_since("all"), do: nil
-  defp radar_since(_seven_or_unknown), do: DateTime.add(DateTime.utc_now(), -7 * 86_400, :second)
+  defp radar_since(_seven_or_unknown), do: Engagement.window_start(7)
 
-  defp radar_path(assigns_or_socket, window) do
+  # `opts`: `:level` (a level filter) and `:student` (whose card is open).
+  defp radar_path(assigns_or_socket, window, opts \\ []) do
     {cohort, course, _section, _block, _account} = path_context(assigns_or_socket)
-    radar_path(cohort, course, window)
+
+    query =
+      [view: "students", window: window, level: opts[:level], student: opts[:student]]
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+      |> URI.encode_query()
+
+    radar_base_path(cohort, course) <> "?" <> query
   end
 
-  defp radar_path(%{type: :team, id: id}, course, window) do
-    ~p"/teaching/teams/#{id}/engagement/#{course.id}?view=students&window=#{window}"
-  end
+  defp radar_base_path(%{type: :team, id: id}, course),
+    do: ~p"/teaching/teams/#{id}/engagement/#{course.id}"
 
-  defp radar_path(%{id: id}, course, window) do
-    ~p"/teaching/cohorts/#{id}/engagement/#{course.id}?view=students&window=#{window}"
-  end
+  defp radar_base_path(%{id: id}, course), do: ~p"/teaching/cohorts/#{id}/engagement/#{course.id}"
 
   # A dedicated path helper (not routed through `build_path/2`) so changing
   # the "Course Radar" charts' period never adds a `course_window` param to
@@ -883,7 +923,11 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
       |> assign(:course_charts_loading, true)
       |> cancel_async(:course_overview)
       |> start_async(:course_overview, fn ->
-        Engagement.course_overview(cohort_id, course_id, since: since)
+        Engagement.course_overview(cohort_id, course_id, since: since, include_nudges: false)
+      end)
+      |> cancel_async(:nudge_rates)
+      |> start_async(:nudge_rates, fn ->
+        Engagement.nudge_correction_rate(cohort_id, course_id, since: since)
       end)
     else
       assign(socket, :course_charts_loading, true)
@@ -915,11 +959,6 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
         %{date: row.date, value: row.active_count}
       end)
 
-    correction_rows =
-      Enum.map(overview.nudge_correction_rate, fn row ->
-        %{label: humanize_key(row.reason), correction_rate: row.correction_rate}
-      end)
-
     socket
     |> assign(:section_chart_config, ChartConfig.stacked_bar_config(rows))
     |> assign(:heatmap_config, ChartConfig.heatmap_config(overview.activity_heatmap))
@@ -928,34 +967,82 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
       :trend_chart_config,
       ChartConfig.line_config(trend_points, dataset_label: "Active students")
     )
-    |> assign(:correction_rate_chart_config, ChartConfig.correction_rate_config(correction_rows))
   end
 
-  # Deep-links a "Student radar" row straight into the existing "Course
-  # radar" block detail view, pre-filtered to this student and already
-  # opened on their first flagged block (slacking outranks struggling,
-  # since it is the more urgent case) - a teacher should never have to
-  # manually re-find what the table already told them.
-  #
-  # Called once per table row on every render, so it must not touch the
-  # database - each flagged block already carries its own `section_id`.
-  defp student_detail_path(assigns, row) do
-    case first_flagged_block(row) do
-      nil ->
-        build_path(assigns, account_id: row.account_id, section_id: nil, block_id: nil)
+  # Readable names for every block of the course ("Loops · 2. Exam"), used
+  # by the explanations, plus which section each block lives in (for links
+  # into the course radar).
+  defp block_index(tree) do
+    sections = flatten_tree(tree)
 
-      flagged ->
-        build_path(assigns,
-          account_id: row.account_id,
-          section_id: flagged.section_id,
-          block_id: flagged.block_id
-        )
+    blocks_by_section =
+      sections
+      |> Enum.map(& &1.id)
+      |> Content.list_blocks_by_section_ids()
+      |> Enum.group_by(& &1.section_id)
+
+    for section <- sections,
+        {block, number} <-
+          blocks_by_section
+          |> Map.get(section.id, [])
+          |> Enum.sort_by(& &1.order)
+          |> Enum.with_index(1),
+        reduce: {%{}, %{}} do
+      {names, sections_by_block} ->
+        name = "#{section.title} · #{number}. #{GradebookTable.type_label(block.type)}"
+        {Map.put(names, block.id, name), Map.put(sections_by_block, block.id, section.id)}
     end
   end
 
-  defp first_flagged_block(row) do
-    Enum.find(row.flagged_blocks, &(&1.slacking_count > 0)) ||
-      Enum.find(row.flagged_blocks, &(&1.struggling_count > 0))
+  defp flatten_tree(sections),
+    do: Enum.flat_map(sections, &[&1 | flatten_tree(&1.children)])
+
+  @level_order Engagement.assessment_levels()
+
+  # Radar rows with display names, most urgent first, then by how much
+  # counted, then alphabetically.
+  defp radar_rows(rows, students) do
+    accounts = Map.new(Enum.reject(students, &is_nil/1), &{&1.id, &1})
+
+    rows
+    |> Enum.map(fn row ->
+      account = Map.get(accounts, row.account_id)
+
+      Map.merge(row, %{
+        name: (account && student_name(account)) || row.account_id,
+        login: (account && account.login) || row.account_id
+      })
+    end)
+    |> Enum.sort_by(fn row ->
+      {Enum.find_index(@level_order, &(&1 == row.level)), -length(row.signals),
+       String.downcase(row.name)}
+    end)
+  end
+
+  defp student_name(account) do
+    case Identity.display_name(account) do
+      name when name in [nil, ""] -> account.login
+      name -> name
+    end
+  end
+
+  defp radar_group(rows) do
+    %{
+      progress_median: median(Enum.map(rows, & &1.progress_percent)),
+      score_median: rows |> Enum.map(& &1.average_score) |> Enum.reject(&is_nil/1) |> median()
+    }
+  end
+
+  defp median([]), do: nil
+
+  defp median(values) do
+    sorted = Enum.sort(values)
+    count = length(sorted)
+    middle = div(count, 2)
+
+    if rem(count, 2) == 1,
+      do: Enum.at(sorted, middle),
+      else: (Enum.at(sorted, middle - 1) + Enum.at(sorted, middle)) / 2
   end
 
   defp refresh_metrics(socket) do

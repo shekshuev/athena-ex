@@ -110,6 +110,10 @@ defmodule AthenaWeb.TeachingLive.GradebookTable do
   def type_label(:quiz_exam), do: gettext("Exam")
   def type_label(:ticket_exam), do: gettext("Ticket exam")
   def type_label(:file_assignment), do: gettext("File assignment")
+  def type_label(:text), do: gettext("Text")
+  def type_label(:video), do: gettext("Video")
+  def type_label(:image), do: gettext("Image")
+  def type_label(:attachment), do: gettext("Attachment")
   def type_label(type), do: type |> to_string() |> String.replace("_", " ")
 
   @doc "Hero icon for a gradable block type."

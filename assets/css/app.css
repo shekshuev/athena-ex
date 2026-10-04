@@ -903,3 +903,34 @@
     }
   }
 }
+
+/* Group Radar student drawer (`GroupRadarComponents.student_drawer/1`). */
+@layer components {
+  .radar-drawer-overlay {
+    animation: radar-fade-in 180ms ease-out both;
+  }
+
+  .radar-drawer-panel {
+    animation: radar-slide-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  @keyframes radar-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes radar-slide-in {
+    from {
+      transform: translateX(2.5rem);
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .radar-drawer-overlay,
+    .radar-drawer-panel {
+      animation: none;
+    }
+  }
+}

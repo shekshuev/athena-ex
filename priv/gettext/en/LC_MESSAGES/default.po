@@ -602,11 +602,11 @@ msgstr ""
 #: lib/athena_web/live/studio_live/competitions.ex:375
 #: lib/athena_web/live/studio_live/courses.ex:439
 #: lib/athena_web/live/teaching_live/cohort_details.ex:270
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:578
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:377
 #: lib/athena_web/live/teaching_live/grading.ex:297
 #: lib/athena_web/live/teaching_live/grading.ex:402
 #: lib/athena_web/live/teaching_live/grading_monitor.ex:238
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:95
 #, elixir-autogen, elixir-format
 msgid "Status"
 msgstr ""
@@ -1162,6 +1162,7 @@ msgstr ""
 #: lib/athena_web/live/studio_live/canvas_component.ex:345
 #: lib/athena_web/live/studio_live/library.ex:637
 #: lib/athena_web/live/studio_live/library_form_component.ex:23
+#: lib/athena_web/live/teaching_live/gradebook_table.ex:115
 #, elixir-autogen, elixir-format
 msgid "Image"
 msgstr ""
@@ -1369,7 +1370,9 @@ msgid "Programming Language"
 msgstr ""
 
 #: lib/athena_web/live/learn_live/index.ex:94
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:575
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:174
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:97
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:279
 #, elixir-autogen, elixir-format
 msgid "Progress"
 msgstr ""
@@ -1708,6 +1711,7 @@ msgstr ""
 #: lib/athena_web/live/studio_live/canvas_component.ex:356
 #: lib/athena_web/live/studio_live/library.ex:638
 #: lib/athena_web/live/studio_live/library_form_component.ex:24
+#: lib/athena_web/live/teaching_live/gradebook_table.ex:114
 #, elixir-autogen, elixir-format
 msgid "Video"
 msgstr ""
@@ -2139,10 +2143,10 @@ msgid "Score Settings"
 msgstr ""
 
 #: lib/athena_web/controllers/gradebook_export_controller.ex:53
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:574
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:767
 #: lib/athena_web/live/teaching_live/grading.ex:376
 #: lib/athena_web/live/teaching_live/grading_monitor.ex:236
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:94
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Student"
 msgstr ""
@@ -2266,7 +2270,7 @@ msgid "Access Schedule"
 msgstr ""
 
 #: lib/athena_web/live/teaching_live/cohort_access.ex:40
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:85
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:101
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:41
 #, elixir-autogen, elixir-format
 msgid "Access denied or course not found."
@@ -2288,14 +2292,14 @@ msgid "Active Override"
 msgstr ""
 
 #: lib/athena_web/live/teaching_live/cohort_access.ex:185
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:727
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:762
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:246
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Back to Cohort"
 msgstr ""
 
 #: lib/athena_web/live/teaching_live/cohort_access.ex:212
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:326
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:362
 #, elixir-autogen, elixir-format
 msgid "Back to Section"
 msgstr ""
@@ -3063,6 +3067,7 @@ msgstr ""
 
 #: lib/athena_web/live/studio_live/canvas_component.ex:241
 #: lib/athena_web/live/studio_live/canvas_component.ex:334
+#: lib/athena_web/live/teaching_live/gradebook_table.ex:113
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Text"
 msgstr ""
@@ -4647,6 +4652,7 @@ msgid "Only one avatar is allowed"
 msgstr ""
 
 #: lib/athena_web/live/teaching_live/grading_monitor.ex:272
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:391
 #, elixir-autogen, elixir-format
 msgid "Open"
 msgstr ""
@@ -4859,12 +4865,12 @@ msgstr ""
 msgid "is incorrect"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:488
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:524
 #, elixir-autogen, elixir-format
 msgid "Active students"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:449
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:485
 #, elixir-autogen, elixir-format
 msgid "Activity heatmap"
 msgstr ""
@@ -4879,7 +4885,7 @@ msgstr ""
 msgid "Allow nudges on this block?"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:357
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:393
 #, elixir-autogen, elixir-format
 msgid "Avg dwell (s)"
 msgstr ""
@@ -4889,12 +4895,12 @@ msgstr ""
 msgid "Back to Cohorts"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:414
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:450
 #, elixir-autogen, elixir-format
 msgid "Charts period"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:279
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:321
 #, elixir-autogen, elixir-format
 msgid "Compare Cohorts"
 msgstr ""
@@ -4904,7 +4910,7 @@ msgstr ""
 msgid "Compare cohorts: %{course}"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:514
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:550
 #, elixir-autogen, elixir-format
 msgid "Content issue"
 msgstr ""
@@ -4914,7 +4920,7 @@ msgstr ""
 msgid "Course Radar"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:462
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:498
 #, elixir-autogen, elixir-format
 msgid "Course funnel"
 msgstr ""
@@ -4935,7 +4941,7 @@ msgstr ""
 msgid "Disabled"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:395
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:431
 #, elixir-autogen, elixir-format
 msgid "Dwell distribution"
 msgstr ""
@@ -4957,7 +4963,7 @@ msgstr ""
 msgid "Engagement Tracking"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:80
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:96
 #, elixir-autogen, elixir-format
 msgid "Engagement: %{course}"
 msgstr ""
@@ -4968,7 +4974,7 @@ msgstr ""
 msgid "Expected time to complete (seconds)"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:319
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:355
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:283
 #, elixir-autogen, elixir-format
 msgid "Export CSV"
@@ -4980,26 +4986,26 @@ msgstr ""
 msgid "Fast-completion threshold (0-1)"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:436
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:472
 #, elixir-autogen, elixir-format
 msgid "Flags per section"
 msgstr ""
 
 #: lib/athena_web/live/teaching_live/cohort_analytics_components.ex:40
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:543
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:595
 #, elixir-autogen, elixir-format
 msgid "Group Radar"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:422
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:548
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:458
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:604
 #: lib/athena_web/live/teaching_live/course_engagement_compare.ex:123
 #, elixir-autogen, elixir-format
 msgid "Last 30 days"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:419
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:547
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:455
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:603
 #: lib/athena_web/live/teaching_live/course_engagement_compare.ex:122
 #, elixir-autogen, elixir-format
 msgid "Last 7 days"
@@ -5020,12 +5026,7 @@ msgstr ""
 msgid "Looks like you scrolled past without reading much - want to go back?"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:644
-#, elixir-autogen, elixir-format
-msgid "Needs attention"
-msgstr ""
-
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:683
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:718
 #, elixir-autogen, elixir-format
 msgid "No activity recorded yet."
 msgstr ""
@@ -5035,78 +5036,63 @@ msgstr ""
 msgid "No cohorts are enrolled in this course yet."
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:386
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:422
 #, elixir-autogen, elixir-format
 msgid "No data yet."
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:597
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:304
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:139
 #, elixir-autogen, elixir-format
 msgid "No students in this cohort yet."
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:475
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:511
 #, elixir-autogen, elixir-format
 msgid "Nudge correction rate"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:366
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:402
 #, elixir-autogen, elixir-format
 msgid "Nudges shown"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:646
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:28
 #, elixir-autogen, elixir-format
 msgid "On track"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:360
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:396
 #, elixir-autogen, elixir-format
 msgid "Sample size"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:576
-#, elixir-autogen, elixir-format
-msgid "Slacking index"
-msgstr ""
-
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:558
-#, elixir-autogen, elixir-format
-msgid "Slacking vs. struggling"
-msgstr ""
-
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:645
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:27
 #, elixir-autogen, elixir-format
 msgid "Struggling"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:577
-#, elixir-autogen, elixir-format
-msgid "Struggling index"
-msgstr ""
-
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:398
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:434
 #, elixir-autogen, elixir-format
 msgid "The bottom %{percent}% (red) is the cutoff the nudge algorithm reads against."
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:376
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:412
 #, elixir-autogen, elixir-format
 msgid "Value"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:524
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:560
 #, elixir-autogen, elixir-format
 msgid "View metrics"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:375
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:411
 #, elixir-autogen, elixir-format
 msgid "Week"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:349
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:385
 #, elixir-autogen, elixir-format
 msgid "Weekly trend"
 msgstr ""
@@ -5116,13 +5102,13 @@ msgstr ""
 msgid "When a cohort has nudges enabled, students who complete this block suspiciously fast see a gentle reminder to double-check."
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:302
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:338
 #, elixir-autogen, elixir-format
 msgid "Whole cohort"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:425
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:549
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:461
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:605
 #: lib/athena_web/live/teaching_live/course_engagement_compare.ex:124
 #, elixir-autogen, elixir-format
 msgid "Whole course"
@@ -5462,7 +5448,7 @@ msgid "Back to Announcements"
 msgstr ""
 
 #: lib/athena_web/live/teaching_live/cohort_access.ex:185
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:726
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:761
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:245
 #, elixir-autogen, elixir-format
 msgid "Back to Team"
@@ -5502,6 +5488,8 @@ msgstr ""
 #: lib/athena_web/components/proctoring_components.ex:363
 #: lib/athena_web/components/proctoring_components.ex:547
 #: lib/athena_web/live/studio_live/builder.ex:1890
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:244
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:264
 #, elixir-autogen, elixir-format, fuzzy
 msgid "Close"
 msgstr ""
@@ -6445,7 +6433,7 @@ msgid "Unusual behavior: %{count} metric(s)"
 msgstr ""
 
 #: lib/athena_web/live/teaching_live/cohort_access.ex:223
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:340
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:376
 #, elixir-autogen, elixir-format, fuzzy
 msgid "View Submissions"
 msgstr ""
@@ -6903,6 +6891,7 @@ msgid "Violation confirmed"
 msgstr ""
 
 #: lib/athena_web/components/proctoring_components.ex:450
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:311
 #, elixir-autogen, elixir-format
 msgid "What counted"
 msgstr ""
@@ -7155,7 +7144,7 @@ msgstr ""
 msgid "Collapse section into one column"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:219
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:261
 #: lib/athena_web/live/teaching_live/course_engagement_compare.ex:227
 #, elixir-autogen, elixir-format
 msgid "Could not load engagement data. Please try again."
@@ -7223,7 +7212,7 @@ msgstr ""
 msgid "Last attempt"
 msgstr ""
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:617
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:691
 #, elixir-autogen, elixir-format
 msgid "Loading engagement data"
 msgstr ""
@@ -7353,4 +7342,612 @@ msgstr ""
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:416
 #, elixir-autogen, elixir-format
 msgid "Display as"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:230
+#, elixir-autogen, elixir-format
+msgid "%{count} attempts on “%{block}”"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:83
+#, elixir-autogen, elixir-format
+msgid "%{count}+ signs of getting stuck: much more time than the group, changing answers again and again, going back to earlier blocks, re-running code within seconds."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:78
+#, elixir-autogen, elixir-format
+msgid "%{count}+ signs of rushing through material: much less time than the group, not scrolling to the end, skipping video, pasting answers."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:458
+#, elixir-autogen, elixir-format
+msgid "%{h} h %{m} min"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:457
+#, elixir-autogen, elixir-format
+msgid "%{n} min"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:456
+#, elixir-autogen, elixir-format
+msgid "%{n} s"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:332
+#, elixir-autogen, elixir-format
+msgid "%{share} of the group has already completed it"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:279
+#, elixir-autogen, elixir-format
+msgid "%{value} changes of answer"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:273
+#, elixir-autogen, elixir-format
+msgid "%{value} changes, most of the group made %{baseline} or fewer"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:265
+#, elixir-autogen, elixir-format
+msgid "%{value} of it, the limit is %{baseline}"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:336
+#, elixir-autogen, elixir-format
+msgid "%{value} of the course done, the group's median is %{baseline}"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:249
+#, elixir-autogen, elixir-format
+msgid "%{value} on average, the group usually spends %{baseline} (%{peers} students)"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:242
+#, elixir-autogen, elixir-format
+msgid "%{value} on average, the teacher planned %{baseline}"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:302
+#, elixir-autogen, elixir-format
+msgid "%{value} time(s) - see the cheating monitor for details"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:283
+#, elixir-autogen, elixir-format
+msgid "%{value} time(s) - usually a sign the material wasn't clear the first time"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:295
+#, elixir-autogen, elixir-format
+msgid "%{value} times, the limit is %{baseline}"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:66
+#, elixir-autogen, elixir-format
+msgid "A task scored below %{score}, or %{gap}+ points below the group's median, or two tasks that took many more attempts than usual."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:171
+#, elixir-autogen, elixir-format
+msgid "Activity"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:420
+#, elixir-autogen, elixir-format
+msgid "Ask them to go back to %{blocks}: it was skipped or skimmed before the task they failed."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:61
+#, elixir-autogen, elixir-format
+msgid "At least %{count} sign(s) of dishonest behaviour during an exam: screenshots, copying, extra tabs, leaving the exam tab, pasted answers."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:235
+#, elixir-autogen, elixir-format
+msgid "Behind the group in the course"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:203
+#, elixir-autogen, elixir-format
+msgid "Came back to “%{block}” after moving on"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:430
+#, elixir-autogen, elixir-format
+msgid "Check in on their pace: they are well behind the group in the course."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:239
+#, elixir-autogen, elixir-format
+msgid "Classmates were active, this student opened nothing."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:72
+#, elixir-autogen, elixir-format
+msgid "Course progress %{gap}+ points behind the group's median, or %{count}+ blocks that most of the group has already completed."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:188
+#, elixir-autogen, elixir-format
+msgid "Didn't read “%{block}” to the end"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:176
+#, elixir-autogen, elixir-format
+msgid "Difficulties"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:25
+#, elixir-autogen, elixir-format
+msgid "Falling behind"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:414
+#, elixir-autogen, elixir-format
+msgid "Go through “%{block}” together: the theory was studied, but the task still failed - the topic itself may be unclear."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:233
+#, elixir-autogen, elixir-format
+msgid "Hasn't done “%{block}” yet"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:172
+#, elixir-autogen, elixir-format
+msgid "Integrity"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:23
+#, elixir-autogen, elixir-format
+msgid "Integrity risk"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:200
+#, elixir-autogen, elixir-format
+msgid "Kept changing the answer in “%{block}”"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:221
+#, elixir-autogen, elixir-format
+msgid "Kept leaving the exam “%{block}”"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:388
+#, elixir-autogen, elixir-format
+msgid "Look at the attempts on “%{block}”: many quick retries usually mean guessing."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:227
+#, elixir-autogen, elixir-format
+msgid "Low score on “%{block}”: %{score}"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:179
+#, elixir-autogen, elixir-format
+msgid "No activity in this period"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:87
+#, elixir-autogen, elixir-format
+msgid "None of the above."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:22
+#, elixir-autogen, elixir-format
+msgid "Not engaging"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:24
+#, elixir-autogen, elixir-format
+msgid "Not mastering the material"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:442
+#, elixir-autogen, elixir-format
+msgid "Offer help with “%{block}”: they get stuck there more than others."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:59
+#, elixir-autogen, elixir-format
+msgid "Opened nothing during the selected period, while classmates were active."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:218
+#, elixir-autogen, elixir-format
+msgid "Opened “%{block}” in several tabs"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:177
+#, elixir-autogen, elixir-format
+msgid "Other"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:224
+#, elixir-autogen, elixir-format
+msgid "Pasted answers into the exam “%{block}”"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:197
+#, elixir-autogen, elixir-format
+msgid "Pasted code into “%{block}” without ever running it"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:191
+#, elixir-autogen, elixir-format
+msgid "Pasted most of the answer in “%{block}”"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:206
+#, elixir-autogen, elixir-format
+msgid "Re-ran the code in “%{block}” every few seconds"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:383
+#, elixir-autogen, elixir-format
+msgid "Reach out personally: they haven't opened the course during this period."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:433
+#, elixir-autogen, elixir-format
+msgid "Remind them about what they skipped: %{blocks}."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:173
+#, elixir-autogen, elixir-format
+msgid "Results"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:385
+#, elixir-autogen, elixir-format
+msgid "Review the flagged exam attempt in the cheating monitor before grading it."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:175
+#, elixir-autogen, elixir-format
+msgid "Rushing"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:26
+#, elixir-autogen, elixir-format
+msgid "Skimming"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:194
+#, elixir-autogen, elixir-format
+msgid "Skipped through the video “%{block}”"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:185
+#, elixir-autogen, elixir-format
+msgid "Spent unusually long on “%{block}”"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:393
+#, elixir-autogen, elixir-format
+msgid "Talk about pace: they go through the material much faster than the group."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:349
+#, elixir-autogen, elixir-format
+msgid "Theory before it: “%{block}” - never opened"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:352
+#, elixir-autogen, elixir-format
+msgid "Theory before it: “%{block}” - skimmed (%{how})"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:358
+#, elixir-autogen, elixir-format
+msgid "Theory before it: “%{block}” - studied normally"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:212
+#, elixir-autogen, elixir-format
+msgid "Tried to copy from “%{block}”"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:215
+#, elixir-autogen, elixir-format
+msgid "Tried to cut text in “%{block}”"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:209
+#, elixir-autogen, elixir-format
+msgid "Tried to take a screenshot during “%{block}”"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:182
+#, elixir-autogen, elixir-format
+msgid "Went through “%{block}” too fast"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:103
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:345
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:377
+#, elixir-autogen, elixir-format
+msgid "a block"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:309
+#, elixir-autogen, elixir-format
+msgid "below the pass mark of %{threshold}"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:312
+#, elixir-autogen, elixir-format
+msgid "below the pass mark of %{threshold}; the group's median is %{median}"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:288
+#, elixir-autogen, elixir-format
+msgid "looks like guessing rather than fixing the code"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:329
+#, elixir-autogen, elixir-format
+msgid "many tries in a row usually means guessing"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:366
+#, elixir-autogen, elixir-format
+msgid "not read to the end"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:258
+#, elixir-autogen, elixir-format
+msgid "read %{value} of the page on average (expected at least %{baseline}%)"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:327
+#, elixir-autogen, elixir-format
+msgid "the group usually needs %{baseline}"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:321
+#, elixir-autogen, elixir-format
+msgid "the group's median is %{median} (%{peers} students)"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:291
+#, elixir-autogen, elixir-format
+msgid "the solution was pasted and submitted as is"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:365
+#, elixir-autogen, elixir-format
+msgid "too fast"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:367
+#, elixir-autogen, elixir-format
+msgid "video skipped"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:186
+#, elixir-autogen, elixir-format
+msgid "+%{count} more"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/gradebook_table.ex:116
+#, elixir-autogen, elixir-format
+msgid "Attachment"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:98
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:286
+#, elixir-autogen, elixir-format
+msgid "Avg score"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:455
+#, elixir-autogen, elixir-format
+msgid "Behaviour and scores count only for the selected period; progress counts for the whole course. For a low score we also show how the student went through the theory right before the task."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:143
+#, elixir-autogen, elixir-format
+msgid "Behind the group"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:150
+#, elixir-autogen, elixir-format
+msgid "Changes answers"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:146
+#, elixir-autogen, elixir-format
+msgid "Doesn't read to the end"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:149
+#, elixir-autogen, elixir-format
+msgid "Doesn't run code"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:437
+#, elixir-autogen, elixir-format
+msgid "Every student is checked against the rules below from top to bottom; the first one that matches sets the status. Nothing is weighted or hidden - the student's card lists exactly what matched."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:139
+#, elixir-autogen, elixir-format
+msgid "Exam violations"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:151
+#, elixir-autogen, elixir-format
+msgid "Goes back"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:482
+#, elixir-autogen, elixir-format
+msgid "Got it"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:431
+#, elixir-autogen, elixir-format
+msgid "How a student's status is decided"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:632
+#, elixir-autogen, elixir-format
+msgid "How is this decided?"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:448
+#, elixir-autogen, elixir-format
+msgid "How we compare"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:140
+#, elixir-autogen, elixir-format
+msgid "Low score"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:141
+#, elixir-autogen, elixir-format
+msgid "Many attempts"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:138
+#, elixir-autogen, elixir-format
+msgid "No activity"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:138
+#, elixir-autogen, elixir-format
+msgid "No students with this status."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:318
+#, elixir-autogen, elixir-format
+msgid "Nothing worth worrying about in this period."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:341
+#, elixir-autogen, elixir-format
+msgid "Open in course radar"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:147
+#, elixir-autogen, elixir-format
+msgid "Pastes answers"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:152
+#, elixir-autogen, elixir-format
+msgid "Re-runs code"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:350
+#, elixir-autogen, elixir-format
+msgid "Scores in gradebook"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:142
+#, elixir-autogen, elixir-format
+msgid "Show everyone"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:290
+#, elixir-autogen, elixir-format
+msgid "Signals"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:142
+#, elixir-autogen, elixir-format
+msgid "Skipped blocks"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:148
+#, elixir-autogen, elixir-format
+msgid "Skips video"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:464
+#, elixir-autogen, elixir-format
+msgid "Studying outside the platform: a textbook, a lecture, a friend's notes."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:622
+#, elixir-autogen, elixir-format
+msgid "The status is the first rule that matches: no activity, exam violations, low scores, falling behind, rushing, getting stuck. Click a student to see exactly what counted."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:450
+#, elixir-autogen, elixir-format
+msgid "Time on a block is compared with the time the teacher planned for it, or - if none was set - with how long this group usually spends there (the median). Group comparisons are only made when at least 5 students have data; with fewer, only fixed limits apply."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:470
+#, elixir-autogen, elixir-format
+msgid "Time with the page open but nobody at the screen is subtracted, but not perfectly."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:144
+#, elixir-autogen, elixir-format
+msgid "Too fast"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:476
+#, elixir-autogen, elixir-format
+msgid "Treat a status as a reason to look closer, not as a verdict."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:145
+#, elixir-autogen, elixir-format
+msgid "Very slow"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:461
+#, elixir-autogen, elixir-format
+msgid "What the system can't see"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:299
+#, elixir-autogen, elixir-format
+msgid "What you can do"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:597
+#, elixir-autogen, elixir-format
+msgid "Who needs attention, and why"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:96
+#, elixir-autogen, elixir-format
+msgid "Why"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:467
+#, elixir-autogen, elixir-format
+msgid "Why a student was away - illness or a busy week look the same as giving up."
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:288
+#, elixir-autogen, elixir-format
+msgid "group: %{v}"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/group_radar_components.ex:282
+#, elixir-autogen, elixir-format
+msgid "group: %{v}%"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:678
+#, elixir-autogen, elixir-format
+msgid "last 30 days"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:680
+#, elixir-autogen, elixir-format
+msgid "last 7 days"
+msgstr ""
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:679
+#, elixir-autogen, elixir-format
+msgid "whole course"
 msgstr ""
