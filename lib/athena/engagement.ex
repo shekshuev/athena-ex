@@ -132,6 +132,8 @@ defmodule Athena.Engagement do
   defdelegate nudge_correction_rate(cohort_id, course_id, opts \\ []), to: Metrics
   defdelegate course_overview(cohort_id, course_id, opts \\ []), to: Metrics
   defdelegate window_start(days), to: Metrics
+  defdelegate course_map(cohort_id, course_id, opts \\ []), to: Metrics
+  defdelegate rank_course_map(entries, limit), to: Athena.Engagement.CourseMap, as: :rank
   defdelegate gradebook_engagement(cohort_id, course_id, opts \\ []), to: Metrics
   defdelegate assessment_levels(), to: Athena.Engagement.StudentAssessment, as: :levels
   defdelegate histogram(cohort_id, block_id), to: BlockStats

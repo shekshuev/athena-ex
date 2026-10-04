@@ -28,6 +28,7 @@ defmodule Athena.Engagement.Metrics do
 
   alias Athena.Engagement.{
     Accumulator,
+    CourseMap,
     DashboardCache,
     Events,
     Rollups,
@@ -441,6 +442,206 @@ defmodule Athena.Engagement.Metrics do
       }
     end)
   end
+
+  @doc """
+  The Course Map: for every block of the course, in course order, how the
+  cohort did on it over the window - who opened it, who completed it, how
+  long they spent, how many rushed through it or got stuck, how they
+  scored - and which of that makes it a problem spot
+  (`Athena.Engagement.CourseMap`). With `account_id:` every block also
+  carries that one student's own numbers and signals next to the cohort's.
+
+  Behaviour is windowed by `:since`; completion and scores are whole-course
+  facts. Returns `%{sections: [%{section, depth, block_ids}], blocks:
+  %{block_id => block}, entries: %{block_id => entry}, students_count}`.
+  """
+  @spec course_map(binary(), binary(), keyword()) :: map()
+  def course_map(cohort_id, course_id, opts \\ []) do
+    account_id = Keyword.get(opts, :account_id)
+
+    cached({:course_map, account_id}, cohort_id, course_id, opts, fn ->
+      since = Keyword.get(opts, :since, default_since())
+      index = build_scope_index(course_id, cohort_id, since, opts)
+      students = students_in_cohort(cohort_id)
+      block_ids = Enum.map(index.all_blocks, & &1.id)
+
+      context = %{
+        index: index,
+        students: students,
+        completed:
+          Learning.completed_block_ids_by_account(students, block_ids, team_scope_id(cohort_id)),
+        cells: cohort_cells(cohort_id, course_id, students),
+        account_id: account_id,
+        config: engagement_config()
+      }
+
+      %{
+        sections:
+          Enum.map(index.sections, fn section ->
+            %{
+              section: section,
+              depth: section_depth(section),
+              block_ids: index.blocks_by_section |> Map.get(section.id, []) |> Enum.map(& &1.id)
+            }
+          end),
+        blocks: Map.new(index.all_blocks, &{&1.id, &1}),
+        entries: Map.new(index.all_blocks, &{&1.id, map_entry(&1, context)}),
+        students_count: length(students)
+      }
+    end)
+  end
+
+  defp section_depth(%{path: %{labels: labels}}) when is_list(labels),
+    do: max(length(labels) - 1, 0)
+
+  defp section_depth(_section), do: 0
+
+  defp map_entry(block, context) do
+    stats = block_cohort_stats(block, context)
+    issues = CourseMap.cohort_issues(stats, context.config)
+
+    entry = %{stats: stats, issues: issues, severity: CourseMap.severity(issues)}
+
+    case context.account_id do
+      nil ->
+        entry
+
+      account_id ->
+        Map.put(entry, :student, block_student_view(block, account_id, stats, context))
+    end
+  end
+
+  defp block_cohort_stats(block, context) do
+    %{index: index, students: students} = context
+
+    accs =
+      for account_id <- students,
+          acc = Map.get(index.acc_by_account_block, {account_id, block.id}),
+          acc != nil and acc.event_count > 0,
+          do: {account_id, acc}
+
+    flags =
+      Enum.map(accs, fn {account_id, _acc} -> student_block_flags(block, account_id, index) end)
+
+    cohort_metrics =
+      accs
+      |> Enum.map(&elem(&1, 1))
+      |> Accumulator.to_cohort_metrics(
+        block.type,
+        Map.fetch!(index.resolved_rule_by_block_id, block.id)
+      )
+
+    cells =
+      for account_id <- students,
+          cell = Map.get(context.cells, {account_id, block.id}),
+          cell != nil,
+          do: cell
+
+    scores = for %{state: :scored, score: score} <- cells, do: score
+    pass_mark = Keyword.get(context.config, :low_score_threshold, 50)
+
+    %{
+      students: length(students),
+      opened: length(accs),
+      completed:
+        Enum.count(
+          students,
+          &MapSet.member?(Map.get(context.completed, &1, MapSet.new()), block.id)
+        ),
+      avg_dwell: cohort_metrics[:avg_dwell_seconds],
+      dwell_median: get_in(index.baselines, [block.id, :dwell_median]),
+      avg_scroll: cohort_metrics[:avg_scroll_depth_percent],
+      skip_ratio: cohort_metrics[:skip_ratio],
+      skimmed: Enum.count(flags, &(&1.slacking_flags != [])),
+      stuck: Enum.count(flags, &(&1.struggling_flags != [])),
+      backtrack_rate: cohort_metrics[:backtrack_rate],
+      hesitation_rate: cohort_metrics[:hesitation_rate],
+      content_flags: flag_concerns(cohort_metrics).content,
+      scored: length(scores),
+      passed: Enum.count(scores, &(&1 >= pass_mark)),
+      score_avg: average(scores),
+      attempted: length(cells),
+      attempts_avg: cells |> Enum.map(& &1.attempts) |> average()
+    }
+  end
+
+  defp block_student_view(block, account_id, stats, context) do
+    %{index: index, config: config} = context
+    acc = Map.get(index.acc_by_account_block, {account_id, block.id})
+    metrics = if acc, do: student_block_metrics(block, acc, index), else: %{}
+    flagged = student_block_flags(block, account_id, index)
+    cell = Map.get(context.cells, {account_id, block.id})
+
+    signals = flag_signals(flagged) ++ score_signals(cell, stats, config)
+
+    %{
+      opened?: acc != nil and acc.event_count > 0,
+      completed?: MapSet.member?(Map.get(context.completed, account_id, MapSet.new()), block.id),
+      avg_dwell: metrics[:avg_dwell_seconds],
+      avg_scroll: metrics[:avg_scroll_depth_percent],
+      skip_ratio: metrics[:skip_ratio],
+      cell: cell,
+      signals: signals,
+      severity: CourseMap.student_severity(signals)
+    }
+  end
+
+  defp flag_signals(flagged) do
+    for {category, flags} <- [
+          slacking: flagged.slacking_flags,
+          struggling: flagged.struggling_flags,
+          integrity: flagged.integrity_flags
+        ],
+        flag <- flags do
+      flagged.details
+      |> Map.get(flag, %{basis: :pattern})
+      |> Map.merge(%{key: flag, category: category, block_id: flagged.block_id})
+    end
+  end
+
+  # The same rules as the Group Radar's performance signals, against this
+  # block's cohort numbers.
+  defp score_signals(nil, _stats, _config), do: []
+
+  defp score_signals(cell, stats, config) do
+    pass_mark = Keyword.get(config, :low_score_threshold, 50)
+    min_attempts = Keyword.get(config, :many_attempts_min, 3)
+
+    low =
+      if cell.state == :scored and cell.score < pass_mark,
+        do: [
+          %{
+            key: :low_score,
+            category: :performance,
+            value: cell.score,
+            baseline: stats.score_avg,
+            basis: :absolute,
+            threshold: pass_mark,
+            peers: stats.scored
+          }
+        ],
+        else: []
+
+    many =
+      if cell.attempts >= min_attempts and
+           (is_nil(stats.attempts_avg) or cell.attempts >= 2 * stats.attempts_avg),
+         do: [
+           %{
+             key: :many_attempts,
+             category: :performance,
+             value: cell.attempts,
+             baseline: stats.attempts_avg,
+             basis: :group,
+             peers: stats.attempted
+           }
+         ],
+         else: []
+
+    low ++ many
+  end
+
+  defp average([]), do: nil
+  defp average(values), do: Enum.sum(values) / length(values)
 
   defp radar_from_index(index, cohort_id, course_id, opts) do
     blocks = radar_blocks(index, Keyword.get(opts, :section_id))

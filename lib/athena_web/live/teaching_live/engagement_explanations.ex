@@ -422,6 +422,39 @@ defmodule AthenaWeb.TeachingLive.EngagementExplanations do
     end
   end
 
+  @doc "Short name of a Course Map issue (`Athena.Engagement.CourseMap`)."
+  @spec issue_label(atom()) :: String.t()
+  def issue_label(:low_scores), do: gettext("Low scores")
+  def issue_label(:many_attempts), do: gettext("Many attempts")
+  def issue_label(:skimmed), do: gettext("Rushed through")
+  def issue_label(:stuck), do: gettext("Students get stuck")
+  def issue_label(:high_backtrack_rate), do: gettext("Students come back")
+  def issue_label(:high_hesitation_rate), do: gettext("Answers keep changing")
+  def issue_label(key), do: key |> to_string() |> String.replace("_", " ")
+
+  @doc "One line about a Course Map issue, with its number."
+  @spec issue_note(map()) :: String.t()
+  def issue_note(%{key: :low_scores, value: share}),
+    do: gettext("only %{share} reached the pass mark", share: share(share))
+
+  def issue_note(%{key: :many_attempts, value: avg}),
+    do:
+      gettext("%{avg} attempts on average", avg: :erlang.float_to_binary(avg * 1.0, decimals: 1))
+
+  def issue_note(%{key: :skimmed, value: share}),
+    do: gettext("%{share} of those who opened it rushed through it", share: share(share))
+
+  def issue_note(%{key: :stuck, value: share}),
+    do: gettext("%{share} of those who opened it got stuck", share: share(share))
+
+  def issue_note(%{key: :high_backtrack_rate, value: share}),
+    do: gettext("%{share} came back to it after moving on", share: share(share))
+
+  def issue_note(%{key: :high_hesitation_rate, value: share}),
+    do: gettext("%{share} kept changing their answers", share: share(share))
+
+  def issue_note(_issue), do: ""
+
   # Recommendations
 
   @doc """
