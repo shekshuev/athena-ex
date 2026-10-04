@@ -57,7 +57,7 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompareTest do
     refute html =~ "Elsewhere Cohort"
   end
 
-  test "with no cohorts enrolled, shows an empty state and a valid empty chart", %{
+  test "with no cohorts enrolled, shows an empty state and no table", %{
     conn: conn,
     course: course
   } do
@@ -66,32 +66,10 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompareTest do
     html = render_async(lv)
 
     assert html =~ "No cohorts are enrolled in this course yet."
-
-    config = chart_config_from_html(html, "cohort-compare-radar")
-    assert config["data"]["datasets"] == []
+    refute has_element?(lv, "#cohort-compare-table")
   end
 
-  test "defaults to selecting every enrolled cohort (under the cap) and plots one dataset each",
-       %{
-         conn: conn,
-         course: course
-       } do
-    cohort_a = insert(:cohort, name: "Cohort A")
-    cohort_b = insert(:cohort, name: "Cohort B")
-    insert(:enrollment, course_id: course.id, cohort_id: cohort_a.id)
-    insert(:enrollment, course_id: course.id, cohort_id: cohort_b.id)
-
-    {:ok, lv, _html} = live(conn, ~p"/teaching/courses/#{course.id}/engagement/compare")
-
-    html = render_async(lv)
-
-    config = chart_config_from_html(html, "cohort-compare-radar")
-    labels = Enum.map(config["data"]["datasets"], & &1["label"])
-
-    assert Enum.sort(labels) == ["Cohort A", "Cohort B"]
-  end
-
-  test "toggling a cohort off removes its dataset from the chart", %{
+  test "defaults to every enrolled cohort, one column each, and toggling one off drops it", %{
     conn: conn,
     course: course
   } do
@@ -101,87 +79,83 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompareTest do
     insert(:enrollment, course_id: course.id, cohort_id: cohort_b.id)
 
     {:ok, lv, _html} = live(conn, ~p"/teaching/courses/#{course.id}/engagement/compare")
+    render_async(lv)
 
-    _ = render_async(lv)
+    assert has_element?(lv, "#cell-score-#{cohort_a.id}")
+    assert has_element?(lv, "#cell-score-#{cohort_b.id}")
 
-    lv
-    |> element("button[phx-value-cohort_id='#{cohort_a.id}']")
-    |> render_click()
+    lv |> element("button[phx-value-cohort_id='#{cohort_a.id}']") |> render_click()
+    render_async(lv)
 
-    html = render_async(lv)
-
-    config = chart_config_from_html(html, "cohort-compare-radar")
-    labels = Enum.map(config["data"]["datasets"], & &1["label"])
-
-    assert labels == ["Cohort B"]
+    refute has_element?(lv, "#cell-score-#{cohort_a.id}")
+    assert has_element?(lv, "#cell-score-#{cohort_b.id}")
   end
 
-  test "each cohort's radar values reflect its own behavior independently", %{
+  test "a clearly weaker group is marked, explained in words and in the topics matrix", %{
     conn: conn,
     course: course,
-    section: section,
-    block: block
+    section: section
   } do
-    fast_cohort = insert(:cohort, name: "Fast Cohort")
-    calm_cohort = insert(:cohort, name: "Calm Cohort")
-    insert(:enrollment, course_id: course.id, cohort_id: fast_cohort.id)
-    insert(:enrollment, course_id: course.id, cohort_id: calm_cohort.id)
+    quiz = insert(:block, section: section, type: :quiz_question, order: 20)
+    weak = insert(:cohort, name: "Weak Cohort")
+    strong = insert(:cohort, name: "Strong Cohort")
 
-    fast_student = insert(:account)
-    calm_student = insert(:account)
-    insert(:cohort_membership, account_id: fast_student.id, cohort_id: fast_cohort.id)
-    insert(:cohort_membership, account_id: calm_student.id, cohort_id: calm_cohort.id)
+    for {cohort, score} <- [{weak, 20}, {strong, 90}] do
+      insert(:enrollment, course_id: course.id, cohort_id: cohort.id)
 
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-    fast_session = Ecto.UUID.generate()
-    calm_session = Ecto.UUID.generate()
+      for _ <- 1..2 do
+        student = insert(:account)
+        insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
 
-    # fast_cohort's only student fast-dwells (5s against a 100s
-    # expectation); calm_cohort's only student dwells right at the
-    # expectation, triggering nothing.
-    Engagement.record_events(fast_student.id, fast_cohort.id, fast_session, [
-      %{
-        block_id: block.id,
-        section_id: section.id,
-        event_type: :viewport_enter,
-        occurred_at: now
-      },
-      %{
-        block_id: block.id,
-        section_id: section.id,
-        event_type: :viewport_exit,
-        occurred_at: DateTime.add(now, 5, :second)
-      }
-    ])
-
-    Engagement.record_events(calm_student.id, calm_cohort.id, calm_session, [
-      %{
-        block_id: block.id,
-        section_id: section.id,
-        event_type: :viewport_enter,
-        occurred_at: now
-      },
-      %{
-        block_id: block.id,
-        section_id: section.id,
-        event_type: :viewport_exit,
-        occurred_at: DateTime.add(now, 100, :second)
-      }
-    ])
+        insert(:submission,
+          account_id: student.id,
+          block_id: quiz.id,
+          status: :graded,
+          score: score
+        )
+      end
+    end
 
     {:ok, lv, _html} = live(conn, ~p"/teaching/courses/#{course.id}/engagement/compare")
+    render_async(lv)
 
-    html = render_async(lv)
+    assert has_element?(lv, "#cell-score-#{weak.id}[data-deviation='2-bad']")
+    assert has_element?(lv, "#cell-score-#{strong.id}[data-deviation='2-good']")
+    assert lv |> element("#indicator-score td.bg-base-200\\/50") |> render() =~ "55"
 
-    config = chart_config_from_html(html, "cohort-compare-radar")
-    axes = config["data"]["labels"]
-    fast_dwell_index = Enum.find_index(axes, &(&1 == "fast dwell"))
+    insights = lv |> element("#compare-insights") |> render()
+    assert insights =~ "Weak Cohort"
+    assert insights =~ "20 against 55"
 
-    fast_dataset = Enum.find(config["data"]["datasets"], &(&1["label"] == "Fast Cohort"))
-    calm_dataset = Enum.find(config["data"]["datasets"], &(&1["label"] == "Calm Cohort"))
+    assert lv |> element("#topic-#{section.id}-#{weak.id}") |> render() =~ "20"
+    assert lv |> element("#topic-#{section.id}-#{strong.id}") |> render() =~ "90"
 
-    assert Enum.at(fast_dataset["data"], fast_dwell_index) == 1.0
-    assert Enum.at(calm_dataset["data"], fast_dwell_index) == 0.0
+    lv |> element("#matrix-completion") |> render_click()
+
+    assert assert_patch(lv) =~ "matrix=completion"
+
+    assert lv |> element("#topic-#{section.id}-#{weak.id}") |> render() =~ "0%"
+  end
+
+  test "every cell opens that group's radar, filtered to the students behind the number", %{
+    conn: conn,
+    course: course
+  } do
+    cohort = insert(:cohort, name: "Only Cohort")
+    insert(:enrollment, course_id: course.id, cohort_id: cohort.id)
+
+    {:ok, lv, _html} = live(conn, ~p"/teaching/courses/#{course.id}/engagement/compare")
+    render_async(lv)
+
+    assert has_element?(
+             lv,
+             ~s(#cell-inactive-#{cohort.id}[href="/teaching/cohorts/#{cohort.id}/engagement/#{course.id}?view=students&window=7&level=inactive"])
+           )
+
+    assert has_element?(
+             lv,
+             ~s(#cell-slacking-#{cohort.id}[href$="level=superficial"])
+           )
   end
 
   test "the period picker changes which window of behavior is counted", %{
@@ -193,58 +167,33 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompareTest do
     cohort = insert(:cohort, name: "Only Cohort")
     insert(:enrollment, course_id: course.id, cohort_id: cohort.id)
 
-    student = insert(:account)
-    insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
+    recent = insert(:account)
+    earlier = insert(:account)
+    insert(:cohort_membership, account_id: recent.id, cohort_id: cohort.id)
+    insert(:cohort_membership, account_id: earlier.id, cohort_id: cohort.id)
 
-    old_at =
-      DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.add(-10 * 86_400, :second)
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-    session = Ecto.UUID.generate()
-
-    Engagement.record_events(student.id, cohort.id, session, [
-      %{
-        block_id: block.id,
-        section_id: section.id,
-        event_type: :viewport_enter,
-        occurred_at: old_at
-      },
-      %{
-        block_id: block.id,
-        section_id: section.id,
-        event_type: :viewport_exit,
-        occurred_at: DateTime.add(old_at, 5, :second)
-      }
-    ])
+    for {student, at} <- [{recent, now}, {earlier, DateTime.add(now, -10 * 86_400)}] do
+      Engagement.record_events(student.id, cohort.id, Ecto.UUID.generate(), [
+        %{
+          block_id: block.id,
+          section_id: section.id,
+          event_type: :viewport_enter,
+          occurred_at: at
+        }
+      ])
+    end
 
     {:ok, lv, _html} = live(conn, ~p"/teaching/courses/#{course.id}/engagement/compare")
+    render_async(lv)
 
-    html = render_async(lv)
-
-    config = chart_config_from_html(html, "cohort-compare-radar")
-    axes = config["data"]["labels"]
-    fast_dwell_index = Enum.find_index(axes, &(&1 == "fast dwell"))
-    dataset = hd(config["data"]["datasets"])
-
-    # Default window (7 days) misses behavior from 10 days ago.
-    assert Enum.at(dataset["data"], fast_dwell_index) == 0.0
+    # Within 7 days, one of the two students did nothing.
+    assert lv |> element("#cell-inactive-#{cohort.id}") |> render() =~ "50%"
 
     lv |> element("form[phx-change=change_window]") |> render_change(%{"window" => "all"})
-    html = render_async(lv)
+    render_async(lv)
 
-    config = chart_config_from_html(html, "cohort-compare-radar")
-    dataset = hd(config["data"]["datasets"])
-    assert Enum.at(dataset["data"], fast_dwell_index) == 1.0
-  end
-
-  defp chart_config_from_html(html, chart_id) do
-    [_, raw_json] = Regex.run(~r/id="#{chart_id}"[^>]*data-config="([^"]*)"/s, html)
-
-    raw_json
-    |> String.replace("&quot;", "\"")
-    |> String.replace("&#39;", "'")
-    |> String.replace("&amp;", "&")
-    |> String.replace("&lt;", "<")
-    |> String.replace("&gt;", ">")
-    |> Jason.decode!()
+    assert lv |> element("#cell-inactive-#{cohort.id}") |> render() =~ "0%"
   end
 end

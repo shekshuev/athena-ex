@@ -123,4 +123,25 @@ defmodule Athena.Engagement.CourseMapTest do
     assert quiz_entry.student.severity == :high
     assert %{state: :scored, score: 20} = quiz_entry.student.cell
   end
+
+  test "cohort_summary/3 adds up a cohort's progress, levels, scores and sections" do
+    course = insert(:course)
+    section = insert(:section, course: course)
+    quiz = insert(:block, section: section, type: :quiz_question, order: 1)
+    cohort = insert(:cohort)
+    [a, b] = for _ <- 1..2, do: insert(:account)
+    Enum.each([a, b], &insert(:cohort_membership, account_id: &1.id, cohort_id: cohort.id))
+
+    insert(:submission, account_id: a.id, block_id: quiz.id, status: :graded, score: 80)
+    insert(:submission, account_id: b.id, block_id: quiz.id, status: :graded, score: 20)
+    insert(:submission, account_id: b.id, block_id: quiz.id, status: :graded, score: 40)
+    Athena.Learning.mark_completed(a.id, quiz.id)
+
+    summary = Engagement.cohort_summary(cohort.id, course.id, since: nil)
+
+    assert summary.students == 2
+    assert summary.progress_sum == 100.0
+    assert %{scored: 2, score_sum: 120, attempted: 2, first_try: 1} = summary
+    assert %{scored: 2, score_sum: 120, done: 1, total: 2} = summary.sections[section.id]
+  end
 end

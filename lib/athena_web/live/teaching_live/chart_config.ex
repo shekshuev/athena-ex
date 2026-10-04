@@ -1,7 +1,8 @@
 defmodule AthenaWeb.TeachingLive.ChartConfig do
   @moduledoc """
   Pure builders for the Chart.js configs rendered by the `Athena.Engagement`
-  dashboards (`CohortEngagement`, `CourseEngagementCompare`).
+  dashboard (`CohortEngagement`: the Course Radar's activity tab and block
+  detail view).
 
   Every function here takes data that has already been computed by
   `Athena.Engagement`/`Athena.Learning` (never touches `Repo` itself) and
@@ -11,132 +12,10 @@ defmodule AthenaWeb.TeachingLive.ChartConfig do
   shape here instead of inline in a LiveView's `render/1` is what makes each
   chart unit-testable without a browser: call the function, assert on the
   returned map.
+
+  Every label shown to a teacher goes through gettext.
   """
-
-  @doc """
-  A scatter plot from `points` (`%{x:, y:, label:}` maps - `label` is
-  carried through into each Chart.js data point so tooltips can show it,
-  even though the axes only plot `x`/`y`).
-
-  Used for the "Student Radar" screen's slacking-index × struggling-index
-  plot: one point per student, so an outlier is visible without reading
-  every row of the table it sits above.
-  """
-  @spec scatter_config([%{x: number(), y: number(), label: String.t()}], keyword()) :: map()
-  def scatter_config(points, opts \\ []) do
-    %{
-      type: "scatter",
-      data: %{
-        datasets: [
-          %{
-            label: Keyword.get(opts, :dataset_label, "Students"),
-            data: Enum.map(points, fn p -> %{x: p.x, y: p.y, label: p.label} end),
-            backgroundColor: Keyword.get(opts, :color, "#ef4444")
-          }
-        ]
-      },
-      options: %{
-        scales: %{
-          x: %{
-            title: %{display: true, text: Keyword.get(opts, :x_label, "X")},
-            beginAtZero: true
-          },
-          y: %{
-            title: %{display: true, text: Keyword.get(opts, :y_label, "Y")},
-            beginAtZero: true
-          }
-        },
-        plugins: %{legend: %{display: false}}
-      }
-    }
-  end
-
-  @default_colors ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#8b5cf6"]
-
-  @doc """
-  A radar/spider chart overlaying one polygon per `series` entry
-  (`%{label:, values: %{axis => rate}, color: "#rrggbb" | nil}`) across a
-  shared, ordered `axes` list - the "Cohort Comparison" chart: one polygon
-  per cohort, axes = `Athena.Engagement.Metrics.cohort_flag_profile/3`'s
-  flag names, so where one cohort's shape bulges out on `paste_ratio` and
-  another's on `backtrack_rate` is visible at a glance. Missing values
-  (an axis absent from a series' `values`) plot as `0.0` rather than
-  crashing - a cohort simply hasn't produced that flag yet, not an error.
-  Colors default to a small fixed palette, cycled by position, when a
-  series doesn't specify one (hex colors only - a translucent fill is
-  derived by appending an alpha suffix).
-  """
-  @spec radar_config([atom() | String.t()], [
-          %{
-            required(:label) => String.t(),
-            required(:values) => %{atom() => number()},
-            optional(:color) => String.t()
-          }
-        ]) :: map()
-  def radar_config(axes, series, opts \\ []) do
-    datasets =
-      series
-      |> Enum.with_index()
-      |> Enum.map(fn {s, index} ->
-        color =
-          Map.get(s, :color) || Enum.at(@default_colors, rem(index, length(@default_colors)))
-
-        %{
-          label: s.label,
-          data: Enum.map(axes, &Map.get(s.values, &1, 0.0)),
-          borderColor: color,
-          backgroundColor: color <> "33"
-        }
-      end)
-
-    %{
-      type: "radar",
-      data: %{labels: Enum.map(axes, &humanize_axis/1), datasets: datasets},
-      options: %{scales: %{r: %{min: 0, max: Keyword.get(opts, :max, 1.0)}}}
-    }
-  end
-
-  defp humanize_axis(axis) when is_atom(axis), do: axis |> to_string() |> String.replace("_", " ")
-  defp humanize_axis(axis) when is_binary(axis), do: axis
-
-  @doc """
-  A two-series stacked bar chart from `rows` (`%{label:, slacking_count:,
-  struggling_count:}` maps, one per course section) - slacking (red) and
-  struggling (yellow) stacked on top of each other per section, so a
-  section where either color towers over the rest is visible without
-  reading every block's badge underneath it.
-  """
-  @spec stacked_bar_config([
-          %{label: String.t(), slacking_count: number(), struggling_count: number()}
-        ]) :: map()
-  def stacked_bar_config(rows) do
-    %{
-      type: "bar",
-      data: %{
-        labels: Enum.map(rows, & &1.label),
-        datasets: [
-          %{
-            label: "Slacking",
-            data: Enum.map(rows, & &1.slacking_count),
-            backgroundColor: "#ef4444",
-            stack: "flags"
-          },
-          %{
-            label: "Struggling",
-            data: Enum.map(rows, & &1.struggling_count),
-            backgroundColor: "#f59e0b",
-            stack: "flags"
-          }
-        ]
-      },
-      options: %{
-        scales: %{
-          x: %{stacked: true},
-          y: %{stacked: true, beginAtZero: true, ticks: %{precision: 0}}
-        }
-      }
-    }
-  end
+  use Gettext, backend: AthenaWeb.Gettext
 
   @doc """
   A day-of-week x hour-of-day activity heatmap from `cells` (`%{day_of_week:
@@ -171,18 +50,18 @@ defmodule AthenaWeb.TeachingLive.ChartConfig do
     %{
       type: "bubble",
       data: %{
-        datasets: [%{label: "Activity", data: data, backgroundColor: "#3b82f6b3"}]
+        datasets: [%{label: gettext("Activity"), data: data, backgroundColor: "#3b82f6b3"}]
       },
       options: %{
         scales: %{
           x: %{
-            title: %{display: true, text: "Hour (UTC)"},
+            title: %{display: true, text: gettext("Hour of the day")},
             min: -1,
             max: 24,
             ticks: %{stepSize: 3}
           },
           y: %{
-            title: %{display: true, text: "Day of week (1 = Mon, 7 = Sun)"},
+            title: %{display: true, text: gettext("Day of week (1 = Mon, 7 = Sun)")},
             min: 0,
             max: 8,
             ticks: %{stepSize: 1}
@@ -214,13 +93,21 @@ defmodule AthenaWeb.TeachingLive.ChartConfig do
       data: %{
         labels: Enum.map(rows, & &1.label),
         datasets: [
-          %{label: "Opened", data: Enum.map(rows, & &1.opened), backgroundColor: "#3b82f6"},
           %{
-            label: "Interacted",
+            label: gettext("Opened"),
+            data: Enum.map(rows, & &1.opened),
+            backgroundColor: "#3b82f6"
+          },
+          %{
+            label: gettext("Interacted"),
             data: Enum.map(rows, & &1.interacted),
             backgroundColor: "#8b5cf6"
           },
-          %{label: "Completed", data: Enum.map(rows, & &1.completed), backgroundColor: "#22c55e"}
+          %{
+            label: gettext("Completed"),
+            data: Enum.map(rows, & &1.completed),
+            backgroundColor: "#22c55e"
+          }
         ]
       },
       options: %{
@@ -246,7 +133,7 @@ defmodule AthenaWeb.TeachingLive.ChartConfig do
         labels: Enum.map(points, &Date.to_string(&1.date)),
         datasets: [
           %{
-            label: Keyword.get(opts, :dataset_label, "Active students"),
+            label: Keyword.get_lazy(opts, :dataset_label, fn -> gettext("Active students") end),
             data: Enum.map(points, & &1.value),
             borderColor: Keyword.get(opts, :color, "#3b82f6"),
             backgroundColor: Keyword.get(opts, :color, "#3b82f6"),
@@ -299,7 +186,7 @@ defmodule AthenaWeb.TeachingLive.ChartConfig do
 
     labels =
       for index <- 0..(bucket_count - 1) do
-        "#{round(index * histogram.bucket_width)}s+"
+        gettext("%{seconds}s+", seconds: round(index * histogram.bucket_width))
       end
 
     %{
@@ -307,7 +194,11 @@ defmodule AthenaWeb.TeachingLive.ChartConfig do
       data: %{
         labels: labels,
         datasets: [
-          %{label: "Students", data: Enum.reverse(counts), backgroundColor: Enum.reverse(colors)}
+          %{
+            label: gettext("Students"),
+            data: Enum.reverse(counts),
+            backgroundColor: Enum.reverse(colors)
+          }
         ]
       },
       options: %{
@@ -337,7 +228,7 @@ defmodule AthenaWeb.TeachingLive.ChartConfig do
         labels: Enum.map(rows, & &1.label),
         datasets: [
           %{
-            label: "Correction rate (%)",
+            label: gettext("Correction rate (%)"),
             data: Enum.map(rows, &correction_percent/1),
             backgroundColor: "#22c55e"
           }

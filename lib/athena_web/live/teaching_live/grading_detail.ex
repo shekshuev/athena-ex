@@ -6,6 +6,8 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
   """
   use AthenaWeb, :live_view
 
+  alias AthenaWeb.TeachingLive.SubmissionLabels
+
   alias Athena.{Learning, Identity, Content, Execution, Engagement}
   import AthenaWeb.BlockComponents
   import AthenaWeb.ProctoringComponents
@@ -582,7 +584,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
               </div>
             </div>
             <.badge tone={status_tone(@submission.status)} class="tracking-wide">
-              {Atom.to_string(@submission.status) |> String.replace("_", " ") |> String.capitalize()}
+              {SubmissionLabels.status_label(@submission.status)}
             </.badge>
           </div>
 

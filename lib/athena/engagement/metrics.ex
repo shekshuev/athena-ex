@@ -643,6 +643,110 @@ defmodule Athena.Engagement.Metrics do
   defp average([]), do: nil
   defp average(values), do: Enum.sum(values) / length(values)
 
+  @doc """
+  One cohort's numbers for the cross-cohort comparison, as additive sums and
+  counts (never pre-averaged), so several cohorts can be combined into a
+  fair "course average" by adding them up:
+
+    * `students`, `progress_sum` (sum of progress percents), `levels`
+      (`%{level => students}` from the Group Radar);
+    * `slacking_students` / `struggling_students` - students with enough
+      rushing / getting-stuck signals to count for that level's rule;
+      `integrity_students` - with any exam-integrity signal;
+    * `scored`, `score_sum`, `attempted`, `first_try` (passed on the first
+      attempt), `flagged_attempts` (cheating monitor: high risk or a
+      confirmed violation) - whole course;
+    * `sections` - `%{section_id => %{scored, score_sum, done, total}}`,
+      per-section scores and completion (`done` of `total` student × block
+      pairs).
+
+  Behaviour is windowed by `:since`, like the radars.
+  """
+  @spec cohort_summary(binary(), binary(), keyword()) :: map()
+  def cohort_summary(cohort_id, course_id, opts \\ []) do
+    cached(:cohort_summary, cohort_id, course_id, opts, fn ->
+      since = Keyword.get(opts, :since, default_since())
+      index = build_scope_index(course_id, cohort_id, since, opts)
+      rows = radar_from_index(index, cohort_id, course_id, opts)
+      students = Enum.map(rows, & &1.account_id)
+      cells = cohort_cells(cohort_id, course_id, students)
+      config = engagement_config()
+      pass_mark = Keyword.get(config, :low_score_threshold, 50)
+
+      completed =
+        Learning.completed_block_ids_by_account(
+          students,
+          Enum.map(index.all_blocks, & &1.id),
+          team_scope_id(cohort_id)
+        )
+
+      gradable = for block <- index.all_blocks, Block.gradable?(block), do: block.id
+
+      student_cells =
+        for s <- students, b <- gradable, cell = cells[{s, b}], cell != nil, do: cell
+
+      scores = for %{state: :scored, score: score} <- student_cells, do: score
+      in_category = fn row, category -> Enum.count(row.signals, &(&1.category == category)) end
+
+      %{
+        students: length(students),
+        progress_sum: rows |> Enum.map(& &1.progress_percent) |> Enum.sum(),
+        levels: Enum.frequencies_by(rows, & &1.level),
+        slacking_students:
+          Enum.count(
+            rows,
+            &(in_category.(&1, :slacking) >=
+                Keyword.get(config, :student_radar_slacking_threshold, 2))
+          ),
+        struggling_students:
+          Enum.count(
+            rows,
+            &(in_category.(&1, :struggling) >=
+                Keyword.get(config, :student_radar_struggling_threshold, 2))
+          ),
+        integrity_students: Enum.count(rows, &(in_category.(&1, :integrity) > 0)),
+        scored: length(scores),
+        score_sum: Enum.sum(scores),
+        attempted: length(student_cells),
+        first_try:
+          Enum.count(
+            student_cells,
+            &(&1.attempts == 1 and &1.state == :scored and &1.score >= pass_mark)
+          ),
+        flagged_attempts: Enum.count(student_cells, &(&1[:integrity] in [:red, :confirmed])),
+        sections:
+          Map.new(
+            index.sections,
+            &{&1.id, section_summary(&1, index, students, cells, completed)}
+          )
+      }
+    end)
+  end
+
+  defp section_summary(section, index, students, cells, completed) do
+    blocks = Map.get(index.blocks_by_section, section.id, [])
+
+    scores =
+      for s <- students,
+          block <- blocks,
+          %{state: :scored, score: score} <- [Map.get(cells, {s, block.id})],
+          do: score
+
+    done =
+      for s <- students,
+          block <- blocks,
+          MapSet.member?(Map.get(completed, s, MapSet.new()), block.id),
+          reduce: 0,
+          do: (count -> count + 1)
+
+    %{
+      scored: length(scores),
+      score_sum: Enum.sum(scores),
+      done: done,
+      total: length(students) * length(blocks)
+    }
+  end
+
   defp radar_from_index(index, cohort_id, course_id, opts) do
     blocks = radar_blocks(index, Keyword.get(opts, :section_id))
     students = students_in_cohort(cohort_id)

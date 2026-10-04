@@ -9,6 +9,8 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
   """
   use AthenaWeb, :live_view
 
+  alias AthenaWeb.TeachingLive.SubmissionLabels
+
   alias Athena.{Content, Engagement, Identity, Learning}
   import AthenaWeb.ProctoringComponents
 
@@ -179,7 +181,7 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
   defp status_label(nil), do: gettext("Not started")
 
   defp status_label(sub),
-    do: Atom.to_string(sub.status) |> String.replace("_", " ") |> String.capitalize()
+    do: SubmissionLabels.status_label(sub.status)
 
   defp status_tone(nil), do: "neutral"
   defp status_tone(%{status: status}) when status in [:graded, :accepted], do: "success"

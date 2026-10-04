@@ -137,7 +137,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       |> element("#map-block-#{block.id} a")
       |> render_click()
 
-    assert html =~ ~r/sample size[\s\S]{0,80}?>\s*1\s*</
+    assert html =~ ~r/Visits measured[\s\S]{0,80}?>\s*1\s*</
   end
 
   test "drills into a single block's metrics and shows the whole-cohort filter by default", %{
@@ -243,7 +243,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
 
     html = render_async(lv)
 
-    assert html =~ ~r/sample size[\s\S]{0,80}?>\s*0\s*</
+    assert html =~ ~r/Visits measured[\s\S]{0,80}?>\s*0\s*</
 
     session_id = Ecto.UUID.generate()
     now = ~U[2026-01-05 12:00:00Z]
@@ -267,7 +267,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
     # instead of sleeping for the full debounce window.
     send(lv.pid, :refresh_metrics)
 
-    assert render(lv) =~ ~r/sample size[\s\S]{0,80}?>\s*1\s*</
+    assert render(lv) =~ ~r/Visits measured[\s\S]{0,80}?>\s*1\s*</
   end
 
   describe "?view=students (\"Student Radar\")" do
@@ -1038,7 +1038,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagementTest do
       config = chart_config_from_html(html, "nudge-correction-rate-chart")
 
       assert config["type"] == "bar"
-      assert config["data"]["labels"] == ["fast dwell"]
+      assert config["data"]["labels"] == ["Too fast"]
       assert [%{"data" => [100.0]}] = config["data"]["datasets"]
     end
 

@@ -36,6 +36,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
   alias Athena.{Content, Engagement, Identity, Learning}
   alias Athena.Content.Block
   alias AthenaWeb.TeachingLive.ChartConfig
+  alias AthenaWeb.TeachingLive.EngagementExplanations, as: Explanations
   import AthenaWeb.TeachingLive.CourseTreeComponents, only: [course_tree_nav: 1]
 
   import AthenaWeb.TeachingLive.CohortAnalyticsComponents,
@@ -282,7 +283,10 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
   # so it must not hold up the others.
   def handle_async(:nudge_rates, {:ok, rates}, socket) do
     rows =
-      Enum.map(rates, &%{label: humanize_key(&1.reason), correction_rate: &1.correction_rate})
+      Enum.map(
+        rates,
+        &%{label: Explanations.short_label(&1.reason), correction_rate: &1.correction_rate}
+      )
 
     {:noreply,
      assign(socket, :correction_rate_chart_config, ChartConfig.correction_rate_config(rows))}
@@ -798,7 +802,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
     <div class={["grid gap-2", (@compact && "grid-cols-3") || "grid-cols-2 md:grid-cols-3"]}>
       <div :for={{key, value} <- Enum.sort(@metrics)} class="bg-base-200/50 rounded-sm p-2">
         <div class="text-[10px] uppercase tracking-widest font-black text-base-content/50">
-          {humanize_key(key)}
+          {Explanations.metric_label(key)}
         </div>
         <div class="font-mono text-sm">{format_value(value)}</div>
       </div>
@@ -809,9 +813,9 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
     """
   end
 
-  defp humanize_key(key), do: key |> to_string() |> String.replace("_", " ")
-
   defp format_value(nil), do: "—"
+  defp format_value(true), do: gettext("Yes")
+  defp format_value(false), do: gettext("No")
   defp format_value(value) when is_float(value), do: :erlang.float_to_binary(value, decimals: 2)
   defp format_value(value), do: to_string(value)
 
@@ -1033,7 +1037,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
     |> assign(:funnel_chart_config, ChartConfig.funnel_config(funnel_rows))
     |> assign(
       :trend_chart_config,
-      ChartConfig.line_config(trend_points, dataset_label: "Active students")
+      ChartConfig.line_config(trend_points)
     )
   end
 

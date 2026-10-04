@@ -5,6 +5,8 @@ defmodule AthenaWeb.TeachingLive.Grading do
   """
   use AthenaWeb, :live_view
 
+  alias AthenaWeb.TeachingLive.SubmissionLabels
+
   alias Athena.Learning
   alias Athena.Identity
   alias Athena.Content
@@ -401,7 +403,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
 
           <:col :let={{_id, sub}} label={gettext("Status")} sort="status">
             <.badge tone={status_tone(sub.status)} class="tracking-wide shrink-0">
-              {Atom.to_string(sub.status) |> String.replace("_", " ") |> String.capitalize()}
+              {SubmissionLabels.status_label(sub.status)}
             </.badge>
           </:col>
 

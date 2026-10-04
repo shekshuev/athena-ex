@@ -135,6 +135,10 @@ defmodule Athena.Bench.EngagementBenchTest do
 
     measure("course map (cohort)", fn -> Engagement.course_map(cohort.id, course.id, opts) end)
 
+    measure("cohort summary (compare)", fn ->
+      Engagement.cohort_summary(cohort.id, course.id, opts)
+    end)
+
     measure("gradebook engagement layer", fn ->
       Engagement.gradebook_engagement(cohort.id, course.id)
     end)

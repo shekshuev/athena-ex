@@ -139,7 +139,7 @@ msgstr "Решения"
 #: lib/athena_web/components/layouts/dashboard.html.heex:197
 #: lib/athena_web/live/teaching_live/cohorts.ex:64
 #: lib/athena_web/live/teaching_live/cohorts.ex:163
-#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:131
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:178
 #, elixir-autogen, elixir-format
 msgid "Cohorts"
 msgstr "Учебные группы"
@@ -603,9 +603,9 @@ msgstr "Выберите роль..."
 #: lib/athena_web/live/studio_live/courses.ex:439
 #: lib/athena_web/live/teaching_live/cohort_details.ex:270
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:552
-#: lib/athena_web/live/teaching_live/grading.ex:297
-#: lib/athena_web/live/teaching_live/grading.ex:402
-#: lib/athena_web/live/teaching_live/grading_monitor.ex:238
+#: lib/athena_web/live/teaching_live/grading.ex:299
+#: lib/athena_web/live/teaching_live/grading.ex:404
+#: lib/athena_web/live/teaching_live/grading_monitor.ex:240
 #: lib/athena_web/live/teaching_live/group_radar_components.ex:95
 #, elixir-autogen, elixir-format
 msgid "Status"
@@ -783,15 +783,15 @@ msgstr "Биография"
 #: lib/athena_web/live/studio_live/inspector_component.ex:246
 #: lib/athena_web/live/studio_live/inspector_component.ex:248
 #: lib/athena_web/live/studio_live/inspector_component.ex:250
-#: lib/athena_web/live/teaching_live/grading.ex:343
 #: lib/athena_web/live/teaching_live/grading.ex:345
 #: lib/athena_web/live/teaching_live/grading.ex:347
-#: lib/athena_web/live/teaching_live/grading.ex:388
+#: lib/athena_web/live/teaching_live/grading.ex:349
 #: lib/athena_web/live/teaching_live/grading.ex:390
 #: lib/athena_web/live/teaching_live/grading.ex:392
-#: lib/athena_web/live/teaching_live/grading_detail.ex:451
+#: lib/athena_web/live/teaching_live/grading.ex:394
 #: lib/athena_web/live/teaching_live/grading_detail.ex:453
 #: lib/athena_web/live/teaching_live/grading_detail.ex:455
+#: lib/athena_web/live/teaching_live/grading_detail.ex:457
 #, elixir-autogen, elixir-format
 msgid "Block"
 msgstr "Блок"
@@ -997,6 +997,7 @@ msgstr "Описание (необязательно)"
 
 #: lib/athena_web/live/studio_live/competition_form_component.ex:19
 #: lib/athena_web/live/studio_live/course_form_component.ex:26
+#: lib/athena_web/live/teaching_live/submission_labels.ex:10
 #, elixir-autogen, elixir-format
 msgid "Draft"
 msgstr "Черновик"
@@ -1370,6 +1371,7 @@ msgid "Programming Language"
 msgstr "Язык программирования"
 
 #: lib/athena_web/live/learn_live/index.ex:94
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:33
 #: lib/athena_web/live/teaching_live/engagement_explanations.ex:174
 #: lib/athena_web/live/teaching_live/group_radar_components.ex:97
 #: lib/athena_web/live/teaching_live/group_radar_components.ex:279
@@ -1505,6 +1507,7 @@ msgid "Search templates..."
 msgstr "Поиск шаблонов..."
 
 #: lib/athena_web/live/studio_live/inspector_component.ex:74
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:404
 #, elixir-autogen, elixir-format
 msgid "Section"
 msgstr "Секция"
@@ -1553,8 +1556,10 @@ msgstr[0] "%{count} обучающийся успешно добавлен в у
 msgstr[1] "%{count} обучающегося успешно добавлено в учебную группу."
 msgstr[2] "%{count} обучающихся успешно добавлено в учебную группу."
 
+#: lib/athena_web/live/teaching_live/chart_config.ex:198
 #: lib/athena_web/live/teaching_live/cohort_details.ex:339
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:677
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:463
 #, elixir-autogen, elixir-format
 msgid "Students"
 msgstr "Обучающиеся"
@@ -1663,8 +1668,8 @@ msgstr "Введите минимум 2 символа..."
 #: lib/athena_web/live/teaching_live/cohort_details.ex:242
 #: lib/athena_web/live/teaching_live/cohort_form_component.ex:55
 #: lib/athena_web/live/teaching_live/cohort_form_component.ex:267
-#: lib/athena_web/live/teaching_live/grading.ex:379
-#: lib/athena_web/live/teaching_live/grading_monitor.ex:253
+#: lib/athena_web/live/teaching_live/grading.ex:381
+#: lib/athena_web/live/teaching_live/grading_monitor.ex:255
 #: lib/athena_web/live/teaching_live/instructors.ex:194
 #: lib/athena_web/live/teaching_live/team_form_component.ex:49
 #: lib/athena_web/live/teaching_live/team_form_component.ex:255
@@ -1884,7 +1889,7 @@ msgid "Answer Editor"
 msgstr "Редактор ответов"
 
 #: lib/athena_web/live/studio_live/library_editor.ex:861
-#: lib/athena_web/live/teaching_live/grading_detail.ex:448
+#: lib/athena_web/live/teaching_live/grading_detail.ex:450
 #, elixir-autogen, elixir-format
 msgid "Block Type:"
 msgstr "Тип блока"
@@ -1895,7 +1900,7 @@ msgstr "Тип блока"
 msgid "Click or drag files here"
 msgstr "Нажмите или перетащите файлы сюда"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:619
+#: lib/athena_web/live/teaching_live/grading_detail.ex:621
 #, elixir-autogen, elixir-format
 msgid "Comments"
 msgstr "Комментарии"
@@ -1923,7 +1928,7 @@ msgstr "Правильно:"
 msgid "Could not generate upload URL"
 msgstr "Не удалось создать URL для загрузки"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:604
+#: lib/athena_web/live/teaching_live/grading_detail.ex:606
 #, elixir-autogen, elixir-format
 msgid "Current automated score. You can override it manually."
 msgstr "Текущий автоматический балл. Вы можете изменить его вручную."
@@ -1938,7 +1943,7 @@ msgstr "Готово и вернуться"
 msgid "Enter tags separated by commas (e.g. elixir, hard, math)"
 msgstr "Введите теги через запятую (например: elixir, hard, math)"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:581
+#: lib/athena_web/live/teaching_live/grading_detail.ex:583
 #, elixir-autogen, elixir-format
 msgid "Evaluation"
 msgstr "Оценка"
@@ -1953,12 +1958,12 @@ msgstr "Пул исключений"
 msgid "Exclude Tags (Do not use)"
 msgstr "Исключить теги (не использовать)"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:110
+#: lib/athena_web/live/teaching_live/grading_detail.ex:112
 #, elixir-autogen, elixir-format
 msgid "Failed to save grade."
 msgstr "Не удалось сохранить оценку."
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:599
+#: lib/athena_web/live/teaching_live/grading_detail.ex:601
 #, elixir-autogen, elixir-format
 msgid "Final Score (0-100)"
 msgstr "Итоговый балл (0-100)"
@@ -1974,27 +1979,28 @@ msgstr "Завершить и отправить"
 msgid "General Settings"
 msgstr "Общие настройки"
 
-#: lib/athena_web/live/teaching_live/grading.ex:467
+#: lib/athena_web/live/teaching_live/grading.ex:469
 #, elixir-autogen, elixir-format
 msgid "Grade"
 msgstr "Оценить"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:50
+#: lib/athena_web/live/teaching_live/grading_detail.ex:52
 #, elixir-autogen, elixir-format
 msgid "Grade Submission"
 msgstr "Оценить работу"
 
-#: lib/athena_web/live/teaching_live/grading.ex:294
+#: lib/athena_web/live/teaching_live/grading.ex:296
+#: lib/athena_web/live/teaching_live/submission_labels.ex:13
 #, elixir-autogen, elixir-format
 msgid "Graded"
 msgstr "Оценено"
 
-#: lib/athena_web/live/teaching_live/grading.ex:258
+#: lib/athena_web/live/teaching_live/grading.ex:260
 #, elixir-autogen, elixir-format
 msgid "Grading Center"
 msgstr "Центр оценивания"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:578
+#: lib/athena_web/live/teaching_live/grading_detail.ex:580
 #, elixir-autogen, elixir-format
 msgid "Grading Panel"
 msgstr "Панель оценивания"
@@ -2015,7 +2021,7 @@ msgid "Include Tags (Random pool)"
 msgstr "Включить теги (случайный выбор)"
 
 #: lib/athena_web/live/learn_live/player.ex:1923
-#: lib/athena_web/live/teaching_live/grading_detail.ex:612
+#: lib/athena_web/live/teaching_live/grading_detail.ex:614
 #, elixir-autogen, elixir-format
 msgid "Instructor Feedback"
 msgstr "Отзыв преподавателя"
@@ -2045,7 +2051,7 @@ msgstr "Обязательные теги (должны быть)"
 msgid "Min"
 msgstr "Мин."
 
-#: lib/athena_web/live/teaching_live/grading.ex:293
+#: lib/athena_web/live/teaching_live/grading.ex:295
 #, elixir-autogen, elixir-format
 msgid "Needs Review"
 msgstr "Требует проверки"
@@ -2063,7 +2069,7 @@ msgstr "Далее"
 msgid "No questions available"
 msgstr "Нет доступных вопросов"
 
-#: lib/athena_web/live/teaching_live/grading.ex:365
+#: lib/athena_web/live/teaching_live/grading.ex:367
 #, elixir-autogen, elixir-format
 msgid "No submissions found"
 msgstr "Работы не найдены"
@@ -2098,8 +2104,8 @@ msgstr "Назад"
 msgid "Question"
 msgstr "Вопрос"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:489
-#: lib/athena_web/live/teaching_live/grading_detail.ex:557
+#: lib/athena_web/live/teaching_live/grading_detail.ex:491
+#: lib/athena_web/live/teaching_live/grading_detail.ex:559
 #, elixir-autogen, elixir-format
 msgid "Question Content"
 msgstr "Содержание вопроса"
@@ -2126,39 +2132,39 @@ msgstr "Заменить медиафайл"
 msgid "Return to Course"
 msgstr "Вернуться к курсу"
 
-#: lib/athena_web/live/teaching_live/grading.ex:261
+#: lib/athena_web/live/teaching_live/grading.ex:263
 #, elixir-autogen, elixir-format
 msgid "Review and grade student submissions."
 msgstr "Проверка и оценивание работ обучающихся."
 
 #: lib/athena_web/live/learn_live/leaderboard.ex:92
 #: lib/athena_web/live/teaching_live/gradebook_layer_components.ex:294
-#: lib/athena_web/live/teaching_live/grading.ex:408
-#: lib/athena_web/live/teaching_live/grading_detail.ex:521
+#: lib/athena_web/live/teaching_live/grading.ex:410
+#: lib/athena_web/live/teaching_live/grading_detail.ex:523
 #, elixir-autogen, elixir-format
 msgid "Score"
 msgstr "Балл"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:593
+#: lib/athena_web/live/teaching_live/grading_detail.ex:595
 #, elixir-autogen, elixir-format
 msgid "Score Settings"
 msgstr "Настройки баллов"
 
 #: lib/athena_web/controllers/gradebook_export_controller.ex:53
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:975
-#: lib/athena_web/live/teaching_live/grading.ex:376
-#: lib/athena_web/live/teaching_live/grading_monitor.ex:236
+#: lib/athena_web/live/teaching_live/grading.ex:378
+#: lib/athena_web/live/teaching_live/grading_monitor.ex:238
 #: lib/athena_web/live/teaching_live/group_radar_components.ex:94
 #, elixir-autogen, elixir-format
 msgid "Student"
 msgstr "Обучающийся"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:444
+#: lib/athena_web/live/teaching_live/grading_detail.ex:446
 #, elixir-autogen, elixir-format
 msgid "Submission from %{name}"
 msgstr "Работа пользователя %{name}"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:103
+#: lib/athena_web/live/teaching_live/grading_detail.ex:105
 #, elixir-autogen, elixir-format
 msgid "Submission graded successfully!"
 msgstr "Работа успешно оценена!"
@@ -2199,7 +2205,7 @@ msgstr "Ошибка загрузки"
 msgid "Video not uploaded yet"
 msgstr "Видео еще не загружено"
 
-#: lib/athena_web/live/teaching_live/grading.ex:467
+#: lib/athena_web/live/teaching_live/grading.ex:469
 #, elixir-autogen, elixir-format
 msgid "View"
 msgstr "Просмотреть"
@@ -2209,7 +2215,7 @@ msgstr "Просмотреть"
 msgid "Write your detailed answer here..."
 msgstr "Напишите ваш подробный ответ здесь..."
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:621
+#: lib/athena_web/live/teaching_live/grading_detail.ex:623
 #, elixir-autogen, elixir-format
 msgid "Write your feedback here... It will be visible to the student."
 msgstr "Напишите ваш отзыв... Он будет виден обучающемуся."
@@ -2272,7 +2278,7 @@ msgid "Access Schedule"
 msgstr "Расписание доступа"
 
 #: lib/athena_web/live/teaching_live/cohort_access.ex:40
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:104
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:107
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:59
 #, elixir-autogen, elixir-format
 msgid "Access denied or course not found."
@@ -2294,7 +2300,7 @@ msgid "Active Override"
 msgstr "Действующее исключение"
 
 #: lib/athena_web/live/teaching_live/cohort_access.ex:185
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:874
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:880
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:352
 #, elixir-autogen, elixir-format
 msgid "Back to Cohort"
@@ -2628,17 +2634,17 @@ msgid "Underline"
 msgstr "Подчеркнутый"
 
 #: lib/athena_web/live/admin_live/users.ex:267
-#: lib/athena_web/live/teaching_live/grading.ex:304
+#: lib/athena_web/live/teaching_live/grading.ex:306
 #, elixir-autogen, elixir-format
 msgid "All Cohorts"
 msgstr "Все учебные группы"
 
-#: lib/athena_web/live/teaching_live/grading.ex:292
+#: lib/athena_web/live/teaching_live/grading.ex:294
 #, elixir-autogen, elixir-format
 msgid "All Statuses"
 msgstr "Все статусы"
 
-#: lib/athena_web/live/teaching_live/grading.ex:320
+#: lib/athena_web/live/teaching_live/grading.ex:322
 #, elixir-autogen, elixir-format
 msgid "Cheaters Only"
 msgstr "Только подозрительные"
@@ -2649,33 +2655,33 @@ msgstr "Только подозрительные"
 #: lib/athena_web/live/admin_live/gamification.ex:328
 #: lib/athena_web/live/announcement_live/index.ex:110
 #: lib/athena_web/live/dashboard_live/index.ex:247
-#: lib/athena_web/live/teaching_live/grading.ex:305
+#: lib/athena_web/live/teaching_live/grading.ex:307
 #, elixir-autogen, elixir-format
 msgid "Cohort"
 msgstr "Учебная группа"
 
 #: lib/athena_web/live/studio_live/library.ex:605
-#: lib/athena_web/live/teaching_live/grading.ex:268
+#: lib/athena_web/live/teaching_live/grading.ex:270
 #, elixir-autogen, elixir-format
 msgid "Filters"
 msgstr "Фильтры"
 
-#: lib/athena_web/live/teaching_live/grading.ex:326
+#: lib/athena_web/live/teaching_live/grading.ex:328
 #, elixir-autogen, elixir-format
 msgid "From Date"
 msgstr "Начало"
 
-#: lib/athena_web/live/teaching_live/grading.ex:312
+#: lib/athena_web/live/teaching_live/grading.ex:314
 #, elixir-autogen, elixir-format
 msgid "Start typing..."
 msgstr "Начните писать здесь..."
 
-#: lib/athena_web/live/teaching_live/grading.ex:311
+#: lib/athena_web/live/teaching_live/grading.ex:313
 #, elixir-autogen, elixir-format
 msgid "Student (login or name)"
 msgstr "Обучающийся (логин или ФИО)"
 
-#: lib/athena_web/live/teaching_live/grading.ex:327
+#: lib/athena_web/live/teaching_live/grading.ex:329
 #, elixir-autogen, elixir-format
 msgid "To Date"
 msgstr "Конец"
@@ -2826,12 +2832,13 @@ msgstr "Публичный"
 msgid "Public Access"
 msgstr "Публичный доступ"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:668
+#: lib/athena_web/live/teaching_live/grading_detail.ex:670
 #, elixir-autogen, elixir-format
 msgid "Reject"
 msgstr "Отклонить"
 
-#: lib/athena_web/live/teaching_live/grading.ex:295
+#: lib/athena_web/live/teaching_live/grading.ex:297
+#: lib/athena_web/live/teaching_live/submission_labels.ex:15
 #, elixir-autogen, elixir-format
 msgid "Rejected"
 msgstr "Отклонено"
@@ -2843,7 +2850,7 @@ msgstr "Отклонено"
 msgid "Revoke Access"
 msgstr "Отозвать доступ"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:679
+#: lib/athena_web/live/teaching_live/grading_detail.ex:681
 #, elixir-autogen, elixir-format
 msgid "Save & Grade"
 msgstr "Сохранить"
@@ -2871,7 +2878,7 @@ msgstr "Доступ к курсу: %{title}"
 msgid "Share Template: %{title}"
 msgstr "Доступ к шаблону: %{title}"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:102
+#: lib/athena_web/live/teaching_live/grading_detail.ex:104
 #, elixir-autogen, elixir-format
 msgid "Submission rejected!"
 msgstr "Решение отклонено!"
@@ -2979,43 +2986,43 @@ msgid "Your browser is out of date. Athena LMS may not display correctly. Please
 msgstr "Ваш браузер устарел. Athena LMS может отображаться некорректно. Пожалуйста, обновите браузер для лучшей работы."
 
 #: lib/athena_web/live/studio_live/canvas_component.ex:313
-#: lib/athena_web/live/teaching_live/grading.ex:383
+#: lib/athena_web/live/teaching_live/grading.ex:385
 #, elixir-autogen, elixir-format
 msgid "Assignment"
 msgstr "Задание"
 
-#: lib/athena_web/live/teaching_live/grading.ex:355
+#: lib/athena_web/live/teaching_live/grading.ex:357
 #, elixir-autogen, elixir-format
 msgid "Clear Filter"
 msgstr "Очистить фильтры"
 
-#: lib/athena_web/live/teaching_live/grading.ex:397
+#: lib/athena_web/live/teaching_live/grading.ex:399
 #, elixir-autogen, elixir-format
 msgid "Deleted"
 msgstr "Удалить"
 
-#: lib/athena_web/live/teaching_live/grading.ex:444
+#: lib/athena_web/live/teaching_live/grading.ex:446
 #, elixir-autogen, elixir-format
 msgid "Filter by this assignment"
 msgstr "Фильтр по этому заданию"
 
 #: lib/athena_web/live/studio_live/library.ex:613
-#: lib/athena_web/live/teaching_live/grading.ex:275
+#: lib/athena_web/live/teaching_live/grading.ex:277
 #, elixir-autogen, elixir-format
 msgid "Reset All"
 msgstr "Сброс"
 
-#: lib/athena_web/live/teaching_live/grading.ex:338
+#: lib/athena_web/live/teaching_live/grading.ex:340
 #, elixir-autogen, elixir-format
 msgid "Showing submissions filtered by a specific assignment."
 msgstr "Показаны ответы, отфильтрованные по конкретному заданию (блоку)"
 
-#: lib/athena_web/live/teaching_live/grading.ex:430
+#: lib/athena_web/live/teaching_live/grading.ex:432
 #, elixir-autogen, elixir-format
 msgid "Submitted At"
 msgstr "Сдано"
 
-#: lib/athena_web/live/teaching_live/grading.ex:368
+#: lib/athena_web/live/teaching_live/grading.ex:370
 #, elixir-autogen, elixir-format
 msgid "You're all caught up! There are no student submissions matching your criteria."
 msgstr "Всё проверено! На данный момент нет работ, соответствующих этому фильтру."
@@ -3027,22 +3034,22 @@ msgstr "Всё проверено! На данный момент нет раб�
 msgid "Code"
 msgstr "Код"
 
-#: lib/athena_web/live/teaching_live/grading.ex:503
-#: lib/athena_web/live/teaching_live/grading_detail.ex:706
+#: lib/athena_web/live/teaching_live/grading.ex:505
+#: lib/athena_web/live/teaching_live/grading_detail.ex:708
 #, elixir-autogen, elixir-format
 msgid "Delete & Rollback"
 msgstr "Удаление и откат"
 
-#: lib/athena_web/live/teaching_live/grading.ex:480
-#: lib/athena_web/live/teaching_live/grading.ex:497
-#: lib/athena_web/live/teaching_live/grading_detail.ex:691
-#: lib/athena_web/live/teaching_live/grading_detail.ex:700
+#: lib/athena_web/live/teaching_live/grading.ex:482
+#: lib/athena_web/live/teaching_live/grading.ex:499
+#: lib/athena_web/live/teaching_live/grading_detail.ex:693
+#: lib/athena_web/live/teaching_live/grading_detail.ex:702
 #, elixir-autogen, elixir-format
 msgid "Delete Submission"
 msgstr "Удалить отправленный ответ"
 
-#: lib/athena_web/live/teaching_live/grading.ex:163
-#: lib/athena_web/live/teaching_live/grading_detail.ex:237
+#: lib/athena_web/live/teaching_live/grading.ex:165
+#: lib/athena_web/live/teaching_live/grading_detail.ex:239
 #, elixir-autogen, elixir-format
 msgid "Failed to delete submission."
 msgstr "Не удалось удалить отпарвленный ответ"
@@ -3060,8 +3067,8 @@ msgstr "Не удалось сохранить в библиотеку"
 msgid "Owner"
 msgstr "Владелец"
 
-#: lib/athena_web/live/teaching_live/grading.ex:157
-#: lib/athena_web/live/teaching_live/grading_detail.ex:230
+#: lib/athena_web/live/teaching_live/grading.ex:159
+#: lib/athena_web/live/teaching_live/grading_detail.ex:232
 #, elixir-autogen, elixir-format
 msgid "Submission deleted and progress rolled back!"
 msgstr "Отправка удалена, прогресс отменен!"
@@ -3073,8 +3080,8 @@ msgstr "Отправка удалена, прогресс отменен!"
 msgid "Text"
 msgstr "Текст"
 
-#: lib/athena_web/live/teaching_live/grading.ex:499
-#: lib/athena_web/live/teaching_live/grading_detail.ex:702
+#: lib/athena_web/live/teaching_live/grading.ex:501
+#: lib/athena_web/live/teaching_live/grading_detail.ex:704
 #, elixir-autogen, elixir-format
 msgid "Are you sure? This will delete the submission and may lock the next lesson part for the student."
 msgstr "Вы уверены? Это удалит отправленный ответ и может заблокировать следующую часть урока."
@@ -3273,8 +3280,8 @@ msgstr "Лимит времени (сек.)"
 #: lib/athena_web/live/learn_live/player.ex:769
 #: lib/athena_web/live/studio_live/builder.ex:1673
 #: lib/athena_web/live/studio_live/library_editor.ex:740
-#: lib/athena_web/live/teaching_live/grading_detail.ex:258
-#: lib/athena_web/live/teaching_live/grading_detail.ex:297
+#: lib/athena_web/live/teaching_live/grading_detail.ex:260
+#: lib/athena_web/live/teaching_live/grading_detail.ex:299
 #, elixir-autogen, elixir-format
 msgid "Runner node is not connected!"
 msgstr "Узел для запуска кода не подключен"
@@ -3293,7 +3300,7 @@ msgstr "Тесты не пройдены! Статус: %{status}."
 
 #: lib/athena_web/live/studio_live/builder.ex:224
 #: lib/athena_web/live/studio_live/library_editor.ex:207
-#: lib/athena_web/live/teaching_live/grading_detail.ex:422
+#: lib/athena_web/live/teaching_live/grading_detail.ex:424
 #, elixir-autogen, elixir-format
 msgid "Test execution failed or runner disconnected."
 msgstr "Ошибка выполнения кода или узел для запуска кода отключился"
@@ -3313,7 +3320,7 @@ msgstr "Очистить кэш"
 msgid "Failed to clear account cache"
 msgstr "Не удалось очистить кэш"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:27
+#: lib/athena_web/live/teaching_live/grading_detail.ex:29
 #, elixir-autogen, elixir-format
 msgid "Submission data is no longer available."
 msgstr "Данные отправленного задания недоступны"
@@ -3571,9 +3578,9 @@ msgstr "Тестирование завершено"
 #: lib/athena_web/live/studio_live/library.ex:636
 #: lib/athena_web/live/studio_live/library_editor.ex:907
 #: lib/athena_web/live/studio_live/library_form_component.ex:21
-#: lib/athena_web/live/teaching_live/grading.ex:343
-#: lib/athena_web/live/teaching_live/grading.ex:388
-#: lib/athena_web/live/teaching_live/grading_detail.ex:451
+#: lib/athena_web/live/teaching_live/grading.ex:345
+#: lib/athena_web/live/teaching_live/grading.ex:390
+#: lib/athena_web/live/teaching_live/grading_detail.ex:453
 #, elixir-autogen, elixir-format
 msgid "Assessment Session"
 msgstr "Тестирование"
@@ -3590,7 +3597,7 @@ msgstr "Конструктор"
 msgid "Code saved."
 msgstr "Код сохранен"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:538
+#: lib/athena_web/live/teaching_live/grading_detail.ex:540
 #, elixir-autogen, elixir-format
 msgid "Comment"
 msgstr "Комментарии"
@@ -3624,7 +3631,7 @@ msgstr "Не удалось выполнить код"
 msgid "Files submitted successfully!"
 msgstr "Файлы успешно отправлены"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:516
+#: lib/athena_web/live/teaching_live/grading_detail.ex:518
 #, elixir-autogen, elixir-format
 msgid "Instructor Feedback for this answer"
 msgstr "Отзыв преподавателя"
@@ -3664,7 +3671,7 @@ msgstr "Вопрос %{num}"
 msgid "Run"
 msgstr "Запуск"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:545
+#: lib/athena_web/live/teaching_live/grading_detail.ex:547
 #, elixir-autogen, elixir-format
 msgid "Specific feedback for this answer..."
 msgstr "Конкретные комментарии к этому ответу..."
@@ -3723,8 +3730,8 @@ msgstr "Не удалось начать тестирование."
 msgid "Submit Assessment Session?"
 msgstr "Завершить тестирование?"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:462
-#: lib/athena_web/live/teaching_live/grading_detail.ex:499
+#: lib/athena_web/live/teaching_live/grading_detail.ex:464
+#: lib/athena_web/live/teaching_live/grading_detail.ex:501
 #, elixir-autogen, elixir-format
 msgid "Manual Review"
 msgstr "Ручная проверка"
@@ -3797,9 +3804,9 @@ msgstr "Шаблон"
 #: lib/athena_web/live/studio_live/canvas_component.ex:400
 #: lib/athena_web/live/studio_live/inspector_component.ex:248
 #: lib/athena_web/live/studio_live/library_form_component.ex:22
-#: lib/athena_web/live/teaching_live/grading.ex:345
-#: lib/athena_web/live/teaching_live/grading.ex:390
-#: lib/athena_web/live/teaching_live/grading_detail.ex:453
+#: lib/athena_web/live/teaching_live/grading.ex:347
+#: lib/athena_web/live/teaching_live/grading.ex:392
+#: lib/athena_web/live/teaching_live/grading_detail.ex:455
 #, elixir-autogen, elixir-format
 msgid "Ticket Assessment"
 msgstr "Блок вопросов по билетам"
@@ -3855,12 +3862,12 @@ msgstr "Не удалось создать блок вопросов по бил
 msgid "Time Limit (min)"
 msgstr "Лимит времени (мин.)"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:408
+#: lib/athena_web/live/teaching_live/grading_detail.ex:410
 #, elixir-autogen, elixir-format
 msgid "Code Failed! Status: %{status}."
 msgstr "Тесты не пройдены! Статус: %{status}."
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:252
+#: lib/athena_web/live/teaching_live/grading_detail.ex:254
 #, elixir-autogen, elixir-format
 msgid "Could not find submission data."
 msgstr "Ответ отсустует"
@@ -3870,17 +3877,17 @@ msgstr "Ответ отсустует"
 msgid "Import from .docx"
 msgstr "Импорт из .docx"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:314
+#: lib/athena_web/live/teaching_live/grading_detail.ex:316
 #, elixir-autogen, elixir-format
 msgid "Running student's code... Please wait."
 msgstr "Запуск кода... Пожалуйста, подождите"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:255
+#: lib/athena_web/live/teaching_live/grading_detail.ex:257
 #, elixir-autogen, elixir-format
 msgid "Student submission is empty."
 msgstr "Ответ обучающегося пуст."
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:402
+#: lib/athena_web/live/teaching_live/grading_detail.ex:404
 #, elixir-autogen, elixir-format
 msgid "Success! Code passed tests (Score: %{score})"
 msgstr "Успешно! Тесты пройдены (Очки: %{score})"
@@ -4655,7 +4662,7 @@ msgid "Only one avatar is allowed"
 msgstr "Разрешён только один аватар"
 
 #: lib/athena_web/live/teaching_live/gradebook_layer_components.ex:352
-#: lib/athena_web/live/teaching_live/grading_monitor.ex:272
+#: lib/athena_web/live/teaching_live/grading_monitor.ex:274
 #: lib/athena_web/live/teaching_live/group_radar_components.ex:391
 #, elixir-autogen, elixir-format
 msgid "Open"
@@ -4869,12 +4876,13 @@ msgstr "Вы пока не записаны ни на один курс."
 msgid "is incorrect"
 msgstr "неверен"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:630
+#: lib/athena_web/live/teaching_live/chart_config.ex:136
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:636
 #, elixir-autogen, elixir-format
 msgid "Active students"
 msgstr "Активные обучающиеся"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:591
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:597
 #, elixir-autogen, elixir-format
 msgid "Activity heatmap"
 msgstr "Тепловая карта активности"
@@ -4889,22 +4897,22 @@ msgstr "Разрешить подсказки в этом разделе?"
 msgid "Allow nudges on this block?"
 msgstr "Разрешить подсказки в этом блоке?"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:478
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:484
 #, elixir-autogen, elixir-format
 msgid "Avg dwell (s)"
 msgstr "Ср. время (сек)"
 
-#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:62
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:83
 #, elixir-autogen, elixir-format
 msgid "Back to Cohorts"
 msgstr "Назад к учебным группам"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:369
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:375
 #, elixir-autogen, elixir-format
 msgid "Compare Cohorts"
 msgstr "Сравнить учебные группы"
 
-#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:59
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:80
 #, elixir-autogen, elixir-format
 msgid "Compare cohorts: %{course}"
 msgstr "Сравнение учебных групп: %{course}"
@@ -4914,12 +4922,12 @@ msgstr "Сравнение учебных групп: %{course}"
 msgid "Course Radar"
 msgstr "Радар курса"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:604
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:610
 #, elixir-autogen, elixir-format
 msgid "Course funnel"
 msgstr "Воронка курса"
 
-#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:48
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:67
 #, elixir-autogen, elixir-format
 msgid "Course not found."
 msgstr "Курс не найден."
@@ -4935,7 +4943,7 @@ msgstr "Значение по умолчанию для всех блоков э
 msgid "Disabled"
 msgstr "Отключено"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:516
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:522
 #, elixir-autogen, elixir-format
 msgid "Dwell distribution"
 msgstr "Распределение времени"
@@ -4957,7 +4965,7 @@ msgstr "Вовлечённость"
 msgid "Engagement Tracking"
 msgstr "Отслеживание вовлечённости"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:99
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:102
 #, elixir-autogen, elixir-format
 msgid "Engagement: %{course}"
 msgstr "Вовлечённость: %{course}"
@@ -4968,7 +4976,7 @@ msgstr "Вовлечённость: %{course}"
 msgid "Expected time to complete (seconds)"
 msgstr "Ожидаемое время выполнения (в секундах)"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:439
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:445
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:389
 #, elixir-autogen, elixir-format
 msgid "Export CSV"
@@ -4981,21 +4989,21 @@ msgid "Fast-completion threshold (0-1)"
 msgstr "Порог быстрого прохождения (0–1)"
 
 #: lib/athena_web/live/teaching_live/cohort_analytics_components.ex:41
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:681
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:687
 #, elixir-autogen, elixir-format
 msgid "Group Radar"
 msgstr "Радар группы"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:426
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:690
-#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:123
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:432
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:696
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:170
 #, elixir-autogen, elixir-format
 msgid "Last 30 days"
 msgstr "Последние 30 дней"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:423
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:689
-#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:122
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:429
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:695
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:169
 #, elixir-autogen, elixir-format
 msgid "Last 7 days"
 msgstr "Последние 7 дней"
@@ -5015,17 +5023,17 @@ msgstr "Похоже, вы вставили готовый ответ — уве
 msgid "Looks like you scrolled past without reading much - want to go back?"
 msgstr "Похоже, вы промотали, толком не читая, — хотите вернуться?"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:804
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:810
 #, elixir-autogen, elixir-format
 msgid "No activity recorded yet."
 msgstr "Активность пока не зафиксирована."
 
-#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:150
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:200
 #, elixir-autogen, elixir-format
 msgid "No cohorts are enrolled in this course yet."
 msgstr "На этот курс пока не зачислена ни одна учебная группа."
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:507
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:513
 #, elixir-autogen, elixir-format
 msgid "No data yet."
 msgstr "Данных пока нет."
@@ -5036,12 +5044,12 @@ msgstr "Данных пока нет."
 msgid "No students in this cohort yet."
 msgstr "В этой учебной группе пока нет обучающихся."
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:617
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:623
 #, elixir-autogen, elixir-format
 msgid "Nudge correction rate"
 msgstr "Эффективность подсказки"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:487
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:493
 #, elixir-autogen, elixir-format
 msgid "Nudges shown"
 msgstr "Показано подсказок"
@@ -5051,7 +5059,7 @@ msgstr "Показано подсказок"
 msgid "On track"
 msgstr "Без замечаний"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:481
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:487
 #, elixir-autogen, elixir-format
 msgid "Sample size"
 msgstr "Размер выборки"
@@ -5061,22 +5069,22 @@ msgstr "Размер выборки"
 msgid "Struggling"
 msgstr "Испытывает трудности"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:519
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:525
 #, elixir-autogen, elixir-format
 msgid "The bottom %{percent}% (red) is the cutoff the nudge algorithm reads against."
 msgstr "Нижние %{percent}% (красным) — порог, от которого отталкивается алгоритм подсказок."
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:497
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:503
 #, elixir-autogen, elixir-format
 msgid "Value"
 msgstr "Значение"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:496
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:502
 #, elixir-autogen, elixir-format
 msgid "Week"
 msgstr "Неделя"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:470
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:476
 #, elixir-autogen, elixir-format
 msgid "Weekly trend"
 msgstr "Недельный тренд"
@@ -5086,15 +5094,15 @@ msgstr "Недельный тренд"
 msgid "When a cohort has nudges enabled, students who complete this block suspiciously fast see a gentle reminder to double-check."
 msgstr "Если в учебной группе включены подсказки, обучающиеся, подозрительно быстро проходящие этот блок, увидят мягкое напоминание перепроверить себя."
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:404
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:410
 #, elixir-autogen, elixir-format
 msgid "Whole cohort"
 msgstr "Вся учебная группа"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:334
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:429
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:691
-#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:124
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:340
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:435
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:697
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:171
 #, elixir-autogen, elixir-format
 msgid "Whole course"
 msgstr "Весь курс"
@@ -5435,13 +5443,13 @@ msgid "Back to Announcements"
 msgstr "Назад к объявлениям"
 
 #: lib/athena_web/live/teaching_live/cohort_access.ex:185
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:873
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:879
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:351
 #, elixir-autogen, elixir-format
 msgid "Back to Team"
 msgstr "Назад к команде"
 
-#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:61
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:82
 #, elixir-autogen, elixir-format
 msgid "Back to Teams"
 msgstr "Назад к командам"
@@ -5494,7 +5502,7 @@ msgstr "Тренеры"
 msgid "Cohort or team"
 msgstr "Учебная группа или команда"
 
-#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:57
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:78
 #, elixir-autogen, elixir-format
 msgid "Compare teams: %{course}"
 msgstr "Сравнение команд: %{course}"
@@ -5806,7 +5814,7 @@ msgstr "Пока нет участников"
 msgid "No section selected"
 msgstr "Секция не выбрана"
 
-#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:149
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:199
 #, elixir-autogen, elixir-format
 msgid "No teams are enrolled in this course yet."
 msgstr "На этот курс пока не зачислена ни одна команда."
@@ -5999,7 +6007,7 @@ msgid "Team updated successfully"
 msgstr "Команда успешно обновлена"
 
 #: lib/athena_web/components/layouts/dashboard.html.heex:207
-#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:131
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:178
 #: lib/athena_web/live/teaching_live/teams.ex:58
 #: lib/athena_web/live/teaching_live/teams.ex:147
 #, elixir-autogen, elixir-format
@@ -6274,7 +6282,7 @@ msgstr "Мои группы"
 msgid "(%{pinned}/%{total} in this course)"
 msgstr "(%{pinned}/%{total} в этом курсе)"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:632
+#: lib/athena_web/live/teaching_live/grading_detail.ex:634
 #, elixir-autogen, elixir-format
 msgid "Academic Integrity"
 msgstr "Академическая добросовестность"
@@ -6284,13 +6292,13 @@ msgstr "Академическая добросовестность"
 msgid "Breadcrumbs"
 msgstr "Хлебные крошки"
 
-#: lib/athena_web/live/teaching_live/grading_monitor.ex:59
-#: lib/athena_web/live/teaching_live/grading_monitor.ex:214
+#: lib/athena_web/live/teaching_live/grading_monitor.ex:61
+#: lib/athena_web/live/teaching_live/grading_monitor.ex:216
 #, elixir-autogen, elixir-format
 msgid "Cheating Monitor"
 msgstr "Монитор списывания"
 
-#: lib/athena_web/live/teaching_live/grading_monitor.ex:30
+#: lib/athena_web/live/teaching_live/grading_monitor.ex:32
 #, elixir-autogen, elixir-format
 msgid "Could not resolve this submission's group."
 msgstr "Не удалось определить учебную группу для этой работы."
@@ -6300,7 +6308,7 @@ msgstr "Не удалось определить учебную группу д�
 msgid "Deselect all"
 msgstr "Снять выделение"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:639
+#: lib/athena_web/live/teaching_live/grading_detail.ex:641
 #, elixir-autogen, elixir-format
 msgid "Direct evidence: %{count}"
 msgstr "Прямые доказательства: %{count}"
@@ -6322,7 +6330,7 @@ msgstr "Не удалось дублировать шаблон"
 msgid "Failed to update %{count} block(s)."
 msgstr "Не удалось обновить блоки (%{count})."
 
-#: lib/athena_web/live/teaching_live/grading_monitor.ex:217
+#: lib/athena_web/live/teaching_live/grading_monitor.ex:219
 #, elixir-autogen, elixir-format
 msgid "Group %{cohort} - live risk for this assessment."
 msgstr "Группа %{cohort} — риск в реальном времени для этого тестирования."
@@ -6337,7 +6345,7 @@ msgstr "Высокий риск"
 msgid "How this is measured"
 msgstr "Как это измеряется"
 
-#: lib/athena_web/live/teaching_live/grading.ex:455
+#: lib/athena_web/live/teaching_live/grading.ex:457
 #, elixir-autogen, elixir-format
 msgid "Monitor this group for cheating"
 msgstr "Отслеживать списывание в этой группе"
@@ -6350,7 +6358,7 @@ msgstr "Нарушений нет"
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:1376
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:1396
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:1462
-#: lib/athena_web/live/teaching_live/grading_monitor.ex:179
+#: lib/athena_web/live/teaching_live/grading_monitor.ex:181
 #, elixir-autogen, elixir-format
 msgid "Not started"
 msgstr "Не начато"
@@ -6361,7 +6369,7 @@ msgstr "Не начато"
 msgid "Render prompt as image (blocks copy/select, drops formatting)"
 msgstr "Показывать условие как изображение (блокирует копирование/выделение, теряется форматирование)"
 
-#: lib/athena_web/live/teaching_live/grading_monitor.ex:237
+#: lib/athena_web/live/teaching_live/grading_monitor.ex:239
 #, elixir-autogen, elixir-format
 msgid "Risk"
 msgstr "Риск"
@@ -6416,13 +6424,13 @@ msgstr "Это отслеживает только то, что может ув�
 msgid "Time Expired - Auto-Submitted"
 msgstr "Время истекло — отправлено автоматически"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:643
+#: lib/athena_web/live/teaching_live/grading_detail.ex:645
 #, elixir-autogen, elixir-format
 msgid "Unusual behavior: %{count} metric(s)"
 msgstr "Необычное поведение — метрик: %{count}"
 
 #: lib/athena_web/live/teaching_live/cohort_access.ex:223
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:461
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:467
 #, elixir-autogen, elixir-format
 msgid "View Submissions"
 msgstr "Просмотреть работы"
@@ -6668,7 +6676,7 @@ msgstr "Каждый из сигналов ниже даёт очки. %{yellow}
 msgid "Everything measured"
 msgstr "Все измерения"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:205
+#: lib/athena_web/live/teaching_live/grading_detail.ex:207
 #, elixir-autogen, elixir-format
 msgid "Failed to save review."
 msgstr "Не удалось сохранить проверку."
@@ -6960,12 +6968,12 @@ msgstr "была нажата клавиша PrintScreen. Только для Wi
 msgid "what share of the typed answer arrived via paste or drop rather than typing (2 points)."
 msgstr "какая доля ответа была вставлена или перетащена, а не напечатана (2 очка)."
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:724
+#: lib/athena_web/live/teaching_live/grading_detail.ex:726
 #, elixir-autogen, elixir-format
 msgid "Marked as reviewed - no violation."
 msgstr "Отмечено как проверенное: нарушения нет"
 
-#: lib/athena_web/live/teaching_live/grading_detail.ex:723
+#: lib/athena_web/live/teaching_live/grading_detail.ex:725
 #, elixir-autogen, elixir-format
 msgid "Violation confirmed."
 msgstr "Нарушение подтверждено."
@@ -7077,11 +7085,14 @@ msgid "Attempt"
 msgstr "Попытка"
 
 #: lib/athena_web/controllers/gradebook_export_controller.ex:55
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:274
 #, elixir-autogen, elixir-format
 msgid "Average"
 msgstr "Средний балл"
 
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:41
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:911
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:389
 #, elixir-autogen, elixir-format
 msgid "Average score"
 msgstr "Средний балл"
@@ -7135,9 +7146,9 @@ msgstr "Свернуть все разделы"
 msgid "Collapse section into one column"
 msgstr "Свернуть раздел в одну колонку"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:296
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:302
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:150
-#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:227
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:529
 #, elixir-autogen, elixir-format
 msgid "Could not load engagement data. Please try again."
 msgstr "Не удалось загрузить данные вовлечённости. Попробуйте ещё раз."
@@ -7204,7 +7215,7 @@ msgstr "Скрыть задания без совпадений"
 msgid "Last attempt"
 msgstr "Последняя попытка"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:777
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:783
 #, elixir-autogen, elixir-format
 msgid "Loading engagement data"
 msgstr "Загрузка данных вовлечённости"
@@ -7352,17 +7363,17 @@ msgstr "%{count} и более признаков того, что обучаю�
 msgid "%{count}+ signs of rushing through material: much less time than the group, not scrolling to the end, skipping video, pasting answers."
 msgstr "%{count} и более признаков поверхностного прохождения: намного меньше времени, чем у группы, текст не дочитан до конца, видео перематывается, ответы вставляются из буфера."
 
-#: lib/athena_web/live/teaching_live/engagement_explanations.ex:547
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:587
 #, elixir-autogen, elixir-format
 msgid "%{h} h %{m} min"
 msgstr "%{h} ч %{m} мин"
 
-#: lib/athena_web/live/teaching_live/engagement_explanations.ex:546
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:586
 #, elixir-autogen, elixir-format
 msgid "%{n} min"
 msgstr "%{n} мин"
 
-#: lib/athena_web/live/teaching_live/engagement_explanations.ex:545
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:585
 #, elixir-autogen, elixir-format
 msgid "%{n} s"
 msgstr "%{n} с"
@@ -7422,13 +7433,14 @@ msgstr "%{value} раз, допустимо до %{baseline}"
 msgid "A task scored below %{score}, or %{gap}+ points below the group's median, or two tasks that took many more attempts than usual."
 msgstr "Задание сдано ниже чем на %{score} баллов или на %{gap} и более баллов ниже медианы группы, либо два задания потребовали намного больше попыток, чем обычно."
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:556
+#: lib/athena_web/live/teaching_live/chart_config.ex:53
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:562
 #: lib/athena_web/live/teaching_live/engagement_explanations.ex:171
 #, elixir-autogen, elixir-format
 msgid "Activity"
 msgstr "Активность"
 
-#: lib/athena_web/live/teaching_live/engagement_explanations.ex:509
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:549
 #, elixir-autogen, elixir-format
 msgid "Ask them to go back to %{blocks}: it was skipped or skimmed before the task they failed."
 msgstr "Попросите вернуться к %{blocks}: перед проваленным заданием этот материал был пропущен или просмотрен поверхностно."
@@ -7448,7 +7460,7 @@ msgstr "Отстаёт от группы по курсу"
 msgid "Came back to “%{block}” after moving on"
 msgstr "Вернулся к «%{block}», уже пройдя дальше"
 
-#: lib/athena_web/live/teaching_live/engagement_explanations.ex:519
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:559
 #, elixir-autogen, elixir-format
 msgid "Check in on their pace: they are well behind the group in the course."
 msgstr "Уточните, что с темпом: обучающийся заметно отстаёт от группы по курсу."
@@ -7478,7 +7490,7 @@ msgstr "Трудности"
 msgid "Falling behind"
 msgstr "Отстаёт по программе"
 
-#: lib/athena_web/live/teaching_live/engagement_explanations.ex:503
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:543
 #, elixir-autogen, elixir-format
 msgid "Go through “%{block}” together: the theory was studied, but the task still failed - the topic itself may be unclear."
 msgstr "Разберите «%{block}» вместе: теория изучена, но задание всё равно не получилось — возможно, непонятна сама тема."
@@ -7488,6 +7500,7 @@ msgstr "Разберите «%{block}» вместе: теория изучен�
 msgid "Hasn't done “%{block}” yet"
 msgstr "Ещё не прошёл «%{block}»"
 
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:36
 #: lib/athena_web/live/teaching_live/engagement_explanations.ex:172
 #, elixir-autogen, elixir-format
 msgid "Integrity"
@@ -7508,7 +7521,7 @@ msgstr "Много раз менял ответ в «%{block}»"
 msgid "Kept leaving the exam “%{block}”"
 msgstr "Часто уходил со страницы экзамена «%{block}»"
 
-#: lib/athena_web/live/teaching_live/engagement_explanations.ex:477
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:517
 #, elixir-autogen, elixir-format
 msgid "Look at the attempts on “%{block}”: many quick retries usually mean guessing."
 msgstr "Посмотрите попытки в «%{block}»: частые повторы подряд обычно означают подбор ответа."
@@ -7538,7 +7551,7 @@ msgstr "Не занимается"
 msgid "Not mastering the material"
 msgstr "Не усваивает материал"
 
-#: lib/athena_web/live/teaching_live/engagement_explanations.ex:531
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:571
 #, elixir-autogen, elixir-format
 msgid "Offer help with “%{block}”: they get stuck there more than others."
 msgstr "Предложите помощь с «%{block}»: обучающийся застревает здесь сильнее других."
@@ -7578,22 +7591,23 @@ msgstr "Вставил большую часть ответа в «%{block}»"
 msgid "Re-ran the code in “%{block}” every few seconds"
 msgstr "Перезапускал код в «%{block}» каждые несколько секунд"
 
-#: lib/athena_web/live/teaching_live/engagement_explanations.ex:472
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:512
 #, elixir-autogen, elixir-format
 msgid "Reach out personally: they haven't opened the course during this period."
 msgstr "Свяжитесь лично: за этот период обучающийся не открывал курс."
 
-#: lib/athena_web/live/teaching_live/engagement_explanations.ex:522
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:562
 #, elixir-autogen, elixir-format
 msgid "Remind them about what they skipped: %{blocks}."
 msgstr "Напомните о пропущенном: %{blocks}."
 
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:34
 #: lib/athena_web/live/teaching_live/engagement_explanations.ex:173
 #, elixir-autogen, elixir-format
 msgid "Results"
 msgstr "Результаты"
 
-#: lib/athena_web/live/teaching_live/engagement_explanations.ex:474
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:514
 #, elixir-autogen, elixir-format
 msgid "Review the flagged exam attempt in the cheating monitor before grading it."
 msgstr "Перед оценкой проверьте отмеченную попытку экзамена в мониторе списывания."
@@ -7618,7 +7632,7 @@ msgstr "Перематывал видео «%{block}»"
 msgid "Spent unusually long on “%{block}”"
 msgstr "Необычно долго задержался на «%{block}»"
 
-#: lib/athena_web/live/teaching_live/engagement_explanations.ex:482
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:522
 #, elixir-autogen, elixir-format
 msgid "Talk about pace: they go through the material much faster than the group."
 msgstr "Обсудите темп: обучающийся проходит материал намного быстрее группы."
@@ -7660,7 +7674,7 @@ msgstr "Слишком быстро прошёл «%{block}»"
 
 #: lib/athena_web/live/teaching_live/engagement_explanations.ex:103
 #: lib/athena_web/live/teaching_live/engagement_explanations.ex:345
-#: lib/athena_web/live/teaching_live/engagement_explanations.ex:466
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:506
 #: lib/athena_web/live/teaching_live/gradebook_layer_components.ex:342
 #, elixir-autogen, elixir-format
 msgid "a block"
@@ -7767,6 +7781,7 @@ msgstr "Не запускает код"
 msgid "Every student is checked against the rules below from top to bottom; the first one that matches sets the status. Nothing is weighted or hidden - the student's card lists exactly what matched."
 msgstr "Каждый обучающийся проверяется по правилам ниже сверху вниз; первое совпавшее правило и задаёт статус. Никаких скрытых весов — в карточке обучающегося перечислено ровно то, что сработало."
 
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:45
 #: lib/athena_web/live/teaching_live/engagement_explanations.ex:139
 #, elixir-autogen, elixir-format
 msgid "Exam violations"
@@ -7787,7 +7802,7 @@ msgstr "Понятно"
 msgid "How a student's status is decided"
 msgstr "Как определяется статус обучающегося"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:718
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:724
 #, elixir-autogen, elixir-format
 msgid "How is this decided?"
 msgstr "Как определяется статус?"
@@ -7868,7 +7883,7 @@ msgstr "Перематывает видео"
 msgid "Studying outside the platform: a textbook, a lecture, a friend's notes."
 msgstr "Занятия вне платформы: учебник, лекцию, конспект однокурсника."
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:708
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:714
 #, elixir-autogen, elixir-format
 msgid "The status is the first rule that matches: no activity, exam violations, low scores, falling behind, rushing, getting stuck. Click a student to see exactly what counted."
 msgstr "Статус — это первое совпавшее правило: нет активности, нарушения на экзамене, низкие баллы, отставание, поверхностное прохождение, трудности. Нажмите на обучающегося, чтобы увидеть, что именно сработало."
@@ -7908,7 +7923,7 @@ msgstr "Чего система не видит"
 msgid "What you can do"
 msgstr "Что можно сделать"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:683
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:689
 #, elixir-autogen, elixir-format
 msgid "Who needs attention, and why"
 msgstr "Кому нужно внимание и почему"
@@ -7933,17 +7948,17 @@ msgstr "группа: %{v}"
 msgid "group: %{v}%"
 msgstr "группа: %{v}%"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:764
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:770
 #, elixir-autogen, elixir-format
 msgid "last 30 days"
 msgstr "за последние 30 дней"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:766
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:772
 #, elixir-autogen, elixir-format
 msgid "last 7 days"
 msgstr "за последние 7 дней"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:765
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:771
 #, elixir-autogen, elixir-format
 msgid "whole course"
 msgstr "за весь курс"
@@ -8177,17 +8192,17 @@ msgstr "Средний балл · доля сдавших"
 msgid "Average time on the block"
 msgstr "Среднее время на блоке"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:447
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:453
 #, elixir-autogen, elixir-format
 msgid "Back to course map"
 msgstr "Назад к карте курса"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:385
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:391
 #, elixir-autogen, elixir-format
 msgid "Course map"
 msgstr "Карта курса"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:396
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:402
 #, elixir-autogen, elixir-format
 msgid "Looking at"
 msgstr "Смотрим на"
@@ -8197,7 +8212,7 @@ msgstr "Смотрим на"
 msgid "Low scores"
 msgstr "Низкие баллы"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:543
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:549
 #, elixir-autogen, elixir-format
 msgid "Map"
 msgstr "Карта"
@@ -8217,7 +8232,7 @@ msgstr "В этой части курса проблемных мест нет."
 msgid "Nothing stands out for this student in this period."
 msgstr "За этот период у обучающегося ничего не выделяется."
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:572
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:578
 #, elixir-autogen, elixir-format
 msgid "Only problem spots"
 msgstr "Только проблемные места"
@@ -8262,7 +8277,7 @@ msgstr "Время обучающегося · медиана группы"
 msgid "This part of the course has no blocks yet."
 msgstr "В этой части курса пока нет блоков."
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:585
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:591
 #, elixir-autogen, elixir-format
 msgid "When and how much the group works, how far it gets through each section, and whether nudges help."
 msgstr "Когда и сколько занимается группа, как далеко продвигается по разделам и помогают ли подсказки."
@@ -8272,7 +8287,7 @@ msgstr "Когда и сколько занимается группа, как �
 msgid "Where %{name} has trouble"
 msgstr "Где у %{name} трудности"
 
-#: lib/athena_web/live/teaching_live/cohort_engagement.ex:389
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:395
 #, elixir-autogen, elixir-format
 msgid "Where in the course the group - or one student - has trouble"
 msgstr "Где в курсе у группы — или у одного обучающегося — трудности"
@@ -8286,3 +8301,391 @@ msgstr "не открывал"
 #, elixir-autogen, elixir-format
 msgid "only %{share} reached the pass mark"
 msgstr "проходной балл набрали только %{share}"
+
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:271
+#, elixir-autogen, elixir-format
+msgid "%{count} student"
+msgid_plural "%{count} students"
+msgstr[0] "%{count} обучающийся"
+msgstr[1] "%{count} обучающихся"
+msgstr[2] "%{count} обучающихся"
+
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:236
+#, elixir-autogen, elixir-format
+msgid "%{group} is behind in “%{section}”: %{mine}% completed against %{average}%."
+msgstr "%{group} отстаёт в разделе «%{section}»: пройдено %{mine}% против %{average}%."
+
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:199
+#, elixir-autogen, elixir-format
+msgid "%{group}: %{indicator} - %{value} against %{average} on average."
+msgstr "%{group}: %{indicator} — %{value} против %{average} в среднем."
+
+#: lib/athena_web/live/teaching_live/chart_config.ex:189
+#, elixir-autogen, elixir-format
+msgid "%{seconds}s+"
+msgstr "%{seconds} с+"
+
+#: lib/athena_web/live/teaching_live/submission_labels.ex:16
+#, elixir-autogen, elixir-format
+msgid "Accepted"
+msgstr "Принято"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:477
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:487
+#, elixir-autogen, elixir-format
+msgid "Answer changes"
+msgstr "Смены ответа"
+
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:219
+#, elixir-autogen, elixir-format
+msgid "At a glance"
+msgstr "Главное"
+
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:46
+#, elixir-autogen, elixir-format
+msgid "Attempts flagged by the cheating monitor"
+msgstr "Попытки, отмеченные монитором списывания"
+
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:429
+#, elixir-autogen, elixir-format
+msgid "Average best score on the section's graded tasks, whole course."
+msgstr "Средний лучший балл за оцениваемые задания раздела, за весь курс."
+
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:56
+#, elixir-autogen, elixir-format
+msgid "Average best score over every graded task submitted, whole course."
+msgstr "Средний лучший балл по всем сданным заданиям, за весь курс."
+
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:50
+#, elixir-autogen, elixir-format
+msgid "Average share of the course's blocks each student has completed."
+msgstr "Средняя доля блоков курса, пройденных каждым обучающимся."
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:461
+#, elixir-autogen, elixir-format
+msgid "Average time, s"
+msgstr "Среднее время, с"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:467
+#, elixir-autogen, elixir-format
+msgid "Came back after moving on"
+msgstr "Возвращались, пройдя дальше"
+
+#: lib/athena_web/live/teaching_live/submission_labels.ex:12
+#, elixir-autogen, elixir-format
+msgid "Checking"
+msgstr "Проверяется"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:488
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:490
+#, elixir-autogen, elixir-format
+msgid "Code runs"
+msgstr "Запуски кода"
+
+#: lib/athena_web/live/teaching_live/submission_labels.ex:21
+#, elixir-autogen, elixir-format
+msgid "Compilation error"
+msgstr "Ошибка компиляции"
+
+#: lib/athena_web/live/teaching_live/chart_config.ex:107
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:396
+#, elixir-autogen, elixir-format
+msgid "Completed"
+msgstr "Пройдено"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:482
+#, elixir-autogen, elixir-format
+msgid "Copy attempts"
+msgstr "Попытки копирования"
+
+#: lib/athena_web/live/teaching_live/chart_config.ex:231
+#, elixir-autogen, elixir-format
+msgid "Correction rate (%)"
+msgstr "Доля исправившихся (%)"
+
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:39
+#, elixir-autogen, elixir-format
+msgid "Course completed"
+msgstr "Пройдено курса"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:483
+#, elixir-autogen, elixir-format
+msgid "Cut attempts"
+msgstr "Попытки вырезать"
+
+#: lib/athena_web/live/teaching_live/chart_config.ex:64
+#, elixir-autogen, elixir-format
+msgid "Day of week (1 = Mon, 7 = Sun)"
+msgstr "День недели (1 = пн, 7 = вс)"
+
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:44
+#, elixir-autogen, elixir-format
+msgid "Get stuck"
+msgstr "Застревают"
+
+#: lib/athena_web/live/teaching_live/chart_config.ex:58
+#, elixir-autogen, elixir-format
+msgid "Hour of the day"
+msgstr "Час дня"
+
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:163
+#, elixir-autogen, elixir-format
+msgid "How the groups differ, and where to look first"
+msgstr "Чем различаются группы и куда смотреть в первую очередь"
+
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:35
+#, elixir-autogen, elixir-format
+msgid "How they learn"
+msgstr "Как учатся"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:485
+#, elixir-autogen, elixir-format
+msgid "Idle time, s"
+msgstr "Время простоя, с"
+
+#: lib/athena_web/live/teaching_live/chart_config.ex:102
+#, elixir-autogen, elixir-format
+msgid "Interacted"
+msgstr "Взаимодействовали"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:478
+#, elixir-autogen, elixir-format
+msgid "Left the exam tab"
+msgstr "Уходил со страницы экзамена"
+
+#: lib/athena_web/live/teaching_live/submission_labels.ex:19
+#, elixir-autogen, elixir-format
+msgid "Memory limit exceeded"
+msgstr "Превышен лимит памяти"
+
+#: lib/athena_web/live/teaching_live/submission_labels.ex:14
+#, elixir-autogen, elixir-format
+msgid "Needs review"
+msgstr "Требует проверки"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:818
+#, elixir-autogen, elixir-format
+msgid "No"
+msgstr "Нет"
+
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:223
+#, elixir-autogen, elixir-format
+msgid "No group stands out - they are within a few points of each other."
+msgstr "Ни одна группа не выделяется — разница в пределах нескольких пунктов."
+
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:40
+#, elixir-autogen, elixir-format
+msgid "Not engaging in this period"
+msgstr "Не занимались за период"
+
+#: lib/athena_web/live/teaching_live/chart_config.ex:97
+#, elixir-autogen, elixir-format
+msgid "Opened"
+msgstr "Открыли"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:484
+#, elixir-autogen, elixir-format
+msgid "Opened in several tabs"
+msgstr "Открывали в нескольких вкладках"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:493
+#, elixir-autogen, elixir-format
+msgid "Opens"
+msgstr "Открытия"
+
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:42
+#, elixir-autogen, elixir-format
+msgid "Passed on the first attempt"
+msgstr "Сдано с первой попытки"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:472
+#, elixir-autogen, elixir-format
+msgid "Pauses"
+msgstr "Паузы"
+
+#: lib/athena_web/live/teaching_live/submission_labels.ex:11
+#, elixir-autogen, elixir-format
+msgid "Pending"
+msgstr "В очереди"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:471
+#, elixir-autogen, elixir-format
+msgid "Plays"
+msgstr "Запуски"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:491
+#, elixir-autogen, elixir-format
+msgid "Ran the code"
+msgstr "Запускал код"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:489
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:492
+#, elixir-autogen, elixir-format
+msgid "Rapid re-runs"
+msgstr "Частые перезапуски"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:473
+#, elixir-autogen, elixir-format
+msgid "Rewinds"
+msgstr "Перемотки"
+
+#: lib/athena_web/live/teaching_live/submission_labels.ex:20
+#, elixir-autogen, elixir-format
+msgid "Runtime error"
+msgstr "Ошибка выполнения"
+
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:43
+#, elixir-autogen, elixir-format
+msgid "Rush through the material"
+msgstr "Проходят поверхностно"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:481
+#, elixir-autogen, elixir-format
+msgid "Screenshot attempts"
+msgstr "Попытки снимка экрана"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:470
+#, elixir-autogen, elixir-format
+msgid "Scrolled, %"
+msgstr "Прокручено, %"
+
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:78
+#, elixir-autogen, elixir-format
+msgid "Share of exam attempts the cheating monitor rated high risk, or the teacher confirmed as a violation."
+msgstr "Доля попыток экзамена, которые монитор списывания оценил как высокий риск или где преподаватель подтвердил нарушение."
+
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:53
+#, elixir-autogen, elixir-format
+msgid "Share of students who opened nothing during the selected period."
+msgstr "Доля обучающихся, которые ничего не открывали за выбранный период."
+
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:74
+#, elixir-autogen, elixir-format
+msgid "Share of students with at least one sign of dishonest behaviour during an exam."
+msgstr "Доля обучающихся хотя бы с одним признаком нечестного поведения на экзамене."
+
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:69
+#, elixir-autogen, elixir-format
+msgid "Share of students with repeated signs of getting stuck: much more time than the group, changing answers, going back, re-running code."
+msgstr "Доля обучающихся с повторяющимися признаками трудностей: намного больше времени, чем у группы, смены ответа, возвраты назад, перезапуски кода."
+
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:63
+#, elixir-autogen, elixir-format
+msgid "Share of students with repeated signs of rushing: much less time than the group, unread text, skipped video, pasted answers."
+msgstr "Доля обучающихся с повторяющимися признаками поверхностного прохождения: намного меньше времени, чем у группы, недочитанный текст, перемотанное видео, вставленные ответы."
+
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:59
+#, elixir-autogen, elixir-format
+msgid "Share of submitted tasks that reached the pass mark on the very first attempt."
+msgstr "Доля сданных заданий, набравших проходной балл с первой же попытки."
+
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:430
+#, elixir-autogen, elixir-format
+msgid "Share of the section's blocks completed by the group's students."
+msgstr "Доля блоков раздела, пройденных обучающимися группы."
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:466
+#, elixir-autogen, elixir-format
+msgid "Share of time in other tabs"
+msgstr "Доля времени в других вкладках"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:476
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:486
+#, elixir-autogen, elixir-format
+msgid "Share pasted"
+msgstr "Доля вставленного"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:475
+#, elixir-autogen, elixir-format
+msgid "Share skipped"
+msgstr "Доля перемотанного"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:468
+#, elixir-autogen, elixir-format
+msgid "Share who came back"
+msgstr "Доля вернувшихся"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:469
+#, elixir-autogen, elixir-format
+msgid "Share who changed answers"
+msgstr "Доля менявших ответ"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:494
+#, elixir-autogen, elixir-format
+msgid "Students who opened"
+msgstr "Открывшие обучающиеся"
+
+#: lib/athena_web/live/teaching_live/submission_labels.ex:22
+#, elixir-autogen, elixir-format
+msgid "System error"
+msgstr "Системная ошибка"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:464
+#, elixir-autogen, elixir-format
+msgid "Tab switches"
+msgstr "Переключения вкладок"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:479
+#, elixir-autogen, elixir-format
+msgid "Time away from the exam, s"
+msgstr "Время вне экзамена, с"
+
+#: lib/athena_web/live/teaching_live/submission_labels.ex:18
+#, elixir-autogen, elixir-format
+msgid "Time limit exceeded"
+msgstr "Превышен лимит времени"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:465
+#, elixir-autogen, elixir-format
+msgid "Time to first action, s"
+msgstr "Время до первого действия, с"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:462
+#, elixir-autogen, elixir-format
+msgid "Time vs. planned"
+msgstr "Время к запланированному"
+
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:381
+#, elixir-autogen, elixir-format
+msgid "Topics × groups"
+msgstr "Темы × группы"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:460
+#, elixir-autogen, elixir-format
+msgid "Visits measured"
+msgstr "Измерено посещений"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:474
+#, elixir-autogen, elixir-format
+msgid "Watched to the end"
+msgstr "Досмотрели до конца"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:480
+#, elixir-autogen, elixir-format
+msgid "Window lost focus"
+msgstr "Окно теряло фокус"
+
+#: lib/athena_web/live/teaching_live/submission_labels.ex:17
+#, elixir-autogen, elixir-format
+msgid "Wrong answer"
+msgstr "Неверный ответ"
+
+#: lib/athena_web/live/teaching_live/cohort_engagement.ex:817
+#, elixir-autogen, elixir-format
+msgid "Yes"
+msgstr "Да"
+
+#: lib/athena_web/live/teaching_live/engagement_explanations.ex:495
+#, elixir-autogen, elixir-format
+msgid "Zooms"
+msgstr "Увеличения"
+
+#: lib/athena_web/live/teaching_live/course_engagement_compare.ex:180
+#, elixir-autogen, elixir-format
+msgid "up to %{count} at once"
+msgstr "не больше %{count} одновременно"
+
+#: lib/athena_web/live/teaching_live/cohort_comparison.ex:221
+#, elixir-autogen, elixir-format
+msgid "“%{section}” is hard for every group: average score %{score}."
+msgstr "Раздел «%{section}» трудный для всех групп: средний балл %{score}."

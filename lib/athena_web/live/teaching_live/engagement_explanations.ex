@@ -455,6 +455,46 @@ defmodule AthenaWeb.TeachingLive.EngagementExplanations do
 
   def issue_note(_issue), do: ""
 
+  @doc "Human name of a block metric key (`Athena.Engagement.get_metrics/1`)."
+  @spec metric_label(atom()) :: String.t()
+  def metric_label(:sample_size), do: gettext("Visits measured")
+  def metric_label(:avg_dwell_seconds), do: gettext("Average time, s")
+  def metric_label(:dwell_ratio), do: gettext("Time vs. planned")
+  def metric_label(:students_observed), do: gettext("Students")
+  def metric_label(:tab_hidden_count), do: gettext("Tab switches")
+  def metric_label(:avg_time_to_first_action), do: gettext("Time to first action, s")
+  def metric_label(:offtask_ratio), do: gettext("Share of time in other tabs")
+  def metric_label(:backtrack_count), do: gettext("Came back after moving on")
+  def metric_label(:backtrack_rate), do: gettext("Share who came back")
+  def metric_label(:hesitation_rate), do: gettext("Share who changed answers")
+  def metric_label(:avg_scroll_depth_percent), do: gettext("Scrolled, %")
+  def metric_label(:play_count), do: gettext("Plays")
+  def metric_label(:pause_count), do: gettext("Pauses")
+  def metric_label(:seek_count), do: gettext("Rewinds")
+  def metric_label(:completion_count), do: gettext("Watched to the end")
+  def metric_label(:skip_ratio), do: gettext("Share skipped")
+  def metric_label(:paste_ratio), do: gettext("Share pasted")
+  def metric_label(:answer_change_count), do: gettext("Answer changes")
+  def metric_label(:focus_loss_count), do: gettext("Left the exam tab")
+  def metric_label(:focus_loss_seconds), do: gettext("Time away from the exam, s")
+  def metric_label(:window_blur_count), do: gettext("Window lost focus")
+  def metric_label(:printscreen_count), do: gettext("Screenshot attempts")
+  def metric_label(:copy_attempt_count), do: gettext("Copy attempts")
+  def metric_label(:cut_attempt_count), do: gettext("Cut attempts")
+  def metric_label(:multi_tab_count), do: gettext("Opened in several tabs")
+  def metric_label(:idle_seconds_total), do: gettext("Idle time, s")
+  def metric_label(:exam_paste_ratio), do: gettext("Share pasted")
+  def metric_label(:exam_answer_change_count), do: gettext("Answer changes")
+  def metric_label(:exam_run_attempt_count), do: gettext("Code runs")
+  def metric_label(:exam_panic_debugging?), do: gettext("Rapid re-runs")
+  def metric_label(:run_attempt_count), do: gettext("Code runs")
+  def metric_label(:debug_cycle_present?), do: gettext("Ran the code")
+  def metric_label(:panic_debugging?), do: gettext("Rapid re-runs")
+  def metric_label(:open_count), do: gettext("Opens")
+  def metric_label(:unique_openers), do: gettext("Students who opened")
+  def metric_label(:zoom_count), do: gettext("Zooms")
+  def metric_label(key), do: key |> to_string() |> String.replace("_", " ")
+
   # Recommendations
 
   @doc """
