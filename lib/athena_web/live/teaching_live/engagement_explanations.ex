@@ -416,12 +416,7 @@ defmodule AthenaWeb.TeachingLive.EngagementExplanations do
   """
   @spec cell_verdict(map() | nil, [map()], integer()) :: String.t()
   def cell_verdict(cell, reviews, threshold) do
-    weak? = Enum.any?(reviews, &(&1.status in [:skipped, :superficial]))
-
     cond do
-      is_nil(cell) and weak? ->
-        gettext("Not started yet - and the theory in front of it hasn't been studied either.")
-
       is_nil(cell) ->
         gettext("Not started yet.")
 
@@ -431,28 +426,39 @@ defmodule AthenaWeb.TeachingLive.EngagementExplanations do
       cell.state == :in_progress ->
         gettext("Being checked right now.")
 
-      cell.score < threshold and weak? ->
+      cell.score < threshold ->
+        low_score_verdict(reviews)
+
+      true ->
+        passed_verdict(reviews)
+    end
+  end
+
+  defp low_score_verdict([]),
+    do: gettext("Below the pass mark. There is no theory in front of this task to compare with.")
+
+  defp low_score_verdict(reviews) do
+    if theory_weak?(reviews),
+      do:
         gettext(
           "Most likely the topic wasn't learned: the theory in front of the task was skipped or skimmed."
-        )
-
-      cell.score < threshold and reviews == [] ->
-        gettext("Below the pass mark. There is no theory in front of this task to compare with.")
-
-      cell.score < threshold ->
+        ),
+      else:
         gettext(
           "The theory was studied, yet the task failed - the topic itself may be unclear; worth going through it together."
         )
+  end
 
-      weak? ->
+  defp passed_verdict(reviews) do
+    if theory_weak?(reviews),
+      do:
         gettext(
           "Passed even though the theory was skipped or skimmed - they may have known the topic already."
-        )
-
-      true ->
-        gettext("Passed, with the theory studied normally.")
-    end
+        ),
+      else: gettext("Passed, with the theory studied normally.")
   end
+
+  defp theory_weak?(reviews), do: Enum.any?(reviews, &(&1.status in [:skipped, :superficial]))
 
   @doc "Short name of a Course Map issue (`Athena.Engagement.CourseMap`)."
   @spec issue_label(atom()) :: String.t()

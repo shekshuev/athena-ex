@@ -784,19 +784,20 @@ defmodule Athena.Engagement.Metrics do
     case Learning.get_cohorts_map([cohort_id]) do
       %{^cohort_id => cohort} ->
         %{cells: cells} = Learning.build_gradebook(cohort, course_id)
-
-        if cohort.type == :team do
-          for {{_team_id, block_id}, cell} <- cells, account_id <- account_ids, into: %{} do
-            {{account_id, block_id}, cell}
-          end
-        else
-          cells
-        end
+        expand_cells(cells, cohort.type, account_ids)
 
       _ ->
         %{}
     end
   end
+
+  defp expand_cells(cells, :team, account_ids) do
+    for {{_team_id, block_id}, cell} <- cells, account_id <- account_ids, into: %{} do
+      {{account_id, block_id}, cell}
+    end
+  end
+
+  defp expand_cells(cells, _type, _account_ids), do: cells
 
   # How each student went through the theory in front of a graded task
   # (`Athena.Engagement.TheoryLinks`), over the whole course - the material

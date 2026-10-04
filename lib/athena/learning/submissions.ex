@@ -103,7 +103,7 @@ defmodule Athena.Learning.Submissions do
   defp scope_submissions(query, user, permission) do
     test_run_account_ids = from(t in TestRunSession, select: t.ephemeral_account_id)
 
-    query =
+    base_query =
       query
       |> where([s], s.status != :draft)
       |> where([s], is_nil(s.parent_submission_id))
@@ -115,61 +115,69 @@ defmodule Athena.Learning.Submissions do
 
     cond do
       "admin" in user.role.permissions ->
-        query
+        base_query
 
       permission in user.role.permissions ->
-        policies = Map.get(user.role.policies || %{}, permission, [])
-
-        if "own_only" in policies do
-          instructor_cohort_ids =
-            from ci in CohortInstructor,
-              join: i in Instructor,
-              on: ci.instructor_id == i.id,
-              where: i.owner_id == ^user.id,
-              select: ci.cohort_id
-
-          # "Mine" means the same as for reading cohorts: owned, or instructed.
-          my_cohort_ids =
-            from c in Cohort,
-              where: c.owner_id == ^user.id or c.id in subquery(instructor_cohort_ids),
-              select: c.id
-
-          # An academic group's submissions carry no cohort_id (only a team's
-          # shared work does), so a group's work is found through its members:
-          # their own submissions, on the courses the group is enrolled in -
-          # not whatever else those students do in other teachers' courses.
-          my_group_students_work =
-            from cm in CohortMembership,
-              join: c in Cohort,
-              on: c.id == cm.cohort_id,
-              join: e in Enrollment,
-              on: e.cohort_id == cm.cohort_id,
-              where: c.type == :academic and c.id in subquery(my_cohort_ids),
-              where:
-                cm.account_id == parent_as(:submission).account_id and
-                  e.course_id == parent_as(:submission_section).course_id,
-              select: 1
-
-          my_course_ids = Content.list_accessible_course_ids(user)
-
-          from(s in query, as: :submission)
-          |> join(:inner, [s], b in Block, on: s.block_id == b.id)
-          |> join(:inner, [s, b], sec in Section,
-            on: b.section_id == sec.id,
-            as: :submission_section
-          )
-          |> where(
-            [s, b, sec],
-            s.cohort_id in subquery(my_cohort_ids) or sec.course_id in ^my_course_ids or
-              (is_nil(s.cohort_id) and exists(my_group_students_work))
-          )
-        else
-          query
-        end
+        apply_permission_filter(base_query, user, permission)
 
       true ->
-        where(query, [s], false)
+        where(base_query, [s], false)
     end
+  end
+
+  defp apply_permission_filter(query, user, permission) do
+    policies = Map.get(user.role.policies || %{}, permission, [])
+
+    if "own_only" in policies do
+      scoped_own_only(query, user)
+    else
+      query
+    end
+  end
+
+  defp scoped_own_only(query, user) do
+    instructor_cohort_ids =
+      from ci in CohortInstructor,
+        join: i in Instructor,
+        on: ci.instructor_id == i.id,
+        where: i.owner_id == ^user.id,
+        select: ci.cohort_id
+
+    # "Mine" means the same as for reading cohorts: owned, or instructed.
+    my_cohort_ids =
+      from c in Cohort,
+        where: c.owner_id == ^user.id or c.id in subquery(instructor_cohort_ids),
+        select: c.id
+
+    # An academic group's submissions carry no cohort_id (only a team's
+    # shared work does), so a group's work is found through its members:
+    # their own submissions, on the courses the group is enrolled in -
+    # not whatever else those students do in other teachers' courses.
+    my_group_students_work =
+      from cm in CohortMembership,
+        join: c in Cohort,
+        on: c.id == cm.cohort_id,
+        join: e in Enrollment,
+        on: e.cohort_id == cm.cohort_id,
+        where: c.type == :academic and c.id in subquery(my_cohort_ids),
+        where:
+          cm.account_id == parent_as(:submission).account_id and
+            e.course_id == parent_as(:submission_section).course_id,
+        select: 1
+
+    my_course_ids = Content.list_accessible_course_ids(user)
+
+    from(s in query, as: :submission)
+    |> join(:inner, [s], b in Block, on: s.block_id == b.id)
+    |> join(:inner, [s, b], sec in Section,
+      on: b.section_id == sec.id,
+      as: :submission_section
+    )
+    |> where(
+      [s, b, sec],
+      s.cohort_id in subquery(my_cohort_ids) or sec.course_id in ^my_course_ids or
+        (is_nil(s.cohort_id) and exists(my_group_students_work))
+    )
   end
 
   @doc """

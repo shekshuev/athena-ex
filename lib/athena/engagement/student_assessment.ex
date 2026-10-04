@@ -165,8 +165,7 @@ defmodule Athena.Engagement.StudentAssessment do
       in_category.(:integrity) >= Keyword.get(config, :student_radar_integrity_threshold, 1) ->
         :integrity
 
-      count.(:low_score) >= Keyword.get(config, :not_mastering_min_low_scores, 2) or
-          Enum.count(signals, &(&1.key == :many_attempts and &1[:unresolved?])) >= 2 ->
+      not_mastering?(signals, config) ->
         :not_mastering
 
       count.(:behind_progress) > 0 or Map.get(facts, :missed_enough?, false) ->
@@ -181,6 +180,13 @@ defmodule Athena.Engagement.StudentAssessment do
       true ->
         :on_track
     end
+  end
+
+  defp not_mastering?(signals, config) do
+    low_scores = Keyword.get(config, :not_mastering_min_low_scores, 2)
+
+    Enum.count(signals, &(&1.key == :low_score)) >= low_scores or
+      Enum.count(signals, &(&1.key == :many_attempts and &1[:unresolved?])) >= 2
   end
 
   # Group statistics

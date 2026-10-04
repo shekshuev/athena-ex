@@ -121,17 +121,19 @@ defmodule Athena.Engagement.Rollups do
 
     events =
       if upper do
-        Event
-        |> where([e], e.inserted_at <= ^upper)
-        |> then(fn q -> if scan_from, do: where(q, [e], e.inserted_at > ^scan_from), else: q end)
-        |> select([e], %{
-          account_id: e.account_id,
-          cohort_id: e.cohort_id,
-          block_id: e.block_id,
-          occurred_at: e.occurred_at,
-          inserted_at: e.inserted_at
-        })
-        |> Repo.all()
+        query =
+          Event
+          |> where([e], e.inserted_at <= ^upper)
+          |> with_scan_from(scan_from)
+          |> select([e], %{
+            account_id: e.account_id,
+            cohort_id: e.cohort_id,
+            block_id: e.block_id,
+            occurred_at: e.occurred_at,
+            inserted_at: e.inserted_at
+          })
+
+        Repo.all(query)
       else
         []
       end
@@ -148,6 +150,9 @@ defmodule Athena.Engagement.Rollups do
 
   defp since_cursor(query, nil), do: query
   defp since_cursor(query, at), do: where(query, [e], e.inserted_at > ^at)
+
+  defp with_scan_from(query, nil), do: query
+  defp with_scan_from(query, scan_from), do: where(query, [e], e.inserted_at > ^scan_from)
 
   # `%{{cohort_id, section_id, day} => [account_id]}` for every bucket the
   # batch touched. Events on deleted blocks have no section and are dropped.

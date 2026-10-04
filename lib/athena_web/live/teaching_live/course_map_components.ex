@@ -174,22 +174,18 @@ defmodule AthenaWeb.TeachingLive.CourseMapComponents do
   end
 
   defp headline(entry, nil, _names) do
-    entry.issues
-    |> Enum.map(&"#{Explanations.issue_label(&1.key)}: #{Explanations.issue_note(&1)}")
-    |> Enum.join(" · ")
+    Enum.map_join(entry.issues, " · ", fn issue ->
+      "#{Explanations.issue_label(issue.key)}: #{Explanations.issue_note(issue)}"
+    end)
   end
 
   defp headline(entry, _student, names) do
-    entry.student.signals
-    |> Enum.take(2)
-    |> Enum.map(fn signal ->
+    Enum.map_join(Enum.take(entry.student.signals, 2), " · ", fn signal ->
       %{note: note} = Explanations.explain(signal, names)
+      label = Explanations.short_label(signal.key)
 
-      if note == "",
-        do: Explanations.short_label(signal.key),
-        else: "#{Explanations.short_label(signal.key)}: #{note}"
+      if note == "", do: label, else: "#{label}: #{note}"
     end)
-    |> Enum.join(" · ")
   end
 
   attr :block, :map, required: true

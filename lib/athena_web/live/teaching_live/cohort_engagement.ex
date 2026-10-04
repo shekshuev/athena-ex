@@ -835,14 +835,6 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
 
     v = Map.merge(current, Map.new(overrides))
 
-    extras =
-      [
-        course_window: v.course_window != "7" && v.course_window,
-        tab: v.tab == :activity && "activity",
-        problems: v.problems && "1"
-      ]
-      |> Enum.filter(fn {_key, value} -> value end)
-
     base =
       build_path(
         assigns.cohort,
@@ -852,7 +844,21 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
         v.account_id || ""
       )
 
-    if extras == [], do: base, else: base <> "&" <> URI.encode_query(extras)
+    query = build_query(v)
+
+    if query == "", do: base, else: base <> "&" <> query
+  end
+
+  defp build_query(%{course_window: cw, tab: tab, problems: problems}) do
+    extras =
+      [
+        course_window: cw != "7" && cw,
+        tab: tab == :activity && "activity",
+        problems: problems && "1"
+      ]
+      |> Enum.filter(fn {_key, value} -> value end)
+
+    URI.encode_query(extras)
   end
 
   defp assigns_of(%{assigns: assigns}), do: assigns
@@ -1092,14 +1098,12 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
     scope = %{cohort_id: socket.assigns.cohort.id, account_id: socket.assigns.active_account_id}
 
     metrics =
-      cond do
-        socket.assigns.active_block ->
-          Engagement.get_metrics(
-            Map.merge(scope, %{resource_type: :block, resource_id: socket.assigns.active_block.id})
-          )
-
-        true ->
-          %{}
+      if socket.assigns.active_block do
+        Engagement.get_metrics(
+          Map.merge(scope, %{resource_type: :block, resource_id: socket.assigns.active_block.id})
+        )
+      else
+        %{}
       end
 
     assign(socket, :metrics, metrics)

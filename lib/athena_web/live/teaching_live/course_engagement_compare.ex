@@ -504,15 +504,17 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompare do
         |> assign(:loading, cohorts != [])
         |> assign(:loaded_key, key)
         |> cancel_async(:summaries)
-        |> start_async(:summaries, fn ->
-          cohorts
-          |> Task.async_stream(
-            &{&1.id, Engagement.cohort_summary(&1.id, course_id, since: since)},
-            timeout: :infinity
-          )
-          |> Map.new(fn {:ok, pair} -> pair end)
-        end)
+        |> start_async(:summaries, fn -> fetch_summaries(cohorts, course_id, since) end)
     end
+  end
+
+  defp fetch_summaries(cohorts, course_id, since) do
+    cohorts
+    |> Task.async_stream(
+      &{&1.id, Engagement.cohort_summary(&1.id, course_id, since: since)},
+      timeout: :infinity
+    )
+    |> Map.new(fn {:ok, pair} -> pair end)
   end
 
   @impl true
