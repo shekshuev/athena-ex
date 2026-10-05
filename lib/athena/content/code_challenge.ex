@@ -9,6 +9,8 @@ defmodule Athena.Content.CodeChallenge do
   alias Athena.Content.TestCase
   alias Athena.Execution
 
+  @result_orders ["auto", "strict", "ignore"]
+
   @derive {Jason.Encoder,
            only: [
              :language,
@@ -21,7 +23,8 @@ defmodule Athena.Content.CodeChallenge do
              :max_attempts,
              :setup_sql,
              :check_sql,
-             :evaluation_mode
+             :evaluation_mode,
+             :result_order
            ]}
 
   @type t :: %__MODULE__{
@@ -35,7 +38,8 @@ defmodule Athena.Content.CodeChallenge do
           test_cases: [TestCase.t()],
           setup_sql: String.t(),
           check_sql: String.t(),
-          evaluation_mode: String.t()
+          evaluation_mode: String.t(),
+          result_order: String.t()
         }
 
   @primary_key false
@@ -59,6 +63,12 @@ defmodule Athena.Content.CodeChallenge do
     field :check_sql, :string, default: ""
     field :evaluation_mode, :string, default: "query_result"
 
+    # How `query_result` mode compares row order:
+    #   "auto"   - ordered iff the reference solution has a top-level ORDER BY
+    #   "strict" - rows must come back in exactly the reference order
+    #   "ignore" - rows are compared as a set
+    field :result_order, :string, default: "auto"
+
     embeds_many :test_cases, TestCase, on_replace: :delete
   end
 
@@ -79,13 +89,15 @@ defmodule Athena.Content.CodeChallenge do
       :max_attempts,
       :setup_sql,
       :check_sql,
-      :evaluation_mode
+      :evaluation_mode,
+      :result_order
     ])
     |> cast_embed(:test_cases, with: &TestCase.changeset/2)
     |> validate_required([:language, :time_limit, :memory_limit])
     |> validate_number(:time_limit, greater_than: 0.0, less_than_or_equal_to: 15.0)
     |> validate_number(:memory_limit, greater_than: 256, less_than_or_equal_to: 524_288)
     |> validate_number(:max_attempts, greater_than: 0)
+    |> validate_inclusion(:result_order, @result_orders)
     |> maybe_validate_sql_body()
   end
 

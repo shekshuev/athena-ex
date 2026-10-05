@@ -8766,3 +8766,15 @@ msgstr "Раздел в разработке."
 #, elixir-autogen, elixir-format
 msgid "Course average"
 msgstr "Среднее по курсу"
+
+msgid "Row Order Comparison"
+msgstr "Сравнение порядка строк"
+
+msgid "Auto (strict if the solution has ORDER BY)"
+msgstr "Авто (строго, если в решении есть ORDER BY)"
+
+msgid "Strict (rows must match the solution order)"
+msgstr "Строго (порядок строк как в решении)"
+
+msgid "Ignore row order"
+msgstr "Игнорировать порядок строк"

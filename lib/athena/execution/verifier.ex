@@ -6,7 +6,16 @@ defmodule Athena.Execution.Verifier do
   require Logger
 
   alias Athena.Content.{CodeChallenge, TestCase}
-  alias Athena.Execution.{LanguageConfig, IsolateRunner, Result, SqlRunner, TestResult}
+
+  alias Athena.Execution.{
+    IsolateRunner,
+    LanguageConfig,
+    Result,
+    SqlAnalyzer,
+    SqlRunner,
+    SqlValue,
+    TestResult
+  }
 
   @doc """
   Verifies the given code against test cases or SQL evaluation rules.
@@ -27,7 +36,8 @@ defmodule Athena.Execution.Verifier do
       SqlRunner.execute_in_sandbox(box_id, setup_sql, fn conn ->
         case to_string(eval_mode) do
           "query_result" ->
-            evaluate_sql_query_result(conn, code, challenge.solution_code, time_limit)
+            ordered? = ordered_comparison?(challenge)
+            evaluate_sql_query_result(conn, code, challenge.solution_code, time_limit, ordered?)
 
           "state_verification" ->
             check_sql = get_challenge_field(challenge, :check_sql)
@@ -47,42 +57,50 @@ defmodule Athena.Execution.Verifier do
     res
   end
 
-  defp evaluate_sql_query_result(conn, student_sql, solution_sql, time_limit) do
+  defp ordered_comparison?(%CodeChallenge{} = challenge) do
+    case get_challenge_field(challenge, :result_order) do
+      "strict" -> true
+      "ignore" -> false
+      _auto -> SqlAnalyzer.top_level_order_by?(challenge.solution_code)
+    end
+  end
+
+  defp evaluate_sql_query_result(conn, student_sql, solution_sql, time_limit, ordered?) do
     {_t_ref, ref_res} = :timer.tc(fn -> SqlRunner.query(conn, solution_sql, time_limit) end)
     {t_stu, student_res} = :timer.tc(fn -> SqlRunner.query(conn, student_sql, time_limit) end)
 
     time_sec = Float.round(t_stu / 1_000_000, 3)
 
-    compare_query_results(ref_res, student_res, time_sec)
+    compare_query_results(ref_res, student_res, time_sec, ordered?)
   end
 
-  defp compare_query_results({:ok, ref_out}, {:ok, stu_out}, time_sec) do
-    if normalize_sql_result(ref_out) == normalize_sql_result(stu_out) do
+  defp compare_query_results({:ok, ref_out}, {:ok, stu_out}, time_sec, ordered?) do
+    if normalize_sql_result(ref_out, ordered?) == normalize_sql_result(stu_out, ordered?) do
       {:ok, :accepted, build_query_payload("accepted", stu_out, ref_out, time_sec)}
     else
       {:error, :wrong_answer, build_query_payload("wrong_answer", stu_out, ref_out, time_sec)}
     end
   end
 
-  defp compare_query_results({:error, {:sql_error, msg}}, _stu_res, time_sec) do
+  defp compare_query_results({:error, {:sql_error, msg}}, _stu_res, time_sec, _ordered?) do
     {:error, :compilation_error,
      build_sql_query_error("sql_error", "Reference Solution Error: #{msg}", time_sec)}
   end
 
-  defp compare_query_results(_ref_res, {:error, :timeout}, time_sec) do
+  defp compare_query_results(_ref_res, {:error, :timeout}, time_sec, _ordered?) do
     {:error, :time_limit_exceeded,
      build_sql_query_error("timeout", "Query execution timed out.", time_sec)}
   end
 
-  defp compare_query_results(_ref_res, {:error, {:sql_error, msg}}, time_sec) do
+  defp compare_query_results(_ref_res, {:error, {:sql_error, msg}}, time_sec, _ordered?) do
     {:error, :runtime_error, build_sql_query_error("sql_error", msg, time_sec)}
   end
 
-  defp compare_query_results(_ref_res, {:error, {:system_error, reason}}, time_sec) do
+  defp compare_query_results(_ref_res, {:error, {:system_error, reason}}, time_sec, _ordered?) do
     {:error, :system_error, build_sql_query_error("system_error", inspect(reason), time_sec)}
   end
 
-  defp compare_query_results(_ref_res, _stu_res, time_sec) do
+  defp compare_query_results(_ref_res, _stu_res, time_sec, _ordered?) do
     {:error, :system_error,
      build_sql_query_error("system_error", "Failed to execute SQL comparison.", time_sec)}
   end
@@ -179,14 +197,13 @@ defmodule Athena.Execution.Verifier do
   defp row_to_list(row) when is_list(row), do: row
   defp row_to_list(row), do: [row]
 
-  defp sanitize_cell(nil), do: "NULL"
-  defp sanitize_cell(val) when is_binary(val), do: val
-  defp sanitize_cell(val) when is_number(val) or is_boolean(val), do: val
-  defp sanitize_cell(val), do: to_string(val)
+  defp sanitize_cell(val), do: SqlValue.to_cell(val)
 
-  defp normalize_sql_result(%Postgrex.Result{columns: cols, rows: rows}) do
-    {cols || [], Enum.sort(rows || [])}
-  end
+  defp normalize_sql_result(%Postgrex.Result{columns: cols, rows: rows}, true),
+    do: {cols || [], rows || []}
+
+  defp normalize_sql_result(%Postgrex.Result{columns: cols, rows: rows}, false),
+    do: {cols || [], Enum.sort(rows || [])}
 
   defp format_sql_execution_result({:ok, {:ok, status, payload}}) when is_map(payload) do
     build_sql_result(status, payload)

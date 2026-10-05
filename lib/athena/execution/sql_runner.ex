@@ -6,6 +6,12 @@ defmodule Athena.Execution.SqlRunner do
   """
   require Logger
 
+  # Fixed PRNG seed, re-applied before every query so that `random()` /
+  # `ORDER BY RANDOM()` yields the same values for the reference solution
+  # and the student's query (the session PRNG is otherwise consumed by
+  # whichever query runs first).
+  @seed 0.42
+
   @doc """
   Runs a callback function within an ephemeral sandbox database under an unprivileged user role.
   Creates the database directly owned by the restricted role, then executes both setup_sql
@@ -27,6 +33,8 @@ defmodule Athena.Execution.SqlRunner do
                :ok <- create_db(admin_conn, db_name, role_name),
                {:ok, user_conn} <- connect_user(db_name, role_name, role_pass) do
             try do
+              reseed(user_conn)
+
               case execute_setup(user_conn, setup_sql) do
                 :ok ->
                   {:ok, callback.(user_conn)}
@@ -54,6 +62,9 @@ defmodule Athena.Execution.SqlRunner do
 
   @doc """
   Executes a single SQL query with a specified time limit (in seconds).
+
+  The session PRNG is reset to a fixed seed first, so queries using `random()`
+  are reproducible: running the same query twice returns the same rows.
   """
   @spec query(pid(), String.t(), float()) ::
           {:ok, Postgrex.Result.t()}
@@ -63,6 +74,7 @@ defmodule Athena.Execution.SqlRunner do
     client_timeout_ms = statement_timeout_ms + 2_000
 
     Postgrex.query(conn, "SET statement_timeout = #{statement_timeout_ms};", [])
+    reseed(conn)
 
     case Postgrex.query(conn, sql, [], timeout: client_timeout_ms) do
       {:ok, result} ->
@@ -78,6 +90,8 @@ defmodule Athena.Execution.SqlRunner do
         {:error, {:system_error, reason}}
     end
   end
+
+  defp reseed(conn), do: Postgrex.query(conn, "SELECT setseed(#{@seed});", [])
 
   defp execute_setup(_conn, nil), do: :ok
   defp execute_setup(_conn, ""), do: :ok

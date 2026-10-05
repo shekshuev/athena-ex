@@ -1235,6 +1235,21 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                         />
 
                         <.input
+                          :if={
+                            (@block.content["evaluation_mode"] || "query_result") == "query_result"
+                          }
+                          type="select"
+                          name="library_block[content][result_order]"
+                          value={@block.content["result_order"] || "auto"}
+                          label={gettext("Row Order Comparison")}
+                          options={[
+                            {gettext("Auto (strict if the solution has ORDER BY)"), "auto"},
+                            {gettext("Strict (rows must match the solution order)"), "strict"},
+                            {gettext("Ignore row order"), "ignore"}
+                          ]}
+                        />
+
+                        <.input
                           type="number"
                           name="library_block[content][time_limit]"
                           value={@block.content["time_limit"] || 2.0}

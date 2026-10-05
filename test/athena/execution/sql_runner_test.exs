@@ -14,6 +14,19 @@ defmodule Athena.Execution.SqlRunnerTest do
     %{box_id: box_id}
   end
 
+  describe "Deterministic random()" do
+    test "every query starts from the same PRNG seed", %{box_id: box_id} do
+      result =
+        SqlRunner.execute_in_sandbox(box_id, nil, fn conn ->
+          {:ok, first} = SqlRunner.query(conn, "SELECT random(), random()", 2.0)
+          {:ok, second} = SqlRunner.query(conn, "SELECT random(), random()", 2.0)
+          {first.rows, second.rows}
+        end)
+
+      assert {:ok, {rows, rows}} = result
+    end
+  end
+
   describe "Database Lifecycle & Cleanup" do
     test "creates sandbox db, runs setup_sql, executes callback, and drops db afterwards", %{
       box_id: box_id
@@ -149,7 +162,7 @@ defmodule Athena.Execution.SqlRunnerTest do
       assert payload["rows"] == [["Laptop", 1000]]
     end
 
-    test "query_result: normalizes row order if student returns same rows in different order", %{
+    test "query_result: rejects different row order when the solution has ORDER BY", %{
       box_id: box_id
     } do
       challenge = %CodeChallenge{
@@ -163,9 +176,26 @@ defmodule Athena.Execution.SqlRunnerTest do
         solution_code: "SELECT id, age FROM users ORDER BY age ASC;"
       }
 
-      student_sql = "SELECT id, age FROM users ORDER BY age DESC;"
+      result = Verifier.verify("SELECT id, age FROM users ORDER BY age DESC;", challenge, box_id)
 
-      result = Verifier.verify(student_sql, challenge, box_id)
+      assert result.status == :wrong_answer
+      assert result.score == 0
+    end
+
+    test "query_result: normalizes row order when result_order is ignore", %{box_id: box_id} do
+      challenge = %CodeChallenge{
+        language: "sql",
+        time_limit: 2.0,
+        evaluation_mode: "query_result",
+        result_order: "ignore",
+        setup_sql: """
+        CREATE TABLE users (id INT PRIMARY KEY, age INT);
+        INSERT INTO users VALUES (1, 20), (2, 30), (3, 40);
+        """,
+        solution_code: "SELECT id, age FROM users ORDER BY age ASC;"
+      }
+
+      result = Verifier.verify("SELECT id, age FROM users ORDER BY age DESC;", challenge, box_id)
 
       assert result.status == :accepted
       assert result.score == 100
