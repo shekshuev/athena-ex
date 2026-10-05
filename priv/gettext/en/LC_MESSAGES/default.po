@@ -8756,3 +8756,15 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Course average"
 msgstr ""
+
+msgid "Row Order Comparison"
+msgstr ""
+
+msgid "Auto (strict if the solution has ORDER BY)"
+msgstr ""
+
+msgid "Strict (rows must match the solution order)"
+msgstr ""
+
+msgid "Ignore row order"
+msgstr ""
