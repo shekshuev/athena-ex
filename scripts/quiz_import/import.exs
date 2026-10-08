@@ -19,8 +19,8 @@
 #   :apply    false (default) = validate only, write nothing; true = write
 #   :rollback true = delete this bundle's blocks instead of importing them
 #
-# Re-running is safe: questions already imported for this owner (matched by the
-# `src:<set>:<n>` tag) are skipped, images are stored under a deterministic key.
+# Re-running is safe: questions this owner already has under the same title
+# (titles are unique per set) are skipped, images are stored under a deterministic key.
 
 defmodule QuizImport.Importer do
   import Ecto.Query
@@ -130,7 +130,7 @@ defmodule QuizImport.Importer do
 
   defp import_all(owner, data, bundle, apply?) do
     set = data["set"]
-    done = imported_sources(owner, set)
+    done = existing_titles(owner, data)
     Process.delete(:quiz_import_images)
     total = length(data["questions"])
 
@@ -140,9 +140,8 @@ defmodule QuizImport.Importer do
       |> Enum.reduce({[created: 0, skipped: 0, failed: 0], [], done}, fn {q, i},
                                                                          {counts, errors, done} ->
         if rem(i, 50) == 0, do: IO.puts("  ... #{i}/#{total}")
-        src_tag = Enum.find(q["tags"], &String.starts_with?(&1, "src:"))
 
-        if MapSet.member?(done, src_tag) do
+        if MapSet.member?(done, q["title"]) do
           {bump(counts, :skipped), errors, done}
         else
           case import_question(owner, q, set, bundle, apply?) do
@@ -152,7 +151,7 @@ defmodule QuizImport.Importer do
                 MapSet.union(Process.get(:quiz_import_images, MapSet.new()), MapSet.new(keys))
               )
 
-              {bump(counts, :created), errors, MapSet.put(done, src_tag)}
+              {bump(counts, :created), errors, MapSet.put(done, q["title"])}
 
             {:error, why} ->
               {bump(counts, :failed), errors ++ ["task #{q["n"]} (#{q["code"]}): #{why}"], done}
@@ -197,16 +196,16 @@ defmodule QuizImport.Importer do
     |> inspect()
   end
 
-  defp imported_sources(owner, set) do
-    import_tag = "import:" <> set
+  # The bundle's blocks carry no marker tags, so "already imported" means: this
+  # owner has a quiz question with exactly this title (titles are unique per set).
+  defp existing_titles(owner, data) do
+    titles = Enum.map(data["questions"], & &1["title"])
 
     from(lb in LibraryBlock,
-      where: lb.owner_id == ^owner.id and fragment("? = ANY(?)", ^import_tag, lb.tags),
-      select: lb.tags
+      where: lb.owner_id == ^owner.id and lb.type == :quiz_question and lb.title in ^titles,
+      select: lb.title
     )
     |> Repo.all()
-    |> List.flatten()
-    |> Enum.filter(&String.starts_with?(&1, "src:"))
     |> MapSet.new()
   end
 
@@ -306,11 +305,11 @@ defmodule QuizImport.Importer do
   # -- rollback -------------------------------------------------------------
 
   defp rollback(owner, data, apply?) do
-    import_tag = "import:" <> data["set"]
+    titles = Enum.map(data["questions"], & &1["title"])
 
     blocks =
       from(lb in LibraryBlock,
-        where: lb.owner_id == ^owner.id and fragment("? = ANY(?)", ^import_tag, lb.tags)
+        where: lb.owner_id == ^owner.id and lb.type == :quiz_question and lb.title in ^titles
       )
       |> Repo.all()
 

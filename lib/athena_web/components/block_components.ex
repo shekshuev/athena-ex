@@ -558,6 +558,7 @@ defmodule AthenaWeb.BlockComponents do
           submission={@submission}
           draft={@draft}
           user_id={@user_id}
+          image_mode={@image_mode}
         />
       </div>
     </div>
@@ -746,7 +747,7 @@ defmodule AthenaWeb.BlockComponents do
       )
 
     ~H"""
-    <div class="space-y-3">
+    <div class={["space-y-3", @image_mode && "select-none"]}>
       <%= for opt <- @options do %>
         <% is_selected = opt["id"] in List.wrap(@answer) %>
         <% is_correct = opt["is_correct"] in [true, "true"] %>
@@ -838,6 +839,7 @@ defmodule AthenaWeb.BlockComponents do
     ~H"""
     <div class={[
       "rounded-sm p-3 border transition-all",
+      @image_mode && "select-none",
       @mode == :review && @all_correct? && "bg-success/10 border-success/30",
       @mode == :review && not @all_correct? && "bg-error/10 border-error/30",
       @mode != :review && "border-transparent"
