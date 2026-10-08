@@ -25,7 +25,9 @@ defmodule QuizImport.Parser do
   # "Отметьте правильный ответ" and its typos ("Отметить", "ответр", ...).
   @generic_instruction ~r/^Отмет\S*\s+правильн/iu
   # "Установить соответствие ...", "Определить соответсвие ...", "Найдите соответствие ..." (typos included).
-  @matching ~r/^(Установ|Определ|Найд)\S*\s+соответс/iu
+  @matching ~r/^((Установ|Определ|Найд)\S*\s+соответс|Совмест\S*\s)/iu
+  # A one-word topic label ("Blender:") sitting in its own paragraph above the question.
+  @label ~r/^[\p{L}\d-]{3,15}:?$/u
   @stray_number ~r/^\d+$/u
   # A leftover sentence with a blank ("... называют_") pasted in from another task.
   @stray_sentence ~r/_{2,}|_\s*$/u
@@ -52,6 +54,7 @@ defmodule QuizImport.Parser do
       for {:ok, q} <- results do
         build_question(q, set, label)
       end
+      |> disambiguate_titles()
 
     anomalies = for {:error, n, code, why, _} <- results, do: {n, code, why}
     notes = for {:ok, %{note: note} = q} when note != nil <- results, do: {q.n, q.code, note}
@@ -139,6 +142,8 @@ defmodule QuizImport.Parser do
           {nil, all}
       end
 
+    {body, label_note} = merge_label(body)
+
     cond do
       body == [] ->
         {:error, t.n, t.code, "only an instruction line", t}
@@ -147,9 +152,25 @@ defmodule QuizImport.Parser do
         matching(t, instruction, body, Map.get(@overrides, {set, t.n}))
 
       true ->
-        choice_or_open(t, instruction, body, dims)
+        choice_or_open(t, instruction, body, dims, label_note)
     end
   end
+
+  # "Blender:" + "С помощью какой клавиши ...?" -> "Blender: С помощью какой клавиши ...?"
+  defp merge_label(
+         [%{images: [], text: label} = first, %{images: [], text: next} = second | rest] = body
+       ) do
+    if Regex.match?(@label, label) and (String.length(next) > 25 or String.ends_with?(next, "?")) do
+      merged = String.trim_trailing(label, ":") <> ": " <> next
+
+      {[%{second | text: merged} | rest],
+       "merged the label #{inspect(first.text)} into the prompt"}
+    else
+      {body, nil}
+    end
+  end
+
+  defp merge_label(body), do: {body, nil}
 
   defp matching(t, instruction, [prompt | rest], override) do
     {noise, rest} =
@@ -167,12 +188,20 @@ defmodule QuizImport.Parser do
           {[], rest}
       end
 
+    # Odd item count with a leading text-only paragraph: a pasted-in sentence.
+    # Obvious when the right column is pictures (one more name than pictures)
+    # or when the sentence is too long to be a name/symbol.
     {noise, rest} =
       case rest do
         [%{images: [], text: text} = first | tail] ->
-          if rem(length(rest), 2) == 1 and String.length(text) > @stray_long,
-            do: {noise ++ [first], tail},
-            else: {noise, rest}
+          pictures = Enum.count(tail, &(&1.images != [] and &1.text == ""))
+          names = Enum.count(tail, &(&1.images == []))
+
+          stray? =
+            rem(length(rest), 2) == 1 and
+              (String.length(text) > @stray_long or (pictures > 0 and names == pictures))
+
+          if stray?, do: {noise ++ [first], tail}, else: {noise, rest}
 
         _ ->
           {noise, rest}
@@ -216,11 +245,11 @@ defmodule QuizImport.Parser do
     end
   end
 
-  defp choice_or_open(t, instruction, body, dims) do
+  defp choice_or_open(t, instruction, body, dims, label_note) do
     kinds = Enum.map(body, &kind/1)
 
-    case split_options(body, kinds, dims) do
-      {:options, prompt, options} when length(options) >= 2 ->
+    case split_options(body, kinds, dims) |> absorb_question_tail() do
+      {:options, prompt, options, split_note} when length(options) >= 2 ->
         {:ok,
          %{
            kind: :single,
@@ -230,10 +259,10 @@ defmodule QuizImport.Parser do
            prompt: prompt,
            options: options,
            instruction: instruction,
-           note: nil
+           note: join_notes([label_note, split_note])
          }}
 
-      {:open, prompt} ->
+      {:open, prompt, _} ->
         {:ok,
          %{
            kind: :open,
@@ -242,7 +271,14 @@ defmodule QuizImport.Parser do
            code: t.code,
            prompt: prompt,
            instruction: instruction,
-           note: "no options in the source, imported as an open question"
+           note:
+             Enum.join(
+               Enum.reject(
+                 [label_note, "no options in the source, imported as an open question"],
+                 &is_nil/1
+               ),
+               "; "
+             )
          }}
 
       _ ->
@@ -250,6 +286,40 @@ defmodule QuizImport.Parser do
          "cannot split into prompt/options (kinds: #{Enum.join(kinds, " ")})", t}
     end
   end
+
+  defp join_notes(notes) do
+    case Enum.reject(notes, &is_nil/1) do
+      [] -> nil
+      list -> Enum.join(list, "; ")
+    end
+  end
+
+  # A prompt broken over two paragraphs ("... (видов, разрезов, сечений)" /
+  # "должно быть на чертеже?"): an "option" that ends in "?" is the prompt's tail.
+  defp absorb_question_tail({:options, prompt, options}),
+    do: absorb_question_tail({:options, prompt, options, nil})
+
+  defp absorb_question_tail({:options, prompt, [%{images: [], text: tail} = opt | rest], note})
+       when length(rest) >= 2 do
+    last = List.last(prompt)
+
+    if String.ends_with?(tail, "?") and last.images == [] and last.text != "" do
+      merged = %{last | text: last.text <> " " <> tail}
+
+      absorb_question_tail(
+        {:options, List.replace_at(prompt, -1, merged), rest,
+         "joined the prompt tail #{inspect(String.slice(opt.text, 0, 40))}"}
+      )
+    else
+      {:options, prompt, [opt | rest], note}
+    end
+  end
+
+  defp absorb_question_tail({:options, prompt, options, note}),
+    do: {:options, prompt, options, note}
+
+  defp absorb_question_tail({:open, prompt}), do: {:open, prompt, nil}
+  defp absorb_question_tail(other), do: other
 
   # Options are the longest trailing run of uniform paragraphs (all text or
   # all image-only). Everything before it is the prompt.
@@ -327,15 +397,7 @@ defmodule QuizImport.Parser do
     {theme, sub} = t.theme || {nil, nil}
 
     tags =
-      Enum.reject(
-        [
-          "import:" <> set,
-          "src:#{set}:#{q.n}",
-          theme && "тема:" <> theme,
-          sub && "подтема:" <> sub
-        ],
-        &is_nil/1
-      )
+      Enum.reject([theme && "тема:" <> tag(theme), sub && "подтема:" <> tag(sub)], &is_nil/1)
 
     all_paragraphs =
       q.prompt ++
@@ -377,6 +439,26 @@ defmodule QuizImport.Parser do
       "content" => content,
       "images" => all_paragraphs |> Enum.flat_map(& &1.images) |> Enum.uniq()
     }
+  end
+
+  # The comma separates tags in the editor, so it cannot appear inside one.
+  defp tag(text),
+    do: text |> String.replace(",", " ") |> String.replace(~r/\s+/u, " ") |> String.trim()
+
+  # The importer finds its blocks again by title (there are no marker tags), so
+  # titles must be unique within a set; a repeated one gets the task number.
+  defp disambiguate_titles(questions) do
+    repeated =
+      questions
+      |> Enum.frequencies_by(& &1["title"])
+      |> Enum.filter(&(elem(&1, 1) > 1))
+      |> Map.new()
+
+    Enum.map(questions, fn q ->
+      if Map.has_key?(repeated, q["title"]),
+        do: %{q | "title" => q["title"] <> " (№#{q["n"]})"},
+        else: q
+    end)
   end
 
   defp title(label, q) do
