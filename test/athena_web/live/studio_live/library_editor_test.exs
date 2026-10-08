@@ -886,4 +886,78 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       assert html =~ "Please write a Reference Solution SQL first!"
     end
   end
+
+  describe "Test run" do
+    test "plays the block in a modal and cleans up on close", %{conn: conn, admin: admin} do
+      block =
+        insert(:library_block,
+          owner_id: admin.id,
+          type: :text,
+          content: %{"text" => "preview me"}
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+      refute has_element?(lv, "#test-run-modal")
+
+      lv |> element("#library-editor-test-run") |> render_click()
+
+      assert has_element?(lv, "#test-run-modal")
+      assert has_element?(lv, "div[inert] #library-editor-header")
+      session = Athena.Repo.one!(Athena.Learning.TestRunSession)
+      assert find_live_child(lv, "test-run-player-#{session.id}")
+
+      lv |> element("#test-run-modal button[phx-click='close_test_run']") |> render_click()
+
+      refute has_element?(lv, "#test-run-modal")
+      assert Athena.Repo.get!(Athena.Learning.TestRunSession, session.id).status == :cleaned_up
+      refute Athena.Repo.get(Athena.Content.Course, session.course_id)
+    end
+
+    test "render_prompt_as_image also makes the answer options non-selectable", %{
+      conn: conn,
+      admin: admin
+    } do
+      doc = fn text ->
+        %{
+          "type" => "doc",
+          "content" => [
+            %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => text}]}
+          ]
+        }
+      end
+
+      block =
+        insert(:library_block,
+          owner_id: admin.id,
+          type: :quiz_question,
+          content: %{
+            "question_type" => "single",
+            "render_prompt_as_image" => true,
+            "body" => doc.("Blender:"),
+            "options" => [
+              %{"id" => "a", "text" => doc.("A"), "is_correct" => true},
+              %{"id" => "b", "text" => doc.("B"), "is_correct" => false}
+            ]
+          }
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+      lv |> element("#library-editor-test-run") |> render_click()
+
+      session = Athena.Repo.one!(Athena.Learning.TestRunSession)
+      player = find_live_child(lv, "test-run-player-#{session.id}")
+
+      assert has_element?(player, "#prompt-canvas-#{Athena.Repo.one!(Athena.Content.Block).id}")
+      assert has_element?(player, ".select-none [id^='tiptap-player-opt-']")
+    end
+
+    test "a reader (non-editor) can test run a public template", %{conn: conn} do
+      block = insert(:library_block, owner_id: Ecto.UUID.generate(), is_public: true)
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+      lv |> element("#library-editor-test-run") |> render_click()
+
+      assert has_element?(lv, "#test-run-modal")
+    end
+  end
 end

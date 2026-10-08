@@ -31,7 +31,8 @@ defmodule Athena.Learning.TestRuns do
 
   import Ecto.Query
 
-  alias Athena.{Repo, Content}
+  alias Athena.{Repo, Content, Identity}
+  alias Athena.Content.{Course, Section, Block, CourseLibraryBlock}
   alias Athena.Identity.{Account, Role}
   alias Athena.Learning.{TestRunSession, Enrollment, BlockProgress, Submission, Progress}
   alias Athena.Learning.CourseProgressCache
@@ -109,6 +110,121 @@ defmodule Athena.Learning.TestRuns do
     end)
   end
 
+  @doc """
+  Starts a test-run session that plays a single library block, for the
+  "Test run" button on the library block page.
+
+  A library block belongs to no course, so there is no section to play. Rather
+  than teach `AthenaWeb.LearnLive.Player` (and the exam LiveViews) a second
+  way of rendering blocks, this builds a throwaway `:library_preview` course
+  with one section holding a copy of the block and plays that through the
+  same path `start/3` uses. `cleanup/1` deletes the wrapper course again.
+
+  Exam blocks draw their questions from the course's pinned library blocks,
+  so for those the wrapper course is pinned the same questions the
+  instructor could use: the source course's bank when `:course_id` is given,
+  otherwise every question block the instructor can read.
+  """
+  @spec start_library_block(Account.t(), String.t(), keyword()) ::
+          {:ok, TestRunSession.t()} | {:error, :forbidden | :not_found | any()}
+  def start_library_block(instructor, library_block_id, opts \\ []) do
+    with true <- Identity.can?(instructor, "library.read") || {:error, :forbidden},
+         {:ok, library_block} <- Content.get_library_block(library_block_id) do
+      do_start_library_block(instructor, library_block, opts[:course_id])
+    end
+  end
+
+  @doc false
+  defp do_start_library_block(instructor, library_block, source_course_id) do
+    course_id = Ecto.UUID.generate()
+    section_id = Ecto.UUID.generate()
+    expires_at = DateTime.utc_now() |> DateTime.add(@session_ttl_minutes * 60, :second)
+
+    Ecto.Multi.new()
+    |> Ecto.Multi.run(:role, fn _repo, _changes -> ensure_test_run_role() end)
+    |> Ecto.Multi.insert(:account, fn %{role: role} -> ephemeral_account_changeset(role) end)
+    |> Ecto.Multi.insert(:course, preview_course_changeset(course_id, instructor))
+    |> Ecto.Multi.insert(:section, preview_section_changeset(course_id, section_id))
+    |> Ecto.Multi.insert(:block, preview_block_changeset(section_id, library_block))
+    |> Ecto.Multi.run(:pins, fn _repo, _changes ->
+      pin_exam_question_pool(library_block, course_id, instructor, source_course_id)
+    end)
+    |> Ecto.Multi.insert(:session, fn %{account: account} ->
+      TestRunSession.changeset(%TestRunSession{}, %{
+        course_id: course_id,
+        section_id: section_id,
+        instructor_account_id: instructor.id,
+        ephemeral_account_id: account.id,
+        expires_at: DateTime.truncate(expires_at, :second)
+      })
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{session: session}} -> {:ok, session}
+      {:error, _step, reason, _changes} -> {:error, reason}
+    end
+  end
+
+  @doc false
+  defp preview_course_changeset(course_id, instructor) do
+    Course.changeset(%Course{id: course_id}, %{
+      "title" => "Library preview " <> course_id,
+      "type" => :library_preview,
+      "status" => :published,
+      "owner_id" => instructor.id
+    })
+  end
+
+  @doc false
+  defp preview_section_changeset(course_id, section_id) do
+    Section.changeset(%Section{id: section_id}, %{
+      "id" => section_id,
+      "title" => "Library preview",
+      "course_id" => course_id,
+      "path" => Section.build_path(section_id, nil)
+    })
+  end
+
+  @doc false
+  defp preview_block_changeset(section_id, library_block) do
+    Block.changeset(%Block{}, %{
+      "type" => library_block.type,
+      "content" => library_block.content,
+      "section_id" => section_id,
+      "order" => 0
+    })
+  end
+
+  @exam_types [:quiz_exam, :ticket_exam]
+
+  @doc false
+  defp pin_exam_question_pool(%{type: type}, course_id, instructor, source_course_id)
+       when type in @exam_types do
+    pool_ids =
+      if source_course_id do
+        Repo.all(
+          from clb in CourseLibraryBlock,
+            where: clb.course_id == ^source_course_id,
+            select: clb.library_block_id
+        )
+      else
+        Content.list_readable_question_block_ids(instructor)
+      end
+
+    now = DateTime.utc_now(:second)
+
+    rows =
+      Enum.map(pool_ids, fn id ->
+        %{course_id: course_id, library_block_id: id, inserted_at: now, updated_at: now}
+      end)
+
+    {count, _} = Repo.insert_all(CourseLibraryBlock, rows)
+    {:ok, count}
+  end
+
+  defp pin_exam_question_pool(_library_block, _course_id, _instructor, _source_course_id),
+    do: {:ok, 0}
+
   @doc false
   defp do_start(instructor, course, section_id, linear_sections) do
     prior_sections = Enum.take_while(linear_sections, &(&1.id != section_id))
@@ -184,7 +300,8 @@ defmodule Athena.Learning.TestRuns do
 
   @doc """
   Purges every trace of a test-run session's ephemeral account and marks the
-  session `:cleaned_up`. Safe to call more than once (e.g. once from the
+  session `:cleaned_up`, along with the wrapper course of a
+  `start_library_block/3` run. Safe to call more than once (e.g. once from the
   builder's modal-close handler, and again from the cron sweep if that race
   loses) – every delete is a no-op once the rows are already gone.
   """
@@ -223,6 +340,10 @@ defmodule Athena.Learning.TestRuns do
     |> Ecto.Multi.delete_all(
       :account_stats,
       from(a in AccountStats, where: a.account_id == ^account_id)
+    )
+    |> Ecto.Multi.delete_all(
+      :preview_course,
+      from(c in Course, where: c.id == ^session.course_id and c.type == :library_preview)
     )
     |> Ecto.Multi.delete_all(:account, from(a in Account, where: a.id == ^account_id))
     |> Ecto.Multi.update(:session, TestRunSession.changeset(session, %{status: :cleaned_up}))

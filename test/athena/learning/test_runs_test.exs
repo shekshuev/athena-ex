@@ -4,7 +4,7 @@ defmodule Athena.Learning.TestRunsTest do
   alias Athena.Learning.TestRuns
   alias Athena.Learning.{BlockProgress, Enrollment, Submission, TestRunSession}
   alias Athena.Identity.{Account, Role}
-  alias Athena.Content.CompletionRule
+  alias Athena.Content.{CompletionRule, Course, Block, CourseLibraryBlock}
   alias Athena.Repo
   import Athena.Factory
 
@@ -198,5 +198,103 @@ defmodule Athena.Learning.TestRunsTest do
       refute Repo.get(Account, expired_session.ephemeral_account_id)
       assert Repo.get(Account, fresh_session.ephemeral_account_id)
     end
+  end
+
+  describe "start_library_block/3" do
+    setup do
+      %{instructor: insert(:account, role: build(:role, permissions: ["library.read"]))}
+    end
+
+    test "builds a hidden wrapper course holding a copy of the block", %{instructor: instructor} do
+      lib_block =
+        insert(:library_block,
+          type: :text,
+          content: %{"text" => "hello"},
+          owner_id: instructor.id
+        )
+
+      assert {:ok, %TestRunSession{} = session} =
+               TestRuns.start_library_block(instructor, lib_block.id)
+
+      assert %Course{type: :library_preview} = course = Repo.get!(Course, session.course_id)
+      assert [%Block{type: :text, content: %{"text" => "hello"}}] = blocks_of(session.section_id)
+
+      assert {:error, :not_found} = Athena.Content.get_course(instructor, course.id)
+      assert session.instructor_account_id == instructor.id
+      assert Repo.get(Account, session.ephemeral_account_id)
+    end
+
+    test "the wrapper section is immediately playable", %{instructor: instructor} do
+      lib_block = insert(:library_block, owner_id: instructor.id)
+
+      assert {:ok, session} = TestRuns.start_library_block(instructor, lib_block.id)
+
+      assert [%{id: section_id}] = Athena.Content.list_linear_lessons(session.course_id, :all)
+      assert section_id == session.section_id
+    end
+
+    test "rejects an unknown block and a user without library.read", %{instructor: instructor} do
+      assert {:error, :not_found} =
+               TestRuns.start_library_block(instructor, Ecto.UUID.generate())
+
+      outsider = insert(:account, role: build(:role, permissions: []))
+      lib_block = insert(:library_block)
+
+      assert {:error, :forbidden} = TestRuns.start_library_block(outsider, lib_block.id)
+    end
+
+    test "exam blocks get the source course's question bank pinned", %{instructor: instructor} do
+      source = insert(:course)
+      question = insert(:library_block, type: :quiz_question, owner_id: instructor.id)
+      insert(:library_block, type: :quiz_question, owner_id: instructor.id)
+      Repo.insert!(%CourseLibraryBlock{course_id: source.id, library_block_id: question.id})
+
+      exam = insert(:library_block, type: :quiz_exam, owner_id: instructor.id)
+
+      assert {:ok, session} =
+               TestRuns.start_library_block(instructor, exam.id, course_id: source.id)
+
+      assert [pinned] = pinned_ids(session.course_id)
+      assert pinned == question.id
+    end
+
+    test "cleanup deletes the wrapper course, its section, block and pins", %{
+      instructor: instructor
+    } do
+      exam = insert(:library_block, type: :quiz_exam, owner_id: instructor.id)
+      insert(:library_block, type: :quiz_question, owner_id: instructor.id)
+
+      assert {:ok, session} = TestRuns.start_library_block(instructor, exam.id)
+      assert :ok = TestRuns.cleanup(session)
+
+      refute Repo.get(Course, session.course_id)
+      assert blocks_of(session.section_id) == []
+      assert pinned_ids(session.course_id) == []
+      refute Repo.get(Account, session.ephemeral_account_id)
+      assert Repo.get!(TestRunSession, session.id).status == :cleaned_up
+      assert Repo.get!(Athena.Content.LibraryBlock, exam.id)
+    end
+
+    test "cleanup never deletes a regular course" do
+      instructor = insert(:account)
+      course = insert(:course)
+      section = insert(:section, course: course)
+      insert(:block, section: section)
+
+      assert {:ok, session} = TestRuns.start(instructor, course.id, section.id)
+      assert :ok = TestRuns.cleanup(session)
+
+      assert Repo.get(Course, course.id)
+    end
+  end
+
+  defp blocks_of(section_id) do
+    Repo.all(from b in Block, where: b.section_id == ^section_id)
+  end
+
+  defp pinned_ids(course_id) do
+    Repo.all(
+      from c in CourseLibraryBlock, where: c.course_id == ^course_id, select: c.library_block_id
+    )
   end
 end

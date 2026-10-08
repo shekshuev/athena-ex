@@ -83,6 +83,19 @@ defmodule Athena.Content.Library do
     end
   end
 
+  @doc """
+  IDs of the question-type library blocks (the ones exams draw from) the user
+  is allowed to read, ACL-scoped like `list_library_blocks/2`.
+  """
+  @spec list_readable_question_block_ids(map()) :: [String.t()]
+  def list_readable_question_block_ids(user) do
+    LibraryBlock
+    |> where([lb], lb.type in [:quiz_question, :code, :file_assignment])
+    |> scope_library_reads(user)
+    |> select([lb], lb.id)
+    |> Repo.all()
+  end
+
   @doc "Creates a new library block template. Sets owner to current user."
   @spec create_library_block(map(), map()) ::
           {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :forbidden}
