@@ -32,7 +32,14 @@ defmodule Athena.Content.Course do
     field :status, Ecto.Enum, values: [:draft, :published, :archived], default: :draft
     field :owner_id, :binary_id
     field :deleted_at, :utc_datetime
-    field :type, Ecto.Enum, values: [:standard, :competition], default: :standard
+    # `:library_preview` is a throwaway wrapper course holding a single library
+    # block for `Athena.Learning.TestRuns.start_library_block/3`. Course reads
+    # are scoped per type (`:standard`/`:competition`), so it never shows up in
+    # any course list.
+    field :type, Ecto.Enum,
+      values: [:standard, :competition, :library_preview],
+      default: :standard
+
     field :is_public, :boolean, default: false
     field :code, :string
 

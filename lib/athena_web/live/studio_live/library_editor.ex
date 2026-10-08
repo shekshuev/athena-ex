@@ -10,6 +10,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
   alias Athena.Content.LibraryBlock
   alias Athena.Execution
   alias Athena.Identity
+  alias Athena.Learning
   import AthenaWeb.BlockComponents
 
   on_mount {AthenaWeb.Hooks.Permission, "library.read"}
@@ -67,7 +68,9 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
          pending_uploads: %{},
          running_tests: %{},
          characters: Content.characters_for_picker(socket.assigns.current_user),
-         show_character_modal: false
+         show_character_modal: false,
+         test_run_session: nil,
+         test_run_active_exam: nil
        )}
     else
       _ ->
@@ -76,6 +79,37 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
          |> put_flash(:error, gettext("Template not found or access denied."))
          |> push_navigate(to: return_path)}
     end
+  end
+
+  @doc """
+  Best-effort cleanup if the editor goes away (tab closed, crash, navigation)
+  while a test run is still open – see `AthenaWeb.StudioLive.Builder.terminate/2`;
+  `Athena.Learning.Workers.TestRunCleanup` is the real backstop.
+  """
+  @impl true
+  def terminate(_reason, socket) do
+    if session = socket.assigns[:test_run_session] do
+      Learning.cleanup_test_run(session)
+    end
+
+    :ok
+  end
+
+  # Sent by the nested `Player`/exam LiveViews of the test run – see the same
+  # handlers in `AthenaWeb.StudioLive.Builder` for why they message the parent
+  # instead of navigating.
+  @impl true
+  def handle_info({:test_run_enter_exam, block_id, block_type}, socket) do
+    {:noreply,
+     assign(socket, :test_run_active_exam, %{block_id: block_id, block_type: block_type})}
+  end
+
+  @impl true
+  def handle_info({:test_run_exam_finished, flash_type, msg}, socket) do
+    {:noreply,
+     socket
+     |> assign(:test_run_active_exam, nil)
+     |> put_flash(flash_type, msg)}
   end
 
   @impl true
@@ -591,6 +625,33 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     end
   end
 
+  def handle_event("start_test_run", _, socket) do
+    if socket.assigns.test_run_session do
+      {:noreply, socket}
+    else
+      case Learning.start_library_block_test_run(
+             socket.assigns.current_user,
+             socket.assigns.block.id,
+             course_id: socket.assigns.course_id
+           ) do
+        {:ok, test_run_session} ->
+          {:noreply, assign(socket, test_run_session: test_run_session)}
+
+        {:error, _reason} ->
+          {:noreply,
+           put_flash(socket, :error, gettext("Could not start a test run for this template."))}
+      end
+    end
+  end
+
+  def handle_event("close_test_run", _, socket) do
+    if session = socket.assigns[:test_run_session] do
+      Learning.cleanup_test_run(session)
+    end
+
+    {:noreply, assign(socket, test_run_session: nil, test_run_active_exam: nil)}
+  end
+
   def handle_event("run_instructor_test", _, socket) do
     if can_edit?(socket) do
       block = socket.assigns.block
@@ -843,315 +904,221 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
       class={@course_bank_mode && "fixed inset-0 z-50 bg-base-100 overflow-y-auto p-4 pb-20 sm:p-8"}
       style="--sticky-offset: 3.75rem"
     >
-      <.page_container size="wide" class={not @course_bank_mode && "pb-20"}>
-        <.sticky_header id="library-editor-header" class="flex items-center gap-4">
-          <.link
-            id="library-editor-back"
-            navigate={@return_path}
-            class="btn btn-ghost btn-sm btn-square rounded-sm hover:bg-base-200"
-            title={gettext("Back to Library")}
-          >
-            <.icon name="hero-arrow-left" class="size-5" />
-          </.link>
-          <div>
-            <h1 class="text-2xl font-black font-display tracking-tight">
-              {@block.title}
-            </h1>
-            <div class="text-xs font-bold text-base-content/50 uppercase tracking-widest mt-1">
-              {gettext("Block Type:")} {Atom.to_string(@block.type) |> String.replace("_", " ")}
-            </div>
-          </div>
-
-          <.button
-            :if={Identity.can?(@current_user, "library.create")}
-            id="library-editor-copy"
-            type="button"
-            phx-click="copy_block"
-            class="btn btn-ghost btn-sm ml-auto"
-            title={gettext("Duplicate Template")}
-          >
-            <.icon name="hero-square-2-stack" class="size-5" />
-            <span class="hidden sm:inline">{gettext("Duplicate")}</span>
-          </.button>
-        </.sticky_header>
-
-        <div class="flex flex-col lg:flex-row items-start gap-8">
-          <div class="flex-1 w-full min-w-0 lg:min-w-125 space-y-6">
-            <div class="p-6 bg-base-100 border border-base-300 rounded-sm">
-              <div class="flex items-center justify-between mb-6 pb-4 border-b border-base-300">
-                <h2 class="text-lg font-bold">{gettext("Content Editor")}</h2>
-              </div>
-              <div class="relative w-full">
-                <.content_block
-                  block={@block}
-                  mode={@block_mode}
-                  active={true}
-                  characters={@characters}
-                />
-                <.block_editor :if={@role in [:owner, :writer]} block={@block} target={nil} />
+      <%!-- `inert` takes the page out of the selection/Ctrl+A/focus order while the test-run overlay is up, so the editor's own copy of the prompt can't be copied from behind it --%>
+      <div inert={@test_run_session != nil}>
+        <.page_container size="wide" class={not @course_bank_mode && "pb-20"}>
+          <.sticky_header id="library-editor-header" class="flex items-center gap-4">
+            <.link
+              id="library-editor-back"
+              navigate={@return_path}
+              class="btn btn-ghost btn-sm btn-square rounded-sm hover:bg-base-200"
+              title={gettext("Back to Library")}
+            >
+              <.icon name="hero-arrow-left" class="size-5" />
+            </.link>
+            <div>
+              <h1 class="text-2xl font-black font-display tracking-tight">
+                {@block.title}
+              </h1>
+              <div class="text-xs font-bold text-base-content/50 uppercase tracking-widest mt-1">
+                {gettext("Block Type:")} {Atom.to_string(@block.type) |> String.replace("_", " ")}
               </div>
             </div>
-          </div>
 
-          <div
-            :if={@role in [:owner, :writer]}
-            class="w-full lg:w-80 xl:w-100 shrink-0 bg-base-100 rounded-sm border border-base-300 xl:sticky xl:top-16 flex flex-col overflow-hidden"
-          >
-            <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-300">
-              <div>
-                <div class="text-[10px] font-bold text-base-content/50 uppercase tracking-widest mb-0.5">
-                  {gettext("Inspector")}
+            <div class="ml-auto flex items-center gap-2">
+              <.button
+                id="library-editor-test-run"
+                type="button"
+                phx-click="start_test_run"
+                class="btn btn-outline btn-sm"
+                title={gettext("Play this template as a test student")}
+              >
+                <.icon name="hero-play-circle" class="size-5" />
+                <span class="hidden sm:inline">{gettext("Test run")}</span>
+              </.button>
+              <.button
+                :if={Identity.can?(@current_user, "library.create")}
+                id="library-editor-copy"
+                type="button"
+                phx-click="copy_block"
+                class="btn btn-ghost btn-sm"
+                title={gettext("Duplicate Template")}
+              >
+                <.icon name="hero-square-2-stack" class="size-5" />
+                <span class="hidden sm:inline">{gettext("Duplicate")}</span>
+              </.button>
+            </div>
+          </.sticky_header>
+
+          <div class="flex flex-col lg:flex-row items-start gap-8">
+            <div class="flex-1 w-full min-w-0 lg:min-w-125 space-y-6">
+              <div class="p-6 bg-base-100 border border-base-300 rounded-sm">
+                <div class="flex items-center justify-between mb-6 pb-4 border-b border-base-300">
+                  <h2 class="text-lg font-bold">{gettext("Content Editor")}</h2>
                 </div>
-                <div class="text-sm font-bold capitalize">
-                  <%= if @block.type == :quiz_exam do %>
-                    {gettext("Assessment Session")}
-                  <% else %>
-                    {Atom.to_string(@block.type) |> String.replace("_", " ")} {gettext("Template")}
-                  <% end %>
-                </div>
-              </div>
-            </div>
-
-            <div class="p-6 space-y-6">
-              <.form for={@form} id="meta-form" phx-change="update_meta" phx-submit="update_meta">
-                <div class="space-y-4 mb-6">
-                  <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider">
-                    {gettext("General Settings")}
-                  </div>
-
-                  <.input
-                    field={@form[:title]}
-                    type="text"
-                    label={gettext("Template Title")}
-                    phx-debounce="500"
+                <div class="relative w-full">
+                  <.content_block
+                    block={@block}
+                    mode={@block_mode}
+                    active={true}
+                    characters={@characters}
                   />
-
-                  <fieldset class="fieldset">
-                    <label class="label">
-                      <span class="label-text font-bold text-sm">
-                        {gettext("Tags (comma separated)")}
-                      </span>
-                    </label>
-                    <input
-                      type="text"
-                      name="tags_string"
-                      value={@tags_string}
-                      class="input w-full"
-                      phx-debounce="500"
-                    />
-                  </fieldset>
+                  <.block_editor :if={@role in [:owner, :writer]} block={@block} target={nil} />
                 </div>
+              </div>
+            </div>
 
-                <%= if @block.type in [:quiz_question, :quiz_exam, :ticket_exam, :code, :file_assignment, :image, :video] do %>
-                  <div class="divider my-4"></div>
+            <div
+              :if={@role in [:owner, :writer]}
+              class="w-full lg:w-80 xl:w-100 shrink-0 bg-base-100 rounded-sm border border-base-300 xl:sticky xl:top-16 flex flex-col overflow-hidden"
+            >
+              <div class="flex items-center justify-between gap-3 px-6 py-5 border-b border-base-300">
+                <div>
+                  <div class="text-[10px] font-bold text-base-content/50 uppercase tracking-widest mb-0.5">
+                    {gettext("Inspector")}
+                  </div>
+                  <div class="text-sm font-bold capitalize">
+                    <%= if @block.type == :quiz_exam do %>
+                      {gettext("Assessment Session")}
+                    <% else %>
+                      {Atom.to_string(@block.type) |> String.replace("_", " ")} {gettext("Template")}
+                    <% end %>
+                  </div>
+                </div>
+              </div>
 
+              <div class="p-6 space-y-6">
+                <.form for={@form} id="meta-form" phx-change="update_meta" phx-submit="update_meta">
                   <div class="space-y-4 mb-6">
                     <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider">
-                      {gettext("Advanced Settings")}
+                      {gettext("General Settings")}
                     </div>
 
-                    <%= if @block.type == :quiz_question do %>
-                      <div class="mt-4">
+                    <.input
+                      field={@form[:title]}
+                      type="text"
+                      label={gettext("Template Title")}
+                      phx-debounce="500"
+                    />
+
+                    <fieldset class="fieldset">
+                      <label class="label">
+                        <span class="label-text font-bold text-sm">
+                          {gettext("Tags (comma separated)")}
+                        </span>
+                      </label>
+                      <input
+                        type="text"
+                        name="tags_string"
+                        value={@tags_string}
+                        class="input w-full"
+                        phx-debounce="500"
+                      />
+                    </fieldset>
+                  </div>
+
+                  <%= if @block.type in [:quiz_question, :quiz_exam, :ticket_exam, :code, :file_assignment, :image, :video] do %>
+                    <div class="divider my-4"></div>
+
+                    <div class="space-y-4 mb-6">
+                      <div class="text-xs font-bold text-base-content/50 uppercase tracking-wider">
+                        {gettext("Advanced Settings")}
+                      </div>
+
+                      <%= if @block.type == :quiz_question do %>
+                        <div class="mt-4">
+                          <.input
+                            type="number"
+                            name="library_block[content][max_attempts]"
+                            value={@block.content["max_attempts"]}
+                            label={gettext("Max Attempts")}
+                            placeholder={gettext("Leave empty for unlimited")}
+                            min="1"
+                            phx-debounce="500"
+                          />
+                        </div>
+
                         <.input
-                          type="number"
-                          name="library_block[content][max_attempts]"
-                          value={@block.content["max_attempts"]}
-                          label={gettext("Max Attempts")}
-                          placeholder={gettext("Leave empty for unlimited")}
-                          min="1"
-                          phx-debounce="500"
+                          type="select"
+                          name="library_block[content][question_type]"
+                          value={@block.content["question_type"] || "open"}
+                          label={gettext("Question Type")}
+                          options={[
+                            {gettext("Exact Match (CTF / Text)"), "exact_match"},
+                            {gettext("Single Choice (Radio)"), "single"},
+                            {gettext("Multiple Choice (Checkbox)"), "multiple"},
+                            {gettext("Open Question (Essay)"), "open"},
+                            {gettext("Matching Pairs"), "matching"}
+                          ]}
                         />
-                      </div>
 
-                      <.input
-                        type="select"
-                        name="library_block[content][question_type]"
-                        value={@block.content["question_type"] || "open"}
-                        label={gettext("Question Type")}
-                        options={[
-                          {gettext("Exact Match (CTF / Text)"), "exact_match"},
-                          {gettext("Single Choice (Radio)"), "single"},
-                          {gettext("Multiple Choice (Checkbox)"), "multiple"},
-                          {gettext("Open Question (Essay)"), "open"},
-                          {gettext("Matching Pairs"), "matching"}
-                        ]}
-                      />
+                        <.input
+                          type="select"
+                          name="library_block[content][answer_type]"
+                          value={@block.content["answer_type"] || "plain_text"}
+                          label={gettext("Answer Input Type")}
+                          options={[
+                            {gettext("Plain Text"), "plain_text"},
+                            {gettext("Rich Text"), "rich_text"}
+                          ]}
+                          phx-debounce="300"
+                        />
 
-                      <.input
-                        type="select"
-                        name="library_block[content][answer_type]"
-                        value={@block.content["answer_type"] || "plain_text"}
-                        label={gettext("Answer Input Type")}
-                        options={[
-                          {gettext("Plain Text"), "plain_text"},
-                          {gettext("Rich Text"), "rich_text"}
-                        ]}
-                        phx-debounce="300"
-                      />
-
-                      <div class="mt-2">
-                        <label class="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="hidden"
-                            name="library_block[content][render_prompt_as_image]"
-                            value="false"
-                          />
-                          <input
-                            type="checkbox"
-                            name="library_block[content][render_prompt_as_image]"
-                            value="true"
-                            checked={@block.content["render_prompt_as_image"]}
-                            class="checkbox checkbox-sm checkbox-primary mt-0.5"
-                          />
-                          <span class="label-text font-bold">
-                            {gettext("Render prompt as image (blocks copy/select, drops formatting)")}
-                          </span>
-                        </label>
-                      </div>
-
-                      <%= if @block.content["question_type"] == "exact_match" do %>
                         <div class="mt-2">
                           <label class="flex items-center gap-2 cursor-pointer">
                             <input
                               type="hidden"
-                              name="library_block[content][case_sensitive]"
+                              name="library_block[content][render_prompt_as_image]"
                               value="false"
                             />
                             <input
                               type="checkbox"
-                              name="library_block[content][case_sensitive]"
+                              name="library_block[content][render_prompt_as_image]"
                               value="true"
-                              checked={@block.content["case_sensitive"]}
+                              checked={@block.content["render_prompt_as_image"]}
                               class="checkbox checkbox-sm checkbox-primary mt-0.5"
                             />
-                            <span class="label-text font-bold">{gettext("Case Sensitive")}</span>
+                            <span class="label-text font-bold">
+                              {gettext(
+                                "Render prompt as image (blocks copy/select, drops formatting)"
+                              )}
+                            </span>
                           </label>
+                        </div>
+
+                        <%= if @block.content["question_type"] == "exact_match" do %>
+                          <div class="mt-2">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="hidden"
+                                name="library_block[content][case_sensitive]"
+                                value="false"
+                              />
+                              <input
+                                type="checkbox"
+                                name="library_block[content][case_sensitive]"
+                                value="true"
+                                checked={@block.content["case_sensitive"]}
+                                class="checkbox checkbox-sm checkbox-primary mt-0.5"
+                              />
+                              <span class="label-text font-bold">{gettext("Case Sensitive")}</span>
+                            </label>
+                          </div>
+                        <% end %>
+
+                        <div class="mt-4">
+                          <.input
+                            type="textarea"
+                            name="library_block[content][general_explanation]"
+                            value={@block.content["general_explanation"]}
+                            label={gettext("General Explanation (shown after submission)")}
+                            phx-debounce="500"
+                            rows="3"
+                          />
                         </div>
                       <% end %>
 
-                      <div class="mt-4">
-                        <.input
-                          type="textarea"
-                          name="library_block[content][general_explanation]"
-                          value={@block.content["general_explanation"]}
-                          label={gettext("General Explanation (shown after submission)")}
-                          phx-debounce="500"
-                          rows="3"
-                        />
-                      </div>
-                    <% end %>
-
-                    <%= if @block.type == :quiz_exam do %>
-                      <.input
-                        type="number"
-                        name="library_block[content][time_limit]"
-                        value={@block.content["time_limit"]}
-                        label={gettext("Time Limit (min)")}
-                        placeholder={gettext("Optional")}
-                        min="1"
-                        phx-debounce="500"
-                      />
-
-                      <div class="flex items-center justify-between mb-2 mt-6">
-                        <label class="label p-0">
-                          <span class="label-text font-bold text-xs uppercase text-base-content/70">
-                            {gettext("Question Slots")}
-                          </span>
-                        </label>
-                        <button
-                          type="button"
-                          phx-click="add_quiz_slot"
-                          class="btn btn-xs btn-ghost text-primary"
-                        >
-                          <.icon name="hero-plus" class="size-3 mr-1" /> {gettext("Add Slot")}
-                        </button>
-                      </div>
-
-                      <div class="space-y-3">
-                        <% quiz_slots = @block.content["slots"] || [] %>
-                        <%= for {slot, index} <- Enum.with_index(quiz_slots) do %>
-                          <div class="flex items-center gap-2">
-                            <input
-                              type="hidden"
-                              name={"library_block[content][slots][#{index}][id]"}
-                              value={slot["id"]}
-                            />
-                            <div class="w-20">
-                              <.input
-                                type="number"
-                                name={"library_block[content][slots][#{index}][count]"}
-                                value={slot["count"] || 1}
-                                min="1"
-                                phx-debounce="500"
-                              />
-                            </div>
-                            <div class="flex-1">
-                              <.input
-                                type="text"
-                                name={"library_block[content][slots][#{index}][tags_string]"}
-                                value={Enum.join(slot["tags"] || [], ", ")}
-                                placeholder={gettext("e.g. elixir, hard")}
-                                phx-debounce="500"
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              phx-click="remove_quiz_slot"
-                              phx-value-slot_id={slot["id"]}
-                              class="btn btn-ghost btn-sm btn-square text-error"
-                              title={gettext("Remove Slot")}
-                            >
-                              <.icon name="hero-x-mark" class="size-4" />
-                            </button>
-                          </div>
-                        <% end %>
-                        <div :if={quiz_slots == []} class="text-sm italic opacity-50 pb-2">
-                          {gettext(
-                            "No slots added. Add slots to specify how many questions to pick per tag group."
-                          )}
-                        </div>
-                      </div>
-
-                      <div class="collapse collapse-arrow bg-base-200/50 mt-6">
-                        <input type="checkbox" />
-                        <div class="collapse-title text-xs font-semibold text-base-content/50 uppercase tracking-wider p-3 min-h-0">
-                          {gettext("Legacy Tag Rules (used only when no slots are defined)")}
-                        </div>
-                        <div class="collapse-content space-y-3">
-                          <.input
-                            type="number"
-                            name="library_block[content][count]"
-                            value={@block.content["count"] || 10}
-                            label={gettext("Questions")}
-                            min="1"
-                          />
-                          <.input
-                            type="text"
-                            name="tags_mandatory"
-                            value={Enum.join(@block.content["mandatory_tags"] || [], ", ")}
-                            label={gettext("Mandatory Tags")}
-                            phx-debounce="500"
-                          />
-                          <.input
-                            type="text"
-                            name="tags_include"
-                            value={Enum.join(@block.content["include_tags"] || [], ", ")}
-                            label={gettext("Include Pool")}
-                            phx-debounce="500"
-                          />
-                          <.input
-                            type="text"
-                            name="tags_exclude"
-                            value={Enum.join(@block.content["exclude_tags"] || [], ", ")}
-                            label={gettext("Exclude Pool")}
-                            phx-debounce="500"
-                          />
-                        </div>
-                      </div>
-                    <% end %>
-
-                    <%= if @block.type == :ticket_exam do %>
-                      <div class="flex flex-col gap-3">
+                      <%= if @block.type == :quiz_exam do %>
                         <.input
                           type="number"
                           name="library_block[content][time_limit]"
@@ -1161,208 +1128,327 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                           min="1"
                           phx-debounce="500"
                         />
-                      </div>
 
-                      <div class="flex items-center justify-between mb-2 mt-6">
-                        <label class="label p-0">
-                          <span class="label-text font-bold text-xs uppercase text-base-content/70">
-                            {gettext("Ticket Slots")}
-                          </span>
-                        </label>
-                        <button
-                          type="button"
-                          phx-click="add_ticket_slot"
-                          class="btn btn-xs btn-ghost text-primary"
-                        >
-                          <.icon name="hero-plus" class="size-3 mr-1" /> {gettext("Add Slot")}
-                        </button>
-                      </div>
-
-                      <div class="space-y-3">
-                        <% slots = @block.content["slots"] || [] %>
-                        <%= for {slot, index} <- Enum.with_index(slots) do %>
-                          <div class="flex items-center gap-2">
-                            <input
-                              type="hidden"
-                              name={"library_block[content][slots][#{index}][id]"}
-                              value={slot["id"]}
-                            />
-                            <div class="flex-1">
-                              <.input
-                                type="text"
-                                name={"library_block[content][slots][#{index}][tags_string]"}
-                                value={Enum.join(slot["tags"] || [], ", ")}
-                                placeholder={gettext("e.g. db, theory")}
-                                phx-debounce="500"
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              phx-click="remove_ticket_slot"
-                              phx-value-slot_id={slot["id"]}
-                              class="btn btn-ghost btn-sm btn-square text-error"
-                              title={gettext("Remove Slot")}
-                            >
-                              <.icon name="hero-x-mark" class="size-4" />
-                            </button>
-                          </div>
-                        <% end %>
-                        <div :if={slots == []} class="text-sm italic opacity-50 pb-2">
-                          {gettext("No slots added. Add slots to specify question tags.")}
+                        <div class="flex items-center justify-between mb-2 mt-6">
+                          <label class="label p-0">
+                            <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                              {gettext("Question Slots")}
+                            </span>
+                          </label>
+                          <button
+                            type="button"
+                            phx-click="add_quiz_slot"
+                            class="btn btn-xs btn-ghost text-primary"
+                          >
+                            <.icon name="hero-plus" class="size-3 mr-1" /> {gettext("Add Slot")}
+                          </button>
                         </div>
-                      </div>
-                    <% end %>
 
-                    <%= if @block.type == :code do %>
-                      <.input
-                        type="select"
-                        name="library_block[content][language]"
-                        value={@block.content["language"] || Execution.default_language()}
-                        label={gettext("Language")}
-                        options={Execution.options()}
-                      />
+                        <div class="space-y-3">
+                          <% quiz_slots = @block.content["slots"] || [] %>
+                          <%= for {slot, index} <- Enum.with_index(quiz_slots) do %>
+                            <div class="flex items-center gap-2">
+                              <input
+                                type="hidden"
+                                name={"library_block[content][slots][#{index}][id]"}
+                                value={slot["id"]}
+                              />
+                              <div class="w-20">
+                                <.input
+                                  type="number"
+                                  name={"library_block[content][slots][#{index}][count]"}
+                                  value={slot["count"] || 1}
+                                  min="1"
+                                  phx-debounce="500"
+                                />
+                              </div>
+                              <div class="flex-1">
+                                <.input
+                                  type="text"
+                                  name={"library_block[content][slots][#{index}][tags_string]"}
+                                  value={Enum.join(slot["tags"] || [], ", ")}
+                                  placeholder={gettext("e.g. elixir, hard")}
+                                  phx-debounce="500"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                phx-click="remove_quiz_slot"
+                                phx-value-slot_id={slot["id"]}
+                                class="btn btn-ghost btn-sm btn-square text-error"
+                                title={gettext("Remove Slot")}
+                              >
+                                <.icon name="hero-x-mark" class="size-4" />
+                              </button>
+                            </div>
+                          <% end %>
+                          <div :if={quiz_slots == []} class="text-sm italic opacity-50 pb-2">
+                            {gettext(
+                              "No slots added. Add slots to specify how many questions to pick per tag group."
+                            )}
+                          </div>
+                        </div>
 
-                      <%= if @block.content["language"] == "sql" do %>
-                        <.input
-                          type="select"
-                          name="library_block[content][evaluation_mode]"
-                          value={@block.content["evaluation_mode"] || "query_result"}
-                          label={gettext("Evaluation Mode")}
-                          options={[
-                            {gettext("Query Result"), "query_result"},
-                            {gettext("State Verification"), "state_verification"}
-                          ]}
-                        />
+                        <div class="collapse collapse-arrow bg-base-200/50 mt-6">
+                          <input type="checkbox" />
+                          <div class="collapse-title text-xs font-semibold text-base-content/50 uppercase tracking-wider p-3 min-h-0">
+                            {gettext("Legacy Tag Rules (used only when no slots are defined)")}
+                          </div>
+                          <div class="collapse-content space-y-3">
+                            <.input
+                              type="number"
+                              name="library_block[content][count]"
+                              value={@block.content["count"] || 10}
+                              label={gettext("Questions")}
+                              min="1"
+                            />
+                            <.input
+                              type="text"
+                              name="tags_mandatory"
+                              value={Enum.join(@block.content["mandatory_tags"] || [], ", ")}
+                              label={gettext("Mandatory Tags")}
+                              phx-debounce="500"
+                            />
+                            <.input
+                              type="text"
+                              name="tags_include"
+                              value={Enum.join(@block.content["include_tags"] || [], ", ")}
+                              label={gettext("Include Pool")}
+                              phx-debounce="500"
+                            />
+                            <.input
+                              type="text"
+                              name="tags_exclude"
+                              value={Enum.join(@block.content["exclude_tags"] || [], ", ")}
+                              label={gettext("Exclude Pool")}
+                              phx-debounce="500"
+                            />
+                          </div>
+                        </div>
+                      <% end %>
 
-                        <.input
-                          :if={
-                            (@block.content["evaluation_mode"] || "query_result") == "query_result"
-                          }
-                          type="select"
-                          name="library_block[content][result_order]"
-                          value={@block.content["result_order"] || "auto"}
-                          label={gettext("Row Order Comparison")}
-                          options={[
-                            {gettext("Auto (strict if the solution has ORDER BY)"), "auto"},
-                            {gettext("Strict (rows must match the solution order)"), "strict"},
-                            {gettext("Ignore row order"), "ignore"}
-                          ]}
-                        />
-
-                        <.input
-                          type="number"
-                          name="library_block[content][time_limit]"
-                          value={@block.content["time_limit"] || 2.0}
-                          label={gettext("Time Limit (s)")}
-                          step="0.1"
-                          min="0.1"
-                          max="15.0"
-                          phx-debounce="500"
-                        />
-                      <% else %>
-                        <div class="grid grid-cols-2 gap-3">
+                      <%= if @block.type == :ticket_exam do %>
+                        <div class="flex flex-col gap-3">
                           <.input
                             type="number"
                             name="library_block[content][time_limit]"
-                            value={@block.content["time_limit"] || 1.0}
+                            value={@block.content["time_limit"]}
+                            label={gettext("Time Limit (min)")}
+                            placeholder={gettext("Optional")}
+                            min="1"
+                            phx-debounce="500"
+                          />
+                        </div>
+
+                        <div class="flex items-center justify-between mb-2 mt-6">
+                          <label class="label p-0">
+                            <span class="label-text font-bold text-xs uppercase text-base-content/70">
+                              {gettext("Ticket Slots")}
+                            </span>
+                          </label>
+                          <button
+                            type="button"
+                            phx-click="add_ticket_slot"
+                            class="btn btn-xs btn-ghost text-primary"
+                          >
+                            <.icon name="hero-plus" class="size-3 mr-1" /> {gettext("Add Slot")}
+                          </button>
+                        </div>
+
+                        <div class="space-y-3">
+                          <% slots = @block.content["slots"] || [] %>
+                          <%= for {slot, index} <- Enum.with_index(slots) do %>
+                            <div class="flex items-center gap-2">
+                              <input
+                                type="hidden"
+                                name={"library_block[content][slots][#{index}][id]"}
+                                value={slot["id"]}
+                              />
+                              <div class="flex-1">
+                                <.input
+                                  type="text"
+                                  name={"library_block[content][slots][#{index}][tags_string]"}
+                                  value={Enum.join(slot["tags"] || [], ", ")}
+                                  placeholder={gettext("e.g. db, theory")}
+                                  phx-debounce="500"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                phx-click="remove_ticket_slot"
+                                phx-value-slot_id={slot["id"]}
+                                class="btn btn-ghost btn-sm btn-square text-error"
+                                title={gettext("Remove Slot")}
+                              >
+                                <.icon name="hero-x-mark" class="size-4" />
+                              </button>
+                            </div>
+                          <% end %>
+                          <div :if={slots == []} class="text-sm italic opacity-50 pb-2">
+                            {gettext("No slots added. Add slots to specify question tags.")}
+                          </div>
+                        </div>
+                      <% end %>
+
+                      <%= if @block.type == :code do %>
+                        <.input
+                          type="select"
+                          name="library_block[content][language]"
+                          value={@block.content["language"] || Execution.default_language()}
+                          label={gettext("Language")}
+                          options={Execution.options()}
+                        />
+
+                        <%= if @block.content["language"] == "sql" do %>
+                          <.input
+                            type="select"
+                            name="library_block[content][evaluation_mode]"
+                            value={@block.content["evaluation_mode"] || "query_result"}
+                            label={gettext("Evaluation Mode")}
+                            options={[
+                              {gettext("Query Result"), "query_result"},
+                              {gettext("State Verification"), "state_verification"}
+                            ]}
+                          />
+
+                          <.input
+                            :if={
+                              (@block.content["evaluation_mode"] || "query_result") == "query_result"
+                            }
+                            type="select"
+                            name="library_block[content][result_order]"
+                            value={@block.content["result_order"] || "auto"}
+                            label={gettext("Row Order Comparison")}
+                            options={[
+                              {gettext("Auto (strict if the solution has ORDER BY)"), "auto"},
+                              {gettext("Strict (rows must match the solution order)"), "strict"},
+                              {gettext("Ignore row order"), "ignore"}
+                            ]}
+                          />
+
+                          <.input
+                            type="number"
+                            name="library_block[content][time_limit]"
+                            value={@block.content["time_limit"] || 2.0}
                             label={gettext("Time Limit (s)")}
                             step="0.1"
                             min="0.1"
                             max="15.0"
                             phx-debounce="500"
                           />
+                        <% else %>
+                          <div class="grid grid-cols-2 gap-3">
+                            <.input
+                              type="number"
+                              name="library_block[content][time_limit]"
+                              value={@block.content["time_limit"] || 1.0}
+                              label={gettext("Time Limit (s)")}
+                              step="0.1"
+                              min="0.1"
+                              max="15.0"
+                              phx-debounce="500"
+                            />
+                            <.input
+                              type="number"
+                              name="library_block[content][memory_limit]"
+                              value={@block.content["memory_limit"] || 65_536}
+                              label={gettext("Memory (KB)")}
+                              step="1024"
+                              min="16384"
+                              max="524288"
+                              phx-debounce="500"
+                            />
+                          </div>
+                        <% end %>
+
+                        <div class="mt-2">
                           <.input
                             type="number"
-                            name="library_block[content][memory_limit]"
-                            value={@block.content["memory_limit"] || 65_536}
-                            label={gettext("Memory (KB)")}
-                            step="1024"
-                            min="16384"
-                            max="524288"
+                            name="library_block[content][max_attempts]"
+                            value={@block.content["max_attempts"]}
+                            label={gettext("Max Attempts")}
+                            placeholder={gettext("Leave empty for unlimited")}
+                            min="1"
                             phx-debounce="500"
                           />
                         </div>
                       <% end %>
 
-                      <div class="mt-2">
+                      <%= if @block.type == :file_assignment do %>
                         <.input
                           type="number"
-                          name="library_block[content][max_attempts]"
-                          value={@block.content["max_attempts"]}
-                          label={gettext("Max Attempts")}
-                          placeholder={gettext("Leave empty for unlimited")}
+                          name="library_block[content][max_files]"
+                          value={@block.content["max_files"] || 1}
+                          label={gettext("Max Files Allowed")}
                           min="1"
+                          max="20"
+                          step="1"
                           phx-debounce="500"
                         />
-                      </div>
-                    <% end %>
-
-                    <%= if @block.type == :file_assignment do %>
-                      <.input
-                        type="number"
-                        name="library_block[content][max_files]"
-                        value={@block.content["max_files"] || 1}
-                        label={gettext("Max Files Allowed")}
-                        min="1"
-                        max="20"
-                        step="1"
-                        phx-debounce="500"
-                      />
-                      <div class="text-xs text-base-content/50 leading-relaxed -mt-2">
-                        {gettext(
-                          "Students upload files for manual review. Allowed range: 1–20 files."
-                        )}
-                      </div>
-                    <% end %>
-
-                    <%= if @block.type in [:image, :video] do %>
-                      <.button
-                        type="button"
-                        phx-click="request_media_upload"
-                        phx-value-media_type={@block.type}
-                        class="btn btn-outline w-full mb-2"
-                      >
-                        <.icon name="hero-cloud-arrow-up" class="size-4" /> {if @block.content["url"],
-                          do: gettext("Replace File"),
-                          else: gettext("Upload File")}
-                      </.button>
-                      <%= if @block.type == :image do %>
-                        <.input
-                          type="text"
-                          name="library_block[content][alt]"
-                          value={@block.content["alt"]}
-                          label={gettext("Alt Text")}
-                          phx-debounce="500"
-                        />
+                        <div class="text-xs text-base-content/50 leading-relaxed -mt-2">
+                          {gettext(
+                            "Students upload files for manual review. Allowed range: 1–20 files."
+                          )}
+                        </div>
                       <% end %>
-                      <%= if @block.type == :video do %>
-                        <.input
-                          type="text"
-                          name="library_block[content][poster_url]"
-                          value={@block.content["poster_url"]}
-                          label={gettext("Poster URL")}
-                          phx-debounce="500"
-                        />
-                      <% end %>
-                    <% end %>
-                  </div>
-                <% end %>
-              </.form>
-            </div>
 
-            <div class="p-6 border-t border-base-300 mt-auto">
-              <.link
-                id="library-editor-back-bottom"
-                navigate={@return_path}
-                class="btn btn-primary rounded-sm w-full"
-              >
-                <.icon name="hero-check-circle" class="size-5 mr-2" />
-                {gettext("Done & Return")}
-              </.link>
+                      <%= if @block.type in [:image, :video] do %>
+                        <.button
+                          type="button"
+                          phx-click="request_media_upload"
+                          phx-value-media_type={@block.type}
+                          class="btn btn-outline w-full mb-2"
+                        >
+                          <.icon name="hero-cloud-arrow-up" class="size-4" /> {if @block.content[
+                                                                                    "url"
+                                                                                  ],
+                                                                                  do:
+                                                                                    gettext(
+                                                                                      "Replace File"
+                                                                                    ),
+                                                                                  else:
+                                                                                    gettext(
+                                                                                      "Upload File"
+                                                                                    )}
+                        </.button>
+                        <%= if @block.type == :image do %>
+                          <.input
+                            type="text"
+                            name="library_block[content][alt]"
+                            value={@block.content["alt"]}
+                            label={gettext("Alt Text")}
+                            phx-debounce="500"
+                          />
+                        <% end %>
+                        <%= if @block.type == :video do %>
+                          <.input
+                            type="text"
+                            name="library_block[content][poster_url]"
+                            value={@block.content["poster_url"]}
+                            label={gettext("Poster URL")}
+                            phx-debounce="500"
+                          />
+                        <% end %>
+                      <% end %>
+                    </div>
+                  <% end %>
+                </.form>
+              </div>
+
+              <div class="p-6 border-t border-base-300 mt-auto">
+                <.link
+                  id="library-editor-back-bottom"
+                  navigate={@return_path}
+                  class="btn btn-primary rounded-sm w-full"
+                >
+                  <.icon name="hero-check-circle" class="size-5 mr-2" />
+                  {gettext("Done & Return")}
+                </.link>
+              </div>
             </div>
           </div>
-        </div>
-      </.page_container>
+        </.page_container>
+      </div>
 
       <%= if @show_media_modal and @role in [:owner, :writer] do %>
         <.live_component
@@ -1392,6 +1478,13 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
           on_cancel={JS.push("cancel_character_modal")}
         />
       </.modal>
+
+      <AthenaWeb.TestRunComponents.test_run_modal
+        :if={@test_run_session}
+        socket={@socket}
+        session={@test_run_session}
+        active_exam={@test_run_active_exam}
+      />
     </div>
     """
   end
