@@ -1974,7 +1974,7 @@ defmodule AthenaWeb.LearnLive.Player do
     all_sections = Content.list_linear_lessons(course_id, :all)
     all_section_ids = Enum.map(all_sections, & &1.id)
 
-    all_blocks = Content.list_blocks_by_section_ids(all_section_ids)
+    all_blocks = Content.list_block_headers_by_section_ids(all_section_ids)
 
     global_rules =
       (all_sections ++ all_blocks)

@@ -33,6 +33,41 @@ defmodule Athena.Content.BlocksTest do
     }
   end
 
+  describe "list_block_headers_by_section_ids/1" do
+    test "returns the blocks of the given sections without loading their content", %{
+      section: s
+    } do
+      other = insert(:section, course: s.course)
+
+      kept =
+        insert(:block,
+          section: s,
+          type: :quiz_question,
+          content: %{"question_type" => "open", "body" => %{"huge" => "doc"}},
+          completion_rule: %{type: :submit},
+          visibility: :hidden
+        )
+
+      kept_other = insert(:block, section: other)
+      insert(:block, section: insert(:section, course: s.course))
+
+      result = Blocks.list_block_headers_by_section_ids([s.id, other.id])
+
+      assert result |> Enum.map(& &1.id) |> Enum.sort() == Enum.sort([kept.id, kept_other.id])
+
+      header = Enum.find(result, &(&1.id == kept.id))
+      assert header.content == %{}
+      assert header.type == :quiz_question
+      assert header.section_id == s.id
+      assert header.visibility == :hidden
+      assert header.completion_rule.type == :submit
+    end
+
+    test "returns an empty list for no sections" do
+      assert Blocks.list_block_headers_by_section_ids([]) == []
+    end
+  end
+
   describe "list_blocks_by_section/2" do
     test "should return block list order by order field", %{section: s} do
       b2 = insert(:block, section: s, order: 2000)

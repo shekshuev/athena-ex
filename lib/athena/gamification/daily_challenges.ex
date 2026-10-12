@@ -92,7 +92,7 @@ defmodule Athena.Gamification.DailyChallenges do
         course_id
         |> Content.list_linear_lessons()
         |> Enum.map(& &1.id)
-        |> Content.list_blocks_by_section_ids()
+        |> Content.list_block_headers_by_section_ids()
         |> Enum.filter(&(&1.type in @eligible_block_types))
         |> Enum.map(& &1.id)
 

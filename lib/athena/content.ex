@@ -133,6 +133,7 @@ defmodule Athena.Content do
 
   defdelegate list_blocks_by_section(section_id, user_or_mode \\ :all), to: Blocks
   defdelegate list_blocks_by_section_ids(ids), to: Blocks
+  defdelegate list_block_headers_by_section_ids(ids), to: Blocks
   defdelegate get_block(user, id), to: Blocks
   defdelegate get_block(id), to: Blocks
 

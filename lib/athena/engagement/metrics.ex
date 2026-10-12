@@ -202,7 +202,7 @@ defmodule Athena.Engagement.Metrics do
     blocks_by_section =
       sections
       |> Enum.map(& &1.id)
-      |> Content.list_blocks_by_section_ids()
+      |> Content.list_block_headers_by_section_ids()
       |> Enum.group_by(& &1.section_id)
       |> Map.new(fn {section_id, blocks} -> {section_id, Enum.sort_by(blocks, & &1.order)} end)
 

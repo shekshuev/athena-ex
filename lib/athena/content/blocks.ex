@@ -44,6 +44,26 @@ defmodule Athena.Content.Blocks do
   end
 
   @doc """
+  Like `list_blocks_by_section_ids/1`, but without the `content` column, which is
+  left at the schema default (`%{}`).
+
+  A block's `content` holds the whole tiptap document (question text, options,
+  embedded media) and is by far the heaviest column. Callers that only look at
+  ids, types, ordering, visibility, or the access/completion/engagement rules
+  (progress, unlock schedule, gates, engagement metrics) must use this instead
+  of dragging every block's content out of the database on every call.
+  """
+  @spec list_block_headers_by_section_ids([String.t()]) :: [Block.t()]
+  def list_block_headers_by_section_ids(section_ids) do
+    fields = Block.__schema__(:fields) -- [:content]
+
+    Block
+    |> where([b], b.section_id in ^section_ids)
+    |> select([b], struct(b, ^fields))
+    |> Repo.all()
+  end
+
+  @doc """
   Retrieves a single block by its ID without ACL (internal/student use).
   """
   @spec get_block(String.t()) :: {:ok, Block.t()} | {:error, :not_found}

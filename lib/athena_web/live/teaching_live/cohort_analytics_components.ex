@@ -123,7 +123,7 @@ defmodule AthenaWeb.TeachingLive.CohortAnalyticsComponents do
     blocks_by_section =
       sections
       |> Enum.map(& &1.id)
-      |> Content.list_blocks_by_section_ids()
+      |> Content.list_block_headers_by_section_ids()
       |> Enum.group_by(& &1.section_id)
 
     for section <- sections,

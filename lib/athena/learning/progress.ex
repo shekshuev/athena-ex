@@ -266,7 +266,7 @@ defmodule Athena.Learning.Progress do
     course_id
     |> Content.list_linear_lessons()
     |> Enum.map(& &1.id)
-    |> Content.list_blocks_by_section_ids()
+    |> Content.list_block_headers_by_section_ids()
     |> Enum.map(& &1.id)
   end
 
@@ -513,7 +513,7 @@ defmodule Athena.Learning.Progress do
   def get_gate_blocks(linear_sections, user, overrides \\ [], opts \\ []) do
     linear_sections
     |> Enum.map(& &1.id)
-    |> Content.list_blocks_by_section_ids()
+    |> Content.list_block_headers_by_section_ids()
     |> Enum.filter(fn block ->
       block.completion_rule &&
         block.completion_rule.type != :none &&
