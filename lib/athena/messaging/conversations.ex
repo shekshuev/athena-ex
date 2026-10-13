@@ -125,16 +125,26 @@ defmodule Athena.Messaging.Conversations do
   """
   @spec count_unread_conversations(map()) :: non_neg_integer()
   def count_unread_conversations(user) do
-    conversation_ids =
-      from(cp in ConversationParticipant,
-        where: cp.account_id == ^user.id,
-        select: cp.conversation_id
+    # Runs on every page (the nav badge), so it stops at the first unread
+    # message of each conversation instead of counting them all; the probe
+    # is an index range scan on `messages(conversation_id, inserted_at)
+    # WHERE deleted_at IS NULL`.
+    unread =
+      from(m in Message,
+        where:
+          m.conversation_id == parent_as(:participant).conversation_id and
+            is_nil(m.deleted_at) and m.account_id != ^user.id and
+            (is_nil(parent_as(:participant).last_read_at) or
+               m.inserted_at > parent_as(:participant).last_read_at),
+        select: 1
       )
-      |> Repo.all()
 
-    conversation_ids
-    |> unread_counts_by_conversation(user.id)
-    |> map_size()
+    from(cp in ConversationParticipant,
+      as: :participant,
+      where: cp.account_id == ^user.id and exists(unread),
+      select: count()
+    )
+    |> Repo.one()
   end
 
   @doc """
@@ -379,23 +389,17 @@ defmodule Athena.Messaging.Conversations do
   defp load_last_messages([]), do: %{}
 
   defp load_last_messages(conversation_ids) do
-    accounts_map =
+    messages =
       from(m in Message,
         where: m.conversation_id in ^conversation_ids,
         distinct: m.conversation_id,
-        order_by: [asc: m.conversation_id, desc: m.inserted_at],
-        select: m.account_id
+        order_by: [asc: m.conversation_id, desc: m.inserted_at]
       )
       |> Repo.all()
-      |> Identity.get_accounts_map()
 
-    from(m in Message,
-      where: m.conversation_id in ^conversation_ids,
-      distinct: m.conversation_id,
-      order_by: [asc: m.conversation_id, desc: m.inserted_at]
-    )
-    |> Repo.all()
-    |> Map.new(fn message ->
+    accounts_map = messages |> Enum.map(& &1.account_id) |> Identity.get_accounts_map()
+
+    Map.new(messages, fn message ->
       {message.conversation_id, %{message | account: Map.get(accounts_map, message.account_id)}}
     end)
   end

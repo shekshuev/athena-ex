@@ -150,7 +150,23 @@ defmodule Athena.Learning.Progress do
             bp.account_id == ^account_id and is_nil(bp.cohort_id) and bp.block_id == ^block_id
       end
 
-    repo.delete_all(query)
+    was_completed? = repo.exists?(where(query, [bp], bp.status == :completed))
+    result = repo.delete_all(query)
+
+    if was_completed?, do: drop_course_progress_cache(repo, account_id, cohort_id, block_id)
+
+    result
+  end
+
+  # Undoes one `bump_course_progress_cache/3`, so revoking a completion
+  # doesn't leave the cached "% done" counting it.
+  defp drop_course_progress_cache(repo, account_id, cohort_id, block_id) do
+    with {:ok, course_id} <- course_id_for_block(block_id) do
+      CourseProgressCache
+      |> where([c], c.course_id == ^course_id and c.completed_count > 0)
+      |> progress_cache_owner(account_id, cohort_id)
+      |> repo.update_all(inc: [completed_count: -1])
+    end
   end
 
   @doc """
@@ -310,25 +326,72 @@ defmodule Athena.Learning.Progress do
   @spec course_progress_batch(String.t(), [struct()]) :: %{String.t() => map()}
   def course_progress_batch(account_id, enrollments) do
     cache_by_key = fetch_progress_cache(account_id, enrollments)
+    totals = course_block_totals(Enum.map(enrollments, & &1.course_id))
 
     Map.new(enrollments, fn enrollment ->
       team_id = team_id_for_enrollment(enrollment)
       cache_key = {enrollment.course_id, team_id}
+      total = Map.get(totals, enrollment.course_id, 0)
 
       progress =
         case Map.get(cache_by_key, cache_key) do
-          nil -> course_progress(account_id, enrollment.course_id, team_id)
-          row -> progress_from_cache(row)
+          nil -> uncached_course_progress(account_id, enrollment.course_id, team_id)
+          row -> progress_from_cache(row, total)
         end
 
       {enrollment.id, progress}
     end)
   end
 
-  defp progress_from_cache(%CourseProgressCache{completed_count: completed, total_count: total}) do
+  # The cache keeps only the completed count: the course's block count is
+  # read fresh (one grouped query for all courses), so adding or removing
+  # blocks never leaves a stale total behind.
+  defp progress_from_cache(%CourseProgressCache{completed_count: completed}, total) do
+    completed = min(completed, total)
     percent = if total == 0, do: 0, else: round(completed / total * 100)
     %{completed: completed, total: total, percent: percent}
   end
+
+  defp course_block_totals([]), do: %{}
+
+  defp course_block_totals(course_ids) do
+    from(b in Block,
+      join: s in Section,
+      on: s.id == b.section_id,
+      where: s.course_id in ^course_ids,
+      group_by: s.course_id,
+      select: {s.course_id, count(b.id)}
+    )
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  # No cache row yet (nothing completed so far): compute it once and store
+  # it, so the next dashboard visit reads the cache instead.
+  defp uncached_course_progress(account_id, course_id, team_id) do
+    progress = course_progress(account_id, course_id, team_id)
+
+    %CourseProgressCache{}
+    |> CourseProgressCache.changeset(%{
+      account_id: if(team_id, do: nil, else: account_id),
+      cohort_id: team_id,
+      course_id: course_id,
+      completed_count: progress.completed,
+      total_count: progress.total
+    })
+    |> Repo.insert(
+      on_conflict: :nothing,
+      conflict_target: progress_cache_conflict_target(team_id)
+    )
+
+    progress
+  end
+
+  defp progress_cache_conflict_target(nil),
+    do: {:unsafe_fragment, "(account_id, course_id) WHERE cohort_id IS NULL"}
+
+  defp progress_cache_conflict_target(_cohort_id),
+    do: {:unsafe_fragment, "(cohort_id, course_id) WHERE cohort_id IS NOT NULL"}
 
   defp fetch_progress_cache(account_id, enrollments) do
     {individual_course_ids, team_pairs} =
@@ -398,12 +461,7 @@ defmodule Athena.Learning.Progress do
     do: where(query, [c], c.account_id == ^account_id and is_nil(c.cohort_id))
 
   defp insert_course_progress_cache(account_id, cohort_id, course_id) do
-    conflict_target =
-      if cohort_id do
-        {:unsafe_fragment, "(cohort_id, course_id) WHERE cohort_id IS NOT NULL"}
-      else
-        {:unsafe_fragment, "(account_id, course_id) WHERE cohort_id IS NULL"}
-      end
+    conflict_target = progress_cache_conflict_target(cohort_id)
 
     %CourseProgressCache{}
     |> CourseProgressCache.changeset(%{
