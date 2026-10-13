@@ -18,7 +18,15 @@ defmodule AthenaWeb.Hooks.Messenger do
       user ->
         if connected?(socket) do
           Phoenix.PubSub.subscribe(Athena.PubSub, "inbox:#{user.id}")
-          Phoenix.PubSub.subscribe(Athena.PubSub, "presence:lobby")
+
+          # Every page tracks the user as online, but only the messenger
+          # shows who is: subscribing every page to the lobby would deliver
+          # each presence diff (any user navigating anywhere) to every open
+          # LiveView process just to be dropped.
+          if socket.view == AthenaWeb.MessengerLive.Index do
+            Phoenix.PubSub.subscribe(Athena.PubSub, "presence:lobby")
+          end
+
           AthenaWeb.Presence.track(self(), "presence:lobby", user.id, %{})
         end
 

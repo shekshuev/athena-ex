@@ -28,6 +28,7 @@ defmodule AthenaWeb.TeachingLive.Grading do
      |> assign(:has_submissions, false)
      |> assign(:cohort_options, cohort_options)
      |> assign(:delete_target, nil)
+     |> assign(:reload_pending, false)
      |> stream(:submissions, [])}
   end
 
@@ -41,11 +42,24 @@ defmodule AthenaWeb.TeachingLive.Grading do
     {:noreply, load_submissions(socket, params)}
   end
 
+  # Every student submission anywhere lands here; a burst (an exam ending,
+  # a whole class submitting) is folded into one reload per second.
   @impl true
+  def handle_info({:submission_changed, _sub}, %{assigns: %{reload_pending: true}} = socket),
+    do: {:noreply, socket}
+
   def handle_info({:submission_changed, _sub}, socket) do
+    Process.send_after(self(), :reload_submissions, 1_000)
+    {:noreply, assign(socket, :reload_pending, true)}
+  end
+
+  def handle_info(:reload_submissions, socket) do
     params = build_query_params(socket.assigns, %{})
 
-    {:noreply, load_submissions(socket, params)}
+    {:noreply,
+     socket
+     |> assign(:reload_pending, false)
+     |> load_submissions(params)}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}

@@ -46,7 +46,14 @@ defmodule AthenaWeb.LearnLive.Player do
     mount_player(params, course_id, socket)
   end
 
+  # The static (disconnected) render only shows a skeleton: everything below
+  # costs dozens of queries, and running it twice per page view (static +
+  # connected mount) doubled the player's database load for no visible gain.
   @doc false
+  defp mount_player(_params, _course_id, socket) when is_nil(socket.transport_pid) do
+    {:ok, assign(socket, loading: true, test_run: !!socket.assigns[:test_run])}
+  end
+
   defp mount_player(params, course_id, socket) do
     user = socket.assigns.current_user
     test_run? = !!socket.assigns[:test_run]
@@ -60,8 +67,9 @@ defmodule AthenaWeb.LearnLive.Player do
       if connected?(socket), do: subscribe_to_topics(course_id, team_id, user.id)
 
       overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
-      linear_lessons = Content.list_linear_lessons(course_id, user, overrides, opts)
-      block_counts = Content.count_blocks_by_course(course_id)
+      outline = Content.course_outline(course_id, user, overrides, opts)
+      linear_lessons = outline.linear_lessons
+      block_counts = outline.block_counts
 
       accessible_ids =
         Learning.accessible_section_ids(
@@ -86,7 +94,8 @@ defmodule AthenaWeb.LearnLive.Player do
           block_counts: block_counts,
           engagement_session_id: Ecto.UUID.generate(),
           nudges_enabled: !!(cohort && cohort.nudges_enabled),
-          opts: opts
+          opts: opts,
+          outline: outline
         }
 
         setup_player_state(socket, course, section_id, linear_lessons, accessible_ids, ctx)
@@ -128,14 +137,10 @@ defmodule AthenaWeb.LearnLive.Player do
   @doc false
   defp setup_player_state(socket, course, section_id, linear_lessons, accessible_ids, ctx) do
     section = Content.get_section(section_id) |> elem(1)
-
-    blocks =
-      Content.list_blocks_by_section(section_id, :all)
-      |> Enum.filter(&Content.can_view?(ctx.user, &1, ctx.overrides, ctx.opts))
-      |> Enum.sort_by(& &1.order)
+    blocks = visible_section_blocks(section, ctx.user, ctx.overrides, ctx.opts)
 
     completed_ids = Learning.completed_block_ids(ctx.user.id, section_id, ctx.team_id)
-    tree = Content.get_course_tree(course.id, ctx.user, ctx.overrides, ctx.opts)
+    tree = ctx.outline.tree
 
     current_index = Enum.find_index(linear_lessons, fn s -> s.id == section_id end)
 
@@ -188,8 +193,23 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:active_upload_block_id, nil)
       |> assign(:upload_type, nil)
       |> assign(:pending_file_urls, pending_file_urls)
+      |> assign(:refresh_pending, nil)
+      |> assign(:unlock_timer, nil)
+      |> assign(:schedule_times, load_schedule_times(ctx.outline.all_linear_lessons))
 
-    {:ok, schedule_next_unlock(socket, course.id)}
+    {:ok, schedule_next_unlock(socket)}
+  end
+
+  # The section's blocks the user may see, in order. The section is passed
+  # to the policy so `:inherit` blocks don't each load it again.
+  @doc false
+  defp visible_section_blocks(section, user, overrides, opts) do
+    opts = Keyword.put(opts, :sections, %{section.id => section})
+
+    section.id
+    |> Content.list_blocks_by_section(:all)
+    |> Enum.filter(&Content.can_view?(user, &1, overrides, opts))
+    |> Enum.sort_by(& &1.order)
   end
 
   @doc false
@@ -224,15 +244,8 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp load_drafts(user_id, block_ids, team_id) do
-    block_ids
-    |> Enum.map(fn block_id ->
-      draft_content = Learning.get_draft(user_id, block_id, team_id)
-      {block_id, draft_content}
-    end)
-    |> Enum.reject(fn {_block_id, content} -> is_nil(content) end)
-    |> Map.new()
-  end
+  defp load_drafts(user_id, block_ids, team_id),
+    do: Learning.get_drafts(user_id, block_ids, team_id)
 
   @doc """
   Handles progression gates. When a student completes a mandatory block,
@@ -318,7 +331,7 @@ defmodule AthenaWeb.LearnLive.Player do
         %{"block_id" => block_id, "media_type" => "file_assignment"},
         socket
       ) do
-    with {:ok, block} <- Athena.Content.get_block(block_id),
+    with %{} = block <- Enum.find(socket.assigns.blocks, &(&1.id == block_id)),
          true <- block.type == :file_assignment do
       max_files = block.content["max_files"] || 1
       current_count = length(Map.get(socket.assigns.pending_file_urls, block_id, []))
@@ -922,9 +935,17 @@ defmodule AthenaWeb.LearnLive.Player do
   @doc false
   defp broadcast_team_progress(nil, _course_id), do: :ok
 
+  # `broadcast_from`: this player already applied its own change, a full
+  # refresh of itself on top of that would only repeat the work.
   defp broadcast_team_progress(team_id, course_id) do
-    Phoenix.PubSub.broadcast(Athena.PubSub, "team_progress:#{team_id}", :team_progress_updated)
-    Phoenix.PubSub.broadcast(Athena.PubSub, "leaderboard:#{course_id}", :update_leaderboard)
+    Phoenix.PubSub.broadcast_from(
+      Athena.PubSub,
+      self(),
+      "team_progress:#{team_id}",
+      :team_progress_updated
+    )
+
+    Learning.broadcast_leaderboard_update(course_id)
   end
 
   @doc false
@@ -1132,6 +1153,61 @@ defmodule AthenaWeb.LearnLive.Player do
   defp parse_rich_answer(val), do: val
 
   @doc false
+  defp handle_block_submission_update(socket, block, submission) do
+    submissions = Map.put(socket.assigns.submissions, submission.block_id, submission)
+
+    socket =
+      socket
+      |> assign(submissions: submissions)
+      |> refresh_block_feedback(submission.block_id)
+
+    # Only a finished, real attempt can complete the block: the same
+    # submission is broadcast again on every status change (pending,
+    # processing, graded), and a code test run reuses the draft row with
+    # `is_test_run` - neither may pass a `:submit` gate.
+    socket =
+      if finished_attempt?(submission),
+        do: process_gate_after_submission(socket, block, submission),
+        else: socket
+
+    socket =
+      cond do
+        submission.status in [:pending, :processing, :draft] ->
+          socket
+
+        # `build_code_flash/1` and the "code_run_result" event are specific
+        # to the code sandbox's own run/attempt cycle - a manually graded
+        # type (quiz_exam, ticket_exam, file_assignment, ...) gets its own,
+        # simpler "you were graded" flash below instead.
+        block.type == :code ->
+          socket = EngagementSignals.emit_code_run_result(socket, block.id, submission.status)
+
+          {flash_type, flash_msg} = build_code_flash(submission)
+          put_flash(socket, flash_type, flash_msg)
+
+        submission.status == :rejected ->
+          put_flash(socket, :error, gettext("Your submission was rejected by the instructor."))
+
+        submission.status == :needs_review ->
+          socket
+
+        true ->
+          put_flash(socket, :info, gettext("Your submission was graded."))
+      end
+
+    {:noreply, socket}
+  end
+
+  defp finished_attempt?(%{status: status} = submission) do
+    status not in [:draft, :pending, :processing] and not test_run_content?(submission.content)
+  end
+
+  # `content` is a plain map when loaded from the database, but a test may
+  # hand over a `SubmissionContent` struct (which has no `is_test_run`).
+  defp test_run_content?(%{"is_test_run" => true}), do: true
+  defp test_run_content?(_content), do: false
+
+  @doc false
   defp process_gate_after_submission(socket, block, submission) do
     cond do
       block.id in socket.assigns.completed_ids ->
@@ -1184,25 +1260,40 @@ defmodule AthenaWeb.LearnLive.Player do
     |> assign(:visible_blocks, calc_visible_blocks(socket.assigns.blocks, new_completed_ids))
   end
 
-  @doc """
-  Real-time event handler for content updates.
-  Re-evaluates access; if the current section was hidden/locked by the instructor,
-  it boots the student back to the safe zone (syllabus).
-  """
-  @spec handle_info(atom() | tuple(), Phoenix.LiveView.Socket.t()) ::
-          {:noreply, Phoenix.LiveView.Socket.t()}
-  @impl true
-  def handle_info(:team_progress_updated, socket) do
-    handle_info(:refresh_content, socket)
+  # Teammates' progress, grading and every builder autosave all broadcast a
+  # refresh; bursts of them are folded into one reload per debounce window.
+  @refresh_debounce_ms Application.compile_env(
+                         :athena,
+                         [__MODULE__, :refresh_debounce_ms],
+                         1_500
+                       )
+
+  @doc false
+  defp request_refresh(socket, kind) when @refresh_debounce_ms == 0, do: refresh(socket, kind)
+
+  defp request_refresh(socket, kind) do
+    case socket.assigns.refresh_pending do
+      nil ->
+        Process.send_after(self(), :do_refresh, @refresh_debounce_ms)
+        assign(socket, :refresh_pending, kind)
+
+      pending ->
+        assign(socket, :refresh_pending, merge_refresh_kind(pending, kind))
+    end
   end
 
-  @impl true
-  def handle_info(:user_progress_updated, socket) do
-    handle_info(:refresh_content, socket)
-  end
+  defp merge_refresh_kind(:content, _kind), do: :content
+  defp merge_refresh_kind(_pending, kind), do: kind
 
-  @impl true
-  def handle_info(:refresh_content, socket) do
+  # Re-evaluates access and progress; if the current section was hidden or
+  # locked, sends the student back to the syllabus. `kind`:
+  #   * `:progress` - someone's progress or a grade changed: the section's
+  #     blocks are unchanged, so they aren't reloaded;
+  #   * `:schedule` - an unlock/lock time passed: block visibility may change;
+  #   * `:content` - the course itself was edited: also reloads the unlock
+  #     schedule.
+  @doc false
+  defp refresh(socket, kind) do
     user = socket.assigns.current_user
     course_id = socket.assigns.course.id
     cohort_id = socket.assigns.cohort_id
@@ -1215,52 +1306,84 @@ defmodule AthenaWeb.LearnLive.Player do
     ]
 
     overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
-    linear_lessons = Content.list_linear_lessons(course_id, user, overrides, opts)
-    block_counts = Content.count_blocks_by_course(course_id)
+    outline = Content.course_outline(course_id, user, overrides, opts)
+    linear_lessons = outline.linear_lessons
 
     accessible_ids =
       Learning.accessible_section_ids(user, course_id, linear_lessons, overrides, team_id, opts)
 
-    if current_section_id in accessible_ids do
+    with true <- current_section_id in accessible_ids,
+         {:ok, section} <- Content.get_section(current_section_id) do
       blocks =
-        Content.list_blocks_by_section(current_section_id, :all)
-        |> Enum.filter(&Content.can_view?(user, &1, overrides, opts))
-        |> Enum.sort_by(& &1.order)
+        if kind == :progress,
+          do: socket.assigns.blocks,
+          else: visible_section_blocks(section, user, overrides, opts)
 
+      block_ids = Enum.map(blocks, & &1.id)
       completed_ids = Learning.completed_block_ids(user.id, current_section_id, team_id)
-      submissions = Learning.get_latest_submissions(user.id, Enum.map(blocks, & &1.id), team_id)
-      feedback_map = Learning.get_feedback_map(user.id, Enum.map(blocks, & &1.id), team_id)
-
-      tree = Content.get_course_tree(course_id, user, overrides, opts)
+      submissions = Learning.get_latest_submissions(user.id, block_ids, team_id)
+      feedback_map = Learning.get_feedback_map(user.id, block_ids, team_id)
 
       current_index = Enum.find_index(linear_lessons, fn s -> s.id == current_section_id end)
-      next_section = Enum.at(linear_lessons, current_index + 1)
+      next_section = current_index && Enum.at(linear_lessons, current_index + 1)
       next_accessible? = next_section != nil and next_section.id in accessible_ids
 
-      {:noreply,
-       socket
-       |> assign(:tree, tree)
-       |> assign(:cohort_id, cohort_id)
-       |> assign(:team_id, team_id)
-       |> assign(:linear_lessons, linear_lessons)
-       |> assign(:blocks, blocks)
-       |> assign(:completed_ids, completed_ids)
-       |> assign(:submissions, submissions)
-       |> assign(:feedback_map, feedback_map)
-       |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
-       |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
-       |> assign(:overrides, overrides)
-       |> assign(:block_counts, block_counts)
-       |> schedule_next_unlock(course_id)}
+      socket =
+        if kind == :content,
+          do: assign(socket, :schedule_times, load_schedule_times(outline.all_linear_lessons)),
+          else: socket
+
+      socket
+      |> assign(:tree, outline.tree)
+      |> assign(:linear_lessons, linear_lessons)
+      |> assign(:section, section)
+      |> assign(:blocks, blocks)
+      |> assign(:completed_ids, completed_ids)
+      |> assign(:submissions, submissions)
+      |> assign(:feedback_map, feedback_map)
+      |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
+      |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
+      |> assign(:overrides, overrides)
+      |> assign(:block_counts, outline.block_counts)
+      |> schedule_next_unlock()
     else
-      {:noreply,
-       socket
-       |> put_flash(
-         :warning,
-         gettext("The instructor modified this content. Returning to safe zone.")
-       )
-       |> push_navigate(to: ~p"/learn/courses/#{course_id}")}
+      _ ->
+        socket
+        |> put_flash(
+          :warning,
+          gettext("The instructor modified this content. Returning to safe zone.")
+        )
+        |> push_navigate(to: ~p"/learn/courses/#{course_id}")
     end
+  end
+
+  @doc """
+  Real-time event handler for content updates.
+  Re-evaluates access; if the current section was hidden/locked by the instructor,
+  it boots the student back to the safe zone (syllabus).
+  """
+  @spec handle_info(atom() | tuple(), Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
+  @impl true
+  def handle_info(:team_progress_updated, socket),
+    do: {:noreply, request_refresh(socket, :progress)}
+
+  @impl true
+  def handle_info(:user_progress_updated, socket),
+    do: {:noreply, request_refresh(socket, :progress)}
+
+  @impl true
+  def handle_info(:refresh_content, socket), do: {:noreply, request_refresh(socket, :content)}
+
+  @impl true
+  def handle_info(:scheduled_refresh, socket) do
+    {:noreply, socket |> assign(:unlock_timer, nil) |> refresh(:schedule)}
+  end
+
+  @impl true
+  def handle_info(:do_refresh, socket) do
+    kind = socket.assigns.refresh_pending || :progress
+    {:noreply, socket |> assign(:refresh_pending, nil) |> refresh(kind)}
   end
 
   @impl true
@@ -1284,47 +1407,14 @@ defmodule AthenaWeb.LearnLive.Player do
 
   @impl true
   def handle_info({:submission_updated, submission}, socket) do
-    submissions = Map.put(socket.assigns.submissions, submission.block_id, submission)
-    block = Enum.find(socket.assigns.blocks, &(&1.id == submission.block_id))
+    case Enum.find(socket.assigns.blocks, &(&1.id == submission.block_id)) do
+      nil ->
+        submissions = Map.put(socket.assigns.submissions, submission.block_id, submission)
+        {:noreply, assign(socket, submissions: submissions)}
 
-    socket =
-      socket
-      |> assign(submissions: submissions)
-      |> refresh_block_feedback(submission.block_id)
-
-    socket =
-      if Learning.block_solved?(block, submission) do
-        unlock_next_content(socket, block.id)
-      else
-        socket
-      end
-
-    socket =
-      cond do
-        submission.status in [:pending, :processing, :draft] ->
-          socket
-
-        # `build_code_flash/1` and the "code_run_result" event are specific
-        # to the code sandbox's own run/attempt cycle - a manually graded
-        # type (quiz_exam, ticket_exam, file_assignment, ...) gets its own,
-        # simpler "you were graded" flash below instead.
-        block.type == :code ->
-          socket = EngagementSignals.emit_code_run_result(socket, block.id, submission.status)
-
-          {flash_type, flash_msg} = build_code_flash(submission)
-          put_flash(socket, flash_type, flash_msg)
-
-        submission.status == :rejected ->
-          put_flash(socket, :error, gettext("Your submission was rejected by the instructor."))
-
-        submission.status == :needs_review ->
-          socket
-
-        true ->
-          put_flash(socket, :info, gettext("Your submission was graded."))
-      end
-
-    {:noreply, socket}
+      block ->
+        handle_block_submission_update(socket, block, submission)
+    end
   end
 
   @impl true
@@ -1524,6 +1614,26 @@ defmodule AthenaWeb.LearnLive.Player do
   @doc "Renders the interactive course player UI."
   @spec render(map()) :: Phoenix.LiveView.Rendered.t()
   @impl true
+  def render(%{loading: true} = assigns) do
+    ~H"""
+    <.page_container size="narrow" class="py-10 pb-32">
+      <div id="player-loading" class="space-y-6" aria-busy="true">
+        <div class="h-6 w-40 bg-base-200 rounded-sm animate-pulse"></div>
+        <div class="h-10 w-2/3 bg-base-300 rounded-sm animate-pulse"></div>
+        <div
+          :for={i <- 1..3}
+          class="bg-base-100 border border-base-200 rounded-sm p-6 animate-pulse"
+          style={"animation-delay: #{i * 80}ms"}
+        >
+          <div class="h-3 w-1/4 bg-base-300 rounded-sm mb-3"></div>
+          <div class="h-3 w-full bg-base-200 rounded-sm mb-2"></div>
+          <div class="h-3 w-2/3 bg-base-200 rounded-sm"></div>
+        </div>
+      </div>
+    </.page_container>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <.page_container size="narrow" class="py-10 pb-32">
@@ -1906,51 +2016,55 @@ defmodule AthenaWeb.LearnLive.Player do
 
   defp render_gate(assigns), do: ~H""
 
+  # Unix times of every unlock/lock rule in the course (sections and
+  # blocks, visible or not). Reloaded only when the course content changes.
   @doc false
-  defp schedule_next_unlock(socket, course_id) do
+  defp load_schedule_times(all_sections) do
+    blocks =
+      all_sections
+      |> Enum.map(& &1.id)
+      |> Content.list_block_headers_by_section_ids()
+
+    (all_sections ++ blocks)
+    |> Enum.map(& &1.access_rules)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.flat_map(&[&1.unlock_at, &1.lock_at])
+    |> Enum.map(&parse_to_unix/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # Keeps exactly one pending timer: the previous one is cancelled, so
+  # refreshes don't pile up extra timers that would all fire together.
+  @doc false
+  defp schedule_next_unlock(socket) do
+    if ref = socket.assigns.unlock_timer, do: Process.cancel_timer(ref)
+
     now_unix = DateTime.utc_now() |> DateTime.to_unix()
 
-    all_sections = Content.list_linear_lessons(course_id, :all)
-    all_section_ids = Enum.map(all_sections, & &1.id)
-
-    all_blocks = Content.list_block_headers_by_section_ids(all_section_ids)
-
-    global_rules =
-      (all_sections ++ all_blocks)
-      |> Enum.map(& &1.access_rules)
-      |> Enum.reject(&is_nil/1)
-
-    global_times =
-      global_rules
-      |> Enum.flat_map(&[&1.unlock_at, &1.lock_at])
-      |> Enum.reject(&is_nil/1)
-
-    overrides = socket.assigns[:overrides] || []
-
     override_times =
-      overrides
+      (socket.assigns[:overrides] || [])
       |> Enum.flat_map(&[&1.unlock_at, &1.lock_at])
-      |> Enum.reject(&is_nil/1)
-
-    all_times = global_times ++ override_times
-
-    future_unix_times =
-      all_times
       |> Enum.map(&parse_to_unix/1)
       |> Enum.reject(&is_nil/1)
-      |> Enum.filter(&(&1 > now_unix))
-      |> Enum.sort()
 
-    case List.first(future_unix_times) do
+    next_unix =
+      (socket.assigns.schedule_times ++ override_times)
+      |> Enum.filter(&(&1 > now_unix))
+      |> Enum.min(fn -> nil end)
+
+    case next_unix do
       nil ->
-        socket
+        assign(socket, :unlock_timer, nil)
 
       target_unix ->
         raw_diff_ms = (target_unix - now_unix) * 1000 + 1000
         safe_diff_ms = min(raw_diff_ms, 86_400_000)
 
-        Process.send_after(self(), :refresh_content, safe_diff_ms)
-        socket
+        assign(
+          socket,
+          :unlock_timer,
+          Process.send_after(self(), :scheduled_refresh, safe_diff_ms)
+        )
     end
   end
 

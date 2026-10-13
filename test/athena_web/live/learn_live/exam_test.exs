@@ -91,11 +91,12 @@ defmodule AthenaWeb.LearnLive.ExamTest do
           content: %{"type" => "quiz_exam", "questions" => []}
         )
 
-      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
-               live(conn, ~p"/learn/courses/#{course.id}/exam/#{block.id}")
-
+      result = live(conn, ~p"/learn/courses/#{course.id}/exam/#{block.id}")
+      assert {:error, {:live_redirect, %{to: to}}} = result
       assert to == "/learn/courses/#{course.id}/play"
-      assert flash["info"] =~ "already completed"
+
+      {:ok, _lv, html} = follow_redirect(result, conn)
+      assert html =~ "already completed"
 
       assert Athena.Repo.aggregate(Athena.Learning.Submission, :count) == 1
       assert Athena.Repo.reload!(finished).score == 90

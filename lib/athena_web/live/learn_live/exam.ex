@@ -39,7 +39,14 @@ defmodule AthenaWeb.LearnLive.Exam do
     mount_exam(course_id, block_id, socket, return_to)
   end
 
+  # The static (disconnected) render only shows a skeleton: starting or
+  # reopening the attempt and loading its questions happens once, on the
+  # connected mount, instead of twice per page view.
   @doc false
+  defp mount_exam(_course_id, _block_id, socket, _return_to) when is_nil(socket.transport_pid) do
+    {:ok, assign(socket, loading: true, test_run: !!socket.assigns[:test_run])}
+  end
+
   defp mount_exam(course_id, block_id, socket, return_to) do
     user = socket.assigns.current_user
     test_run? = !!socket.assigns[:test_run]
@@ -739,6 +746,23 @@ defmodule AthenaWeb.LearnLive.Exam do
   end
 
   @impl true
+  def render(%{loading: true} = assigns) do
+    ~H"""
+    <div id="exam-loading" class="max-w-3xl mx-auto px-4 py-10 space-y-6" aria-busy="true">
+      <div class="h-8 w-1/2 bg-base-300 rounded-sm animate-pulse"></div>
+      <div
+        :for={i <- 1..3}
+        class="bg-base-100 border border-base-200 rounded-sm p-6 animate-pulse"
+        style={"animation-delay: #{i * 80}ms"}
+      >
+        <div class="h-3 w-1/3 bg-base-300 rounded-sm mb-3"></div>
+        <div class="h-3 w-full bg-base-200 rounded-sm mb-2"></div>
+        <div class="h-3 w-2/3 bg-base-200 rounded-sm"></div>
+      </div>
+    </div>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <div
@@ -1217,7 +1241,7 @@ defmodule AthenaWeb.LearnLive.Exam do
 
   defp broadcast_team_progress(team_id, course_id) do
     Phoenix.PubSub.broadcast(Athena.PubSub, "team_progress:#{team_id}", :team_progress_updated)
-    Phoenix.PubSub.broadcast(Athena.PubSub, "leaderboard:#{course_id}", :update_leaderboard)
+    Learning.broadcast_leaderboard_update(course_id)
   end
 
   defp require_fullscreen?(block), do: (block.content || %{})["require_fullscreen"] == true

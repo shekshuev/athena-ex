@@ -17,6 +17,10 @@ defmodule Athena.Content.Policy do
   to swap out the real user/account – used by the builder's "Test run"
   player so an instructor can preview a section they've hidden or
   access-restricted from real students.
+
+  `opts[:sections]` (a map of section id => `Section`) supplies the parent
+  sections of `:inherit` blocks. Callers checking many blocks should pass
+  it: otherwise every inheriting block (the default) loads its section.
   """
   @spec can_view?(Account.t() | :all | nil, map(), list(), keyword()) :: boolean()
   def can_view?(user_or_mode, item, overrides \\ [], opts \\ [])
@@ -58,8 +62,17 @@ defmodule Athena.Content.Policy do
   end
 
   defp handle_visibility(:inherit, user, item, _override, overrides, opts) do
-    section = Repo.get(Section, item.section_id)
+    section = parent_section(item, opts)
     evaluate_visibility(user, section, overrides, opts)
+  end
+
+  defp parent_section(%{section: %Section{} = section}, _opts), do: section
+
+  defp parent_section(%{section_id: section_id}, opts) do
+    case Keyword.get(opts, :sections) do
+      %{^section_id => %Section{} = section} -> section
+      _ -> Repo.get(Section, section_id)
+    end
   end
 
   @doc false

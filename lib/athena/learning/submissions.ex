@@ -688,6 +688,39 @@ defmodule Athena.Learning.Submissions do
   end
 
   @doc """
+  Batch form of `get_draft/3`: the draft content of every block in
+  `block_ids` that has one, as `%{block_id => content}`. Cache hits are
+  served from Cachex; all misses are read in a single query (and cached).
+  """
+  @spec get_drafts(String.t(), [String.t()], String.t() | nil) :: %{String.t() => map()}
+  def get_drafts(user_id, block_ids, cohort_id \\ nil) do
+    {cached, missing} =
+      Enum.reduce(block_ids, {%{}, []}, fn block_id, {cached, missing} ->
+        case DraftCache.get_draft(user_id, cohort_id, block_id) do
+          nil -> {cached, [block_id | missing]}
+          content -> {Map.put(cached, block_id, content), missing}
+        end
+      end)
+
+    missing
+    |> find_drafts(user_id, cohort_id)
+    |> Enum.reduce(cached, fn submission, acc ->
+      DraftCache.save_draft(user_id, cohort_id, submission.block_id, submission.content)
+      Map.put(acc, submission.block_id, submission.content)
+    end)
+  end
+
+  defp find_drafts([], _user_id, _cohort_id), do: []
+
+  defp find_drafts(block_ids, user_id, cohort_id) do
+    block_ids
+    |> draft_query(user_id, cohort_id)
+    |> distinct([s], s.block_id)
+    |> order_by([s], asc: s.block_id, desc: s.updated_at)
+    |> Repo.all()
+  end
+
+  @doc """
   Clears a draft from cache (but not from DB).
   Used when submission is finalized.
   """
@@ -713,24 +746,26 @@ defmodule Athena.Learning.Submissions do
   defp find_draft(_user_id, nil, _cohort_id), do: nil
 
   defp find_draft(user_id, block_id, cohort_id) do
-    query =
-      if cohort_id do
-        from s in Submission,
-          where:
-            s.cohort_id == ^cohort_id and s.block_id == ^block_id and
-              (s.status == :draft or fragment("?->>'is_test_run' = 'true'", s.content))
-      else
-        from s in Submission,
-          where:
-            s.account_id == ^user_id and s.block_id == ^block_id and
-              (s.status == :draft or fragment("?->>'is_test_run' = 'true'", s.content)) and
-              is_nil(s.cohort_id)
-      end
-
-    query
+    [block_id]
+    |> draft_query(user_id, cohort_id)
     |> order_by([s], desc: s.updated_at)
     |> limit(1)
     |> Repo.one()
+  end
+
+  defp draft_query(block_ids, user_id, cohort_id) do
+    if cohort_id do
+      from s in Submission,
+        where:
+          s.cohort_id == ^cohort_id and s.block_id in ^block_ids and
+            (s.status == :draft or fragment("?->>'is_test_run' = 'true'", s.content))
+    else
+      from s in Submission,
+        where:
+          s.account_id == ^user_id and s.block_id in ^block_ids and
+            (s.status == :draft or fragment("?->>'is_test_run' = 'true'", s.content)) and
+            is_nil(s.cohort_id)
+    end
   end
 
   @doc """
@@ -889,6 +924,46 @@ defmodule Athena.Learning.Submissions do
         time_limit_sec,
         exam_config
       ) do
+    case fetch_or_create_exam_attempt(
+           course_id,
+           account_id,
+           exam_block_id,
+           block_type,
+           cohort_id,
+           time_limit_sec,
+           exam_config
+         ) do
+      {change, submission} when change in [:created, :existing, :finalized] -> {:ok, submission}
+      other -> other
+    end
+  end
+
+  @doc """
+  Like `get_or_create_exam_attempt/7`, but says what happened to the
+  attempt: `{:created, sub}` (new attempt), `{:existing, sub}` (an attempt
+  in progress, unchanged) or `{:finalized, sub}` (an expired attempt just
+  scored). Lets the caller announce only real changes.
+  """
+  @spec fetch_or_create_exam_attempt(
+          String.t(),
+          String.t(),
+          String.t(),
+          atom(),
+          String.t() | nil,
+          integer(),
+          map()
+        ) ::
+          {:created | :existing | :finalized | :already_completed, Submission.t()}
+          | {:error, any()}
+  def fetch_or_create_exam_attempt(
+        course_id,
+        account_id,
+        exam_block_id,
+        block_type,
+        cohort_id,
+        time_limit_sec,
+        exam_config
+      ) do
     case get_last_exam_submission(account_id, exam_block_id) do
       nil ->
         is_ticket = block_type == :ticket_exam
@@ -926,20 +1001,24 @@ defmodule Athena.Learning.Submissions do
           content: content
         })
         |> Repo.insert()
+        |> tag_ok(:created)
 
       %{status: status} = submission when status in [:pending, :draft] ->
         now = DateTime.utc_now()
 
         if submission.expires_at && DateTime.compare(now, submission.expires_at) == :gt do
-          finalize_expired_exam(submission)
+          submission |> finalize_expired_exam() |> tag_ok(:finalized)
         else
-          {:ok, submission}
+          {:existing, submission}
         end
 
       finished_submission ->
         {:already_completed, finished_submission}
     end
   end
+
+  defp tag_ok({:ok, submission}, tag), do: {tag, submission}
+  defp tag_ok(error, _tag), do: error
 
   @doc false
   defp get_last_exam_submission(account_id, exam_block_id) do
@@ -954,7 +1033,7 @@ defmodule Athena.Learning.Submissions do
   end
 
   @doc false
-  defp get_ticket_usage(exam_block_id, cohort_id) do
+  def get_ticket_usage(exam_block_id, cohort_id) do
     query =
       from s in Submission,
         where: s.block_id == ^exam_block_id and is_nil(s.parent_submission_id)
@@ -966,16 +1045,40 @@ defmodule Athena.Learning.Submissions do
         query
       end
 
+    # Counted in the database: each attempt's `content` holds a full snapshot
+    # of its questions, far too heavy to load just to count block ids.
     counts =
-      query
-      |> select([s], s.content)
+      from([s] in query,
+        inner_lateral_join:
+          q in fragment(
+            "jsonb_array_elements(CASE WHEN jsonb_typeof(?->'questions') = 'array' THEN ?->'questions' ELSE '[]'::jsonb END)",
+            s.content,
+            s.content
+          ),
+        on: true,
+        where:
+          not is_nil(
+            fragment(
+              "COALESCE(?->'content'->>'original_block_id', ?->>'original_block_id')",
+              q.value,
+              q.value
+            )
+          ),
+        group_by:
+          fragment(
+            "COALESCE(?->'content'->>'original_block_id', ?->>'original_block_id')",
+            q.value,
+            q.value
+          ),
+        select:
+          {fragment(
+             "COALESCE(?->'content'->>'original_block_id', ?->>'original_block_id')",
+             q.value,
+             q.value
+           ), count()}
+      )
       |> Repo.all()
-      |> Enum.flat_map(&Map.get(&1 || %{}, "questions", []))
-      |> Enum.map(fn q ->
-        get_in(q, ["content", "original_block_id"]) || Map.get(q, "original_block_id")
-      end)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.frequencies()
+      |> Map.new()
 
     TicketUsage.new(counts)
   end

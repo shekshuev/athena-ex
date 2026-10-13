@@ -5,7 +5,7 @@ defmodule Athena.Learning.Progress do
   import Ecto.Query
   alias Athena.{Repo, Content}
   alias Athena.Learning.{BlockProgress, CohortMembership, CourseProgressCache, Submission}
-  alias Athena.Content.Section
+  alias Athena.Content.{Block, Section}
 
   @doc """
   Marks an interactive block as completed for a user or a team.
@@ -109,7 +109,7 @@ defmodule Athena.Learning.Progress do
   """
   @spec maybe_complete_from_submission(Submission.t()) :: :ok
   def maybe_complete_from_submission(%Submission{parent_submission_id: nil} = submission) do
-    with {:ok, block} <- Content.get_block(submission.block_id),
+    with {:ok, block} <- Content.get_block_header(submission.block_id),
          true <- block_solved?(block, submission),
          false <-
            already_completed?(submission.account_id, submission.block_id, submission.cohort_id) do
@@ -124,7 +124,7 @@ defmodule Athena.Learning.Progress do
   @doc false
   defp broadcast_block_completed(account_id, cohort_id, block_id) do
     block_type =
-      case Content.get_block(block_id) do
+      case Content.get_block_header(block_id) do
         {:ok, block} -> block.type
         _ -> nil
       end
@@ -198,29 +198,21 @@ defmodule Athena.Learning.Progress do
   """
   @spec completed_block_ids(String.t(), String.t(), String.t() | nil) :: [String.t()]
   def completed_block_ids(account_id, section_id, cohort_id \\ nil) do
-    section_id
-    |> Content.list_blocks_by_section()
-    |> Enum.map(& &1.id)
-    |> case do
-      [] ->
-        []
+    query =
+      from bp in BlockProgress,
+        join: b in Block,
+        on: b.id == bp.block_id,
+        where: b.section_id == ^section_id and bp.status == :completed,
+        select: bp.block_id
 
-      block_ids ->
-        query =
-          if cohort_id do
-            from bp in BlockProgress,
-              where:
-                bp.cohort_id == ^cohort_id and bp.status == :completed and
-                  bp.block_id in ^block_ids
-          else
-            from bp in BlockProgress,
-              where:
-                bp.account_id == ^account_id and is_nil(bp.cohort_id) and bp.status == :completed and
-                  bp.block_id in ^block_ids
-          end
+    query =
+      if cohort_id do
+        where(query, [bp], bp.cohort_id == ^cohort_id)
+      else
+        where(query, [bp], bp.account_id == ^account_id and is_nil(bp.cohort_id))
+      end
 
-        Repo.all(from q in query, select: q.block_id)
-    end
+    Repo.all(query)
   end
 
   @doc """
@@ -357,33 +349,59 @@ defmodule Athena.Learning.Progress do
     Map.new(individual_rows ++ team_rows, &{{&1.course_id, &1.cohort_id}, &1})
   end
 
+  # The common case is a row that already exists: bump it in place. Only the
+  # first completion in a course pays for counting the course's blocks.
   defp bump_course_progress_cache(account_id, cohort_id, block_id) do
-    with {:ok, block} <- Content.get_block(block_id),
-         {:ok, section} <- Content.get_section(block.section_id) do
-      course_id = section.course_id
-      total = length(block_ids_for_course(course_id))
+    with {:ok, course_id} <- course_id_for_block(block_id) do
+      {bumped, _} =
+        CourseProgressCache
+        |> where([c], c.course_id == ^course_id)
+        |> progress_cache_owner(account_id, cohort_id)
+        |> Repo.update_all(inc: [completed_count: 1])
 
-      key_account_id = if cohort_id, do: nil, else: account_id
-
-      conflict_target =
-        if cohort_id do
-          {:unsafe_fragment, "(cohort_id, course_id) WHERE cohort_id IS NOT NULL"}
-        else
-          {:unsafe_fragment, "(account_id, course_id) WHERE cohort_id IS NULL"}
-        end
-
-      %CourseProgressCache{}
-      |> CourseProgressCache.changeset(%{
-        account_id: key_account_id,
-        cohort_id: cohort_id,
-        course_id: course_id,
-        completed_count: 1,
-        total_count: total
-      })
-      |> Repo.insert(on_conflict: [inc: [completed_count: 1]], conflict_target: conflict_target)
+      if bumped == 0, do: insert_course_progress_cache(account_id, cohort_id, course_id)
     end
 
     :ok
+  end
+
+  defp course_id_for_block(block_id) do
+    from(b in Block,
+      join: s in Section,
+      on: s.id == b.section_id,
+      where: b.id == ^block_id,
+      select: s.course_id
+    )
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      course_id -> {:ok, course_id}
+    end
+  end
+
+  defp progress_cache_owner(query, _account_id, cohort_id) when is_binary(cohort_id),
+    do: where(query, [c], c.cohort_id == ^cohort_id)
+
+  defp progress_cache_owner(query, account_id, nil),
+    do: where(query, [c], c.account_id == ^account_id and is_nil(c.cohort_id))
+
+  defp insert_course_progress_cache(account_id, cohort_id, course_id) do
+    conflict_target =
+      if cohort_id do
+        {:unsafe_fragment, "(cohort_id, course_id) WHERE cohort_id IS NOT NULL"}
+      else
+        {:unsafe_fragment, "(account_id, course_id) WHERE cohort_id IS NULL"}
+      end
+
+    %CourseProgressCache{}
+    |> CourseProgressCache.changeset(%{
+      account_id: if(cohort_id, do: nil, else: account_id),
+      cohort_id: cohort_id,
+      course_id: course_id,
+      completed_count: 1,
+      total_count: length(block_ids_for_course(course_id))
+    })
+    |> Repo.insert(on_conflict: [inc: [completed_count: 1]], conflict_target: conflict_target)
   end
 
   @doc false
@@ -498,7 +516,14 @@ defmodule Athena.Learning.Progress do
         do: where(base, [s], s.cohort_id == ^cohort_id),
         else: where(base, [s], s.account_id == ^user.id and is_nil(s.cohort_id))
 
-    Repo.all(query)
+    # `block_solved?/2` only reads these; `content` (a whole exam snapshot
+    # for exam attempts) stays in the database.
+    query
+    |> select(
+      [s],
+      struct(s, [:id, :block_id, :account_id, :cohort_id, :status, :score, :parent_submission_id])
+    )
+    |> Repo.all()
   end
 
   @doc """
@@ -511,6 +536,8 @@ defmodule Athena.Learning.Progress do
   """
   @spec get_gate_blocks([Section.t()], map(), list(), keyword()) :: [Content.Block.t()]
   def get_gate_blocks(linear_sections, user, overrides \\ [], opts \\ []) do
+    opts = Keyword.put(opts, :sections, Map.new(linear_sections, &{&1.id, &1}))
+
     linear_sections
     |> Enum.map(& &1.id)
     |> Content.list_block_headers_by_section_ids()

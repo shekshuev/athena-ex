@@ -221,6 +221,39 @@ defmodule Athena.Content.Sections do
     end)
   end
 
+  @doc """
+  Everything a player needs about a course's structure, from two queries:
+  the section tree visible to `user_or_mode`, the linear lessons derived
+  from it (`list_linear_lessons/4`), the linear lessons of the whole course
+  regardless of visibility, and the per-section block counts.
+
+  Equivalent to calling `get_course_tree/4`, `list_linear_lessons/4` (for
+  the user and for `:all`) and `Blocks.count_blocks_by_course/1` separately,
+  which costs three times as many queries.
+  """
+  @spec course_outline(String.t(), Account.t() | :all | nil, list(), keyword()) :: %{
+          tree: [Section.t()],
+          linear_lessons: [Section.t()],
+          all_linear_lessons: [Section.t()],
+          block_counts: %{String.t() => non_neg_integer()}
+        }
+  def course_outline(course_id, user_or_mode, overrides \\ [], opts \\ []) do
+    block_counts = Blocks.count_blocks_by_course(course_id)
+    full_tree = get_course_tree(course_id, :all)
+
+    tree =
+      if user_or_mode == :all,
+        do: full_tree,
+        else: filter_tree_by_visibility(full_tree, user_or_mode, overrides, opts)
+
+    %{
+      tree: tree,
+      linear_lessons: flatten_and_filter_tree(tree, block_counts),
+      all_linear_lessons: flatten_and_filter_tree(full_tree, block_counts),
+      block_counts: block_counts
+    }
+  end
+
   @doc false
   def list_linear_lessons(course_id, user_or_mode \\ :all, overrides \\ [], opts \\ []) do
     block_counts = Blocks.count_blocks_by_course(course_id)

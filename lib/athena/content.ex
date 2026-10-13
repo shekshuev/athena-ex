@@ -116,6 +116,9 @@ defmodule Athena.Content do
   defdelegate get_course_tree(course_id, user_or_mode \\ :all, overrides \\ [], opts \\ []),
     to: Sections
 
+  defdelegate course_outline(course_id, user_or_mode, overrides \\ [], opts \\ []),
+    to: Sections
+
   defdelegate list_linear_lessons(course_id, user_or_mode \\ :all, overrides \\ [], opts \\ []),
     to: Sections
 
@@ -136,6 +139,7 @@ defmodule Athena.Content do
   defdelegate list_block_headers_by_section_ids(ids), to: Blocks
   defdelegate get_block(user, id), to: Blocks
   defdelegate get_block(id), to: Blocks
+  defdelegate get_block_header(id), to: Blocks
 
   defdelegate prepare_media_upload(
                 user,

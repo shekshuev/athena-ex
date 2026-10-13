@@ -5,16 +5,66 @@ defmodule Athena.Workers.MediaCleanupTest do
   alias Athena.Media.File
   import Athena.Factory
 
+  defp old, do: DateTime.add(DateTime.utc_now(:second), -2, :day)
+
   describe "perform/1" do
     @tag :external
+    test "keeps unreferenced files uploaded within the last day" do
+      fresh = insert(:media_file, key: "courses/123/just_uploaded.jpg", context: :course_material)
+
+      stale =
+        insert(:media_file,
+          inserted_at: old(),
+          key: "courses/123/stale.jpg",
+          context: :course_material
+        )
+
+      assert :ok = MediaCleanup.perform(%Oban.Job{})
+      assert Repo.get(File, fresh.id) != nil
+      assert Repo.get(File, stale.id) == nil
+    end
+
+    @tag :external
+    test "scans every batch of a large table" do
+      file =
+        insert(:media_file,
+          inserted_at: old(),
+          key: "courses/9/late.png",
+          context: :course_material
+        )
+
+      insert_list(510, :library_block, content: %{"body" => "nothing here"})
+      # The highest possible id sorts last, so the reference sits in the
+      # second batch.
+      insert(:library_block,
+        id: "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        content: %{"src" => "/media/courses/9/late.png"}
+      )
+
+      assert :ok = MediaCleanup.perform(%Oban.Job{})
+      assert Repo.get(File, file.id) != nil
+    end
+
+    @tag :external
     test "deletes orphaned course files but keeps active and non-course files" do
-      active_file = insert(:media_file, key: "courses/123/active.jpg", context: :course_material)
+      active_file =
+        insert(:media_file,
+          inserted_at: old(),
+          key: "courses/123/active.jpg",
+          context: :course_material
+        )
+
       insert(:block, content: %{"url" => "/media/courses/123/active.jpg"})
 
       orphaned_file =
-        insert(:media_file, key: "courses/123/orphan.jpg", context: :course_material)
+        insert(:media_file,
+          inserted_at: old(),
+          key: "courses/123/orphan.jpg",
+          context: :course_material
+        )
 
-      avatar_file = insert(:media_file, key: "avatars/456/me.jpg", context: :avatar)
+      avatar_file =
+        insert(:media_file, inserted_at: old(), key: "avatars/456/me.jpg", context: :avatar)
 
       assert :ok = MediaCleanup.perform(%Oban.Job{})
       assert Repo.get(File, active_file.id) != nil
@@ -25,14 +75,22 @@ defmodule Athena.Workers.MediaCleanupTest do
     @tag :external
     test "keeps files referenced only from a LibraryBlock" do
       library_file =
-        insert(:media_file, key: "library/owner/pic.png", context: :course_material)
+        insert(:media_file,
+          inserted_at: old(),
+          key: "library/owner/pic.png",
+          context: :course_material
+        )
 
       insert(:library_block,
         content: %{"body" => %{"attrs" => %{"src" => "/media/library/owner/pic.png"}}}
       )
 
       orphaned_file =
-        insert(:media_file, key: "library/owner/orphan.png", context: :course_material)
+        insert(:media_file,
+          inserted_at: old(),
+          key: "library/owner/orphan.png",
+          context: :course_material
+        )
 
       assert :ok = MediaCleanup.perform(%Oban.Job{})
       assert Repo.get(File, library_file.id) != nil
@@ -43,6 +101,7 @@ defmodule Athena.Workers.MediaCleanupTest do
     test "keeps submission files referenced in Submission.content[file_urls]" do
       file_in_submission =
         insert(:media_file,
+          inserted_at: old(),
           key: "courses/abc/report.pdf",
           context: :submission,
           original_name: "report.pdf"
@@ -57,6 +116,7 @@ defmodule Athena.Workers.MediaCleanupTest do
 
       orphaned_submission_file =
         insert(:media_file,
+          inserted_at: old(),
           key: "courses/abc/old_report.pdf",
           context: :submission,
           original_name: "old_report.pdf"
@@ -71,6 +131,7 @@ defmodule Athena.Workers.MediaCleanupTest do
     test "handles files referenced in both Block and Submission" do
       shared_file =
         insert(:media_file,
+          inserted_at: old(),
           key: "shared/resource.zip",
           context: :course_material,
           original_name: "resource.zip"
@@ -93,6 +154,7 @@ defmodule Athena.Workers.MediaCleanupTest do
     test "correctly matches file key with /media/ prefix in Submission.content" do
       file =
         insert(:media_file,
+          inserted_at: old(),
           key: "uploads/course_xyz/assignment.pdf",
           context: :submission,
           original_name: "assignment.pdf"
@@ -113,6 +175,7 @@ defmodule Athena.Workers.MediaCleanupTest do
     test "deletes submission file when no references exist in Block or Submission" do
       file =
         insert(:media_file,
+          inserted_at: old(),
           key: "orphaned/submission_file.docx",
           context: :submission,
           original_name: "submission_file.docx"
@@ -124,8 +187,11 @@ defmodule Athena.Workers.MediaCleanupTest do
 
     @tag :external
     test "ignores files with context :personal and :avatar" do
-      personal_file = insert(:media_file, key: "personal/doc.pdf", context: :personal)
-      avatar_file = insert(:media_file, key: "avatars/user.png", context: :avatar)
+      personal_file =
+        insert(:media_file, inserted_at: old(), key: "personal/doc.pdf", context: :personal)
+
+      avatar_file =
+        insert(:media_file, inserted_at: old(), key: "avatars/user.png", context: :avatar)
 
       assert :ok = MediaCleanup.perform(%Oban.Job{})
       assert Repo.get(File, personal_file.id) != nil
@@ -134,9 +200,14 @@ defmodule Athena.Workers.MediaCleanupTest do
 
     @tag :external
     test "handles multiple file_urls in a single submission" do
-      file1 = insert(:media_file, key: "multi/file1.pdf", context: :submission)
-      file2 = insert(:media_file, key: "multi/file2.pdf", context: :submission)
-      file3 = insert(:media_file, key: "multi/file3.pdf", context: :submission)
+      file1 =
+        insert(:media_file, inserted_at: old(), key: "multi/file1.pdf", context: :submission)
+
+      file2 =
+        insert(:media_file, inserted_at: old(), key: "multi/file2.pdf", context: :submission)
+
+      file3 =
+        insert(:media_file, inserted_at: old(), key: "multi/file3.pdf", context: :submission)
 
       insert(:submission,
         content: %{
@@ -158,7 +229,11 @@ defmodule Athena.Workers.MediaCleanupTest do
     @tag :external
     test "does not delete file if referenced in any submission (even by different user)" do
       file =
-        insert(:media_file, key: "shared/team_report.xlsx", context: :submission)
+        insert(:media_file,
+          inserted_at: old(),
+          key: "shared/team_report.xlsx",
+          context: :submission
+        )
 
       insert(:submission,
         account_id: Ecto.UUID.generate(),
@@ -174,7 +249,8 @@ defmodule Athena.Workers.MediaCleanupTest do
 
     @tag :external
     test "logs deletion of orphaned files" do
-      orphan = insert(:media_file, key: "to_delete.zip", context: :course_material)
+      orphan =
+        insert(:media_file, inserted_at: old(), key: "to_delete.zip", context: :course_material)
 
       ExUnit.CaptureLog.capture_log(fn ->
         :ok = MediaCleanup.perform(%Oban.Job{})

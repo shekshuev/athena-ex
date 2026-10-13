@@ -226,6 +226,7 @@ defmodule Athena.Content.Library do
       end)
 
     selected_blocks
+    |> with_contents()
     |> Enum.shuffle()
     |> build_exam_blocks()
   end
@@ -489,15 +490,33 @@ defmodule Athena.Content.Library do
 
   @doc false
   defp build_ticket_blocks(blocks) do
-    Enum.map(blocks, fn lib_block ->
+    blocks
+    |> with_contents()
+    |> Enum.map(fn lib_block ->
       %Block{
         id: Ecto.UUID.generate(),
         type: lib_block.type,
-        content: Map.put(lib_block.content, "original_block_id", lib_block.id),
+        content: Map.put(lib_block.content || %{}, "original_block_id", lib_block.id),
         inserted_at: DateTime.utc_now(),
         updated_at: DateTime.utc_now()
       }
     end)
+  end
+
+  # Candidates are picked without their content (see
+  # `fetch_candidates_by_tags/2`); only the chosen few are loaded in full.
+  @doc false
+  defp with_contents([]), do: []
+
+  defp with_contents(blocks) do
+    ids = Enum.map(blocks, & &1.id)
+
+    contents =
+      from(lb in LibraryBlock, where: lb.id in ^ids, select: {lb.id, lb.content})
+      |> Repo.all()
+      |> Map.new()
+
+    Enum.map(blocks, &%{&1 | content: Map.get(contents, &1.id)})
   end
 
   @doc false
@@ -509,6 +528,7 @@ defmodule Athena.Content.Library do
     |> where([lb, clb], clb.course_id == ^course_id)
     |> where([lb], lb.type in [:quiz_question, :code, :file_assignment])
     |> where([lb], fragment("? && ?", lb.tags, ^tags))
+    |> select([lb], struct(lb, ^(LibraryBlock.__schema__(:fields) -- [:content])))
     |> Repo.all()
   end
 end

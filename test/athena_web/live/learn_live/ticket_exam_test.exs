@@ -114,11 +114,12 @@ defmodule AthenaWeb.LearnLive.TicketExamTest do
           content: %{"type" => "ticket_exam", "questions" => []}
         )
 
-      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
-               live(conn, ~p"/learn/courses/#{course.id}/ticket/#{block.id}")
-
+      result = live(conn, ~p"/learn/courses/#{course.id}/ticket/#{block.id}")
+      assert {:error, {:live_redirect, %{to: to}}} = result
       assert to == "/learn/courses/#{course.id}/play"
-      assert flash["info"] =~ "already completed"
+
+      {:ok, _lv, html} = follow_redirect(result, conn)
+      assert html =~ "already completed"
 
       assert Athena.Repo.aggregate(Athena.Learning.Submission, :count) == 1
       assert Athena.Repo.reload!(finished).score == 90
