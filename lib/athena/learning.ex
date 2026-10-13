@@ -211,6 +211,11 @@ defmodule Athena.Learning do
   defdelegate subscribe_to_draft_updates(cohort_id, block_id), to: DraftCache
 
   defdelegate start_test_run(instructor, course_id, section_id), to: TestRuns, as: :start
+
+  defdelegate start_library_block_test_run(instructor, library_block_id, opts \\ []),
+    to: TestRuns,
+    as: :start_library_block
+
   defdelegate cleanup_test_run(test_run_session), to: TestRuns, as: :cleanup
 
   defp notify_submission_subscribers({:ok, submission} = result) do

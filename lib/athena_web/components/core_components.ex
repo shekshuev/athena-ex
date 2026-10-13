@@ -593,7 +593,7 @@ defmodule AthenaWeb.CoreComponents do
 
     ~H"""
     <fieldset class="fieldset mb-2 w-full">
-      <label class="label cursor-pointer justify-start gap-3">
+      <label class="label cursor-pointer justify-start gap-3 whitespace-normal">
         <input
           type="hidden"
           name={@name}
@@ -607,7 +607,11 @@ defmodule AthenaWeb.CoreComponents do
           name={@name}
           value="true"
           checked={@checked}
-          class={[@class || "checkbox checkbox-primary", @errors != [] && "checkbox-error!"]}
+          class={[
+            @class || "checkbox checkbox-primary",
+            "shrink-0",
+            @errors != [] && "checkbox-error!"
+          ]}
           {@rest}
         />
         <span class="label-text font-bold">{@label}</span>

@@ -23,6 +23,23 @@ defmodule Athena.Workers.MediaCleanupTest do
     end
 
     @tag :external
+    test "keeps files referenced only from a LibraryBlock" do
+      library_file =
+        insert(:media_file, key: "library/owner/pic.png", context: :course_material)
+
+      insert(:library_block,
+        content: %{"body" => %{"attrs" => %{"src" => "/media/library/owner/pic.png"}}}
+      )
+
+      orphaned_file =
+        insert(:media_file, key: "library/owner/orphan.png", context: :course_material)
+
+      assert :ok = MediaCleanup.perform(%Oban.Job{})
+      assert Repo.get(File, library_file.id) != nil
+      assert Repo.get(File, orphaned_file.id) == nil
+    end
+
+    @tag :external
     test "keeps submission files referenced in Submission.content[file_urls]" do
       file_in_submission =
         insert(:media_file,
