@@ -222,14 +222,26 @@ defmodule Athena.Learning.Progress do
   """
   @spec last_activity(String.t()) :: BlockProgress.t() | nil
   def last_activity(account_id) do
-    cohort_ids_query =
-      from cm in CohortMembership, where: cm.account_id == ^account_id, select: cm.cohort_id
+    # Two top-1 lookups, each served by an `(…, updated_at DESC)` index,
+    # instead of one `account_id = ? OR cohort_id IN (…)` that can use
+    # neither and sorts every matching row.
+    own =
+      from bp in BlockProgress,
+        where: bp.account_id == ^account_id,
+        order_by: [desc: bp.updated_at],
+        limit: 1
 
-    BlockProgress
-    |> where([bp], bp.account_id == ^account_id or bp.cohort_id in subquery(cohort_ids_query))
-    |> order_by([bp], desc: bp.updated_at)
-    |> limit(1)
-    |> Repo.one()
+    via_cohorts =
+      from bp in BlockProgress,
+        join: cm in CohortMembership,
+        on: cm.cohort_id == bp.cohort_id,
+        where: cm.account_id == ^account_id,
+        order_by: [desc: bp.updated_at],
+        limit: 1
+
+    [Repo.one(own), Repo.one(via_cohorts)]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.max_by(& &1.updated_at, DateTime, fn -> nil end)
   end
 
   @doc """
