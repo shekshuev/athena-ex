@@ -528,12 +528,17 @@ defmodule AthenaWeb.LearnLive.TicketExam do
       |> Enum.map(&Engagement.normalize_event(&1, section_id))
       |> Enum.reject(&is_nil/1)
 
-    Engagement.record_events(
-      socket.assigns.current_user.id,
-      socket.assigns.cohort_id,
-      socket.assigns.engagement_session_id,
-      normalized
-    )
+    {buffered, socket} = EngagementSignals.take_buffered_events(socket)
+
+    # Same rule as the player: a builder test run never writes telemetry.
+    unless socket.assigns.test_run do
+      Engagement.record_events(
+        socket.assigns.current_user.id,
+        socket.assigns.cohort_id,
+        socket.assigns.engagement_session_id,
+        normalized ++ buffered
+      )
+    end
 
     Engagement.report_proctoring_events(
       socket.assigns.submission.id,

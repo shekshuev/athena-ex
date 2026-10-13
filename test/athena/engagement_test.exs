@@ -51,62 +51,45 @@ defmodule Athena.EngagementTest do
       assert {:error, :empty} = Engagement.record_events(account.id, cohort.id, "sess", [])
     end
 
-    test "broadcasts each event on the cohort/block and session topics", %{
+    test "broadcasts each block's events once per batch on its cohort/block topic", %{
       account: account,
       cohort: cohort,
       block: block,
       session_id: session_id
     } do
       Phoenix.PubSub.subscribe(Athena.PubSub, "engagement:#{cohort.id}:#{block.id}")
-      Phoenix.PubSub.subscribe(Athena.PubSub, "engagement_session:#{account.id}:#{session_id}")
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-      events = [
-        %{
-          block_id: block.id,
-          section_id: block.section_id,
-          event_type: :paste_detected,
-          payload: %{"pasted_chars" => 40, "total_chars" => 42},
-          occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
-        }
-      ]
+      events =
+        for type <- [:paste_detected, :answer_changed] do
+          %{
+            block_id: block.id,
+            section_id: block.section_id,
+            event_type: type,
+            payload: %{"pasted_chars" => 40, "total_chars" => 42},
+            occurred_at: now
+          }
+        end
 
-      assert {:ok, 1} = Engagement.record_events(account.id, cohort.id, session_id, events)
+      assert {:ok, 2} = Engagement.record_events(account.id, cohort.id, session_id, events)
 
-      assert_received {:engagement_event, %{event_type: :paste_detected, block_id: block_id}}
-      assert block_id == block.id
-
-      assert_received {:engagement_event, %{event_type: :paste_detected, session_id: ^session_id}}
+      assert_received {:engagement_events, [first, second]}
+      assert first.event_type == :paste_detected
+      assert first.session_id == session_id
+      assert second.event_type == :answer_changed
+      refute_received {:engagement_events, _}
     end
-  end
 
-  describe "get_session_timeline/2" do
-    test "returns events for a session in occurred_at order", %{
-      account: account,
-      cohort: cohort,
-      block: block,
-      session_id: session_id
-    } do
-      later = DateTime.utc_now() |> DateTime.truncate(:second)
-      earlier = DateTime.add(later, -60, :second)
+    test "normalize_event/2 keeps a client clock that is far off within a day of the server's" do
+      far_past = DateTime.add(DateTime.utc_now(), -10, :day) |> DateTime.to_iso8601()
 
-      Engagement.record_events(account.id, cohort.id, session_id, [
-        %{
-          block_id: block.id,
-          section_id: block.section_id,
-          event_type: :viewport_exit,
-          occurred_at: later
-        },
-        %{
-          block_id: block.id,
-          section_id: block.section_id,
-          event_type: :viewport_enter,
-          occurred_at: earlier
-        }
-      ])
+      normalized =
+        Engagement.normalize_event(
+          %{"block_id" => "b", "event_type" => "viewport_enter", "occurred_at" => far_past},
+          "s"
+        )
 
-      [first, second] = Engagement.get_session_timeline(account.id, session_id)
-      assert first.event_type == :viewport_enter
-      assert second.event_type == :viewport_exit
+      assert DateTime.diff(DateTime.utc_now(), normalized.occurred_at, :hour) == 24
     end
   end
 end

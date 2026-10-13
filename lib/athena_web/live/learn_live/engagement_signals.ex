@@ -24,6 +24,14 @@ defmodule AthenaWeb.LearnLive.EngagementSignals do
 
   alias Athena.Engagement
 
+  # Recorded on every quiz autosave (every few hundred ms while typing), so
+  # these are held on the socket and written together with the client's
+  # next `engagement_batch` (at most ~10 s later, see
+  # `take_buffered_events/1`) instead of one INSERT per keystroke pause.
+  # Count and timestamps are unchanged; proctoring still sees them at once.
+  @buffered_event_types [:answer_changed]
+  @max_buffered 25
+
   @doc """
   `answer_selected`/`answer_changed` were part of the event catalog from the
   start but never actually wired client-side - rather than a dedicated JS
@@ -67,26 +75,60 @@ defmodule AthenaWeb.LearnLive.EngagementSignals do
   @spec emit_engagement_event(Phoenix.LiveView.Socket.t(), binary(), atom(), map()) ::
           Phoenix.LiveView.Socket.t()
   def emit_engagement_event(socket, block_id, event_type, payload \\ %{}) do
-    unless test_run?(socket) do
-      Engagement.record_events(
-        socket.assigns.current_user.id,
-        socket.assigns.cohort_id,
-        socket.assigns.engagement_session_id,
-        [
-          %{
-            block_id: block_id,
-            section_id: section_id(socket),
-            event_type: event_type,
-            payload: payload,
-            occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
-          }
-        ]
-      )
+    if test_run?(socket) do
+      socket
+    else
+      event = %{
+        block_id: block_id,
+        section_id: section_id(socket),
+        event_type: event_type,
+        payload: payload,
+        occurred_at: DateTime.utc_now() |> DateTime.truncate(:second)
+      }
 
-      maybe_forward_to_proctoring(socket, [%{event_type: event_type, payload: payload}])
+      maybe_forward_to_proctoring(socket, [event])
+
+      if event_type in @buffered_event_types do
+        buffer_event(socket, event)
+      else
+        record(socket, [event])
+        socket
+      end
     end
+  end
 
-    socket
+  @doc """
+  Hands back the server-originated events held on the socket (see
+  `@buffered_event_types`) and empties the buffer. Every `engagement_batch`
+  handler records them together with the client's batch.
+  """
+  @spec take_buffered_events(Phoenix.LiveView.Socket.t()) ::
+          {[map()], Phoenix.LiveView.Socket.t()}
+  def take_buffered_events(socket) do
+    case socket.assigns[:engagement_buffer] do
+      [_ | _] = events -> {Enum.reverse(events), assign(socket, :engagement_buffer, [])}
+      _ -> {[], socket}
+    end
+  end
+
+  defp buffer_event(socket, event) do
+    buffer = [event | socket.assigns[:engagement_buffer] || []]
+
+    if length(buffer) >= @max_buffered do
+      record(socket, Enum.reverse(buffer))
+      assign(socket, :engagement_buffer, [])
+    else
+      assign(socket, :engagement_buffer, buffer)
+    end
+  end
+
+  defp record(socket, events) do
+    Engagement.record_events(
+      socket.assigns.current_user.id,
+      socket.assigns.cohort_id,
+      socket.assigns.engagement_session_id,
+      events
+    )
   end
 
   @doc """

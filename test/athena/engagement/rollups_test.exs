@@ -137,6 +137,29 @@ defmodule Athena.Engagement.RollupsTest do
     assert [%{nudged_count: 5}] = raw.overview.nudge_correction_rate
   end
 
+  test "the live block view and the weekly trend read the same numbers from rollups", ctx do
+    seed(ctx)
+    text = ctx.blocks.text
+    scope = %{resource_type: :section, resource_id: text.section_id, cohort_id: ctx.cohort.id}
+    metrics = [:avg_dwell_seconds, :sample_size, :nudge_shown_count]
+
+    series = fn ->
+      for metric <- metrics,
+          point <- Metrics.time_series(text.id, ctx.cohort.id, metric),
+          do: {metric, point.week, point.value && Float.round(point.value * 1.0, 6)}
+    end
+
+    raw_metrics = Metrics.get_metrics(scope)
+    raw_series = series.()
+
+    Rollups.process_new_events()
+    assert Rollups.built?()
+
+    assert Metrics.get_metrics(scope) == raw_metrics
+    assert series.() == raw_series
+    assert Enum.any?(raw_series, fn {_metric, _week, value} -> value not in [nil, 0.0] end)
+  end
+
   test "rollups only store past days' buckets per student, block and day", ctx do
     seed(ctx)
     Rollups.process_new_events()

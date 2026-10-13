@@ -25,10 +25,12 @@ defmodule Athena.Engagement.Rollups do
   ## Reading
 
   Any window of days is a plain `SUM ... GROUP BY` over the rows
-  (`account_block_totals/4`, `active_students_by_day/4`, `hour_matrix/4`).
-  Callers combine past days from here with today's raw events (see
-  `Athena.Engagement.Metrics`), and fall back to raw events entirely while
-  `ready?/0` is false (rollups never built, or the worker is far behind).
+  (`account_block_totals/4`, `active_students_by_day/4`, `hour_matrix/4`,
+  `weekly_block_totals/2`). Course-wide dashboards read only these, today
+  included; the live per-section view adds today's raw events (see
+  `Athena.Engagement.Metrics`). Raw events are read instead only until the
+  rollups are first built (`built?/0`). `ready?/0` additionally says
+  whether the worker is caught up.
   """
 
   import Ecto.Query
@@ -63,6 +65,16 @@ defmodule Athena.Engagement.Rollups do
           )
         )
     end
+  end
+
+  @doc """
+  Whether the rollups have ever been built (the worker has run at least
+  once). Once they have, dashboards read them even while the worker is
+  behind - slightly stale numbers instead of a scan over raw events.
+  """
+  @spec built?() :: boolean()
+  def built? do
+    Repo.exists?(from(c in RollupCursor, where: c.name == @cursor))
   end
 
   @doc """
@@ -139,10 +151,20 @@ defmodule Athena.Engagement.Rollups do
       end
 
     if events != [] do
-      Repo.transaction(fn ->
-        events |> dirty_buckets() |> Enum.each(&recompute/1)
-        save_cursor(upper)
-      end)
+      buckets = dirty_buckets(events)
+
+      positions_by_section =
+        buckets |> Enum.map(fn {{_cohort, section_id, _day}, _} -> section_id end) |> positions()
+
+      # A batch can recompute many day buckets; the default 15 s
+      # transaction timeout is too tight for a busy day.
+      Repo.transaction(
+        fn ->
+          Enum.each(buckets, &recompute(&1, positions_by_section))
+          save_cursor(upper)
+        end,
+        timeout: :timer.minutes(5)
+      )
     end
 
     Enum.count(events, &(is_nil(cursor_at) or DateTime.compare(&1.inserted_at, cursor_at) == :gt))
@@ -180,14 +202,20 @@ defmodule Athena.Engagement.Rollups do
     |> Map.new()
   end
 
-  defp recompute({{cohort_id, section_id, day}, account_ids}) do
-    positions =
-      from(b in Block,
-        where: b.section_id == ^section_id,
-        select: {b.id, {b.section_id, b.order}}
-      )
-      |> Repo.all()
-      |> Map.new()
+  # `%{section_id => %{block_id => {section_id, order}}}` for every section
+  # of the batch, in one query.
+  defp positions(section_ids) do
+    from(b in Block,
+      where: b.section_id in ^Enum.uniq(section_ids),
+      select: {b.id, {b.section_id, b.order}}
+    )
+    |> Repo.all()
+    |> Enum.group_by(fn {_block_id, {section_id, _order}} -> section_id end)
+    |> Map.new(fn {section_id, entries} -> {section_id, Map.new(entries)} end)
+  end
+
+  defp recompute({{cohort_id, section_id, day}, account_ids}, positions_by_section) do
+    positions = Map.get(positions_by_section, section_id, %{})
 
     block_ids = Map.keys(positions)
     from_at = TimeZones.start_of_day(day)
@@ -298,6 +326,26 @@ defmodule Athena.Engagement.Rollups do
         {count, hour}, acc2 -> Map.update(acc2, {dow, hour}, count, &(&1 + count))
       end)
     end)
+  end
+
+  @doc """
+  One block's totals per week (weeks start on Monday) across the cohort:
+  `[%{week: date, dwell_sum: float, dwell_n: int, nudge_shown: int}]`,
+  oldest first.
+  """
+  @spec weekly_block_totals(binary(), binary()) :: [map()]
+  def weekly_block_totals(cohort_id, block_id) do
+    cohort_id
+    |> window([block_id], nil, nil)
+    |> group_by([r], fragment("date_trunc('week', ?)::date", r.day))
+    |> order_by([r], fragment("date_trunc('week', ?)::date", r.day))
+    |> select([r], %{
+      week: fragment("date_trunc('week', ?)::date", r.day),
+      dwell_sum: coalesce(sum(r.dwell_sum), 0.0),
+      dwell_n: coalesce(sum(r.dwell_n), 0),
+      nudge_shown: coalesce(sum(r.nudge_shown), 0)
+    })
+    |> Repo.all()
   end
 
   defp window(cohort_id, block_ids, from_day, to_day) do

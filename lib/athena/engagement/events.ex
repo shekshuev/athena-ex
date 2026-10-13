@@ -34,7 +34,7 @@ defmodule Athena.Engagement.Events do
           block_id: Map.fetch!(event, :block_id),
           section_id: Map.fetch!(event, :section_id),
           event_type: Map.fetch!(event, :event_type),
-          payload: Map.get(event, :payload, %{}),
+          payload: event |> Map.get(:payload, %{}) |> cap_payload(),
           occurred_at: Map.get(event, :occurred_at, now),
           inserted_at: now
         }
@@ -44,17 +44,38 @@ defmodule Athena.Engagement.Events do
     {:ok, {count, rows}}
   end
 
-  @doc """
-  Returns the ordered raw event timeline for a single student session
-  (used by the "live replay" view).
-  """
-  @spec get_session_timeline(binary(), binary()) :: [Event.t()]
-  def get_session_timeline(account_id, session_id) do
-    Event
-    |> where([e], e.account_id == ^account_id and e.session_id == ^session_id)
-    |> order_by([e], asc: e.occurred_at)
-    |> Repo.all()
+  # A client's `occurred_at` is its own clock. It is kept (event order
+  # within a session depends on it) but held to [now - 1 day, now + 1 min]:
+  # a wrong or hostile clock can't file an event under some distant day,
+  # and readers filtering on `occurred_at` can rely on it being close to
+  # `inserted_at` (the column `engagement_events` is partitioned by).
+  # Server-originated events already carry the server's time.
+  @max_client_lag_seconds 24 * 60 * 60
+  @max_client_lead_seconds 60
+
+  @doc false
+  def clamp_occurred_at(%DateTime{} = occurred_at, now) do
+    earliest = DateTime.add(now, -@max_client_lag_seconds, :second)
+    latest = DateTime.add(now, @max_client_lead_seconds, :second)
+
+    cond do
+      DateTime.compare(occurred_at, earliest) == :lt -> earliest
+      DateTime.compare(occurred_at, latest) == :gt -> latest
+      true -> occurred_at
+    end
   end
+
+  # Payloads are small maps of numbers and ids; anything bigger is a broken
+  # or abusive client and is not stored.
+  @max_payload_bytes 2_048
+
+  defp cap_payload(payload) when is_map(payload) do
+    if :erlang.external_size(payload) <= @max_payload_bytes,
+      do: payload,
+      else: %{"dropped" => "payload too large"}
+  end
+
+  defp cap_payload(_payload), do: %{}
 
   @doc """
   Raw events for a scope (block ids, optionally a cohort, optionally a
@@ -83,6 +104,27 @@ defmodule Athena.Engagement.Events do
     |> Repo.all()
   end
 
+  @doc """
+  Just what `pair_viewport_dwells/1` reads - the viewport and idle events of
+  a scope, as plain maps of session, account, type and time, without the
+  payload or any other event type. For `Athena.Engagement.BlockStats`'s
+  bootstrap, which only ever needs dwell times.
+  """
+  @spec list_dwell_events([binary()], binary() | nil) :: [map()]
+  def list_dwell_events(block_ids, cohort_id \\ nil) do
+    Event
+    |> where([e], e.block_id in ^block_ids)
+    |> where([e], e.event_type in [:viewport_enter, :viewport_exit, :idle_start, :idle_end])
+    |> maybe_filter_cohort(cohort_id)
+    |> select([e], %{
+      session_id: e.session_id,
+      account_id: e.account_id,
+      event_type: e.event_type,
+      occurred_at: e.occurred_at
+    })
+    |> Repo.all()
+  end
+
   defp maybe_filter_in(query, _field, nil), do: query
   defp maybe_filter_in(query, field, values), do: where(query, [e], field(e, ^field) in ^values)
 
@@ -105,7 +147,10 @@ defmodule Athena.Engagement.Events do
         section_id: section_id,
         event_type: event_type,
         payload: event["payload"] || %{},
-        occurred_at: DateTime.truncate(occurred_at, :second)
+        occurred_at:
+          occurred_at
+          |> DateTime.truncate(:second)
+          |> clamp_occurred_at(DateTime.utc_now(:second))
       }
     else
       _ -> nil

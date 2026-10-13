@@ -524,6 +524,8 @@ defmodule AthenaWeb.LearnLive.Player do
       |> Enum.map(&Engagement.normalize_event(&1, section_id))
       |> Enum.reject(&is_nil/1)
 
+    {buffered, socket} = EngagementSignals.take_buffered_events(socket)
+
     # A builder "test run" plays through as a throwaway ephemeral account
     # (see `Athena.Learning.TestRuns`) that `TestRuns.cleanup/1` never
     # scrubs from `engagement_events` - so instructors previewing a course
@@ -533,7 +535,7 @@ defmodule AthenaWeb.LearnLive.Player do
         socket.assigns.current_user.id,
         socket.assigns.cohort_id,
         socket.assigns.engagement_session_id,
-        normalized
+        normalized ++ buffered
       )
     end
 
