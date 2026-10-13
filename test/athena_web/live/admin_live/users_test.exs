@@ -283,4 +283,21 @@ defmodule AthenaWeb.AdminLive.UsersTest do
       assert html =~ assigned_role.name
     end
   end
+
+  describe "deleting a user's activity data" do
+    test "schedules a purge of the user's raw engagement events", %{conn: conn} do
+      student = insert(:account, login: "leaving_student")
+      {:ok, lv, _html} = live(conn, ~p"/admin/users")
+
+      lv |> element("#purge-engagement-#{student.id}") |> render_click()
+      assert has_element?(lv, "#purge-engagement-modal")
+
+      render_click(lv, "confirm_purge_engagement")
+
+      assert [%{scope: :account, scope_id: scope_id}] =
+               Athena.Repo.all(Athena.Engagement.Purge)
+
+      assert scope_id == student.id
+    end
+  end
 end

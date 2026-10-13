@@ -13,7 +13,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   """
   use AthenaWeb, :live_view
 
-  alias Athena.{Identity, Learning}
+  alias Athena.{Engagement, Identity, Learning}
   alias AthenaWeb.TeachingLive.MembershipFormComponent
   alias AthenaWeb.TeachingLive.EnrollmentFormComponent
   import AthenaWeb.TeachingLive.CohortAnalyticsComponents, only: [gradebook_path: 2]
@@ -39,6 +39,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
            |> assign(:cohort, cohort)
            |> assign(:membership_to_delete, nil)
            |> assign(:enrollment_to_delete, nil)
+           |> assign(:confirm_purge, false)
            |> assign(:enrollments_count, length(enrollments))
            |> stream(:memberships, [])
            |> stream(:enrollments, enrollments)}
@@ -187,6 +188,36 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
     {:noreply, assign(socket, enrollment_to_delete: nil)}
   end
 
+  def handle_event("purge_engagement_click", _, socket),
+    do: {:noreply, assign(socket, confirm_purge: true)}
+
+  def handle_event("cancel_purge_engagement", _, socket),
+    do: {:noreply, assign(socket, confirm_purge: false)}
+
+  def handle_event("confirm_purge_engagement", _, socket) do
+    socket = assign(socket, confirm_purge: false)
+
+    case Engagement.purge_raw_events(
+           socket.assigns.current_user,
+           :cohort,
+           socket.assigns.cohort.id
+         ) do
+      {:ok, _purge} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :info,
+           gettext("The group's raw activity data will be deleted shortly. Statistics are kept.")
+         )}
+
+      {:error, :forbidden} ->
+        {:noreply, put_flash(socket, :error, gettext("You don't have permission to do this."))}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, gettext("Could not schedule the deletion."))}
+    end
+  end
+
   @doc """
   Handles successful creation messages from child components.
   """
@@ -223,6 +254,15 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
               else: gettext("Cohort Dashboard")}
           </p>
         </div>
+        <.icon_button
+          :if={Identity.can?(@current_user, "engagement.delete")}
+          id="purge-cohort-engagement"
+          type="button"
+          class="ml-auto"
+          phx-click="purge_engagement_click"
+          icon="hero-eye-slash"
+          label={gettext("Delete activity data")}
+        />
       </.sticky_header>
 
       <h2 class="card-title text-xl mb-4">{gettext("Overview")}</h2>
@@ -442,6 +482,21 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         danger={true}
         on_cancel={JS.push("cancel_delete_enrollment")}
         on_confirm={JS.push("confirm_delete_enrollment")}
+      />
+
+      <.modal
+        id="purge-engagement-modal"
+        show={@confirm_purge}
+        title={gettext("Delete activity data")}
+        description={
+          gettext(
+            "Delete the raw activity events recorded in this group (time on content, scrolling, video, tab switches, exam proctoring timelines)? Engagement statistics and grades already computed from them are kept. This cannot be undone."
+          )
+        }
+        confirm_label={gettext("Delete")}
+        danger={true}
+        on_cancel={JS.push("cancel_purge_engagement")}
+        on_confirm={JS.push("confirm_purge_engagement")}
       />
     </div>
     """

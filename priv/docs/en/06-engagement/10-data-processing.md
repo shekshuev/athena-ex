@@ -1,6 +1,6 @@
 %{
   title: "Data processing",
-  description: "Periods, pre-aggregation, refresh and delays."
+  description: "Periods, pre-aggregation, refresh, delays and data retention."
 }
 ---
 ## Data path
@@ -9,7 +9,7 @@ Data goes through four steps:
 
 1. **Collection.** The student's browser sends events in batches every 10 seconds (see [Data collection](/docs/engagement/data-collection)). The server stores them as they are.
 2. **Pre-aggregation.** A background job folds new events into daily totals every 5 minutes: one record per "group × student × block × day".
-3. **Screen computation.** When a screen opens, past days of the period are read from the daily totals and today from the raw events. Both parts are added up and go through the same formulas.
+3. **Screen computation.** Course-wide screens (:ui[Group Radar], course map, group comparison, gradebook) read the whole period, today included, from the daily totals. Only the block detail on the :ui[Course Radar] adds today's raw events to the totals of past days, so that it stays live while students work. All of them go through the same formulas.
 4. **Cache.** The result is kept for 60 seconds. Reopening or switching tabs within that time does not recompute it.
 
 ## Periods
@@ -35,14 +35,14 @@ Details:
 - the whole course section is recomputed, not just the affected block, because returns to blocks are determined within a section;
 - events without a group are not aggregated.
 
-If totals have not been built yet, or the job is more than 15 minutes behind, the screens temporarily compute everything from raw events. The result is the same, but slower.
+Until the totals have been built for the first time, the screens compute everything from raw events. The result is the same, but slower. Once built, the totals are always used, even when the job is behind: the screens then show slightly older numbers instead of slowing down.
 
 ## Delays
 
 | What changed | When it shows on screen |
 |---|---|
-| A new action by a student | 10–20 seconds after the action (batch sending) plus up to 60 seconds of cache |
-| Metrics of an open block detail | Update by themselves as events arrive, at most once every 2 seconds |
+| A new action by a student | On the block detail: 10–20 seconds after the action (batch sending). On course-wide screens: after the next pre-aggregation run (up to 5 minutes) plus up to 60 seconds of cache |
+| Metrics of an open block detail | Update by themselves as events arrive, at most once every 10 seconds |
 | :ui[Group Radar], course map, group comparison | When the screen is opened or the period changed, not before the 60-second cache expires |
 | A new grade from a teacher | On the next screen computation |
 
@@ -51,3 +51,19 @@ The :ui[Group Radar] and the course map do not refresh by themselves while open:
 ## Limitations of daily buckets
 
 Within-session measurements (visit time, reading depth, video skipping, time to first action, returns) are taken within one calendar day. A session running past midnight counts as two. This is the only approximation daily aggregation introduces.
+
+## Storage and deletion
+
+Raw events are kept indefinitely, stored month by month. The daily totals are kept indefinitely too.
+
+An administrator can delete the raw events of one user (:ui[Delete activity data] in the user list) or of a whole group (the same button on the group page). The deletion:
+
+- runs in the background, a few minutes after the request: it first waits until every event being deleted is included in the daily totals;
+- keeps the daily totals, so every engagement screen shows the same numbers for past days as before;
+- cannot be undone.
+
+After the deletion:
+
+- the proctoring timeline of that user's (or group's) past exams is empty;
+- events recorded for them later on the same day as the request are not added to that day's totals; the following days are counted as usual.
+

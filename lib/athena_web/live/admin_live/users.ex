@@ -10,7 +10,7 @@ defmodule AthenaWeb.AdminLive.Users do
   """
   use AthenaWeb, :live_view
 
-  alias Athena.{Identity, Learning, Repo}
+  alias Athena.{Engagement, Identity, Learning, Repo}
   alias Athena.Identity.{Account, Profile}
   alias AthenaWeb.AdminLive.UserFormComponent
 
@@ -33,6 +33,7 @@ defmodule AthenaWeb.AdminLive.Users do
     {:ok,
      socket
      |> assign(account_to_delete: nil)
+     |> assign(account_to_purge: nil)
      |> assign(cohort_options: cohort_options)
      |> stream(:accounts, [])}
   end
@@ -196,6 +197,42 @@ defmodule AthenaWeb.AdminLive.Users do
     {:noreply, assign(socket, account_to_delete: nil)}
   end
 
+  def handle_event("purge_engagement_click", %{"id" => id}, socket) do
+    case Identity.get_account(id) do
+      {:ok, account} -> {:noreply, assign(socket, account_to_purge: account)}
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event(
+        "confirm_purge_engagement",
+        _,
+        %{assigns: %{account_to_purge: account}} = socket
+      )
+      when not is_nil(account) do
+    socket = assign(socket, account_to_purge: nil)
+
+    case Engagement.purge_raw_events(socket.assigns.current_user, :account, account.id) do
+      {:ok, _purge} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :info,
+           gettext("The user's raw activity data will be deleted shortly. Statistics are kept.")
+         )}
+
+      {:error, :forbidden} ->
+        {:noreply, put_flash(socket, :error, gettext("You don't have permission to do this."))}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, gettext("Could not schedule the deletion."))}
+    end
+  end
+
+  def handle_event("cancel_purge_engagement", _, socket) do
+    {:noreply, assign(socket, account_to_purge: nil)}
+  end
+
   @doc """
   Handles messages from child components, such as a successfully saved user.
   """
@@ -306,6 +343,15 @@ defmodule AthenaWeb.AdminLive.Users do
               label={gettext("Edit")}
             />
             <.icon_button
+              :if={Identity.can?(@current_user, "engagement.delete")}
+              id={"purge-engagement-#{acc.id}"}
+              type="button"
+              phx-click="purge_engagement_click"
+              phx-value-id={acc.id}
+              icon="hero-eye-slash"
+              label={gettext("Delete activity data")}
+            />
+            <.icon_button
               :if={Identity.can?(@current_user, "users.delete")}
               type="button"
               phx-click="delete_click"
@@ -359,6 +405,21 @@ defmodule AthenaWeb.AdminLive.Users do
         danger={true}
         on_cancel={JS.push("cancel_delete")}
         on_confirm={JS.push("confirm_delete")}
+      />
+
+      <.modal
+        id="purge-engagement-modal"
+        show={@account_to_purge != nil}
+        title={gettext("Delete activity data")}
+        description={
+          gettext(
+            "Delete this user's raw activity events (time on content, scrolling, video, tab switches, exam proctoring timelines)? Engagement statistics and grades already computed from them are kept. This cannot be undone."
+          )
+        }
+        confirm_label={gettext("Delete")}
+        danger={true}
+        on_cancel={JS.push("cancel_purge_engagement")}
+        on_confirm={JS.push("confirm_purge_engagement")}
       />
     </.page_container>
     """

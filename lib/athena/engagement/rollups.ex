@@ -37,7 +37,16 @@ defmodule Athena.Engagement.Rollups do
 
   alias Athena.{Repo, TimeZones}
   alias Athena.Content.Block
-  alias Athena.Engagement.{Accumulator, DashboardCache, Event, Events, Rollup, RollupCursor}
+
+  alias Athena.Engagement.{
+    Accumulator,
+    DashboardCache,
+    Event,
+    Events,
+    Purges,
+    Rollup,
+    RollupCursor
+  }
 
   @cursor "engagement_rollups"
   @default_batch_size 10_000
@@ -64,6 +73,15 @@ defmodule Athena.Engagement.Rollups do
             where: e.inserted_at > ^cursor.last_inserted_at and e.inserted_at < ^stale_before
           )
         )
+    end
+  end
+
+  @doc "Insertion time up to which every event has been folded in, or `nil` before the first run."
+  @spec cursor() :: DateTime.t() | nil
+  def cursor do
+    case Repo.get(RollupCursor, @cursor) do
+      nil -> nil
+      cursor -> cursor.last_inserted_at
     end
   end
 
@@ -99,15 +117,23 @@ defmodule Athena.Engagement.Rollups do
   Drops every rollup and the cursor, so the next `process_new_events/1`
   rebuilds everything from raw events - needed after changing a threshold
   that is baked into the stored counters (`panic_debug_gap_seconds`).
-  """
-  @spec reset() :: :ok
-  def reset do
-    Repo.transaction(fn ->
-      Repo.delete_all(Rollup)
-      Repo.delete_all(RollupCursor)
-    end)
 
-    DashboardCache.clear()
+  Refused once raw events have been purged (`Athena.Engagement.Purges`):
+  the rollups are then the only record of those events and can't be
+  rebuilt.
+  """
+  @spec reset() :: :ok | {:error, :raw_events_purged}
+  def reset do
+    if Purges.any?() do
+      {:error, :raw_events_purged}
+    else
+      Repo.transaction(fn ->
+        Repo.delete_all(Rollup)
+        Repo.delete_all(RollupCursor)
+      end)
+
+      DashboardCache.clear()
+    end
   end
 
   defp process_batch(limit) do
@@ -160,7 +186,12 @@ defmodule Athena.Engagement.Rollups do
       # transaction timeout is too tight for a busy day.
       Repo.transaction(
         fn ->
-          Enum.each(buckets, &recompute(&1, positions_by_section))
+          lock()
+
+          buckets
+          |> drop_purged()
+          |> Enum.each(&recompute(&1, positions_by_section))
+
           save_cursor(upper)
         end,
         timeout: :timer.minutes(5)
@@ -200,6 +231,50 @@ defmodule Athena.Engagement.Rollups do
     from(b in Block, where: b.id in ^block_ids, select: {b.id, b.section_id})
     |> Repo.all()
     |> Map.new()
+  end
+
+  @lock_key 7_301_022
+
+  @doc """
+  Takes the rollup lock for the current transaction: held by every batch
+  while it recomputes, and by `Athena.Engagement.Purges` while it marks a
+  purge as started.
+  """
+  @spec lock() :: :ok
+  def lock do
+    Repo.query!("SELECT pg_advisory_xact_lock($1)", [@lock_key])
+    :ok
+  end
+
+  # A purged account's (or cohort's) days up to the purge are never
+  # recomputed: their raw events are gone, the stored rollups are all that
+  # is left (see `Athena.Engagement.Purges`).
+  defp drop_purged([]), do: []
+
+  defp drop_purged(buckets) do
+    cohort_ids = buckets |> Enum.map(fn {{cohort_id, _, _}, _} -> cohort_id end) |> Enum.uniq()
+    account_ids = buckets |> Enum.flat_map(&elem(&1, 1)) |> Enum.uniq()
+    protected = Purges.protected_days(cohort_ids, account_ids)
+
+    if protected == %{} do
+      buckets
+    else
+      Enum.flat_map(buckets, fn {{cohort_id, _section_id, day} = key, account_ids} ->
+        allowed =
+          if protected?(protected, {:cohort, cohort_id}, day),
+            do: [],
+            else: Enum.reject(account_ids, &protected?(protected, {:account, &1}, day))
+
+        if allowed == [], do: [], else: [{key, allowed}]
+      end)
+    end
+  end
+
+  defp protected?(protected, key, day) do
+    case Map.get(protected, key) do
+      nil -> false
+      last_day -> Date.compare(day, last_day) != :gt
+    end
   end
 
   # `%{section_id => %{block_id => {section_id, order}}}` for every section

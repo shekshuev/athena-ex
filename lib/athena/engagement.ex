@@ -32,7 +32,8 @@ defmodule Athena.Engagement do
     BlockStats,
     Metrics,
     Proctoring,
-    ProctoringMonitor
+    ProctoringMonitor,
+    Purges
   }
 
   @doc """
@@ -56,6 +57,13 @@ defmodule Athena.Engagement do
   end
 
   defdelegate list_events_for_scope(block_ids, cohort_id \\ nil), to: Events
+
+  @doc """
+  Schedules the deletion of a student's (`:account`) or a cohort's
+  (`:cohort`) raw engagement events, keeping the aggregates computed from
+  them. Requires `engagement.delete`. See `Athena.Engagement.Purges`.
+  """
+  defdelegate purge_raw_events(user, scope, scope_id), to: Purges, as: :request
   defdelegate normalize_event(raw_event, section_id), to: Events
 
   @doc "The event types the proctoring monitor actually accumulates - used to decide whether a server-originated event is even worth forwarding."
