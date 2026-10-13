@@ -37,7 +37,7 @@ defmodule Athena.Engagement.Rollups do
 
   alias Athena.{Repo, TimeZones}
   alias Athena.Content.Block
-  alias Athena.Engagement.{Accumulator, DashboardCache, Event, Rollup, RollupCursor}
+  alias Athena.Engagement.{Accumulator, DashboardCache, Event, Events, Rollup, RollupCursor}
 
   @cursor "engagement_rollups"
   @default_batch_size 10_000
@@ -227,6 +227,7 @@ defmodule Athena.Engagement.Rollups do
           e.cohort_id == ^cohort_id and e.account_id in ^account_ids and e.block_id in ^block_ids and
             e.occurred_at >= ^from_at and e.occurred_at < ^until
       )
+      |> Events.prune_before(from_at)
       |> Repo.all()
       |> Accumulator.build(positions)
 

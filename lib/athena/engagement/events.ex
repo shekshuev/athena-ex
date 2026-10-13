@@ -175,7 +175,22 @@ defmodule Athena.Engagement.Events do
   defp maybe_filter_cohort(query, cohort_id), do: where(query, [e], e.cohort_id == ^cohort_id)
 
   defp maybe_filter_since(query, nil), do: query
-  defp maybe_filter_since(query, since), do: where(query, [e], e.occurred_at >= ^since)
+
+  defp maybe_filter_since(query, since),
+    do: query |> where([e], e.occurred_at >= ^since) |> prune_before(since)
+
+  @doc """
+  Adds `inserted_at >= since - 1 day` to a query that already filters
+  `occurred_at >= since`: the same rows (an event is stored at most a day
+  after it happened - see `clamp_occurred_at/2` - and server events carry
+  the server's time), but Postgres can now skip every monthly partition
+  of `engagement_events` older than that.
+  """
+  @spec prune_before(Ecto.Queryable.t(), DateTime.t()) :: Ecto.Query.t()
+  def prune_before(query, %DateTime{} = since) do
+    bound = DateTime.add(since, -@max_client_lag_seconds, :second)
+    where(query, [e], e.inserted_at >= ^bound)
+  end
 
   @doc """
   Pairs `viewport_enter`/`viewport_exit` events (already fetched, e.g. via

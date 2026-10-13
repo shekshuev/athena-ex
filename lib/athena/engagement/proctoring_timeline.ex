@@ -21,7 +21,7 @@ defmodule Athena.Engagement.ProctoringTimeline do
 
   import Ecto.Query
 
-  alias Athena.Engagement.Event
+  alias Athena.Engagement.{Event, Events}
   alias Athena.Repo
 
   @max_events 5000
@@ -90,6 +90,7 @@ defmodule Athena.Engagement.ProctoringTimeline do
     |> where([e], e.account_id == ^submission.account_id and e.block_id in ^block_ids)
     |> where([e], e.event_type in ^(@instant_types ++ @return_types))
     |> where([e], e.occurred_at >= ^DateTime.add(started_at, -1, :second))
+    |> Events.prune_before(DateTime.add(started_at, -1, :second))
     |> order_by([e], asc: e.occurred_at)
     |> limit(^@max_events)
     |> Repo.all()

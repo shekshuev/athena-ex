@@ -167,6 +167,12 @@ if config_env() == :prod do
 
     unblock_accounts_cron = System.get_env("UNBLOCK_ACCOUNTS_CRON") || "*/5 * * * *"
 
+    engagement_partitions_cron =
+      System.get_env("ENGAGEMENT_PARTITIONS_CRON") || "20 0 * * *"
+
+    engagement_legacy_move_cron =
+      System.get_env("ENGAGEMENT_LEGACY_MOVE_CRON") || "*/5 * * * *"
+
     config :athena, Oban,
       plugins: [
         Oban.Plugins.Pruner,
@@ -183,7 +189,11 @@ if config_env() == :prod do
             queue: :maintenance},
            {test_run_cleanup_cron, Athena.Learning.Workers.TestRunCleanup, queue: :maintenance},
            {engagement_rollup_cron, Athena.Engagement.Workers.RollupWorker, queue: :maintenance},
-           {unblock_accounts_cron, Athena.Workers.UnblockExpiredAccounts, queue: :maintenance}
+           {unblock_accounts_cron, Athena.Workers.UnblockExpiredAccounts, queue: :maintenance},
+           {engagement_partitions_cron, Athena.Engagement.Workers.EnsurePartitions,
+            queue: :maintenance},
+           {engagement_legacy_move_cron, Athena.Engagement.Workers.MoveLegacyEvents,
+            queue: :maintenance}
          ]}
       ]
   end
