@@ -83,7 +83,7 @@ end
 if server_role != "runner" do
   config :athena, Oban,
     repo: Athena.Repo,
-    queues: [code_execution: System.schedulers_online() * 2, default: 10, maintenance: 2]
+    queues: [code_execution: System.schedulers_online() * 2, default: 5, maintenance: 2]
 end
 
 if config_env() == :prod do
@@ -99,7 +99,7 @@ if config_env() == :prod do
 
     config :athena, Athena.Repo,
       url: database_url,
-      pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+      pool_size: String.to_integer(System.get_env("POOL_SIZE") || "20"),
       socket_options: maybe_ipv6,
       types: Athena.PostgresTypes
 
@@ -168,6 +168,9 @@ if config_env() == :prod do
     config :athena, Oban,
       plugins: [
         Oban.Plugins.Pruner,
+        # Rescues jobs left `executing` by a node that died or was redeployed
+        # mid-run (they would otherwise stay stuck forever).
+        {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(30)},
         {Oban.Plugins.Cron,
          timezone: app_timezone,
          crontab: [

@@ -18,6 +18,9 @@ defmodule Athena.Workers.MediaCleanup do
   alias Athena.Learning.Submission
 
   @impl Oban.Worker
+  def timeout(_job), do: :timer.minutes(10)
+
+  @impl Oban.Worker
   def perform(_job) do
     Logger.info("[Media.Cleanup] Starting garbage collection for orphaned files...")
 

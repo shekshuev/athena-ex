@@ -17,7 +17,7 @@ defmodule Athena.Learning.DraftCache do
   def save_draft(account_id, cohort_id, block_id, content) do
     key = build_key(account_id, cohort_id, block_id)
 
-    case Cachex.put(@cache_name, key, content, ttl: @draft_ttl) do
+    case Cachex.put(@cache_name, key, content, expire: @draft_ttl) do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, reason}
     end

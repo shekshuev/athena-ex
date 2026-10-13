@@ -172,7 +172,7 @@ defmodule Athena.Identity.Accounts do
 
   @doc false
   defp cache_account(id, account) do
-    Cachex.put(:account_cache, id, account, ttl: :timer.minutes(5))
+    Cachex.put(:account_cache, id, account, expire: :timer.minutes(5))
   end
 
   @doc false
