@@ -284,6 +284,12 @@ defmodule AthenaWeb.AdminLive.Users do
           <.badge tone={account_status_tone(acc.status)}>
             {Atom.to_string(acc.status) |> String.replace("_", " ") |> String.capitalize()}
           </.badge>
+          <span
+            :if={acc.status == :temporary_blocked && acc.blocked_until}
+            class="ml-1 text-xs opacity-60"
+          >
+            {gettext("until %{time}", time: TimeZones.format(acc.blocked_until, "%d.%m %H:%M"))}
+          </span>
         </:col>
         <:col :let={{_id, acc}} label={gettext("Role")}>
           <div class="badge badge-outline">{acc.role.name}</div>

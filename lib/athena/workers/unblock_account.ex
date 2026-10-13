@@ -1,53 +1,18 @@
 defmodule Athena.Workers.UnblockAccount do
   @moduledoc """
-  Oban worker that removes temporary blocks from user accounts.
-  Triggered automatically after a specified timeout period when an account
-  is blocked due to too many failed login attempts.
+  Deprecated: one-off unblock job from before temporary blocks carried their
+  own expiry (`accounts.blocked_until`). Nothing enqueues it any more; it
+  stays only so jobs already scheduled before the deploy still run, and just
+  performs the regular sweep (`Athena.Workers.UnblockExpiredAccounts`).
+  Remove once no `Athena.Workers.UnblockAccount` jobs remain in `oban_jobs`.
   """
   use Oban.Worker, queue: :default, max_attempts: 3
 
-  require Logger
   alias Athena.Identity
-  alias Athena.Identity.Accounts
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"account_id" => id}}) do
-    Logger.info("[UnblockAccount] Processing unblock request for account_id: #{id}...")
-
-    case Identity.get_account(id) do
-      {:ok, account} ->
-        process_account(account)
-
-      {:error, :not_found} ->
-        Logger.warning("[UnblockAccount] Account #{id} not found. Skipping.")
-        :ok
-    end
-  end
-
-  @doc false
-  defp process_account(%{status: :temporary_blocked} = account) do
-    Logger.info("[UnblockAccount] Account #{account.id} is temporarily blocked. Unblocking...")
-
-    case Accounts.update_account(account, %{
-           status: :active,
-           failed_login_attempts: 0,
-           last_failed_at: nil
-         }) do
-      {:ok, _updated_account} ->
-        Logger.info("[UnblockAccount] Account #{account.id} successfully unblocked.")
-        :ok
-
-      {:error, err} ->
-        Logger.error("[UnblockAccount] Failed to unblock account #{account.id}: #{inspect(err)}")
-        {:error, err}
-    end
-  end
-
-  defp process_account(account) do
-    Logger.info(
-      "[UnblockAccount] Account #{account.id} has status :#{account.status}. No action needed."
-    )
-
+  def perform(_job) do
+    Identity.unblock_expired_accounts()
     :ok
   end
 end

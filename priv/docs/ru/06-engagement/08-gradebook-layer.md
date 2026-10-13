@@ -70,7 +70,6 @@
 
 | Ситуация | Вердикт |
 |---|---|
-| Ответа нет, теория слабая | :ui[Not started yet - and the theory in front of it hasn't been studied either.] |
 | Ответа нет | :ui[Not started yet.] |
 | Ответ ждёт ручной проверки | :ui[Waiting for a teacher's grade.] |
 | Ответ проверяется | :ui[Being checked right now.] |

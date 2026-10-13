@@ -70,7 +70,6 @@ Checked top to bottom; the first match applies. "Weak theory" means at least one
 
 | Situation | Verdict |
 |---|---|
-| No answer, weak theory | :ui[Not started yet - and the theory in front of it hasn't been studied either.] |
 | No answer | :ui[Not started yet.] |
 | Awaiting manual review | :ui[Waiting for a teacher's grade.] |
 | Being checked | :ui[Being checked right now.] |

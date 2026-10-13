@@ -127,19 +127,19 @@ msgstr "Отсутсвует разрешение: %{permission}"
 msgid "is required"
 msgstr "Обязательное поле"
 
-#: lib/athena/identity/account.ex:71
+#: lib/athena/identity/account.ex:74
 #: lib/athena_web/live/auth_live/login.ex:48
 #, elixir-autogen, elixir-format
 msgid "can only contain letters, numbers, dots, dashes, and underscores"
 msgstr "Допустимы только буквы, цифры, точки, тире и нижнее подчеркивание"
 
-#: lib/athena/identity/account.ex:86
+#: lib/athena/identity/account.ex:89
 #, elixir-autogen, elixir-format
 msgid "does not exist"
 msgstr "Не существует"
 
-#: lib/athena/identity/account.ex:78
-#: lib/athena/identity/account.ex:97
+#: lib/athena/identity/account.ex:81
+#: lib/athena/identity/account.ex:100
 #: lib/athena_web/live/account_live/profile.ex:45
 #: lib/athena_web/live/auth_live/force_password_change.ex:35
 #: lib/athena_web/live/auth_live/login.ex:55
@@ -227,7 +227,7 @@ msgstr "пожалуйста, введите ответ или выберите 
 msgid "Cannot enroll: the following students already have access to this course: %{logins}"
 msgstr "Невозможно зачислить: следующие пользователи уже имеют доступ к этому курсу: %{logins}"
 
-#: lib/athena/content/library.ex:140
+#: lib/athena/content/library.ex:153
 #: lib/athena/content/library_block.ex:63
 #, elixir-autogen, elixir-format
 msgid "is pinned to a course and cannot be deleted"

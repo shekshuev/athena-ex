@@ -165,6 +165,8 @@ if config_env() == :prod do
 
     engagement_rollup_cron = System.get_env("ENGAGEMENT_ROLLUP_CRON") || "*/5 * * * *"
 
+    unblock_accounts_cron = System.get_env("UNBLOCK_ACCOUNTS_CRON") || "*/5 * * * *"
+
     config :athena, Oban,
       plugins: [
         Oban.Plugins.Pruner,
@@ -180,7 +182,8 @@ if config_env() == :prod do
            {daily_challenge_cleanup_cron, Athena.Gamification.Workers.DailyChallengeCleanup,
             queue: :maintenance},
            {test_run_cleanup_cron, Athena.Learning.Workers.TestRunCleanup, queue: :maintenance},
-           {engagement_rollup_cron, Athena.Engagement.Workers.RollupWorker, queue: :maintenance}
+           {engagement_rollup_cron, Athena.Engagement.Workers.RollupWorker, queue: :maintenance},
+           {unblock_accounts_cron, Athena.Workers.UnblockExpiredAccounts, queue: :maintenance}
          ]}
       ]
   end
