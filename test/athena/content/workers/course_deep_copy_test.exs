@@ -4,7 +4,7 @@ defmodule Athena.Content.Workers.CourseDeepCopyTest do
   import Ecto.Query
   import Athena.Factory
 
-  alias Athena.Content.{Courses, Sections, Blocks, Course, Section, Block}
+  alias Athena.Content.{Courses, Sections, Blocks, Course, Section, Block, CourseLibraryBlock}
   alias Athena.Content.Workers.CourseDeepCopy
   alias Athena.Media.File, as: MediaFile
 
@@ -108,6 +108,45 @@ defmodule Athena.Content.Workers.CourseDeepCopyTest do
 
       reloaded_source = Repo.get!(Course, source.id)
       assert reloaded_source.title == "Original Title"
+    end
+
+    test "copies the course's library pins (course workspace) to the new course", %{
+      admin: admin
+    } do
+      source = insert(:course, owner_id: admin.id)
+      library_block = insert(:library_block)
+      insert(:course_library_block, course: source, library_block: library_block)
+
+      {:ok, new_course} = Courses.duplicate_course(admin, source.id, "Copy With Library")
+      assert :ok = perform_copy(new_course, source)
+
+      new_pins =
+        CourseLibraryBlock |> where([clb], clb.course_id == ^new_course.id) |> Repo.all()
+
+      assert [%{library_block_id: pinned_id}] = new_pins
+      assert pinned_id == library_block.id
+
+      # source pin untouched
+      source_pins =
+        CourseLibraryBlock |> where([clb], clb.course_id == ^source.id) |> Repo.all()
+
+      assert length(source_pins) == 1
+    end
+
+    test "retrying after a partial failure does not duplicate library pins", %{admin: admin} do
+      source = insert(:course, owner_id: admin.id)
+      library_block = insert(:library_block)
+      insert(:course_library_block, course: source, library_block: library_block)
+
+      {:ok, new_course} = Courses.duplicate_course(admin, source.id, "Retry With Library")
+
+      assert :ok = perform_copy(new_course, source)
+      assert :ok = perform_copy(new_course, source)
+
+      new_pins =
+        CourseLibraryBlock |> where([clb], clb.course_id == ^new_course.id) |> Repo.all()
+
+      assert length(new_pins) == 1
     end
 
     test "discards the job if the draft course row no longer exists", %{admin: admin} do
