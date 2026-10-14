@@ -20,7 +20,6 @@ defmodule Athena.Content.CodeChallenge do
              :solution_code,
              :test_cases,
              :body,
-             :max_attempts,
              :setup_sql,
              :check_sql,
              :evaluation_mode,
@@ -31,7 +30,6 @@ defmodule Athena.Content.CodeChallenge do
           language: String.t(),
           time_limit: float(),
           memory_limit: integer(),
-          max_attempts: integer() | nil,
           initial_code: String.t(),
           solution_code: String.t(),
           body: map(),
@@ -47,7 +45,6 @@ defmodule Athena.Content.CodeChallenge do
     field :language, :string, default: Execution.default_language()
     field :time_limit, :float, default: 1.0
     field :memory_limit, :integer, default: 65_536
-    field :max_attempts, :integer
 
     field :initial_code, :string, default: ""
     field :solution_code, :string, default: ""
@@ -86,7 +83,6 @@ defmodule Athena.Content.CodeChallenge do
       :initial_code,
       :solution_code,
       :body,
-      :max_attempts,
       :setup_sql,
       :check_sql,
       :evaluation_mode,
@@ -96,7 +92,6 @@ defmodule Athena.Content.CodeChallenge do
     |> validate_required([:language, :time_limit, :memory_limit])
     |> validate_number(:time_limit, greater_than: 0.0, less_than_or_equal_to: 15.0)
     |> validate_number(:memory_limit, greater_than: 256, less_than_or_equal_to: 524_288)
-    |> validate_number(:max_attempts, greater_than: 0)
     |> validate_inclusion(:result_order, @result_orders)
     |> maybe_validate_sql_body()
   end

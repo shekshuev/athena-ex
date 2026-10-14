@@ -456,9 +456,6 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
 
       refute html =~ "Memory (KB)"
       refute html =~ ~s(name="block[content][memory_limit]")
-
-      assert html =~ "Max Attempts"
-      assert html =~ ~s(name="block[content][max_attempts]")
     end
 
     test "renders engagement tracking fields for any block type when the viewer can manage engagement",

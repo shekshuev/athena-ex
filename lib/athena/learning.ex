@@ -119,7 +119,6 @@ defmodule Athena.Learning do
   defdelegate get_team_leaderboard(course_id), to: Submissions
   defdelegate list_group_submissions_for_block(cohort_id, block_id), to: Submissions
   defdelegate delete_submission_with_rollback(user, submission), to: Submissions
-  defdelegate count_attempts(account_id, block_ids, cohort_id), to: Submissions
   defdelegate save_draft(user, block_id, content, cohort_id \\ nil), to: Submissions
   defdelegate get_draft(user_id, block_id, cohort_id \\ nil), to: Submissions
   defdelegate clear_draft(user_id, block_id, cohort_id \\ nil), to: Submissions
