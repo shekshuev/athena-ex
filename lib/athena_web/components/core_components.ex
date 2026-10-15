@@ -888,8 +888,8 @@ defmodule AthenaWeb.CoreComponents do
       <div
         popover
         id={"#{@dom_key}-popover"}
-        style={"position-anchor: --#{@dom_key}"}
-        class="dropdown bg-base-100 rounded-sm border border-base-300 p-3 mt-2"
+        style={"position-anchor: --#{@dom_key}; position-try-fallbacks: flip-block;"}
+        class="dropdown bg-base-100 rounded-sm border border-base-300 p-3 my-2"
       >
         <div class="flex gap-2 mb-2">
           <select data-role="month" aria-label={gettext("Month")} class="select select-sm flex-1">
