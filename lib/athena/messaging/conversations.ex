@@ -15,6 +15,14 @@ defmodule Athena.Messaging.Conversations do
   Lists all conversations the given account participates in, ordered by
   most recent activity, enriched with the other DM participant (or cohort),
   unread counts, unread-mention flags, and a last-message preview.
+
+  Excludes direct conversations with no messages yet: `find_or_create_direct_conversation/2`
+  creates the conversation (and both participant rows) the moment someone
+  opens a DM with another user, before either side has typed anything -
+  without this filter, every chat someone merely opened and abandoned
+  would sit in both inboxes forever. A cohort's group conversation is
+  never filtered this way since it's provisioned structurally and expected
+  to exist regardless of message history.
   """
   @spec list_conversations(map()) :: [Conversation.t()]
   def list_conversations(user) do
@@ -22,6 +30,7 @@ defmodule Athena.Messaging.Conversations do
       join: c in Conversation,
       on: c.id == cp.conversation_id,
       where: cp.account_id == ^user.id,
+      where: c.kind != :direct or not is_nil(c.last_message_at),
       order_by: [desc_nulls_last: c.last_message_at, desc: c.inserted_at],
       select: c
     )

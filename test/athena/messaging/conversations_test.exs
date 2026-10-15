@@ -104,6 +104,38 @@ defmodule Athena.Messaging.ConversationsTest do
 
       assert Messaging.count_unread_conversations(alice) == 1
     end
+
+    test "excludes a direct conversation with no messages yet from either side's list" do
+      alice = insert(:account)
+      bob = insert(:account)
+
+      {:ok, _conversation} = Messaging.find_or_create_direct_conversation(alice, bob.id)
+
+      assert Messaging.list_conversations(alice) == []
+      assert Messaging.list_conversations(bob) == []
+    end
+
+    test "a direct conversation appears for both sides as soon as a message is sent" do
+      alice = insert(:account)
+      bob = insert(:account)
+
+      {:ok, conversation} = Messaging.find_or_create_direct_conversation(alice, bob.id)
+      Messaging.post_message(alice, conversation, %{"body" => "hi"})
+
+      assert [%{id: id}] = Messaging.list_conversations(alice)
+      assert id == conversation.id
+      assert [%{id: id}] = Messaging.list_conversations(bob)
+      assert id == conversation.id
+    end
+
+    test "a cohort's group conversation is listed even with no messages yet" do
+      cohort = insert(:cohort)
+      account = insert(:account)
+
+      Messaging.add_cohort_participant(cohort.id, account.id)
+
+      assert [%{kind: :cohort}] = Messaging.list_conversations(account)
+    end
   end
 
   describe "cohort conversation lifecycle" do
