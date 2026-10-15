@@ -106,6 +106,7 @@ defmodule AthenaWeb.StudioLive.CompetitionFormComponent do
             label={gettext("Title")}
             placeholder={gettext("e.g. Regional Programming Competition 2026")}
             required
+            phx-debounce="500"
           />
 
           <.input
@@ -114,6 +115,7 @@ defmodule AthenaWeb.StudioLive.CompetitionFormComponent do
             label={gettext("Competition Code")}
             placeholder={gettext("e.g. OLYMP-2026")}
             required={false}
+            phx-debounce="500"
           />
 
           <.input
@@ -122,6 +124,7 @@ defmodule AthenaWeb.StudioLive.CompetitionFormComponent do
             label={gettext("Description")}
             placeholder={gettext("Briefly describe the competition...")}
             rows="4"
+            phx-debounce="500"
           />
 
           <.input

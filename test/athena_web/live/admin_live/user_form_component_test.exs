@@ -27,6 +27,67 @@ defmodule AthenaWeb.AdminLive.UserFormComponentTest do
       assert html =~ "can&#39;t be blank"
     end
 
+    test "flags an already-taken login on change without resetting the rest of the form",
+         %{conn: conn} do
+      insert(:account, login: "taken_login")
+
+      {:ok, lv, _html} = live(conn, ~p"/admin/users/new")
+
+      html =
+        lv
+        |> form("#account-form", %{
+          "user_form" => %{"login" => "taken_login", "first_name" => "Ivan"}
+        })
+        |> render_change()
+
+      assert html =~ "is already taken"
+      assert html =~ "Ivan"
+    end
+
+    test "editing a user without changing their own login does not flag it as taken",
+         %{conn: conn} do
+      account = insert(:account, login: "stable_login")
+      insert(:profile, owner: account, first_name: "Name", last_name: "LastName")
+
+      {:ok, lv, _html} = live(conn, ~p"/admin/users/#{account.id}/edit")
+
+      html =
+        lv
+        |> form("#account-form", %{
+          "user_form" => %{"login" => "stable_login", "first_name" => "Updated"}
+        })
+        |> render_change()
+
+      refute html =~ "is already taken"
+    end
+
+    test "submitting an already-taken login does not create a duplicate account", %{conn: conn} do
+      role = insert(:role)
+      insert(:account, login: "taken_login")
+
+      {:ok, lv, _html} = live(conn, ~p"/admin/users/new")
+
+      html =
+        lv
+        |> form("#account-form", %{
+          "user_form" => %{
+            "login" => "taken_login",
+            "password" => "StrongPass123!",
+            "password_confirmation" => "StrongPass123!",
+            "role_id" => role.id,
+            "status" => "active",
+            "first_name" => "Ivan",
+            "last_name" => "Ivanov"
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "is already taken"
+      assert html =~ "Ivan"
+      # admin (from setup) + the pre-existing "taken_login" account - no third was created
+      assert Athena.Repo.aggregate(Athena.Identity.Account, :count) == 2
+    end
+
     test "creates a new user with account, profile and password change flag", %{conn: conn} do
       role = insert(:role)
 

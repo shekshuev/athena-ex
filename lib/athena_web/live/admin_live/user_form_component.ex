@@ -104,8 +104,8 @@ defmodule AthenaWeb.AdminLive.UserFormComponent do
          |> put_flash(:info, gettext("User created successfully"))
          |> push_patch(to: socket.assigns.patch)}
 
-      {:error, _step, changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
+      {:error, _step, failed_changeset} ->
+        {:noreply, assign(socket, form: to_form(merge_db_errors(changeset, failed_changeset)))}
     end
   end
 
@@ -126,13 +126,29 @@ defmodule AthenaWeb.AdminLive.UserFormComponent do
          |> put_flash(:info, gettext("User updated successfully"))
          |> push_patch(to: socket.assigns.patch)}
 
-      {:error, _step, changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
+      {:error, _step, failed_changeset} ->
+        {:noreply, assign(socket, form: to_form(merge_db_errors(changeset, failed_changeset)))}
     end
   end
 
   defp do_save_user(%Ecto.Changeset{valid?: false} = changeset, socket, _),
     do: {:noreply, assign(socket, form: to_form(Map.put(changeset, :action, :insert)))}
+
+  # On a DB-level failure (e.g. a `unique_constraint` losing a race against
+  # a login that only just became taken), `failed_changeset` is the raw
+  # `Account`/`Profile` changeset from the failed `Ecto.Multi` step - a
+  # different shape than the full `UserForm` one driving the template, with
+  # none of the other fields the user already typed. Re-assigning it
+  # directly as the form would make every other field look like it got
+  # wiped. Folding its errors onto the original `UserForm` changeset keeps
+  # everything the user entered while still surfacing the failure.
+  defp merge_db_errors(form_changeset, failed_changeset) do
+    failed_changeset.errors
+    |> Enum.reduce(form_changeset, fn {field, {msg, opts}}, acc ->
+      Ecto.Changeset.add_error(acc, field, msg, opts)
+    end)
+    |> Map.put(:action, :validate)
+  end
 
   defp notify_parent(msg), do: send(self(), {__MODULE__, msg})
 
@@ -153,7 +169,13 @@ defmodule AthenaWeb.AdminLive.UserFormComponent do
             {gettext("Account Access")}
           </div>
 
-          <.input field={@form[:login]} type="text" label={gettext("Login")} required />
+          <.input
+            field={@form[:login]}
+            type="text"
+            label={gettext("Login")}
+            required
+            phx-debounce="2000"
+          />
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <.input
@@ -162,12 +184,14 @@ defmodule AthenaWeb.AdminLive.UserFormComponent do
               label={gettext("Password")}
               required={is_nil(@account.id)}
               placeholder={if @account.id, do: gettext("Leave blank to keep current")}
+              phx-debounce="500"
             />
             <.input
               field={@form[:password_confirmation]}
               type="password"
               label={gettext("Repeat Password")}
               required={is_nil(@account.id)}
+              phx-debounce="500"
             />
           </div>
 
@@ -202,12 +226,34 @@ defmodule AthenaWeb.AdminLive.UserFormComponent do
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <.input field={@form[:last_name]} type="text" label={gettext("Last Name")} required />
-            <.input field={@form[:first_name]} type="text" label={gettext("First Name")} required />
+            <.input
+              field={@form[:last_name]}
+              type="text"
+              label={gettext("Last Name")}
+              required
+              phx-debounce="500"
+            />
+            <.input
+              field={@form[:first_name]}
+              type="text"
+              label={gettext("First Name")}
+              required
+              phx-debounce="500"
+            />
           </div>
 
-          <.input field={@form[:patronymic]} type="text" label={gettext("Patronymic")} />
-          <.input field={@form[:birth_date]} type="date" label={gettext("Birth Date")} />
+          <.input
+            field={@form[:patronymic]}
+            type="text"
+            label={gettext("Patronymic")}
+            phx-debounce="500"
+          />
+          <.input
+            field={@form[:birth_date]}
+            type="date"
+            label={gettext("Birth Date")}
+            phx-debounce="500"
+          />
         </div>
 
         <div class="shrink-0 p-6 border-t border-base-200 bg-base-100 flex justify-end gap-3">

@@ -190,7 +190,13 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
           <div class="divider text-xs font-bold uppercase text-base-content/50">
             {gettext("Template Metadata")}
           </div>
-          <.input field={@form[:title]} type="text" label={gettext("Title")} required />
+          <.input
+            field={@form[:title]}
+            type="text"
+            label={gettext("Title")}
+            required
+            phx-debounce="500"
+          />
           <.input
             field={@form[:type]}
             type="select"
@@ -211,6 +217,7 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
               value={@tags_string}
               class="input input-bordered w-full"
               placeholder="elixir, hard, quiz"
+              phx-debounce="500"
             />
           </div>
         </div>

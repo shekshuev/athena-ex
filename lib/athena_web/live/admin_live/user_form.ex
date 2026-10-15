@@ -61,6 +61,7 @@ defmodule AthenaWeb.AdminLive.UserForm do
     |> validate_confirmation(:password, message: dgettext("errors", "does not match password"))
     |> validate_length(:first_name, max: 100)
     |> validate_length(:last_name, max: 100)
+    |> maybe_validate_login_taken()
   end
 
   @doc """
@@ -121,6 +122,32 @@ defmodule AthenaWeb.AdminLive.UserForm do
       validate_format(changeset, :password, Identity.password_regex())
     else
       changeset
+    end
+  end
+
+  # Live (and submit-time) uniqueness check against the real `accounts`
+  # table - `UserForm` is schemaless, so a DB-level `unique_constraint`
+  # can't run against it. Only queries when `:login` actually changed (so
+  # editing a user without touching their login never re-checks it against
+  # itself), and excludes the account being edited from the match.
+  @doc false
+  defp maybe_validate_login_taken(changeset) do
+    case get_change(changeset, :login) do
+      nil ->
+        changeset
+
+      login ->
+        case Identity.get_account_by_login(login) do
+          {:ok, %{id: other_id}} ->
+            if other_id == get_field(changeset, :id) do
+              changeset
+            else
+              add_error(changeset, :login, dgettext("errors", "is already taken"))
+            end
+
+          {:error, :not_found} ->
+            changeset
+        end
     end
   end
 end

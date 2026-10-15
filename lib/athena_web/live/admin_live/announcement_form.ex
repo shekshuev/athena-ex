@@ -199,7 +199,14 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
 
       <.form for={@form} id="announcement-form" phx-change="validate" phx-submit="save">
         <div class="max-w-3xl space-y-6">
-          <.input field={@form[:title]} type="text" label={gettext("Title")} required autofocus />
+          <.input
+            field={@form[:title]}
+            type="text"
+            label={gettext("Title")}
+            required
+            autofocus
+            phx-debounce="500"
+          />
 
           <fieldset class="fieldset mb-2 w-full">
             <label class="label">
@@ -307,11 +314,13 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
               field={@form[:starts_at]}
               type="datetime-local"
               label={gettext("Visible from (optional)")}
+              phx-debounce="500"
             />
             <.input
               field={@form[:ends_at]}
               type="datetime-local"
               label={gettext("Visible until (optional)")}
+              phx-debounce="500"
             />
           </div>
 

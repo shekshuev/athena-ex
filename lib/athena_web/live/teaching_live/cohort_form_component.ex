@@ -205,6 +205,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
           type="text"
           label={gettext("Cohort Name")}
           placeholder="e.g. Autumn Bootcamp 2026"
+          phx-debounce="500"
         />
 
         <.input
@@ -212,6 +213,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
           type="textarea"
           label={gettext("Description (Optional)")}
           rows="3"
+          phx-debounce="500"
         />
 
         <div class="form-control w-full relative">
