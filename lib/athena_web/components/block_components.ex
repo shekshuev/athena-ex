@@ -142,7 +142,7 @@ defmodule AthenaWeb.BlockComponents do
           alt={@block.content["alt"]}
           class={[
             "rounded-sm w-full object-cover border border-base-200",
-            @mode in [:play, :review] && "js-lightbox-img cursor-zoom-in"
+            @mode in [:play, :review] && "js-lightbox-img cursor-zoom-in touch-manipulation"
           ]}
         />
       </figure>

@@ -933,6 +933,17 @@
       animation: none;
     }
   }
+
+  /* The full-size preview opened by clicking a `.js-lightbox-img` thumbnail
+     (see app.js). Toggled by clicking the enlarged image itself: fit-to-
+     viewport by default, natural size (scrollable/pannable) once zoomed. */
+  #lightbox-img.lightbox-img-zoomed {
+    max-width: none;
+    max-height: none;
+    width: auto;
+    height: auto;
+    cursor: zoom-out;
+  }
 }
 
 /* Built-in documentation (`AthenaWeb.DocsLive`): table of contents, page,

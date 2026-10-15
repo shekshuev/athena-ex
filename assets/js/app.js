@@ -59,8 +59,35 @@ import { MessengerHooks } from "./messenger_hooks";
 
 const lowlight = createLowlight(common);
 
+// The upstream NodeView (`tiptap-extension-resize-image`) always renders the
+// image through its own interactive NodeView, which only copies plain
+// ProseMirror node attrs (src/alt/title/width/...) onto the <img> - it never
+// applies the extension's `HTMLAttributes` option, since that only feeds
+// `renderHTML`, which a NodeView-backed node never calls. Configuring
+// `HTMLAttributes: { class: "..." }` on it (as this used to) is therefore
+// silently dead: the class never reaches the real DOM node, in *either*
+// editable or read-only mode. Tagging the rendered <img> here instead is
+// the only way it actually gets styled, and - for a read-only (play/review)
+// render - the only way it ends up with `.js-lightbox-img`, so the
+// document-level click listener further down can open the lightbox for
+// TipTap-embedded images too, not just standalone `:image` blocks.
 const ResizableImage = ImageResize.extend({
   name: "image",
+  addNodeView() {
+    const createNodeView = this.parent?.();
+    return (props) => {
+      const nodeView = createNodeView(props);
+      const img =
+        nodeView.dom.tagName === "IMG" ? nodeView.dom : nodeView.dom.querySelector("img");
+
+      img?.classList.add("rounded-sm", "my-4", "mx-auto");
+      if (!props.editor.isEditable) {
+        img?.classList.add("js-lightbox-img", "cursor-zoom-in", "touch-manipulation");
+      }
+
+      return nodeView;
+    };
+  },
 });
 
 // `navigator.clipboard` only exists in secure contexts (https/localhost),
@@ -566,14 +593,7 @@ Hooks.TiptapEditor = {
       DetailsContent.configure({
         HTMLAttributes: { class: "tiptap-details-content" },
       }),
-      ResizableImage.configure({
-        inline: false,
-        HTMLAttributes: {
-          class: readOnlyMode
-            ? "rounded-sm my-4 mx-auto js-lightbox-img cursor-zoom-in"
-            : "rounded-sm my-4 mx-auto",
-        },
-      }),
+      ResizableImage.configure({ inline: false }),
       Dialogue,
       DialogueLine.configure({
         getCharacters: () => hook.characters,
@@ -1186,8 +1206,8 @@ Hooks.TiptapEditor = {
     // Reserved `image_zoom` telemetry (see `Athena.Engagement.Event`) for
     // the lightbox opened by app.js's document-level click listener on
     // `.js-lightbox-img` - only these read-only-rendered images carry that
-    // class (see the `ResizableImage` config above), so this never fires in
-    // the editable Builder/Library views.
+    // class (see the `ResizableImage.addNodeView` override above), so this
+    // never fires in the editable Builder/Library views.
     this.handleImageZoom = (e) => {
       const img = e.target.closest(".js-lightbox-img");
       if (!img || !isReadOnly || !engagementTrackingActive()) return;
@@ -1440,17 +1460,37 @@ Uploaders.S3 = function (entries, onViewError) {
 // rather than a per-hook one, since TipTap's own images live inside a
 // `phx-update="ignore"` container LiveView never re-scans, and delegation
 // means new images (patched in later) work without re-attaching anything.
+//
+// Clicking the enlarged image itself (inside the dialog) toggles between
+// fit-to-viewport and natural size - see `.lightbox-img-zoomed` in app.css.
+// `touch-manipulation` on both images suppresses the browser's own
+// double-tap-to-zoom, which would otherwise fight our toggle and zoom the
+// whole page instead of just the picture (most noticeable on a tablet/
+// touch laptop, e.g. an instructor QA-ing a course in the builder's test
+// run) - the open dialog visually "disappearing" was the page itself
+// having been zoomed/panned out from under it, not an actual close.
 document.addEventListener("click", (e) => {
-  const img = e.target.closest(".js-lightbox-img");
-  if (!img) return;
-
   const lightbox = document.getElementById("lightbox");
   const lightboxImg = document.getElementById("lightbox-img");
   if (!lightbox || !lightboxImg) return;
 
+  if (e.target === lightboxImg) {
+    lightboxImg.classList.toggle("lightbox-img-zoomed");
+    return;
+  }
+
+  const img = e.target.closest(".js-lightbox-img");
+  if (!img) return;
+
   lightboxImg.src = img.currentSrc || img.src;
   lightboxImg.alt = img.alt || "";
-  lightbox.showModal();
+  lightboxImg.classList.remove("lightbox-img-zoomed");
+
+  // Guards against a (harmless but noisy) `InvalidStateError` if this ever
+  // fires twice for the same open - e.g. a duplicated listener after a
+  // dev-mode asset reload - which would otherwise throw before the `src`/
+  // `alt` update above takes visual effect.
+  if (!lightbox.open) lightbox.showModal();
 });
 
 // Scrolls the open thread either to the bottom (new message just sent/
