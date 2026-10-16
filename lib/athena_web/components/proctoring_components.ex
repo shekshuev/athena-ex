@@ -11,6 +11,7 @@ defmodule AthenaWeb.ProctoringComponents do
   use AthenaWeb, :html
 
   alias Athena.Engagement
+  alias Athena.TimeZones
 
   @doc """
   A small traffic-light badge summarizing a submission's cheating risk, or
@@ -828,7 +829,7 @@ defmodule AthenaWeb.ProctoringComponents do
 
   defp format_review_time(iso) when is_binary(iso) do
     case DateTime.from_iso8601(iso) do
-      {:ok, at, _offset} -> Calendar.strftime(at, "%Y-%m-%d %H:%M UTC")
+      {:ok, at, _offset} -> TimeZones.format(at, "%Y-%m-%d %H:%M")
       _ -> ""
     end
   end
