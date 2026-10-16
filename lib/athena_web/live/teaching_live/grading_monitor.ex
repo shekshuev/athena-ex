@@ -24,7 +24,7 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
          {:ok, section} <- Content.get_section(block.section_id),
          %{} = cohort <-
            Learning.get_academic_cohort_for_course(submission.account_id, section.course_id) do
-      setup_monitor_state(socket, block, cohort)
+      setup_monitor_state(socket, block, cohort, submission_id)
     else
       _ ->
         {:ok,
@@ -34,7 +34,7 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
     end
   end
 
-  defp setup_monitor_state(socket, block, cohort) do
+  defp setup_monitor_state(socket, block, cohort, submission_id) do
     submissions_by_account = Learning.list_group_submissions_for_block(cohort.id, block.id)
     accounts = Identity.get_accounts_map(Map.keys(submissions_by_account))
 
@@ -65,7 +65,14 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
        submissions: submissions_by_account,
        proctoring_subscribed_ids: proctoring_subscribed_ids,
        live_results: %{},
-       show_methodology_modal: false
+       show_methodology_modal: false,
+       # So opening a submission from here and navigating back lands back
+       # on this monitor page, not on the plain grading list (see
+       # `GradingDetail`'s `return_to`). Any submission id in this same
+       # group/block resolves to the identical monitor view, so the
+       # clicked-into id works just as well as the one originally used to
+       # reach this page.
+       return_to: ~p"/teaching/grading/#{submission_id}/monitor"
      )
      |> refresh_live_results(submissions_by_account)}
   end
@@ -268,7 +275,7 @@ defmodule AthenaWeb.TeachingLive.GradingMonitor do
               <td class="text-right">
                 <.link
                   :if={sub}
-                  navigate={~p"/teaching/grading/#{sub.id}"}
+                  navigate={~p"/teaching/grading/#{sub.id}?return_to=#{@return_to}"}
                   class="btn btn-sm btn-ghost"
                 >
                   {gettext("Open")} <.icon name="hero-arrow-right" class="size-4 ml-1" />

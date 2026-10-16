@@ -133,21 +133,23 @@ defmodule AthenaWeb.AdminLive.UserForm do
   @doc false
   defp maybe_validate_login_taken(changeset) do
     case get_change(changeset, :login) do
-      nil ->
-        changeset
+      nil -> changeset
+      login -> validate_login_not_taken(changeset, login)
+    end
+  end
 
-      login ->
-        case Identity.get_account_by_login(login) do
-          {:ok, %{id: other_id}} ->
-            if other_id == get_field(changeset, :id) do
-              changeset
-            else
-              add_error(changeset, :login, dgettext("errors", "is already taken"))
-            end
-
-          {:error, :not_found} ->
-            changeset
+  @doc false
+  defp validate_login_not_taken(changeset, login) do
+    case Identity.get_account_by_login(login) do
+      {:ok, %{id: other_id}} ->
+        if other_id == get_field(changeset, :id) do
+          changeset
+        else
+          add_error(changeset, :login, dgettext("errors", "is already taken"))
         end
+
+      {:error, :not_found} ->
+        changeset
     end
   end
 end
