@@ -181,6 +181,11 @@ config :athena, Athena.Engagement,
   exam_extreme_factor: 2,
   exam_min_minutes_for_rates: 3,
   exam_large_paste_chars: 150,
+  # A paste only counts as suspicious (large_paste / paste_ratio) within
+  # this many seconds of last returning from being away from the page -
+  # otherwise it's far more likely the student moving their own answer
+  # between questions than anything fetched from outside the exam.
+  exam_paste_away_window_seconds: 60,
   exam_away_incident_min_seconds: 10,
   exam_away_red_incidents: 3,
   exam_away_red_seconds: 60,

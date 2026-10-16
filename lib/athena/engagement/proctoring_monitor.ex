@@ -237,6 +237,7 @@ defmodule Athena.Engagement.ProctoringMonitor do
        max_offline_seconds: 0,
        incidents: [],
        away_intervals: [],
+       last_away_ended_at: nil,
        mouse_away_ms: 0,
        typing: initial_typing(),
        tab_hidden: false
@@ -291,28 +292,36 @@ defmodule Athena.Engagement.ProctoringMonitor do
 
   # Internals
 
+  # Only a paste that follows a recent absence (left the page, came back,
+  # pasted) is treated as suspicious - see `recent_away?/2`. A paste with no
+  # absence nearby is far more likely a student moving their own answer
+  # between questions in the same attempt (a common, legitimate way to save
+  # time) than anything fetched from outside the exam, so it is tracked
+  # (`max_paste_chars`, for display) but does not feed `large_paste` or the
+  # `paste_ratio` behavioral signal - neither should charge a student points
+  # for copying their own work.
   defp apply_event(%{event_type: :paste_detected} = event, state) do
     payload = payload(event)
     pasted = payload["pasted_chars"] || 0
     total = payload["total_chars"] || 0
+    state = %{state | max_paste_chars: max(state.max_paste_chars, pasted)}
 
-    paste_totals = %{
-      state.paste_totals
-      | pasted_chars: state.paste_totals.pasted_chars + pasted,
-        total_chars: state.paste_totals.total_chars + total
-    }
+    if recent_away?(state, event) do
+      paste_totals = %{
+        state.paste_totals
+        | pasted_chars: state.paste_totals.pasted_chars + pasted,
+          total_chars: state.paste_totals.total_chars + total
+      }
 
-    counts =
-      if pasted >= Proctoring.thresholds().large_paste_chars,
-        do: Map.update!(state.counts, :large_paste, &(&1 + 1)),
-        else: state.counts
+      counts =
+        if pasted >= Proctoring.thresholds().large_paste_chars,
+          do: Map.update!(state.counts, :large_paste, &(&1 + 1)),
+          else: state.counts
 
-    %{
+      %{state | paste_totals: paste_totals, counts: counts}
+    else
       state
-      | paste_totals: paste_totals,
-        counts: counts,
-        max_paste_chars: max(state.max_paste_chars, pasted)
-    }
+    end
   end
 
   defp apply_event(%{event_type: :typing_summary} = event, state) do
@@ -381,7 +390,12 @@ defmodule Athena.Engagement.ProctoringMonitor do
     if duration_ms > 0 do
       finished_ms = finished_at_ms(event)
       interval = {finished_ms - duration_ms, finished_ms}
-      %{state | away_intervals: Enum.take([interval | state.away_intervals], @max_away_intervals)}
+
+      %{
+        state
+        | away_intervals: Enum.take([interval | state.away_intervals], @max_away_intervals),
+          last_away_ended_at: finished_ms
+      }
     else
       state
     end
@@ -389,6 +403,17 @@ defmodule Athena.Engagement.ProctoringMonitor do
 
   defp finished_at_ms(%{occurred_at: %DateTime{} = at}), do: DateTime.to_unix(at, :millisecond)
   defp finished_at_ms(_event), do: System.os_time(:millisecond)
+
+  # Was `event` (a paste) preceded closely enough by the student last
+  # returning from being away (tab/window/fullscreen) to plausibly be its
+  # source? See `apply_event/2` for `:paste_detected` for why this gates
+  # whether a paste counts as suspicious at all.
+  defp recent_away?(%{last_away_ended_at: nil}, _event), do: false
+
+  defp recent_away?(%{last_away_ended_at: ended_ms}, event) do
+    finished_at_ms(event) - ended_ms <=
+      Proctoring.thresholds().paste_away_window_seconds * 1000
+  end
 
   defp payload(%{payload: payload}) when is_map(payload), do: payload
   defp payload(_event), do: %{}

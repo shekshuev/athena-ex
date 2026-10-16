@@ -21,6 +21,14 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
   end
 
   describe "report_events/4 and snapshot/1" do
+    defp paste_event(pasted_chars, total_chars, occurred_at \\ DateTime.utc_now()) do
+      %{
+        event_type: :paste_detected,
+        payload: %{"pasted_chars" => pasted_chars, "total_chars" => total_chars},
+        occurred_at: occurred_at
+      }
+    end
+
     test "returns an all-zero reading for a submission with no process (nothing reported yet)" do
       reading = ProctoringMonitor.snapshot(Ecto.UUID.generate())
 
@@ -88,22 +96,50 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
       assert ProctoringMonitor.snapshot(submission_id).counts.right_click_attempt == 2
     end
 
-    test "paste_detected accumulates into a running ratio, not a plain count" do
+    test "paste_detected shortly after returning from being away accumulates into a running ratio, not a plain count" do
       submission_id = Ecto.UUID.generate()
       cohort_id = Ecto.UUID.generate()
       block_id = Ecto.UUID.generate()
 
       ProctoringMonitor.report_events(submission_id, cohort_id, block_id, [
-        %{event_type: :paste_detected, payload: %{"pasted_chars" => 50, "total_chars" => 100}}
+        back_event(:window_focus, 5_000),
+        paste_event(50, 100)
       ])
 
       ProctoringMonitor.report_events(submission_id, cohort_id, block_id, [
-        %{event_type: :paste_detected, payload: %{"pasted_chars" => 50, "total_chars" => 100}}
+        back_event(:window_focus, 5_000),
+        paste_event(50, 100)
       ])
 
       reading = ProctoringMonitor.snapshot(submission_id)
       # 100 pasted / 200 total across both events.
       assert_in_delta reading.counts.paste_ratio, 0.5, 0.001
+    end
+
+    test "a paste with no recent absence nearby does not count toward the paste ratio" do
+      submission_id = Ecto.UUID.generate()
+
+      ProctoringMonitor.report_events(submission_id, Ecto.UUID.generate(), "block", [
+        paste_event(50, 100)
+      ])
+
+      reading = ProctoringMonitor.snapshot(submission_id)
+      assert reading.counts.paste_ratio == 0.0
+    end
+
+    test "a paste long after the last absence does not count toward the paste ratio" do
+      submission_id = Ecto.UUID.generate()
+
+      ProctoringMonitor.report_events(submission_id, Ecto.UUID.generate(), "block", [
+        back_event(:window_focus, 5_000, DateTime.add(DateTime.utc_now(), -120, :second))
+      ])
+
+      ProctoringMonitor.report_events(submission_id, Ecto.UUID.generate(), "block", [
+        paste_event(50, 100)
+      ])
+
+      reading = ProctoringMonitor.snapshot(submission_id)
+      assert reading.counts.paste_ratio == 0.0
     end
 
     test "an empty event list is a no-op and never starts a process" do
@@ -189,11 +225,11 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
   end
 
   describe "away time" do
-    defp back_event(type, duration_ms) do
+    defp back_event(type, duration_ms, occurred_at \\ DateTime.utc_now()) do
       %{
         event_type: type,
         payload: %{"duration_ms" => duration_ms},
-        occurred_at: DateTime.utc_now()
+        occurred_at: occurred_at
       }
     end
 
@@ -283,16 +319,29 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
       assert ProctoringMonitor.snapshot(submission_id).counts.split_screen == 1
     end
 
-    test "a large paste is counted separately from the paste ratio, and the longest is kept" do
+    test "a large paste shortly after being away is counted separately from the paste ratio, and the longest is kept" do
       submission_id = Ecto.UUID.generate()
 
       ProctoringMonitor.report_events(submission_id, Ecto.UUID.generate(), "block", [
-        %{event_type: :paste_detected, payload: %{"pasted_chars" => 20, "total_chars" => 100}},
-        %{event_type: :paste_detected, payload: %{"pasted_chars" => 400, "total_chars" => 500}}
+        back_event(:window_focus, 5_000),
+        paste_event(20, 100),
+        paste_event(400, 500)
       ])
 
       reading = ProctoringMonitor.snapshot(submission_id)
       assert reading.counts.large_paste == 1
+      assert reading.max_paste_chars == 400
+    end
+
+    test "a large paste with no recent absence is not counted, but its size is still tracked" do
+      submission_id = Ecto.UUID.generate()
+
+      ProctoringMonitor.report_events(submission_id, Ecto.UUID.generate(), "block", [
+        paste_event(400, 500)
+      ])
+
+      reading = ProctoringMonitor.snapshot(submission_id)
+      assert reading.counts.large_paste == 0
       assert reading.max_paste_chars == 400
     end
 
