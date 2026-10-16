@@ -155,6 +155,70 @@ defmodule AthenaWeb.TeachingLive.GradingMonitorTest do
       refute html =~ "How the cheating risk indicator is calculated"
     end
 
+    test "opening a submission from here points back to this monitor page, not the plain list",
+         %{conn: conn} do
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section, type: :quiz_exam)
+      cohort = insert(:cohort, name: "Section A")
+      insert(:enrollment, cohort_id: cohort.id, course_id: course.id, status: :active)
+
+      flagged = insert(:account, login: "alice_flagged")
+      clean = insert(:account, login: "carol_clean")
+
+      for account <- [flagged, clean] do
+        insert(:cohort_membership, cohort_id: cohort.id, account_id: account.id)
+      end
+
+      flagged_sub =
+        insert(:submission,
+          account_id: flagged.id,
+          block_id: block.id,
+          content: %{"hard_evidence_count" => 2, "outlier_metrics" => %{}, "risk_level" => "red"},
+          status: :needs_review
+        )
+
+      clean_sub =
+        insert(:submission,
+          account_id: clean.id,
+          block_id: block.id,
+          content: %{
+            "hard_evidence_count" => 0,
+            "outlier_metrics" => %{},
+            "risk_level" => "green"
+          },
+          status: :needs_review
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/grading/#{flagged_sub.id}/monitor")
+
+      expected_return_to =
+        ~p"/teaching/grading/#{flagged_sub.id}/monitor" |> URI.encode_www_form()
+
+      open_selector = "a[href^='/teaching/grading/#{clean_sub.id}']"
+
+      open_href =
+        lv
+        |> element(open_selector)
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.attribute("href")
+        |> List.first()
+
+      assert open_href == "/teaching/grading/#{clean_sub.id}?return_to=#{expected_return_to}"
+
+      {:ok, detail_lv, _html} =
+        lv
+        |> element(open_selector)
+        |> render_click()
+        |> follow_redirect(conn)
+
+      detail_lv
+      |> element("#grading-detail-header a")
+      |> render_click()
+      |> follow_redirect(conn, ~p"/teaching/grading/#{flagged_sub.id}/monitor")
+    end
+
     test "redirects with a flash when the submission's academic group can't be resolved", %{
       conn: conn
     } do

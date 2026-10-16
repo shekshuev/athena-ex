@@ -12,7 +12,13 @@ defmodule Athena.Engagement.Proctoring do
     `cut_attempt`, `multi_tab_detected`, a single large paste, a bulk
     insert that bypassed typing) - counted as-is, 2 points each. There is
     no legitimate reason for any of these during a locked-down question
-    view, so a raw count is already meaningful on its own.
+    view, so a raw count is already meaningful on its own. The one
+    exception is a large paste: it only counts here (and feeds the
+    `paste_ratio` behavioral outlier below) when it follows a recent
+    absence closely enough to plausibly be its source (see
+    `ProctoringMonitor`'s `recent_away?/2`) - a student moving their own
+    answer from one question to another, with no absence anywhere nearby,
+    is not evidence of anything fetched from outside the exam.
   - **Absence and connection** - time spent away from the exam (tab hidden,
     window blurred, fullscreen exited; overlapping absences merged), a
     stretch where the telemetry channel went quiet or the browser went
@@ -435,6 +441,7 @@ defmodule Athena.Engagement.Proctoring do
       fallbacks:
         Map.merge(@default_fallbacks, Map.new(Keyword.get(config, :exam_metric_fallbacks, %{}))),
       large_paste_chars: Keyword.get(config, :exam_large_paste_chars, 150),
+      paste_away_window_seconds: Keyword.get(config, :exam_paste_away_window_seconds, 60),
       away_incident_min_seconds: Keyword.get(config, :exam_away_incident_min_seconds, 10),
       away_red_incidents: Keyword.get(config, :exam_away_red_incidents, 3),
       away_red_seconds: Keyword.get(config, :exam_away_red_seconds, 60),

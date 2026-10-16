@@ -127,7 +127,13 @@ defmodule AthenaWeb.StudioLive.CharacterFormComponent do
           phx-change="validate"
           phx-submit="save"
         >
-          <.input field={@form[:name]} type="text" label={gettext("Name")} required />
+          <.input
+            field={@form[:name]}
+            type="text"
+            label={gettext("Name")}
+            required
+            phx-debounce="500"
+          />
         </.form>
       </div>
       <div class="shrink-0 p-6 border-t border-base-200 bg-base-100 flex justify-end gap-3">

@@ -146,9 +146,6 @@ defmodule AthenaWeb.LearnLive.Player do
     submissions =
       Learning.get_latest_submissions(ctx.user.id, Enum.map(blocks, & &1.id), ctx.team_id)
 
-    attempts =
-      Learning.count_attempts(ctx.user.id, Enum.map(blocks, & &1.id), ctx.team_id)
-
     feedback_map =
       Learning.get_feedback_map(ctx.user.id, Enum.map(blocks, & &1.id), ctx.team_id)
 
@@ -184,7 +181,6 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
       |> assign(:submissions, submissions)
       |> assign(:feedback_map, feedback_map)
-      |> assign(:attempts_map, attempts)
       |> assign(:drafts, drafts)
       |> assign(:overrides, ctx.overrides)
       |> assign(:block_counts, ctx.block_counts)
@@ -834,9 +830,7 @@ defmodule AthenaWeb.LearnLive.Player do
     case Learning.create_submission(socket.assigns.current_user, sub_attrs) do
       {:ok, submission} ->
         submissions = Map.put(socket.assigns.submissions, block.id, submission)
-        current_attempts = Map.get(socket.assigns.attempts_map || %{}, block.id, 0)
-        attempts_map = Map.put(socket.assigns.attempts_map || %{}, block.id, current_attempts + 1)
-        {:noreply, assign(socket, submissions: submissions, attempts_map: attempts_map)}
+        {:noreply, assign(socket, submissions: submissions)}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, gettext("Failed to submit code."))}
@@ -953,19 +947,12 @@ defmodule AthenaWeb.LearnLive.Player do
         broadcast_team_progress(socket.assigns.team_id, socket.assigns.course.id)
 
         submissions = Map.put(socket.assigns.submissions || %{}, block.id, final_sub)
-
-        current_attempts = Map.get(socket.assigns.attempts_map || %{}, block.id, 0)
-        new_attempts = current_attempts + 1
-        attempts_map = Map.put(socket.assigns.attempts_map || %{}, block.id, new_attempts)
-
         new_drafts = Map.delete(socket.assigns.drafts || %{}, block.id)
 
-        socket =
-          assign(socket, submissions: submissions, attempts_map: attempts_map, drafts: new_drafts)
-
+        socket = assign(socket, submissions: submissions, drafts: new_drafts)
         socket = process_gate_after_submission(socket, block, final_sub)
 
-        {flash_type, flash_msg} = build_quiz_flash(final_sub, block, new_attempts)
+        {flash_type, flash_msg} = build_quiz_flash(final_sub)
 
         {:noreply, put_flash(socket, flash_type, flash_msg)}
 
@@ -1064,22 +1051,13 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp build_quiz_flash(final_sub, block, new_attempts) do
-    max_attempts = extract_max_attempts(block.content["max_attempts"])
-
+  defp build_quiz_flash(final_sub) do
     cond do
       final_sub.status == :needs_review ->
         {:info, gettext("Answer submitted. Waiting for instructor review.")}
 
       final_sub.score == 100 ->
         {:info, gettext("Correct!")}
-
-      max_attempts != nil and new_attempts >= max_attempts ->
-        {:error, gettext("Incorrect. No attempts left.")}
-
-      max_attempts != nil ->
-        attempts_left = max_attempts - new_attempts
-        {:error, gettext("Incorrect. %{count} attempt(s) remaining.", count: attempts_left)}
 
       true ->
         {:error, gettext("Incorrect. Please try again.")}
@@ -1326,15 +1304,14 @@ defmodule AthenaWeb.LearnLive.Player do
         submission.status in [:pending, :processing, :draft] ->
           socket
 
-        # `build_code_flash/3` and the "code_run_result" event are specific
+        # `build_code_flash/1` and the "code_run_result" event are specific
         # to the code sandbox's own run/attempt cycle - a manually graded
         # type (quiz_exam, ticket_exam, file_assignment, ...) gets its own,
         # simpler "you were graded" flash below instead.
         block.type == :code ->
           socket = EngagementSignals.emit_code_run_result(socket, block.id, submission.status)
 
-          attempts = Map.get(socket.assigns.attempts_map || %{}, block.id, 0)
-          {flash_type, flash_msg} = build_code_flash(submission, block, attempts)
+          {flash_type, flash_msg} = build_code_flash(submission)
           put_flash(socket, flash_type, flash_msg)
 
         submission.status == :rejected ->
@@ -1440,33 +1417,13 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp build_code_flash(submission, block, attempts) do
-    max_attempts = extract_max_attempts(block.content["max_attempts"])
-
-    cond do
-      submission.score == 100 ->
-        {:info, gettext("Success! Code passed all tests.")}
-
-      max_attempts != nil and attempts >= max_attempts ->
-        {:error, gettext("Execution failed. No attempts left.")}
-
-      max_attempts != nil ->
-        attempts_left = max_attempts - attempts
-
-        {:error,
-         gettext("Execution failed. %{count} attempt(s) remaining.", count: attempts_left)}
-
-      true ->
-        {:error, gettext("Execution failed. Check the details below.")}
+  defp build_code_flash(submission) do
+    if submission.score == 100 do
+      {:info, gettext("Success! Code passed all tests.")}
+    else
+      {:error, gettext("Execution failed. Check the details below.")}
     end
   end
-
-  @doc false
-  defp extract_max_attempts(nil), do: nil
-  defp extract_max_attempts(""), do: nil
-  defp extract_max_attempts(val) when is_integer(val), do: val
-  defp extract_max_attempts(val) when is_binary(val), do: String.to_integer(val)
-  defp extract_max_attempts(_), do: nil
 
   defp gate?(block), do: block.completion_rule && block.completion_rule.type != :none
 
@@ -1623,16 +1580,6 @@ defmodule AthenaWeb.LearnLive.Player do
           <%= for block <- @visible_blocks do %>
             <% submission = Map.get(@submissions || %{}, block.id) %>
 
-            <% attempts = Map.get(@attempts_map || %{}, block.id, 0) %>
-            <% raw_max = block.content["max_attempts"] %>
-            <% max_attempts =
-              case raw_max do
-                v when is_integer(v) -> v
-                v when is_binary(v) and v != "" -> String.to_integer(v)
-                _ -> nil
-              end %>
-            <% attempts_exhausted = not is_nil(max_attempts) and attempts >= max_attempts %>
-
             <% sub_status_str = if submission, do: to_string(submission.status), else: "" %>
             <% sub_score = if submission, do: submission.score, else: 0 %>
 
@@ -1642,7 +1589,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
             <% is_review_needed = sub_status_str in ["rejected", "needs_review"] %>
 
-            <% is_locked = is_passed or attempts_exhausted or is_review_needed %>
+            <% is_locked = is_passed or is_review_needed %>
             <% mode = if is_locked, do: :review, else: :play %>
 
             <div
@@ -1666,7 +1613,6 @@ defmodule AthenaWeb.LearnLive.Player do
                       mode={mode}
                       submission={submission}
                       draft={Map.get(@drafts || %{}, block.id)}
-                      attempts_count={attempts}
                       user_id={@current_user.id}
                     />
 
@@ -1682,12 +1628,6 @@ defmodule AthenaWeb.LearnLive.Player do
                           true -> gettext("Submit Answer")
                         end}
                       </button>
-
-                      <div :if={max_attempts} class="text-right">
-                        <span class="text-xs font-bold uppercase tracking-widest text-base-content/50">
-                          {gettext("Attempts:")} {attempts} / {max_attempts}
-                        </span>
-                      </div>
                     </div>
                   </form>
                 <% type when type in [:quiz_exam, :ticket_exam] -> %>
@@ -1713,7 +1653,6 @@ defmodule AthenaWeb.LearnLive.Player do
                         mode={mode}
                         submission={submission}
                         draft={Map.get(@drafts || %{}, block.id)}
-                        attempts_count={attempts}
                       />
                     </form>
                   </div>

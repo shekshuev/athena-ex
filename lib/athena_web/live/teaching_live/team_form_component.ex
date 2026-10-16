@@ -193,6 +193,7 @@ defmodule AthenaWeb.TeachingLive.TeamFormComponent do
           type="text"
           label={gettext("Team Name")}
           placeholder="e.g. Team Rocket"
+          phx-debounce="500"
         />
 
         <.input
@@ -200,6 +201,7 @@ defmodule AthenaWeb.TeachingLive.TeamFormComponent do
           type="textarea"
           label={gettext("Description (Optional)")}
           rows="3"
+          phx-debounce="500"
         />
 
         <div class="form-control w-full relative">

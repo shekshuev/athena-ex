@@ -476,18 +476,21 @@ defmodule AthenaWeb.AccountLive.Profile do
                   type="text"
                   label={gettext("Last Name")}
                   required
+                  phx-debounce="500"
                 />
                 <.input
                   field={@profile_form[:first_name]}
                   type="text"
                   label={gettext("First Name")}
                   required
+                  phx-debounce="500"
                 />
               </div>
               <.input
                 field={@profile_form[:patronymic]}
                 type="text"
                 label={gettext("Patronymic")}
+                phx-debounce="500"
               />
 
               <div class="flex justify-end">
@@ -517,6 +520,7 @@ defmodule AthenaWeb.AccountLive.Profile do
                 type="password"
                 label={gettext("Current Password")}
                 required
+                phx-debounce="500"
               />
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <.input
@@ -524,12 +528,14 @@ defmodule AthenaWeb.AccountLive.Profile do
                   type="password"
                   label={gettext("New Password")}
                   required
+                  phx-debounce="500"
                 />
                 <.input
                   field={@password_form[:password_confirmation]}
                   type="password"
                   label={gettext("Confirm New Password")}
                   required
+                  phx-debounce="500"
                 />
               </div>
 

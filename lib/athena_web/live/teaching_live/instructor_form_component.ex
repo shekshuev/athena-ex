@@ -262,6 +262,7 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponent do
           type="text"
           label={gettext("Title")}
           placeholder="e.g. Senior Professor"
+          phx-debounce="500"
         />
 
         <.input
@@ -269,6 +270,7 @@ defmodule AthenaWeb.TeachingLive.InstructorFormComponent do
           type="textarea"
           label={gettext("Biography")}
           rows="4"
+          phx-debounce="500"
         />
 
         <div class="flex justify-end gap-3 mt-4">

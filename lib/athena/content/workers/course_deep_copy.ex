@@ -20,7 +20,7 @@ defmodule Athena.Content.Workers.CourseDeepCopy do
   import Ecto.Query
 
   alias Athena.Repo
-  alias Athena.Content.{Course, Section, Block, Blocks}
+  alias Athena.Content.{Course, Section, Block, Blocks, CourseLibraryBlock}
   alias Athena.Media
   alias Athena.Media.File, as: MediaFile
 
@@ -64,6 +64,7 @@ defmodule Athena.Content.Workers.CourseDeepCopy do
   @doc false
   defp cleanup_partial_copy(new_course_id) do
     Repo.delete_all(from s in Section, where: s.course_id == ^new_course_id)
+    Repo.delete_all(from clb in CourseLibraryBlock, where: clb.course_id == ^new_course_id)
 
     MediaFile
     |> where([f], like(f.key, ^"courses/#{new_course_id}/%"))
@@ -73,9 +74,38 @@ defmodule Athena.Content.Workers.CourseDeepCopy do
 
   @doc false
   defp copy_course(source_course_id, new_course_id) do
-    with {:ok, section_id_map} <- copy_sections(source_course_id, new_course_id) do
-      copy_blocks(source_course_id, new_course_id, section_id_map)
+    with {:ok, section_id_map} <- copy_sections(source_course_id, new_course_id),
+         :ok <- copy_blocks(source_course_id, new_course_id, section_id_map) do
+      copy_library_pins(source_course_id, new_course_id)
     end
+  end
+
+  # Carries over the course's "library"/"workspace" pins (which library
+  # blocks are bound to it) so the copy draws exam/ticket questions from the
+  # same pool as the source course, rather than an empty one.
+  @doc false
+  defp copy_library_pins(source_course_id, new_course_id) do
+    now = DateTime.utc_now(:second)
+
+    rows =
+      CourseLibraryBlock
+      |> where([clb], clb.course_id == ^source_course_id)
+      |> select([clb], clb.library_block_id)
+      |> Repo.all()
+      |> Enum.map(fn library_block_id ->
+        %{
+          course_id: new_course_id,
+          library_block_id: library_block_id,
+          inserted_at: now,
+          updated_at: now
+        }
+      end)
+
+    if rows != [] do
+      Repo.insert_all(CourseLibraryBlock, rows)
+    end
+
+    :ok
   end
 
   @doc false

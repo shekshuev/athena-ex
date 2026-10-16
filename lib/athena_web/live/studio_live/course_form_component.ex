@@ -118,6 +118,7 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
             label={gettext("Title")}
             placeholder={gettext("e.g. Advanced Elixir Mastery")}
             required
+            phx-debounce="500"
           />
 
           <.input
@@ -126,6 +127,7 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
             label={gettext("Course Code")}
             placeholder={gettext("e.g. DB-2026, MA-09.05.01-2025-Весна")}
             required={false}
+            phx-debounce="500"
           />
 
           <.input
@@ -134,6 +136,7 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
             label={gettext("Description")}
             placeholder={gettext("Briefly describe what students will learn...")}
             rows="4"
+            phx-debounce="500"
           />
 
           <.input

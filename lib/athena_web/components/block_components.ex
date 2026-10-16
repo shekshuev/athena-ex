@@ -20,7 +20,6 @@ defmodule AthenaWeb.BlockComponents do
   attr :answers, :map, default: %{}
   attr :submission, :map, default: nil
   attr :active, :boolean, default: false
-  attr :attempts_count, :integer, default: 0
   attr :pending_file_urls, :map, default: %{}
   attr :draft, :map, default: nil
   attr :hide_submit, :boolean, default: false
@@ -48,7 +47,6 @@ defmodule AthenaWeb.BlockComponents do
             characters={@characters}
             answers={@answers}
             submission={@submission}
-            attempts_count={@attempts_count}
             draft={@draft}
             hide_submit={@hide_submit}
           />
@@ -60,7 +58,6 @@ defmodule AthenaWeb.BlockComponents do
             characters={@characters}
             answers={@answers}
             submission={@submission}
-            attempts_count={@attempts_count}
             draft={@draft}
             user_id={@user_id}
             proctoring={@proctoring}
@@ -145,7 +142,7 @@ defmodule AthenaWeb.BlockComponents do
           alt={@block.content["alt"]}
           class={[
             "rounded-sm w-full object-cover border border-base-200",
-            @mode in [:play, :review] && "js-lightbox-img cursor-zoom-in"
+            @mode in [:play, :review] && "js-lightbox-img cursor-zoom-in touch-manipulation"
           ]}
         />
       </figure>
@@ -367,13 +364,6 @@ defmodule AthenaWeb.BlockComponents do
                 <% end %>
               </button>
             </div>
-
-            <span
-              :if={@block.content["max_attempts"]}
-              class="text-xs font-bold uppercase tracking-widest text-base-content/50"
-            >
-              {gettext("Attempts:")} {@attempts_count} / {@block.content["max_attempts"]}
-            </span>
           </div>
         </div>
       <% end %>

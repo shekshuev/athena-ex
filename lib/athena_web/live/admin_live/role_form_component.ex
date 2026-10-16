@@ -138,6 +138,7 @@ defmodule AthenaWeb.AdminLive.RoleFormComponent do
             label={gettext("Role Name")}
             required
             autofocus
+            phx-debounce="500"
           />
 
           <div class="divider text-xs font-bold uppercase text-base-content/50">

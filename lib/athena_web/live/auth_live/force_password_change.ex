@@ -125,6 +125,7 @@ defmodule AthenaWeb.AuthLive.ForcePasswordChange do
               label={gettext("New Password")}
               placeholder="••••••••"
               required
+              phx-debounce="500"
             />
 
             <.input
@@ -133,6 +134,7 @@ defmodule AthenaWeb.AuthLive.ForcePasswordChange do
               label={gettext("Confirm New Password")}
               placeholder="••••••••"
               required
+              phx-debounce="500"
             />
 
             <.button variant="warning" class="w-full mt-4 phx-submit-loading:opacity-70">

@@ -69,7 +69,6 @@ defmodule Athena.Content.QuizQuestion do
     field :body, :map
     field :correct_answer, :string
     field :case_sensitive, :boolean, default: false
-    field :max_attempts, :integer
     embeds_many :options, Option
     embeds_many :pairs, Pair
 
@@ -92,7 +91,6 @@ defmodule Athena.Content.QuizQuestion do
           case_sensitive: boolean(),
           options: [Option.t()] | nil,
           pairs: [Pair.t()] | nil,
-          max_attempts: integer() | nil,
           general_explanation: String.t() | nil,
           render_prompt_as_image: boolean()
         }
@@ -106,13 +104,11 @@ defmodule Athena.Content.QuizQuestion do
       :correct_answer,
       :case_sensitive,
       :general_explanation,
-      :max_attempts,
       :render_prompt_as_image
     ])
     |> cast_embed(:options, with: &Option.changeset/2)
     |> cast_embed(:pairs, with: &Pair.changeset/2)
     |> validate_required([:question_type, :body])
-    |> validate_number(:max_attempts, greater_than: 0)
     |> validate_type_logic()
   end
 

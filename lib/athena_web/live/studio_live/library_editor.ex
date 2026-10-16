@@ -1026,18 +1026,6 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                       </div>
 
                       <%= if @block.type == :quiz_question do %>
-                        <div class="mt-4">
-                          <.input
-                            type="number"
-                            name="library_block[content][max_attempts]"
-                            value={@block.content["max_attempts"]}
-                            label={gettext("Max Attempts")}
-                            placeholder={gettext("Leave empty for unlimited")}
-                            min="1"
-                            phx-debounce="500"
-                          />
-                        </div>
-
                         <.input
                           type="select"
                           name="library_block[content][question_type]"
@@ -1338,18 +1326,6 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                             />
                           </div>
                         <% end %>
-
-                        <div class="mt-2">
-                          <.input
-                            type="number"
-                            name="library_block[content][max_attempts]"
-                            value={@block.content["max_attempts"]}
-                            label={gettext("Max Attempts")}
-                            placeholder={gettext("Leave empty for unlimited")}
-                            min="1"
-                            phx-debounce="500"
-                          />
-                        </div>
                       <% end %>
 
                       <%= if @block.type == :file_assignment do %>

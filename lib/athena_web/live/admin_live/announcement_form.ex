@@ -78,12 +78,25 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
   defp preload_selected_cohort(_announcement), do: nil
 
   defp assign_form(socket, %Announcement{} = announcement, page_title) do
+    current_user = socket.assigns.current_user
     changeset = Announcement.changeset(announcement, %{})
+    is_admin? = Identity.can?(current_user, "admin")
+
+    # A non-admin `announcements.create`/`.update` holder can only ever
+    # target a cohort they're a listed instructor of (see
+    # `Athena.Announcements.can_manage?/3` - global requires the "admin"
+    # bypass, cohort requires admin or `instructor_of_cohort?/2`). Someone
+    # holding the permission but instructing nothing has no valid target at
+    # all: showing them the normal form would just be a cohort-search box
+    # that can never return a result, with no indication why.
+    can_target_anything? =
+      is_admin? or Learning.list_instructed_cohort_ids(current_user.id) != []
 
     socket
     |> assign(:announcement, announcement)
     |> assign(:page_title, page_title)
-    |> assign(:show_global_option?, Identity.can?(socket.assigns.current_user, "admin"))
+    |> assign(:show_global_option?, is_admin?)
+    |> assign(:can_target_anything?, can_target_anything?)
     |> assign(:form, to_form(changeset))
   end
 
@@ -197,9 +210,37 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
         <h1 class="text-2xl font-black font-display tracking-tight">{@page_title}</h1>
       </.sticky_header>
 
-      <.form for={@form} id="announcement-form" phx-change="validate" phx-submit="save">
+      <div
+        :if={!@can_target_anything?}
+        class="max-w-3xl p-8 border-2 border-dashed border-base-300 rounded-sm text-center"
+      >
+        <.icon name="hero-megaphone" class="size-8 mb-2 opacity-50" />
+        <p class="font-bold">
+          {gettext("You're not an instructor of any cohort or team yet.")}
+        </p>
+        <p class="text-base-content/60 mt-1">
+          {gettext(
+            "Announcements can only be sent globally (admins only) or to a cohort/team you instruct. Ask an admin to assign you as an instructor first."
+          )}
+        </p>
+      </div>
+
+      <.form
+        :if={@can_target_anything?}
+        for={@form}
+        id="announcement-form"
+        phx-change="validate"
+        phx-submit="save"
+      >
         <div class="max-w-3xl space-y-6">
-          <.input field={@form[:title]} type="text" label={gettext("Title")} required autofocus />
+          <.input
+            field={@form[:title]}
+            type="text"
+            label={gettext("Title")}
+            required
+            autofocus
+            phx-debounce="500"
+          />
 
           <fieldset class="fieldset mb-2 w-full">
             <label class="label">
@@ -307,11 +348,13 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
               field={@form[:starts_at]}
               type="datetime-local"
               label={gettext("Visible from (optional)")}
+              phx-debounce="500"
             />
             <.input
               field={@form[:ends_at]}
               type="datetime-local"
               label={gettext("Visible until (optional)")}
+              phx-debounce="500"
             />
           </div>
 

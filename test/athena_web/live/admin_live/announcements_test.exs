@@ -250,13 +250,21 @@ defmodule AthenaWeb.AdminLive.AnnouncementsTest do
       refute html =~ "NotMineNews"
     end
 
-    test "instructor cannot create a global announcement via the form", %{conn: _conn} do
+    test "an instructor's form only offers the cohort audience, never global", %{
+      conn: _conn,
+      admin: admin
+    } do
       instructor_role =
-        insert(:role,
-          permissions: ["announcements.read", "announcements.create"]
-        )
+        insert(:role, permissions: ["announcements.read", "announcements.create"])
 
       instructor_account = insert(:account, role: instructor_role)
+      instructor_profile = insert(:instructor, owner_id: instructor_account.id)
+
+      {:ok, _cohort} =
+        Cohorts.create_cohort(admin, %{
+          "name" => "Mine",
+          "instructor_ids" => [instructor_profile.id]
+        })
 
       instructor_conn =
         build_conn() |> init_test_session(%{"account_id" => instructor_account.id})
@@ -265,6 +273,21 @@ defmodule AthenaWeb.AdminLive.AnnouncementsTest do
 
       refute html =~ ~s(option value="global")
       assert html =~ ~s(option value="cohort")
+    end
+
+    test "a non-admin who instructs no cohort sees a disabled-state notice, not a dead-end form",
+         %{conn: _conn} do
+      role = insert(:role, permissions: ["announcements.read", "announcements.create"])
+      account = insert(:account, role: role)
+
+      conn = build_conn() |> init_test_session(%{"account_id" => account.id})
+
+      {:ok, _lv, html} = live(conn, ~p"/admin/announcements/new")
+
+      refute html =~ ~s(option value="global")
+      refute html =~ ~s(option value="cohort")
+      refute html =~ ~s(id="announcement-form")
+      assert html =~ "not an instructor of any cohort"
     end
   end
 end

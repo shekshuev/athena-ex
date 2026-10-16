@@ -630,29 +630,6 @@ defmodule Athena.Learning.Submissions do
   end
 
   @doc """
-  Returns a map of %{block_id => attempts_count} for a given user/team and list of blocks.
-  Excludes draft submissions.
-  """
-  def count_attempts(account_id, block_ids, cohort_id \\ nil) do
-    query =
-      if cohort_id do
-        from s in Athena.Learning.Submission,
-          where: s.cohort_id == ^cohort_id and s.block_id in ^block_ids and s.status != :draft
-      else
-        from s in Athena.Learning.Submission,
-          where:
-            s.account_id == ^account_id and is_nil(s.cohort_id) and
-              s.block_id in ^block_ids and s.status != :draft
-      end
-
-    query
-    |> group_by([s], s.block_id)
-    |> select([s], {s.block_id, count(s.id)})
-    |> Repo.all()
-    |> Enum.into(%{})
-  end
-
-  @doc """
   Saves a draft submission. Creates or updates existing draft.
   Caches in Cachex for fast access, stores in DB for persistence.
   For team submissions, broadcasts update to all team members.
@@ -886,9 +863,8 @@ defmodule Athena.Learning.Submissions do
 
   Returns `{:already_completed, submission}` instead of creating a fresh attempt
   when the student's last one is already finished (graded, rejected, needs
-  review, or timed out) - exams are one attempt per student by design (no
-  `max_attempts`-style config exists for them, unlike quiz questions/code
-  blocks), and without this check, simply pressing "back" in the browser
+  review, or timed out) - exams are one attempt per student by design, and
+  without this check, simply pressing "back" in the browser
   after finishing would `mount/3` this LiveView again and silently hand out
   a brand new attempt with a fresh set of questions. A real retake already
   has a path: an instructor deletes the finished submission from the

@@ -140,7 +140,13 @@ defmodule AthenaWeb.TeachingLive.Sprints do
             >
               <input type="hidden" name="sprint[cohort_id]" value={@selected_cohort_id} />
 
-              <.input field={@form[:title]} type="text" label={gettext("Title")} required />
+              <.input
+                field={@form[:title]}
+                type="text"
+                label={gettext("Title")}
+                required
+                phx-debounce="500"
+              />
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <.input
@@ -148,12 +154,14 @@ defmodule AthenaWeb.TeachingLive.Sprints do
                   type="datetime-local"
                   label={gettext("Starts")}
                   required
+                  phx-debounce="500"
                 />
                 <.input
                   field={@form[:ends_at]}
                   type="datetime-local"
                   label={gettext("Ends")}
                   required
+                  phx-debounce="500"
                 />
               </div>
 

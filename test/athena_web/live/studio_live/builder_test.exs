@@ -2059,7 +2059,6 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
         "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
         "correct_answer" => "flag{ignored-for-matching}",
         "case_sensitive" => true,
-        "max_attempts" => 3,
         "general_explanation" => "Because reasons",
         "options" => [
           %{
@@ -2097,7 +2096,6 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert lib.content["body"] == content["body"]
       assert lib.content["correct_answer"] == "flag{ignored-for-matching}"
       assert lib.content["case_sensitive"] == true
-      assert lib.content["max_attempts"] == 3
       assert lib.content["general_explanation"] == "Because reasons"
       assert length(lib.content["options"]) == 2
       assert Enum.map(lib.content["options"], & &1["is_correct"]) == [true, false]
@@ -2160,7 +2158,6 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
         "language" => "python3",
         "time_limit" => 3.5,
         "memory_limit" => 131_072,
-        "max_attempts" => 5,
         "initial_code" => "def solve():\n    pass",
         "solution_code" => "def solve():\n    return 42",
         "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]},
@@ -2176,7 +2173,6 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert lib.content["language"] == "python3"
       assert lib.content["time_limit"] == 3.5
       assert lib.content["memory_limit"] == 131_072
-      assert lib.content["max_attempts"] == 5
       assert lib.content["initial_code"] == "def solve():\n    pass"
       assert lib.content["solution_code"] == "def solve():\n    return 42"
       assert lib.content["body"] == content["body"]
@@ -2189,7 +2185,6 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       content = %{
         "language" => "sql",
         "time_limit" => 2.5,
-        "max_attempts" => 2,
         "solution_code" => "SELECT * FROM users ORDER BY id;",
         "setup_sql" => "CREATE TABLE users (id INT, name TEXT);",
         "check_sql" => "SELECT 'OK';",

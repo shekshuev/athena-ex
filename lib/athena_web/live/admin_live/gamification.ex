@@ -312,12 +312,34 @@ defmodule AthenaWeb.AdminLive.Gamification do
       >
         <.form for={@form} id="badge-form" phx-change="validate" phx-submit="save" class="space-y-4">
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <.input field={@form[:key]} type="text" label={gettext("Key (slug)")} required />
-            <.input field={@form[:title]} type="text" label={gettext("Title")} required />
+            <.input
+              field={@form[:key]}
+              type="text"
+              label={gettext("Key (slug)")}
+              required
+              phx-debounce="500"
+            />
+            <.input
+              field={@form[:title]}
+              type="text"
+              label={gettext("Title")}
+              required
+              phx-debounce="500"
+            />
           </div>
-          <.input field={@form[:description]} type="text" label={gettext("Description")} />
+          <.input
+            field={@form[:description]}
+            type="text"
+            label={gettext("Description")}
+            phx-debounce="500"
+          />
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <.input field={@form[:icon]} type="text" label={gettext("Icon (heroicon name)")} />
+            <.input
+              field={@form[:icon]}
+              type="text"
+              label={gettext("Icon (heroicon name)")}
+              phx-debounce="500"
+            />
             <.input
               field={@form[:scope]}
               type="select"
@@ -328,7 +350,12 @@ defmodule AthenaWeb.AdminLive.Gamification do
                 {gettext("Cohort"), :cohort}
               ]}
             />
-            <.input field={@form[:scope_id]} type="text" label={gettext("Scope ID")} />
+            <.input
+              field={@form[:scope_id]}
+              type="text"
+              label={gettext("Scope ID")}
+              phx-debounce="500"
+            />
           </div>
           <.input field={@form[:is_active]} type="checkbox" label={gettext("Active")} />
 
@@ -340,7 +367,7 @@ defmodule AthenaWeb.AdminLive.Gamification do
               name="rule_text"
               rows="8"
               class="textarea textarea-bordered w-full font-mono text-xs"
-              phx-debounce="300"
+              phx-debounce="500"
             ><%= @rule_text %></textarea>
             <div
               :for={{msg, _opts} <- @form[:rule].errors || []}

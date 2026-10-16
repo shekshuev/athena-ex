@@ -148,6 +148,7 @@ defmodule AthenaWeb.AuthLive.Login do
               type="text"
               label={gettext("Login")}
               placeholder={gettext("Enter your login")}
+              phx-debounce="500"
             />
 
             <.input
@@ -155,6 +156,7 @@ defmodule AthenaWeb.AuthLive.Login do
               type="password"
               label={gettext("Password")}
               placeholder="••••••••"
+              phx-debounce="500"
             />
 
             <button class="btn btn-primary w-full mt-4 phx-submit-loading:opacity-70">
