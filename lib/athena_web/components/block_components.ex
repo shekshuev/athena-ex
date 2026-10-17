@@ -980,7 +980,8 @@ defmodule AthenaWeb.BlockComponents do
         phx-debounce="500"
       />
       <div class="editor-wrapper group/tiptap relative outline-none" tabindex="-1">
-        <.tiptap_toolbar mode={:edit} block_id={@block.id} />
+        <%!-- Not the bare block id: the question text above has its own toolbar keyed by it. --%>
+        <.tiptap_toolbar mode={:edit} block_id={"answer-#{@block.id}"} />
         <div
           id={"tiptap-open-answer-#{@mode}-#{@block.id}-#{if @mode == :review, do: :erlang.phash2(@initial_content), else: "static"}"}
           phx-hook="TiptapEditor"

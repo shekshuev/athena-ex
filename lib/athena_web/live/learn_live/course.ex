@@ -8,15 +8,9 @@ defmodule AthenaWeb.LearnLive.Course do
   """
   use AthenaWeb, :live_view
 
-  # Shared with the player: builder edits refresh both the same way.
-  @refresh_debounce_ms Application.compile_env(
-                         :athena,
-                         [AthenaWeb.LearnLive.Player, :refresh_debounce_ms],
-                         1_500
-                       )
-
   alias Athena.Content
   alias Athena.Learning
+  alias AthenaWeb.LearnLive.Player
 
   @doc """
   Initializes the LiveView, verifying user access, subscribing to real-time content updates,
@@ -98,18 +92,21 @@ defmodule AthenaWeb.LearnLive.Course do
   @spec handle_info(atom() | tuple(), Phoenix.LiveView.Socket.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
-  def handle_info(:refresh_content, socket) when @refresh_debounce_ms == 0,
-    do: {:noreply, refresh(socket)}
-
-  def handle_info(:refresh_content, %{assigns: %{refresh_pending: true}} = socket),
-    do: {:noreply, socket}
-
   # Every builder autosave broadcasts `:refresh_content`; a teacher typing
   # would otherwise rebuild this page for every open student several times
-  # a second.
+  # a second, so bursts are folded into one refresh per debounce window.
   def handle_info(:refresh_content, socket) do
-    Process.send_after(self(), :do_refresh, @refresh_debounce_ms)
-    {:noreply, assign(socket, :refresh_pending, true)}
+    case {Player.refresh_debounce_ms(), socket.assigns.refresh_pending} do
+      {0, _pending} ->
+        {:noreply, refresh(socket)}
+
+      {_delay, true} ->
+        {:noreply, socket}
+
+      {delay, false} ->
+        Process.send_after(self(), :do_refresh, delay)
+        {:noreply, assign(socket, :refresh_pending, true)}
+    end
   end
 
   def handle_info(:do_refresh, socket),

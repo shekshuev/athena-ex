@@ -106,13 +106,15 @@ defmodule AthenaWeb.LearnLive.LeaderboardTest do
         status: :rejected
       )
 
-      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/leaderboard")
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/leaderboard")
 
       assert html =~ "Team Rocket"
       assert html =~ "Disqualified"
       assert html =~ "opacity-50 grayscale bg-error/5"
 
-      refute html =~ "888"
+      # Asked of the table, not of the whole page: the page also carries
+      # random tokens that can contain "888" by chance.
+      refute has_element?(lv, "#leaderboard-table", "888")
     end
 
     test "redirects if the course is not a competition", %{conn: conn} do
@@ -194,19 +196,18 @@ defmodule AthenaWeb.LearnLive.LeaderboardTest do
       section = insert(:section, course: course)
       block = insert(:block, section: section)
 
-      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/leaderboard")
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/leaderboard")
 
-      assert html =~ "Late Bloomers"
-      refute html =~ "1337"
+      assert has_element?(lv, "#leaderboard-table", "Late Bloomers")
+      refute has_element?(lv, "#leaderboard-table", "1337")
 
       insert(:submission, block_id: block.id, cohort_id: team.id, score: 1337, status: :graded)
 
       send(lv.pid, :update_leaderboard)
+      _ = render(lv)
 
-      updated_html = render(lv)
-
-      assert updated_html =~ "Late Bloomers"
-      assert updated_html =~ "1337"
+      assert has_element?(lv, "#leaderboard-table", "Late Bloomers")
+      assert has_element?(lv, "#leaderboard-table", "1337")
     end
   end
 end

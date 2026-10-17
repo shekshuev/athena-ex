@@ -1264,22 +1264,33 @@ defmodule AthenaWeb.LearnLive.Player do
 
   # Teammates' progress, grading and every builder autosave all broadcast a
   # refresh; bursts of them are folded into one reload per debounce window.
-  @refresh_debounce_ms Application.compile_env(
-                         :athena,
-                         [__MODULE__, :refresh_debounce_ms],
-                         1_500
-                       )
+  @default_refresh_debounce_ms 1_500
+
+  @doc """
+  The debounce window for live refreshes, in ms (`0` refreshes at once, as
+  in tests). Shared with `AthenaWeb.LearnLive.Course`: builder edits
+  refresh both the same way. Read at runtime, not compiled in, so the
+  value can differ per environment without the compiler treating the
+  other branches as dead code.
+  """
+  @spec refresh_debounce_ms() :: non_neg_integer()
+  def refresh_debounce_ms do
+    :athena
+    |> Application.get_env(__MODULE__, [])
+    |> Keyword.get(:refresh_debounce_ms, @default_refresh_debounce_ms)
+  end
 
   @doc false
-  defp request_refresh(socket, kind) when @refresh_debounce_ms == 0, do: refresh(socket, kind)
-
   defp request_refresh(socket, kind) do
-    case socket.assigns.refresh_pending do
-      nil ->
-        Process.send_after(self(), :do_refresh, @refresh_debounce_ms)
+    case {refresh_debounce_ms(), socket.assigns.refresh_pending} do
+      {0, _pending} ->
+        refresh(socket, kind)
+
+      {delay, nil} ->
+        Process.send_after(self(), :do_refresh, delay)
         assign(socket, :refresh_pending, kind)
 
-      pending ->
+      {_delay, pending} ->
         assign(socket, :refresh_pending, merge_refresh_kind(pending, kind))
     end
   end
