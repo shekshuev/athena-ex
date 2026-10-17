@@ -5510,7 +5510,7 @@ msgstr "Копирование…"
 #: lib/athena_web/live/studio_live/builder.ex:528
 #, elixir-autogen, elixir-format
 msgid "Could not start a test run for this section."
-msgstr "Не удалось запустить тестовый запуск для этой секции."
+msgstr "Не удалось начать тестовый запуск этой секции."
 
 #: lib/athena_web/live/admin_live/files.ex:352
 #, elixir-autogen, elixir-format
@@ -8751,12 +8751,12 @@ msgstr "Игнорировать порядок строк"
 #: lib/athena_web/live/studio_live/library_editor.ex:642
 #, elixir-autogen, elixir-format
 msgid "Could not start a test run for this template."
-msgstr "Не удалось запустить тестовый запуск для этого шаблона."
+msgstr "Не удалось начать тестовый запуск этого шаблона."
 
 #: lib/athena_web/live/studio_live/library_editor.ex:934
 #, elixir-autogen, elixir-format
 msgid "Play this template as a test student"
-msgstr "Пройти этот шаблон как тестовый студент"
+msgstr "Пройти этот шаблон от имени тестового пользователя"
 
 #: lib/athena_web/live/admin_live/users.ex:328
 #, elixir-autogen, elixir-format
@@ -8806,7 +8806,7 @@ msgstr "У вас нет прав на это действие."
 #: lib/athena_web/live/admin_live/announcement_form.ex:222
 #, elixir-autogen, elixir-format
 msgid "Announcements can only be sent globally (admins only) or to a cohort/team you instruct. Ask an admin to assign you as an instructor first."
-msgstr "Объявления можно отправлять всем (только администраторам) или учебной группе либо команде, где вы преподаёте. Попросите администратора назначить вас преподавателем."
+msgstr "Объявления для всех пользователей отправляют только администраторы; преподаватель может отправить объявление своей учебной группе или команде. Попросите администратора назначить вас преподавателем."
 
 #: lib/athena_web/live/admin_live/announcement_form.ex:219
 #, elixir-autogen, elixir-format

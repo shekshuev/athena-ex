@@ -44,8 +44,10 @@ defmodule AthenaWeb.DocsTest do
     end
 
     test "the Russian version says учебная группа / команда and обучающийся / пользователь" do
+      # The docs and the interface translations both, so a quoted :ui label
+      # can't bring the wording back in either.
       offenders =
-        for path <- @sources,
+        for path <- @sources ++ Path.wildcard("priv/gettext/ru/**/*.po"),
             String.contains?(path, "/ru/"),
             File.read!(path) =~ ~r/когорт|студент/iu,
             do: path
