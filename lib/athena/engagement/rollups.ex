@@ -256,18 +256,19 @@ defmodule Athena.Engagement.Rollups do
     account_ids = buckets |> Enum.flat_map(&elem(&1, 1)) |> Enum.uniq()
     protected = Purges.protected_days(cohort_ids, account_ids)
 
-    if protected == %{} do
-      buckets
-    else
-      Enum.flat_map(buckets, fn {{cohort_id, _section_id, day} = key, account_ids} ->
-        allowed =
-          if protected?(protected, {:cohort, cohort_id}, day),
-            do: [],
-            else: Enum.reject(account_ids, &protected?(protected, {:account, &1}, day))
+    if protected == %{},
+      do: buckets,
+      else: Enum.flat_map(buckets, &allowed_bucket(&1, protected))
+  end
 
-        if allowed == [], do: [], else: [{key, allowed}]
-      end)
-    end
+  # The bucket with only the accounts it may still recompute, or nothing.
+  defp allowed_bucket({{cohort_id, _section_id, day} = key, account_ids}, protected) do
+    allowed =
+      if protected?(protected, {:cohort, cohort_id}, day),
+        do: [],
+        else: Enum.reject(account_ids, &protected?(protected, {:account, &1}, day))
+
+    if allowed == [], do: [], else: [{key, allowed}]
   end
 
   defp protected?(protected, key, day) do

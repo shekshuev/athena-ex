@@ -29,10 +29,14 @@ defmodule Athena.Learning.LeaderboardCache do
         fun.()
 
       ttl ->
-        case Cachex.fetch(@cache, course_id, fn -> {:commit, fun.(), expire: ttl} end) do
-          {status, value} when status in [:ok, :commit] -> value
-          _error -> fun.()
-        end
+        cachex_fetch(course_id, fun, ttl)
+    end
+  end
+
+  defp cachex_fetch(key, fun, ttl) do
+    case Cachex.fetch(@cache, key, fn -> {:commit, fun.(), expire: ttl} end) do
+      {status, value} when status in [:ok, :commit] -> value
+      _error -> fun.()
     end
   end
 

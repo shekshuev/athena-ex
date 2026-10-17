@@ -25,10 +25,14 @@ defmodule Athena.Engagement.DashboardCache do
       # requests miss at the same moment (teachers opening the same course
       # dashboard together); the others wait for that one result.
       ttl ->
-        case Cachex.fetch(@cache, key, fn -> {:commit, fun.(), expire: ttl} end) do
-          {status, value} when status in [:ok, :commit] -> value
-          _error -> fun.()
-        end
+        cachex_fetch(key, fun, ttl)
+    end
+  end
+
+  defp cachex_fetch(key, fun, ttl) do
+    case Cachex.fetch(@cache, key, fn -> {:commit, fun.(), expire: ttl} end) do
+      {status, value} when status in [:ok, :commit] -> value
+      _error -> fun.()
     end
   end
 
