@@ -12,13 +12,13 @@ defmodule Athena.Gamification.XpRule do
 
   @type t :: %__MODULE__{}
 
-  @block_types ~w(text code quiz_question quiz_exam ticket_exam video image attachment file_assignment)a
+  alias Athena.Content.BlockTypes
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
   schema "gamification_xp_rules" do
-    field :block_type, Ecto.Enum, values: @block_types
+    field :block_type, Ecto.Enum, values: BlockTypes.xp_awardable()
     field :base_amount, :integer, default: 0
 
     timestamps(type: :utc_datetime)

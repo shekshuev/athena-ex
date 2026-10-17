@@ -7,6 +7,7 @@ defmodule Athena.Content.LibraryBlock do
   import Ecto.Changeset
 
   alias Athena.Content.{
+    BlockTypes,
     QuizQuestion,
     QuizExam,
     TicketExam,
@@ -34,9 +35,7 @@ defmodule Athena.Content.LibraryBlock do
   schema "library_blocks" do
     field :title, :string
 
-    field :type, Ecto.Enum,
-      values:
-        ~w(text code quiz_question quiz_exam ticket_exam video image attachment file_assignment)a
+    field :type, Ecto.Enum, values: BlockTypes.library()
 
     field :content, :map, default: %{}
     field :tags, {:array, :string}, default: []

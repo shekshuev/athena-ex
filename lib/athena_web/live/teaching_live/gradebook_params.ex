@@ -10,10 +10,11 @@ defmodule AthenaWeb.TeachingLive.GradebookParams do
   out, so a pristine gradebook has a clean URL.
   """
 
+  alias Athena.Content.BlockTypes
   alias Athena.Engagement
   alias Athena.Learning.Gradebook
 
-  @types ~w(code quiz_question quiz_exam ticket_exam file_assignment)a
+  @types BlockTypes.gradable()
   @displays [:score, :pass]
   @sorts ["name", "average", "passed"]
   @thresholds [50, 60, 70, 75, 80, 90]

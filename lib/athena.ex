@@ -21,6 +21,7 @@ defmodule Athena do
       Identity.Profile,
       Content,
       Content.Block,
+      Content.BlockTypes,
       Content.LibraryBlock,
       Content.Character,
       Content.Section,
