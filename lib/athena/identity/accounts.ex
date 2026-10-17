@@ -11,7 +11,7 @@ defmodule Athena.Identity.Accounts do
   """
 
   import Ecto.Query
-  alias Athena.{Repo, Identity, Media, Workers}
+  alias Athena.{Repo, Identity, Media}
   alias Athena.Identity.{Account, Acl, Profile}
   alias Athena.Learning.CohortMembership
 
@@ -172,7 +172,7 @@ defmodule Athena.Identity.Accounts do
 
   @doc false
   defp cache_account(id, account) do
-    Cachex.put(:account_cache, id, account, ttl: :timer.minutes(5))
+    Cachex.put(:account_cache, id, account, expire: :timer.minutes(5))
   end
 
   @doc false
@@ -253,8 +253,9 @@ defmodule Athena.Identity.Accounts do
   ## Security & Brute-force Protection
     * Accounts with `:blocked` or `:temporary_blocked` statuses are immediately rejected.
     * Failed login attempts are tracked. Reaching 3 consecutive failed attempts
-      will lock the account (`:temporary_blocked`) and schedule an Oban job to
-      unblock it after 30 minutes.
+      locks the account (`:temporary_blocked`) until `blocked_until`
+      (30 minutes). An expired block is lifted on the next login attempt, and
+      `Athena.Workers.UnblockExpiredAccounts` sweeps the rest.
     * Stale failed attempts (older than 60 minutes) are automatically cleared
       upon the next login attempt.
     * A successful login resets the failed attempts counter.
@@ -270,7 +271,7 @@ defmodule Athena.Identity.Accounts do
     account = Repo.get_by(Account, login: login)
 
     if account do
-      account = maybe_clear_stale_attempts(account)
+      account = account |> maybe_lift_expired_block() |> maybe_clear_stale_attempts()
       valid_pass? = Argon2.verify_pass(password, account.password_hash)
 
       cond do
@@ -290,6 +291,51 @@ defmodule Athena.Identity.Accounts do
       {:error, :invalid_credentials}
     end
   end
+
+  @doc """
+  Lifts every temporary block whose `blocked_until` has passed, resetting the
+  failed-login counters. Reads the database directly (never the account
+  cache) and drops the released accounts from the cache.
+
+  Returns the number of accounts released.
+  """
+  @spec unblock_expired_accounts() :: non_neg_integer()
+  def unblock_expired_accounts do
+    now = DateTime.utc_now(:second)
+
+    {count, ids} =
+      from(a in Account,
+        where: a.status == :temporary_blocked and a.blocked_until <= ^now,
+        select: a.id
+      )
+      |> Repo.update_all(
+        set: [
+          status: :active,
+          blocked_until: nil,
+          failed_login_attempts: 0,
+          last_failed_at: nil,
+          updated_at: now
+        ]
+      )
+
+    Enum.each(ids, &Cachex.del(:account_cache, &1))
+    count
+  end
+
+  @doc false
+  defp maybe_lift_expired_block(
+         %Account{status: :temporary_blocked, blocked_until: until} = account
+       )
+       when not is_nil(until) do
+    if DateTime.compare(until, DateTime.utc_now(:second)) == :gt do
+      account
+    else
+      {:ok, acc} = update_account(account, %{status: :active})
+      acc
+    end
+  end
+
+  defp maybe_lift_expired_block(account), do: account
 
   @doc false
   defp maybe_clear_stale_attempts(
@@ -317,16 +363,11 @@ defmodule Athena.Identity.Accounts do
     new_attempts = account.failed_login_attempts + 1
 
     if new_attempts >= 3 do
-      {:ok, blocked_acc} =
-        update_account(account, %{
-          status: :temporary_blocked,
-          failed_login_attempts: new_attempts,
-          last_failed_at: DateTime.utc_now(:second)
-        })
-
-      %{account_id: blocked_acc.id}
-      |> Workers.UnblockAccount.new(schedule_in: 30 * 60)
-      |> Oban.insert()
+      update_account(account, %{
+        status: :temporary_blocked,
+        failed_login_attempts: new_attempts,
+        last_failed_at: DateTime.utc_now(:second)
+      })
     else
       update_account(account, %{
         failed_login_attempts: new_attempts,

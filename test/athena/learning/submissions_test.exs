@@ -1541,4 +1541,77 @@ defmodule Athena.Learning.SubmissionsTest do
              )
     end
   end
+
+  describe "get_ticket_usage/2" do
+    test "counts how often each library question was drawn, per cohort" do
+      exam = insert(:block, type: :ticket_exam)
+      cohort = insert(:cohort)
+      other_cohort = insert(:cohort)
+
+      ticket = fn ids ->
+        %{
+          "type" => "ticket_exam",
+          "questions" =>
+            Enum.map(ids, fn
+              {:nested, id} -> %{"content" => %{"original_block_id" => id}}
+              id -> %{"original_block_id" => id}
+            end)
+        }
+      end
+
+      insert(:submission, block_id: exam.id, cohort_id: cohort.id, content: ticket.(["a", "b"]))
+
+      insert(:submission,
+        block_id: exam.id,
+        cohort_id: cohort.id,
+        content: ticket.([{:nested, "a"}])
+      )
+
+      insert(:submission,
+        block_id: exam.id,
+        cohort_id: cohort.id,
+        content: %{"type" => "ticket_exam"}
+      )
+
+      insert(:submission, block_id: exam.id, cohort_id: other_cohort.id, content: ticket.(["c"]))
+
+      assert Submissions.get_ticket_usage(exam.id, cohort.id).counts == %{"a" => 2, "b" => 1}
+
+      assert Submissions.get_ticket_usage(exam.id, nil).counts ==
+               %{"a" => 2, "b" => 1, "c" => 1}
+    end
+  end
+
+  describe "get_drafts/3" do
+    test "returns the latest draft of each block, from cache or database" do
+      user = insert(:account)
+      [cached, stored, none] = insert_list(3, :block)
+
+      DraftCache.save_draft(user.id, nil, cached.id, %{"text_answer" => "from cache"})
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: stored.id,
+        status: :draft,
+        content: %{"text_answer" => "older"},
+        updated_at: DateTime.add(DateTime.utc_now(:second), -60, :second)
+      )
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: stored.id,
+        status: :draft,
+        content: %{"text_answer" => "newer"}
+      )
+
+      drafts = Submissions.get_drafts(user.id, [cached.id, stored.id, none.id])
+
+      assert drafts == %{
+               cached.id => %{"text_answer" => "from cache"},
+               stored.id => %{"text_answer" => "newer"}
+             }
+
+      assert DraftCache.get_draft(user.id, nil, stored.id) == %{"text_answer" => "newer"}
+    end
+  end
 end

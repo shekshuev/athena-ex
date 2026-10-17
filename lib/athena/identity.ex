@@ -9,6 +9,7 @@ defmodule Athena.Identity do
   defdelegate get_account(id, opts \\ []), to: Accounts
   defdelegate get_account_by_login(login), to: Accounts
   defdelegate authenticate(login, password), to: Accounts
+  defdelegate unblock_expired_accounts(), to: Accounts
   defdelegate register_admin_user(user, account_attrs, profile_attrs), to: Accounts
   defdelegate update_admin_user(user, account, account_attrs, profile_attrs), to: Accounts
   defdelegate clear_cache(), to: Accounts

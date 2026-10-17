@@ -600,9 +600,28 @@ defmodule Athena.Learning.Cohorts do
     %{cohort | instructors: Instructors.enrich_with_accounts(cohort.instructors)}
   end
 
+  # One accounts query for the instructors of every cohort in the list,
+  # instead of one per cohort.
   defp enrich_cohorts(cohorts) when is_list(cohorts) do
+    enriched =
+      cohorts
+      |> Enum.flat_map(&loaded_instructors/1)
+      |> Instructors.enrich_with_accounts()
+      |> Map.new(&{&1.id, &1})
+
     Enum.map(cohorts, fn cohort ->
-      %{cohort | instructors: Instructors.enrich_with_accounts(cohort.instructors)}
+      case cohort.instructors do
+        instructors when is_list(instructors) ->
+          %{cohort | instructors: Enum.map(instructors, &Map.get(enriched, &1.id, &1))}
+
+        _not_loaded ->
+          cohort
+      end
     end)
   end
+
+  defp loaded_instructors(%Cohort{instructors: instructors}) when is_list(instructors),
+    do: instructors
+
+  defp loaded_instructors(_cohort), do: []
 end

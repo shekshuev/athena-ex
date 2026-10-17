@@ -5,7 +5,9 @@
 //
 // All events funnel through one batching queue (EngagementTracker) so the
 // server only ever sees a "engagement_batch" push every few seconds, never
-// one push per scroll pixel or keystroke.
+// one push per scroll pixel or keystroke. Hooks outside the tracker (video,
+// answer editors, exam guards) go through `queueEngagementEvent/4` too:
+// every push is a database insert on the server.
 
 const FLUSH_INTERVAL_MS = 10_000;
 const MAX_QUEUE_SIZE = 25;
@@ -34,10 +36,25 @@ export function proctoringActive() {
   return document.getElementById(TRACKER_ROOT_ID)?.dataset.heartbeat === "true";
 }
 
+// The page's EngagementTracker, while one is mounted.
+let activeTracker = null;
+
+// Adds an event to the page tracker's batch. `flush: true` sends the batch
+// right away - for rare events the server reacts to immediately (a paste
+// nudge, exam integrity signals). Returns false (event dropped) when no
+// tracker is mounted, e.g. in the builder's test-run sandbox.
+export function queueEngagementEvent(blockId, eventType, payload = {}, { flush = false } = {}) {
+  if (!activeTracker || !blockId) return false;
+  activeTracker.enqueue(blockId, eventType, payload);
+  if (flush) activeTracker.flush();
+  return true;
+}
+
 export const EngagementHooks = {};
 
 EngagementHooks.EngagementTracker = {
   mounted() {
+    activeTracker = this;
     this.queue = [];
     this.intersecting = new Map(); // block_id -> bool
     this.reachedMilestones = new Map(); // block_id -> Set(percent)
@@ -397,6 +414,7 @@ EngagementHooks.EngagementTracker = {
     clearInterval(this.flushTimer);
     clearTimeout(this.idleTimer);
     this.flush();
+    if (activeTracker === this) activeTracker = null;
     this.stopProctoring?.();
     if (this.observer) this.observer.disconnect();
     document.removeEventListener("visibilitychange", this.handleVisibilityChange);
@@ -416,19 +434,7 @@ EngagementHooks.VideoTracker = {
     const blockId = this.el.dataset.blockId;
     if (!blockId) return;
 
-    const push = (eventType, payload = {}) => {
-      if (!engagementTrackingActive()) return;
-      this.pushEvent("engagement_batch", {
-        events: [
-          {
-            block_id: blockId,
-            event_type: eventType,
-            payload,
-            occurred_at: new Date().toISOString(),
-          },
-        ],
-      });
-    };
+    const push = (eventType, payload = {}) => queueEngagementEvent(blockId, eventType, payload);
 
     this.lastTime = 0;
 
@@ -437,8 +443,17 @@ EngagementHooks.VideoTracker = {
     this.onRateChange = () => push("video_rate_change", { rate: this.el.playbackRate });
     this.onEnded = () => push("video_ended", { duration: this.el.duration });
 
+    // Scrubbing fires `seeking` for every frame the handle passes over; one
+    // drag is reported as a single seek, from where it started to where it
+    // settled.
+    this.seekFrom = null;
     this.onSeeking = () => {
-      push("video_seek", { from_sec: this.lastTime, to_sec: this.el.currentTime });
+      if (this.seekFrom == null) this.seekFrom = this.lastTime;
+      clearTimeout(this.seekTimer);
+      this.seekTimer = setTimeout(() => {
+        push("video_seek", { from_sec: this.seekFrom, to_sec: this.el.currentTime });
+        this.seekFrom = null;
+      }, 1_000);
     };
 
     this.onTimeUpdate = () => {
@@ -456,6 +471,7 @@ EngagementHooks.VideoTracker = {
   },
 
   destroyed() {
+    clearTimeout(this.seekTimer);
     this.el.removeEventListener("play", this.onPlay);
     this.el.removeEventListener("pause", this.onPause);
     this.el.removeEventListener("ratechange", this.onRateChange);
@@ -474,19 +490,7 @@ EngagementHooks.ImageZoomTracker = {
     const blockId = this.el.dataset.blockId;
     if (!blockId) return;
 
-    this.onClick = () => {
-      if (!engagementTrackingActive()) return;
-      this.pushEvent("engagement_batch", {
-        events: [
-          {
-            block_id: blockId,
-            event_type: "image_zoom",
-            payload: {},
-            occurred_at: new Date().toISOString(),
-          },
-        ],
-      });
-    };
+    this.onClick = () => queueEngagementEvent(blockId, "image_zoom");
 
     this.el.addEventListener("click", this.onClick);
   },
@@ -505,19 +509,7 @@ EngagementHooks.AttachmentOpenTracker = {
     const blockId = this.el.dataset.blockId;
     if (!blockId) return;
 
-    this.onClick = () => {
-      if (!engagementTrackingActive()) return;
-      this.pushEvent("engagement_batch", {
-        events: [
-          {
-            block_id: blockId,
-            event_type: "attachment_open",
-            payload: {},
-            occurred_at: new Date().toISOString(),
-          },
-        ],
-      });
-    };
+    this.onClick = () => queueEngagementEvent(blockId, "attachment_open");
 
     this.el.addEventListener("click", this.onClick);
   },
@@ -541,19 +533,7 @@ EngagementHooks.NoCopyGuard = {
   mounted() {
     const blockId = this.el.dataset.blockId || this.el.closest("[data-block-id]")?.dataset.blockId;
 
-    const report = (eventType) => {
-      if (!blockId || !engagementTrackingActive()) return;
-      this.pushEvent("engagement_batch", {
-        events: [
-          {
-            block_id: blockId,
-            event_type: eventType,
-            payload: {},
-            occurred_at: new Date().toISOString(),
-          },
-        ],
-      });
-    };
+    const report = (eventType) => queueEngagementEvent(blockId, eventType, {}, { flush: true });
 
     this.onCopy = (e) => {
       e.preventDefault();
@@ -649,18 +629,8 @@ EngagementHooks.MultiTabGuard = {
     this.reported = false;
 
     const report = () => {
-      if (this.reported || !engagementTrackingActive()) return;
-      this.reported = true;
-      this.pushEvent("engagement_batch", {
-        events: [
-          {
-            block_id: blockId,
-            event_type: "multi_tab_detected",
-            payload: {},
-            occurred_at: new Date().toISOString(),
-          },
-        ],
-      });
+      if (this.reported) return;
+      this.reported = queueEngagementEvent(blockId, "multi_tab_detected", {}, { flush: true });
     };
 
     if (typeof BroadcastChannel !== "undefined") {

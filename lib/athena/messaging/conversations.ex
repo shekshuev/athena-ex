@@ -73,7 +73,7 @@ defmodule Athena.Messaging.Conversations do
       {:ok, %{status: :active}} ->
         direct_key = build_direct_key(user_id, other_account_id)
 
-        case Repo.get_by(Conversation, direct_key: direct_key) do
+        case get_direct_conversation(direct_key) do
           nil -> insert_direct_conversation(direct_key, user_id, other_account_id)
           conversation -> {:ok, conversation}
         end
@@ -125,16 +125,26 @@ defmodule Athena.Messaging.Conversations do
   """
   @spec count_unread_conversations(map()) :: non_neg_integer()
   def count_unread_conversations(user) do
-    conversation_ids =
-      from(cp in ConversationParticipant,
-        where: cp.account_id == ^user.id,
-        select: cp.conversation_id
+    # Runs on every page (the nav badge), so it stops at the first unread
+    # message of each conversation instead of counting them all; the probe
+    # is an index range scan on `messages(conversation_id, inserted_at)
+    # WHERE deleted_at IS NULL`.
+    unread =
+      from(m in Message,
+        where:
+          m.conversation_id == parent_as(:participant).conversation_id and
+            is_nil(m.deleted_at) and m.account_id != ^user.id and
+            (is_nil(parent_as(:participant).last_read_at) or
+               m.inserted_at > parent_as(:participant).last_read_at),
+        select: 1
       )
-      |> Repo.all()
 
-    conversation_ids
-    |> unread_counts_by_conversation(user.id)
-    |> map_size()
+    from(cp in ConversationParticipant,
+      as: :participant,
+      where: cp.account_id == ^user.id and exists(unread),
+      select: count()
+    )
+    |> Repo.one()
   end
 
   @doc """
@@ -159,7 +169,7 @@ defmodule Athena.Messaging.Conversations do
   """
   @spec ensure_cohort_conversation(Learning.Cohort.t()) :: {:ok, Conversation.t()}
   def ensure_cohort_conversation(cohort) do
-    case Repo.get_by(Conversation, cohort_id: cohort.id) do
+    case get_cohort_conversation(cohort.id) do
       nil ->
         %Conversation{}
         |> Conversation.changeset(%{kind: :cohort, cohort_id: cohort.id})
@@ -170,7 +180,7 @@ defmodule Athena.Messaging.Conversations do
 
           {:error, _changeset} ->
             # Race: another process created it concurrently.
-            {:ok, Repo.get_by!(Conversation, cohort_id: cohort.id)}
+            {:ok, get_cohort_conversation(cohort.id)}
         end
 
       conversation ->
@@ -214,7 +224,7 @@ defmodule Athena.Messaging.Conversations do
   """
   @spec remove_cohort_participant(String.t(), String.t()) :: :ok
   def remove_cohort_participant(cohort_id, account_id) do
-    case Repo.get_by(Conversation, cohort_id: cohort_id) do
+    case get_cohort_conversation(cohort_id) do
       nil ->
         :ok
 
@@ -277,7 +287,7 @@ defmodule Athena.Messaging.Conversations do
 
       {:error, %Ecto.Changeset{}} ->
         # Race: someone else created the same DM concurrently – re-fetch it.
-        case Repo.get_by(Conversation, direct_key: direct_key) do
+        case get_direct_conversation(direct_key) do
           nil -> {:error, :invalid}
           conversation -> {:ok, conversation}
         end
@@ -379,24 +389,29 @@ defmodule Athena.Messaging.Conversations do
   defp load_last_messages([]), do: %{}
 
   defp load_last_messages(conversation_ids) do
-    accounts_map =
+    messages =
       from(m in Message,
         where: m.conversation_id in ^conversation_ids,
         distinct: m.conversation_id,
-        order_by: [asc: m.conversation_id, desc: m.inserted_at],
-        select: m.account_id
+        order_by: [asc: m.conversation_id, desc: m.inserted_at]
       )
       |> Repo.all()
-      |> Identity.get_accounts_map()
 
-    from(m in Message,
-      where: m.conversation_id in ^conversation_ids,
-      distinct: m.conversation_id,
-      order_by: [asc: m.conversation_id, desc: m.inserted_at]
-    )
-    |> Repo.all()
-    |> Map.new(fn message ->
+    accounts_map = messages |> Enum.map(& &1.account_id) |> Identity.get_accounts_map()
+
+    Map.new(messages, fn message ->
       {message.conversation_id, %{message | account: Map.get(accounts_map, message.account_id)}}
     end)
+  end
+
+  # The unique indexes on `direct_key` / `cohort_id` are partial on `kind`;
+  # a literal `kind` in the query (not a bound parameter, as `get_by` would
+  # send) is what lets the planner use them.
+  defp get_direct_conversation(direct_key) do
+    Repo.one(from c in Conversation, where: c.kind == :direct and c.direct_key == ^direct_key)
+  end
+
+  defp get_cohort_conversation(cohort_id) do
+    Repo.one(from c in Conversation, where: c.kind == :cohort and c.cohort_id == ^cohort_id)
   end
 end

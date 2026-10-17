@@ -142,7 +142,7 @@ defmodule Athena.Identity.AccountsTest do
       updated_account = Athena.Repo.get!(Account, account.id)
       assert updated_account.failed_login_attempts == 3
       assert updated_account.status == :temporary_blocked
-      assert_enqueued(worker: Athena.Workers.UnblockAccount, args: %{account_id: account.id})
+      assert DateTime.diff(updated_account.blocked_until, DateTime.utc_now(), :minute) in 29..30
     end
 
     test "should clear stale failed attempts (> 60 mins) before processing" do
@@ -168,8 +168,87 @@ defmodule Athena.Identity.AccountsTest do
     end
 
     test "should return error when account is temporarily blocked (even with correct password)" do
-      insert(:account, login: "temp_guy", status: :temporary_blocked)
+      insert(:account,
+        login: "temp_guy",
+        status: :temporary_blocked,
+        failed_login_attempts: 3,
+        blocked_until: DateTime.add(DateTime.utc_now(:second), 10, :minute)
+      )
+
       assert {:error, :account_blocked} = Accounts.authenticate("temp_guy", "Password123!")
+    end
+
+    test "lifts an expired temporary block on the next login" do
+      account =
+        insert(:account,
+          login: "expired_guy",
+          status: :temporary_blocked,
+          failed_login_attempts: 3,
+          last_failed_at: DateTime.add(DateTime.utc_now(:second), -31, :minute),
+          blocked_until: DateTime.add(DateTime.utc_now(:second), -1, :minute)
+        )
+
+      assert {:ok, _} = Accounts.authenticate("expired_guy", "Password123!")
+
+      updated = Athena.Repo.get!(Account, account.id)
+      assert updated.status == :active
+      assert updated.failed_login_attempts == 0
+      assert updated.blocked_until == nil
+    end
+
+    test "a wrong password after an expired block starts counting from zero" do
+      account =
+        insert(:account,
+          login: "expired_typo",
+          status: :temporary_blocked,
+          failed_login_attempts: 3,
+          last_failed_at: DateTime.add(DateTime.utc_now(:second), -31, :minute),
+          blocked_until: DateTime.add(DateTime.utc_now(:second), -1, :minute)
+        )
+
+      assert {:error, :invalid_credentials} = Accounts.authenticate("expired_typo", "WrongPass")
+
+      updated = Athena.Repo.get!(Account, account.id)
+      assert updated.status == :active
+      assert updated.failed_login_attempts == 1
+    end
+  end
+
+  describe "unblock_expired_accounts/0" do
+    test "releases only temporary blocks that have expired" do
+      past = DateTime.add(DateTime.utc_now(:second), -1, :minute)
+      future = DateTime.add(DateTime.utc_now(:second), 10, :minute)
+
+      expired =
+        insert(:account,
+          status: :temporary_blocked,
+          failed_login_attempts: 3,
+          last_failed_at: past,
+          blocked_until: past
+        )
+
+      pending = insert(:account, status: :temporary_blocked, blocked_until: future)
+      banned = insert(:account, status: :blocked)
+
+      assert Accounts.unblock_expired_accounts() == 1
+
+      released = Athena.Repo.get!(Account, expired.id)
+      assert released.status == :active
+      assert released.failed_login_attempts == 0
+      assert released.last_failed_at == nil
+      assert released.blocked_until == nil
+
+      assert Athena.Repo.get!(Account, pending.id).status == :temporary_blocked
+      assert Athena.Repo.get!(Account, banned.id).status == :blocked
+    end
+
+    test "drops released accounts from the account cache" do
+      past = DateTime.add(DateTime.utc_now(:second), -1, :minute)
+      account = insert(:account, status: :temporary_blocked, blocked_until: past)
+
+      assert {:ok, %{status: :temporary_blocked}} = Accounts.get_account(account.id)
+      assert Accounts.unblock_expired_accounts() == 1
+      assert {:ok, %{status: :active}} = Accounts.get_account(account.id)
     end
 
     test "should return error when account doesn't exist" do
@@ -356,6 +435,41 @@ defmodule Athena.Identity.AccountsTest do
     test "student returns forbidden when trying to update another user", %{student: student} do
       account = insert(:account)
       assert {:error, :forbidden} = Accounts.update_admin_user(student, account, %{}, %{})
+    end
+
+    test "a temporary block set by an admin expires on its own", %{admin: admin} do
+      account = insert(:account)
+      insert(:profile, owner: account)
+
+      assert {:ok, updated} =
+               Accounts.update_admin_user(admin, account, %{"status" => "temporary_blocked"}, %{})
+
+      assert updated.status == :temporary_blocked
+      assert DateTime.diff(updated.blocked_until, DateTime.utc_now(), :minute) in 29..30
+    end
+
+    test "activating a blocked account resets its failed logins", %{admin: admin} do
+      account =
+        insert(:account,
+          status: :temporary_blocked,
+          failed_login_attempts: 3,
+          last_failed_at: DateTime.utc_now(:second),
+          blocked_until: DateTime.add(DateTime.utc_now(:second), 20, :minute)
+        )
+
+      insert(:profile, owner: account)
+
+      assert {:ok, updated} =
+               Accounts.update_admin_user(admin, account, %{"status" => "active"}, %{})
+
+      assert updated.status == :active
+      assert updated.failed_login_attempts == 0
+      assert updated.last_failed_at == nil
+      assert updated.blocked_until == nil
+
+      # One typo after the release must not re-block the account.
+      assert {:error, :invalid_credentials} = Accounts.authenticate(account.login, "WrongPass")
+      assert Athena.Repo.get!(Account, account.id).status == :active
     end
   end
 

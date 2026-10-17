@@ -25,10 +25,11 @@ defmodule Athena.Content.Blocks do
       |> order_by([b], asc: b.order)
       |> Repo.all()
 
-    if user_or_mode == :all do
+    if user_or_mode == :all or blocks == [] do
       blocks
     else
-      Enum.filter(blocks, &Policy.can_view?(user_or_mode, &1))
+      sections = %{section_id => Repo.get(Section, section_id)}
+      Enum.filter(blocks, &Policy.can_view?(user_or_mode, &1, [], sections: sections))
     end
   end
 
@@ -55,13 +56,13 @@ defmodule Athena.Content.Blocks do
   """
   @spec list_block_headers_by_section_ids([String.t()]) :: [Block.t()]
   def list_block_headers_by_section_ids(section_ids) do
-    fields = Block.__schema__(:fields) -- [:content]
-
     Block
     |> where([b], b.section_id in ^section_ids)
-    |> select([b], struct(b, ^fields))
+    |> select([b], struct(b, ^header_fields()))
     |> Repo.all()
   end
+
+  defp header_fields, do: Block.__schema__(:fields) -- [:content]
 
   @doc """
   Retrieves a single block by its ID without ACL (internal/student use).
@@ -69,6 +70,23 @@ defmodule Athena.Content.Blocks do
   @spec get_block(String.t()) :: {:ok, Block.t()} | {:error, :not_found}
   def get_block(id) do
     case Repo.get(Block, id) do
+      nil -> {:error, :not_found}
+      block -> {:ok, block}
+    end
+  end
+
+  @doc """
+  Like `get_block/1`, but without the heavy `content` column (left at the
+  schema default `%{}`) - for callers that only need the block's type,
+  section, ordering or rules.
+  """
+  @spec get_block_header(String.t()) :: {:ok, Block.t()} | {:error, :not_found}
+  def get_block_header(id) do
+    Block
+    |> where([b], b.id == ^id)
+    |> select([b], struct(b, ^header_fields()))
+    |> Repo.one()
+    |> case do
       nil -> {:error, :not_found}
       block -> {:ok, block}
     end
@@ -351,11 +369,14 @@ defmodule Athena.Content.Blocks do
   end
 
   @doc """
-  Returns a map of blocks by their IDs
+  Returns a map of block headers (blocks without `content`, see
+  `get_block_header/1`) by their IDs.
   """
+  @spec get_blocks_map([String.t()]) :: %{String.t() => Block.t()}
   def get_blocks_map(ids) do
     Block
     |> where([b], b.id in ^ids)
+    |> select([b], struct(b, ^header_fields()))
     |> Repo.all()
     |> Map.new(&{&1.id, &1})
   end

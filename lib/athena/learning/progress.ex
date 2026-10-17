@@ -5,7 +5,7 @@ defmodule Athena.Learning.Progress do
   import Ecto.Query
   alias Athena.{Repo, Content}
   alias Athena.Learning.{BlockProgress, CohortMembership, CourseProgressCache, Submission}
-  alias Athena.Content.Section
+  alias Athena.Content.{Block, Section}
 
   @doc """
   Marks an interactive block as completed for a user or a team.
@@ -109,7 +109,7 @@ defmodule Athena.Learning.Progress do
   """
   @spec maybe_complete_from_submission(Submission.t()) :: :ok
   def maybe_complete_from_submission(%Submission{parent_submission_id: nil} = submission) do
-    with {:ok, block} <- Content.get_block(submission.block_id),
+    with {:ok, block} <- Content.get_block_header(submission.block_id),
          true <- block_solved?(block, submission),
          false <-
            already_completed?(submission.account_id, submission.block_id, submission.cohort_id) do
@@ -124,7 +124,7 @@ defmodule Athena.Learning.Progress do
   @doc false
   defp broadcast_block_completed(account_id, cohort_id, block_id) do
     block_type =
-      case Content.get_block(block_id) do
+      case Content.get_block_header(block_id) do
         {:ok, block} -> block.type
         _ -> nil
       end
@@ -150,7 +150,23 @@ defmodule Athena.Learning.Progress do
             bp.account_id == ^account_id and is_nil(bp.cohort_id) and bp.block_id == ^block_id
       end
 
-    repo.delete_all(query)
+    was_completed? = repo.exists?(where(query, [bp], bp.status == :completed))
+    result = repo.delete_all(query)
+
+    if was_completed?, do: drop_course_progress_cache(repo, account_id, cohort_id, block_id)
+
+    result
+  end
+
+  # Undoes one `bump_course_progress_cache/3`, so revoking a completion
+  # doesn't leave the cached "% done" counting it.
+  defp drop_course_progress_cache(repo, account_id, cohort_id, block_id) do
+    with {:ok, course_id} <- course_id_for_block(block_id) do
+      CourseProgressCache
+      |> where([c], c.course_id == ^course_id and c.completed_count > 0)
+      |> progress_cache_owner(account_id, cohort_id)
+      |> repo.update_all(inc: [completed_count: -1])
+    end
   end
 
   @doc """
@@ -198,29 +214,21 @@ defmodule Athena.Learning.Progress do
   """
   @spec completed_block_ids(String.t(), String.t(), String.t() | nil) :: [String.t()]
   def completed_block_ids(account_id, section_id, cohort_id \\ nil) do
-    section_id
-    |> Content.list_blocks_by_section()
-    |> Enum.map(& &1.id)
-    |> case do
-      [] ->
-        []
+    query =
+      from bp in BlockProgress,
+        join: b in Block,
+        on: b.id == bp.block_id,
+        where: b.section_id == ^section_id and bp.status == :completed,
+        select: bp.block_id
 
-      block_ids ->
-        query =
-          if cohort_id do
-            from bp in BlockProgress,
-              where:
-                bp.cohort_id == ^cohort_id and bp.status == :completed and
-                  bp.block_id in ^block_ids
-          else
-            from bp in BlockProgress,
-              where:
-                bp.account_id == ^account_id and is_nil(bp.cohort_id) and bp.status == :completed and
-                  bp.block_id in ^block_ids
-          end
+    query =
+      if cohort_id do
+        where(query, [bp], bp.cohort_id == ^cohort_id)
+      else
+        where(query, [bp], bp.account_id == ^account_id and is_nil(bp.cohort_id))
+      end
 
-        Repo.all(from q in query, select: q.block_id)
-    end
+    Repo.all(query)
   end
 
   @doc """
@@ -230,14 +238,26 @@ defmodule Athena.Learning.Progress do
   """
   @spec last_activity(String.t()) :: BlockProgress.t() | nil
   def last_activity(account_id) do
-    cohort_ids_query =
-      from cm in CohortMembership, where: cm.account_id == ^account_id, select: cm.cohort_id
+    # Two top-1 lookups, each served by an `(…, updated_at DESC)` index,
+    # instead of one `account_id = ? OR cohort_id IN (…)` that can use
+    # neither and sorts every matching row.
+    own =
+      from bp in BlockProgress,
+        where: bp.account_id == ^account_id,
+        order_by: [desc: bp.updated_at],
+        limit: 1
 
-    BlockProgress
-    |> where([bp], bp.account_id == ^account_id or bp.cohort_id in subquery(cohort_ids_query))
-    |> order_by([bp], desc: bp.updated_at)
-    |> limit(1)
-    |> Repo.one()
+    via_cohorts =
+      from bp in BlockProgress,
+        join: cm in CohortMembership,
+        on: cm.cohort_id == bp.cohort_id,
+        where: cm.account_id == ^account_id,
+        order_by: [desc: bp.updated_at],
+        limit: 1
+
+    [Repo.one(own), Repo.one(via_cohorts)]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.max_by(& &1.updated_at, DateTime, fn -> nil end)
   end
 
   @doc """
@@ -306,25 +326,72 @@ defmodule Athena.Learning.Progress do
   @spec course_progress_batch(String.t(), [struct()]) :: %{String.t() => map()}
   def course_progress_batch(account_id, enrollments) do
     cache_by_key = fetch_progress_cache(account_id, enrollments)
+    totals = course_block_totals(Enum.map(enrollments, & &1.course_id))
 
     Map.new(enrollments, fn enrollment ->
       team_id = team_id_for_enrollment(enrollment)
       cache_key = {enrollment.course_id, team_id}
+      total = Map.get(totals, enrollment.course_id, 0)
 
       progress =
         case Map.get(cache_by_key, cache_key) do
-          nil -> course_progress(account_id, enrollment.course_id, team_id)
-          row -> progress_from_cache(row)
+          nil -> uncached_course_progress(account_id, enrollment.course_id, team_id)
+          row -> progress_from_cache(row, total)
         end
 
       {enrollment.id, progress}
     end)
   end
 
-  defp progress_from_cache(%CourseProgressCache{completed_count: completed, total_count: total}) do
+  # The cache keeps only the completed count: the course's block count is
+  # read fresh (one grouped query for all courses), so adding or removing
+  # blocks never leaves a stale total behind.
+  defp progress_from_cache(%CourseProgressCache{completed_count: completed}, total) do
+    completed = min(completed, total)
     percent = if total == 0, do: 0, else: round(completed / total * 100)
     %{completed: completed, total: total, percent: percent}
   end
+
+  defp course_block_totals([]), do: %{}
+
+  defp course_block_totals(course_ids) do
+    from(b in Block,
+      join: s in Section,
+      on: s.id == b.section_id,
+      where: s.course_id in ^course_ids,
+      group_by: s.course_id,
+      select: {s.course_id, count(b.id)}
+    )
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  # No cache row yet (nothing completed so far): compute it once and store
+  # it, so the next dashboard visit reads the cache instead.
+  defp uncached_course_progress(account_id, course_id, team_id) do
+    progress = course_progress(account_id, course_id, team_id)
+
+    %CourseProgressCache{}
+    |> CourseProgressCache.changeset(%{
+      account_id: if(team_id, do: nil, else: account_id),
+      cohort_id: team_id,
+      course_id: course_id,
+      completed_count: progress.completed,
+      total_count: progress.total
+    })
+    |> Repo.insert(
+      on_conflict: :nothing,
+      conflict_target: progress_cache_conflict_target(team_id)
+    )
+
+    progress
+  end
+
+  defp progress_cache_conflict_target(nil),
+    do: {:unsafe_fragment, "(account_id, course_id) WHERE cohort_id IS NULL"}
+
+  defp progress_cache_conflict_target(_cohort_id),
+    do: {:unsafe_fragment, "(cohort_id, course_id) WHERE cohort_id IS NOT NULL"}
 
   defp fetch_progress_cache(account_id, enrollments) do
     {individual_course_ids, team_pairs} =
@@ -357,33 +424,54 @@ defmodule Athena.Learning.Progress do
     Map.new(individual_rows ++ team_rows, &{{&1.course_id, &1.cohort_id}, &1})
   end
 
+  # The common case is a row that already exists: bump it in place. Only the
+  # first completion in a course pays for counting the course's blocks.
   defp bump_course_progress_cache(account_id, cohort_id, block_id) do
-    with {:ok, block} <- Content.get_block(block_id),
-         {:ok, section} <- Content.get_section(block.section_id) do
-      course_id = section.course_id
-      total = length(block_ids_for_course(course_id))
+    with {:ok, course_id} <- course_id_for_block(block_id) do
+      {bumped, _} =
+        CourseProgressCache
+        |> where([c], c.course_id == ^course_id)
+        |> progress_cache_owner(account_id, cohort_id)
+        |> Repo.update_all(inc: [completed_count: 1])
 
-      key_account_id = if cohort_id, do: nil, else: account_id
-
-      conflict_target =
-        if cohort_id do
-          {:unsafe_fragment, "(cohort_id, course_id) WHERE cohort_id IS NOT NULL"}
-        else
-          {:unsafe_fragment, "(account_id, course_id) WHERE cohort_id IS NULL"}
-        end
-
-      %CourseProgressCache{}
-      |> CourseProgressCache.changeset(%{
-        account_id: key_account_id,
-        cohort_id: cohort_id,
-        course_id: course_id,
-        completed_count: 1,
-        total_count: total
-      })
-      |> Repo.insert(on_conflict: [inc: [completed_count: 1]], conflict_target: conflict_target)
+      if bumped == 0, do: insert_course_progress_cache(account_id, cohort_id, course_id)
     end
 
     :ok
+  end
+
+  defp course_id_for_block(block_id) do
+    from(b in Block,
+      join: s in Section,
+      on: s.id == b.section_id,
+      where: b.id == ^block_id,
+      select: s.course_id
+    )
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      course_id -> {:ok, course_id}
+    end
+  end
+
+  defp progress_cache_owner(query, _account_id, cohort_id) when is_binary(cohort_id),
+    do: where(query, [c], c.cohort_id == ^cohort_id)
+
+  defp progress_cache_owner(query, account_id, nil),
+    do: where(query, [c], c.account_id == ^account_id and is_nil(c.cohort_id))
+
+  defp insert_course_progress_cache(account_id, cohort_id, course_id) do
+    conflict_target = progress_cache_conflict_target(cohort_id)
+
+    %CourseProgressCache{}
+    |> CourseProgressCache.changeset(%{
+      account_id: if(cohort_id, do: nil, else: account_id),
+      cohort_id: cohort_id,
+      course_id: course_id,
+      completed_count: 1,
+      total_count: length(block_ids_for_course(course_id))
+    })
+    |> Repo.insert(on_conflict: [inc: [completed_count: 1]], conflict_target: conflict_target)
   end
 
   @doc false
@@ -498,7 +586,14 @@ defmodule Athena.Learning.Progress do
         do: where(base, [s], s.cohort_id == ^cohort_id),
         else: where(base, [s], s.account_id == ^user.id and is_nil(s.cohort_id))
 
-    Repo.all(query)
+    # `block_solved?/2` only reads these; `content` (a whole exam snapshot
+    # for exam attempts) stays in the database.
+    query
+    |> select(
+      [s],
+      struct(s, [:id, :block_id, :account_id, :cohort_id, :status, :score, :parent_submission_id])
+    )
+    |> Repo.all()
   end
 
   @doc """
@@ -511,6 +606,8 @@ defmodule Athena.Learning.Progress do
   """
   @spec get_gate_blocks([Section.t()], map(), list(), keyword()) :: [Content.Block.t()]
   def get_gate_blocks(linear_sections, user, overrides \\ [], opts \\ []) do
+    opts = Keyword.put(opts, :sections, Map.new(linear_sections, &{&1.id, &1}))
+
     linear_sections
     |> Enum.map(& &1.id)
     |> Content.list_block_headers_by_section_ids()

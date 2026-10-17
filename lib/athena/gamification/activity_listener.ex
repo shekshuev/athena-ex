@@ -32,6 +32,10 @@ defmodule Athena.Gamification.ActivityListener do
     {:noreply, state}
   end
 
+  # Badges can only change once an attempt has a result; a new pending
+  # attempt (an exam just started, code queued) has nothing to evaluate yet.
+  def handle_info({:submission_changed, %{status: :pending}}, state), do: {:noreply, state}
+
   def handle_info({:submission_changed, submission}, state) do
     guarded(fn ->
       Combo.record_result(submission)

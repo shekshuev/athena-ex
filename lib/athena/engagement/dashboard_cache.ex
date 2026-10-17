@@ -21,19 +21,18 @@ defmodule Athena.Engagement.DashboardCache do
       0 ->
         fun.()
 
+      # `Cachex.fetch/3` runs `fun` once per key even when several
+      # requests miss at the same moment (teachers opening the same course
+      # dashboard together); the others wait for that one result.
       ttl ->
-        case Cachex.get(@cache, key) do
-          {:ok, nil} ->
-            value = fun.()
-            Cachex.put(@cache, key, value, expire: ttl)
-            value
+        cachex_fetch(key, fun, ttl)
+    end
+  end
 
-          {:ok, value} ->
-            value
-
-          _error ->
-            fun.()
-        end
+  defp cachex_fetch(key, fun, ttl) do
+    case Cachex.fetch(@cache, key, fn -> {:commit, fun.(), expire: ttl} end) do
+      {status, value} when status in [:ok, :commit] -> value
+      _error -> fun.()
     end
   end
 

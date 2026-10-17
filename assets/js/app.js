@@ -53,6 +53,7 @@ import {
   EngagementHooks,
   engagementTrackingActive,
   proctoringActive,
+  queueEngagementEvent,
 } from "./engagement_hooks";
 import { attachInputTelemetry } from "./input_telemetry";
 import { MessengerHooks } from "./messenger_hooks";
@@ -247,23 +248,13 @@ Hooks.TippyTooltip = {
 };
 
 // Shared by every answer editor: forwards the input-telemetry module's
-// reports through the hook's own `pushEvent` as ordinary engagement events.
-function answerTelemetryReporter(hook, blockId) {
+// reports to the page's engagement batch. Pastes and drops go out at once
+// (the exam's integrity view reacts to them); typing summaries ride along
+// with the next regular flush.
+function answerTelemetryReporter(_hook, blockId) {
   return (eventType, payload) => {
-    try {
-      hook.pushEvent("engagement_batch", {
-        events: [
-          {
-            block_id: blockId,
-            event_type: eventType,
-            payload,
-            occurred_at: new Date().toISOString(),
-          },
-        ],
-      });
-    } catch {
-      // The hook may already be torn down (final typing summary on unmount).
-    }
+    const flush = eventType === "paste_detected" || eventType === "bulk_insert";
+    queueEngagementEvent(blockId, eventType, payload, { flush });
   };
 }
 
@@ -369,17 +360,8 @@ Hooks.CodeEditor = {
             }
           }
 
-          if (!firstInteractionSent && answerBlockId && engagementTrackingActive()) {
-            firstInteractionSent = true;
-            this.pushEvent("engagement_batch", {
-              events: [
-                {
-                  block_id: answerBlockId,
-                  event_type: "first_interaction",
-                  occurred_at: new Date().toISOString(),
-                },
-              ],
-            });
+          if (!firstInteractionSent && answerBlockId) {
+            firstInteractionSent = queueEngagementEvent(answerBlockId, "first_interaction");
           }
         }
       }),
@@ -418,16 +400,12 @@ Hooks.CodeEditor = {
         if (!text) return;
 
         const totalChars = this.editor.state.doc.length + text.length;
-        this.pushEvent("engagement_batch", {
-          events: [
-            {
-              block_id: answerBlockId,
-              event_type: "paste_detected",
-              payload: { pasted_chars: text.length, total_chars: totalChars },
-              occurred_at: new Date().toISOString(),
-            },
-          ],
-        });
+        queueEngagementEvent(
+          answerBlockId,
+          "paste_detected",
+          { pasted_chars: text.length, total_chars: totalChars },
+          { flush: true },
+        );
       };
       this.editor.dom.addEventListener("paste", this.handlePaste);
 
@@ -817,16 +795,12 @@ Hooks.TiptapEditor = {
             const text = clipboardData.getData("text/plain") || "";
             if (text) {
               const totalChars = hook.editor.getText().length + text.length;
-              hook.pushEvent("engagement_batch", {
-                events: [
-                  {
-                    block_id: blockId,
-                    event_type: "paste_detected",
-                    payload: { pasted_chars: text.length, total_chars: totalChars },
-                    occurred_at: new Date().toISOString(),
-                  },
-                ],
-              });
+              queueEngagementEvent(
+                blockId,
+                "paste_detected",
+                { pasted_chars: text.length, total_chars: totalChars },
+                { flush: true },
+              );
             }
           }
 
@@ -1210,18 +1184,9 @@ Hooks.TiptapEditor = {
     // never fires in the editable Builder/Library views.
     this.handleImageZoom = (e) => {
       const img = e.target.closest(".js-lightbox-img");
-      if (!img || !isReadOnly || !engagementTrackingActive()) return;
+      if (!img || !isReadOnly) return;
 
-      hook.pushEvent("engagement_batch", {
-        events: [
-          {
-            block_id: blockId,
-            event_type: "image_zoom",
-            payload: {},
-            occurred_at: new Date().toISOString(),
-          },
-        ],
-      });
+      queueEngagementEvent(blockId, "image_zoom");
     };
     this.el.addEventListener("click", this.handleImageZoom);
 

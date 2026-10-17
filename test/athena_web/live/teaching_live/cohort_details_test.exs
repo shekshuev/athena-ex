@@ -282,4 +282,29 @@ defmodule AthenaWeb.TeachingLive.CohortDetailsTest do
       assert to == "/teaching/cohorts"
     end
   end
+
+  describe "deleting a group's activity data" do
+    test "is offered only to accounts allowed to delete engagement data", %{
+      conn: conn,
+      admin: admin
+    } do
+      cohort = insert(:cohort, owner_id: admin.id)
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}")
+
+      refute has_element?(lv, "#purge-cohort-engagement")
+    end
+
+    test "schedules a purge of the group's raw engagement events", %{conn: conn} do
+      admin = insert(:account, role: insert(:role, permissions: ["admin"]))
+      conn = init_test_session(conn, %{"account_id" => admin.id})
+      cohort = insert(:cohort, owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}")
+      lv |> element("#purge-cohort-engagement") |> render_click()
+      render_click(lv, "confirm_purge_engagement")
+
+      assert [%{scope: :cohort, scope_id: scope_id}] = Athena.Repo.all(Athena.Engagement.Purge)
+      assert scope_id == cohort.id
+    end
+  end
 end

@@ -83,7 +83,7 @@ end
 if server_role != "runner" do
   config :athena, Oban,
     repo: Athena.Repo,
-    queues: [code_execution: System.schedulers_online() * 2, default: 10, maintenance: 2]
+    queues: [code_execution: System.schedulers_online() * 2, default: 5, maintenance: 2]
 end
 
 if config_env() == :prod do
@@ -99,7 +99,7 @@ if config_env() == :prod do
 
     config :athena, Athena.Repo,
       url: database_url,
-      pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+      pool_size: String.to_integer(System.get_env("POOL_SIZE") || "20"),
       socket_options: maybe_ipv6,
       types: Athena.PostgresTypes
 
@@ -165,9 +165,20 @@ if config_env() == :prod do
 
     engagement_rollup_cron = System.get_env("ENGAGEMENT_ROLLUP_CRON") || "*/5 * * * *"
 
+    unblock_accounts_cron = System.get_env("UNBLOCK_ACCOUNTS_CRON") || "*/5 * * * *"
+
+    engagement_partitions_cron =
+      System.get_env("ENGAGEMENT_PARTITIONS_CRON") || "20 0 * * *"
+
+    engagement_legacy_move_cron =
+      System.get_env("ENGAGEMENT_LEGACY_MOVE_CRON") || "*/5 * * * *"
+
     config :athena, Oban,
       plugins: [
         Oban.Plugins.Pruner,
+        # Rescues jobs left `executing` by a node that died or was redeployed
+        # mid-run (they would otherwise stay stuck forever).
+        {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(30)},
         {Oban.Plugins.Cron,
          timezone: app_timezone,
          crontab: [
@@ -177,7 +188,12 @@ if config_env() == :prod do
            {daily_challenge_cleanup_cron, Athena.Gamification.Workers.DailyChallengeCleanup,
             queue: :maintenance},
            {test_run_cleanup_cron, Athena.Learning.Workers.TestRunCleanup, queue: :maintenance},
-           {engagement_rollup_cron, Athena.Engagement.Workers.RollupWorker, queue: :maintenance}
+           {engagement_rollup_cron, Athena.Engagement.Workers.RollupWorker, queue: :maintenance},
+           {unblock_accounts_cron, Athena.Workers.UnblockExpiredAccounts, queue: :maintenance},
+           {engagement_partitions_cron, Athena.Engagement.Workers.EnsurePartitions,
+            queue: :maintenance},
+           {engagement_legacy_move_cron, Athena.Engagement.Workers.MoveLegacyEvents,
+            queue: :maintenance}
          ]}
       ]
   end

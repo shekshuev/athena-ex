@@ -18,7 +18,13 @@ defmodule AthenaWeb.DashboardLive.Index do
 
   @max_dashboard_competitions 5
 
+  # The static (disconnected) render only shows a skeleton; the dashboard's
+  # dozen queries run once, on the connected mount, instead of twice per
+  # visit to the most visited page.
   @impl true
+  def mount(_params, _session, socket) when is_nil(socket.transport_pid),
+    do: {:ok, assign(socket, :loading, true)}
+
   def mount(_params, _session, socket) do
     account = socket.assigns.current_user
 
@@ -105,7 +111,7 @@ defmodule AthenaWeb.DashboardLive.Index do
 
   defp resolve_daily_challenge(account_id) do
     with %{} = challenge <- Gamification.today_challenge(account_id),
-         {:ok, block} <- Content.get_block(challenge.block_id),
+         {:ok, block} <- Content.get_block_header(challenge.block_id),
          {:ok, section} <- Content.get_section(block.section_id),
          {:ok, course} <- Content.get_course(section.course_id) do
       %{course: course, section_id: section.id, completed?: !is_nil(challenge.completed_at)}
@@ -137,7 +143,7 @@ defmodule AthenaWeb.DashboardLive.Index do
 
   defp resolve_continue(%{block_id: block_id}, enrollments) do
     resolved =
-      with {:ok, block} <- Content.get_block(block_id),
+      with {:ok, block} <- Content.get_block_header(block_id),
            {:ok, section} <- Content.get_section(block.section_id),
            {:ok, course} <- Content.get_course(section.course_id) do
         %{course: course, section_id: section.id}
@@ -161,7 +167,7 @@ defmodule AthenaWeb.DashboardLive.Index do
   end
 
   defp resolve_deadline(%{resource_type: :block} = schedule) do
-    with {:ok, block} <- Content.get_block(schedule.resource_id),
+    with {:ok, block} <- Content.get_block_header(schedule.resource_id),
          {:ok, section} <- Content.get_section(block.section_id) do
       build_deadline_row(schedule, section.course_id, section.title)
     else
@@ -186,6 +192,27 @@ defmodule AthenaWeb.DashboardLive.Index do
   end
 
   @impl true
+  def render(%{loading: true} = assigns) do
+    ~H"""
+    <.page_container size="standard" class="space-y-8">
+      <h1 class="text-3xl font-display font-black uppercase tracking-tight text-base-content">
+        {gettext("Dashboard")}
+      </h1>
+      <div id="dashboard-loading" class="grid gap-4 md:grid-cols-2" aria-busy="true">
+        <div
+          :for={i <- 1..4}
+          class="bg-base-100 border border-base-200 rounded-sm p-6 animate-pulse"
+          style={"animation-delay: #{i * 80}ms"}
+        >
+          <div class="h-3 w-1/3 bg-base-300 rounded-sm mb-3"></div>
+          <div class="h-3 w-full bg-base-200 rounded-sm mb-2"></div>
+          <div class="h-3 w-2/3 bg-base-200 rounded-sm"></div>
+        </div>
+      </div>
+    </.page_container>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <.page_container size="standard" class="space-y-8">

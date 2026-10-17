@@ -224,10 +224,11 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       course2 = insert(:course)
       s1 = insert(:section, course: course2)
 
-      {:error, {:live_redirect, %{to: "/learn", flash: flash}}} =
-        live(unauthorized_conn, ~p"/learn/courses/#{course2.id}/play/#{s1.id}")
+      result = live(unauthorized_conn, ~p"/learn/courses/#{course2.id}/play/#{s1.id}")
+      assert {:error, {:live_redirect, %{to: "/learn"}}} = result
 
-      assert flash["error"] == "Access denied."
+      {:ok, _lv, html} = follow_redirect(result, unauthorized_conn)
+      assert html =~ "Access denied."
     end
 
     test "redirects to syllabus if trying to access a locked section (waterline violation)", %{
@@ -245,11 +246,12 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       s2 = insert(:section, course: course, order: 2)
       insert(:block, section: nil, section_id: s2.id)
 
-      {:error, {:live_redirect, %{to: syllabus_path, flash: flash}}} =
-        live(conn, ~p"/learn/courses/#{course.id}/play/#{s2.id}")
-
+      result = live(conn, ~p"/learn/courses/#{course.id}/play/#{s2.id}")
+      assert {:error, {:live_redirect, %{to: syllabus_path}}} = result
       assert syllabus_path == "/learn/courses/#{course.id}"
-      assert flash["error"] == "You must complete previous lessons first."
+
+      {:ok, _lv, html} = follow_redirect(result, conn)
+      assert html =~ "You must complete previous lessons first."
     end
   end
 
@@ -1398,6 +1400,85 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       send(lv.pid, {:submission_updated, good_sub})
 
       assert render(lv) =~ "Waterfall Content"
+    end
+
+    test "a code test run in progress does not pass a :submit gate", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      gate_block =
+        insert(:block,
+          section: s1,
+          type: :code,
+          order: 10,
+          completion_rule: %CompletionRule{type: :submit}
+        )
+
+      insert(:block, section: s1, order: 20, content: %{"text" => "After The Gate"})
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      test_run =
+        insert(:submission,
+          account_id: user.id,
+          block_id: gate_block.id,
+          status: :processing,
+          content: %{"type" => "code", "code" => "print(1)", "is_test_run" => true}
+        )
+
+      send(lv.pid, {:submission_updated, test_run})
+
+      refute render(lv) =~ "After The Gate"
+
+      refute Athena.Repo.exists?(
+               from bp in Athena.Learning.BlockProgress, where: bp.block_id == ^gate_block.id
+             )
+
+      real =
+        insert(:submission,
+          account_id: user.id,
+          block_id: gate_block.id,
+          status: :rejected,
+          content: %{"type" => "code", "code" => "print(1)"}
+        )
+
+      send(lv.pid, {:submission_updated, real})
+
+      assert render(lv) =~ "After The Gate"
+    end
+  end
+
+  describe "Unlock timer" do
+    test "a refresh replaces the pending unlock timer instead of adding one", %{
+      conn: conn,
+      course: course
+    } do
+      s1 = insert(:section, course: course)
+      insert(:block, section: s1, content: %{"text" => "Visible"})
+
+      s2 =
+        insert(:section,
+          course: course,
+          access_rules: %AccessRules{unlock_at: DateTime.add(DateTime.utc_now(), 3600, :second)}
+        )
+
+      insert(:block, section: s2)
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      first_timer = :sys.get_state(lv.pid).socket.assigns.unlock_timer
+      assert is_reference(first_timer)
+
+      send(lv.pid, :user_progress_updated)
+      _ = render(lv)
+
+      second_timer = :sys.get_state(lv.pid).socket.assigns.unlock_timer
+      assert is_reference(second_timer)
+      assert second_timer != first_timer
+      assert Process.read_timer(first_timer) == false
     end
   end
 

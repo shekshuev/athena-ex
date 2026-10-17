@@ -75,12 +75,31 @@ services:
     tmpfs:
       - /var/lib/postgresql/data:size=512m
 
+  # scripts/deploy.sh never restarts this container: after changing the
+  # settings below, apply them by hand with
+  # `docker compose -f docker-compose.prod.yml up -d postgres`.
+  # Memory settings default to a host with ~4 GB for Postgres; size them to
+  # the real host in .env (shared_buffers ~25% of RAM, effective_cache_size
+  # ~60-70%).
   postgres:
     image: postgres:15-alpine
     container_name: athena_prod_postgres
     restart: always
     env_file:
       - .env
+    command: >
+      postgres
+      -c shared_preload_libraries=pg_stat_statements
+      -c pg_stat_statements.track=top
+      -c shared_buffers=${PG_SHARED_BUFFERS:-1GB}
+      -c effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-3GB}
+      -c work_mem=${PG_WORK_MEM:-16MB}
+      -c maintenance_work_mem=${PG_MAINTENANCE_WORK_MEM:-256MB}
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c track_io_timing=on
+      -c log_min_duration_statement=${PG_LOG_MIN_DURATION_MS:-500}
+    shm_size: ${PG_SHM_SIZE:-1gb}
     ports:
       - "${POSTGRES_PORT_EXTERNAL:-5432}:5432"
     volumes:

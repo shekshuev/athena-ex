@@ -23,8 +23,9 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
 
   Metrics recompute (both screens) is debounced (at most once every
   `@refresh_debounce_ms`) rather than run on every incoming PubSub event -
-  `Athena.Engagement.Metrics` scans raw events on demand with no cache, so
-  recomputing per event would query the database once per event. Only a
+  each recompute reads the section's rollups plus today's raw events, so
+  recomputing per event would query the database once per event. Nothing
+  is computed on the dead render, which is thrown away on connect. Only a
   single selected block (on "Course radar") subscribes to live updates at
   all; "Student radar" is a snapshot, refreshed on navigation/period change,
   same as the section-level summary table on "Course radar".
@@ -47,7 +48,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
 
   on_mount {AthenaWeb.Hooks.Permission, "engagement.read"}
 
-  @refresh_debounce_ms 2_000
+  @refresh_debounce_ms 10_000
   @radar_windows ~w(7 30 all)
 
   @impl true
@@ -241,7 +242,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
     do: {:noreply, assign(socket, :methodology_open, false)}
 
   @impl true
-  def handle_info({:engagement_event, _event}, socket) do
+  def handle_info({:engagement_events, _events}, socket) do
     if socket.assigns.refresh_scheduled do
       {:noreply, socket}
     else
@@ -922,6 +923,9 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
   defp refresh_trend(%{assigns: %{active_block: nil}} = socket),
     do: assign(socket, :trend_data, [])
 
+  defp refresh_trend(socket) when is_nil(socket.transport_pid),
+    do: assign(socket, :trend_data, [])
+
   defp refresh_trend(socket) do
     data =
       Engagement.time_series(
@@ -933,7 +937,10 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
     assign(socket, :trend_data, data)
   end
 
-  defp refresh_histogram(%{assigns: %{active_block: nil}} = socket) do
+  # No block selected, or the dead render (starting the block's BlockStats
+  # there would be thrown away on connect): an empty chart.
+  defp refresh_histogram(socket)
+       when is_nil(socket.assigns.active_block) or is_nil(socket.transport_pid) do
     assign(
       socket,
       :histogram_chart_config,
@@ -1098,7 +1105,7 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
     scope = %{cohort_id: socket.assigns.cohort.id, account_id: socket.assigns.active_account_id}
 
     metrics =
-      if socket.assigns.active_block do
+      if socket.assigns.active_block && connected?(socket) do
         Engagement.get_metrics(
           Map.merge(scope, %{resource_type: :block, resource_id: socket.assigns.active_block.id})
         )

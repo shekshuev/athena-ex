@@ -14,6 +14,11 @@ defmodule Athena.Engagement.Workers.RollupWorker do
 
   alias Athena.Engagement.Rollups
 
+  # Each batch commits its own transaction and advances the cursor, so a run
+  # cut short by the timeout loses nothing: the next tick resumes from there.
+  @impl Oban.Worker
+  def timeout(_job), do: :timer.minutes(15)
+
   @impl Oban.Worker
   def perform(_job) do
     processed = Rollups.process_new_events()

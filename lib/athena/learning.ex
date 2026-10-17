@@ -21,6 +21,7 @@ defmodule Athena.Learning do
     Evaluator,
     Schedules,
     DraftCache,
+    LeaderboardCache,
     Gradebook,
     TestRuns
   }
@@ -116,11 +117,31 @@ defmodule Athena.Learning do
   defdelegate get_latest_submissions(account_id, block_ids, cohort_id \\ nil), to: Submissions
   defdelegate get_feedback_map(account_id, block_ids, cohort_id \\ nil), to: Submissions
   defdelegate get_submission!(user, id), to: Submissions
-  defdelegate get_team_leaderboard(course_id), to: Submissions
+
+  @doc """
+  The team leaderboard of a competition course, shared between viewers for
+  a few seconds (see `Athena.Learning.LeaderboardCache`).
+  """
+  @spec get_team_leaderboard(String.t()) :: [map()]
+  def get_team_leaderboard(course_id) do
+    LeaderboardCache.fetch(course_id, fn -> Submissions.get_team_leaderboard(course_id) end)
+  end
+
+  @doc """
+  Tells every leaderboard of `course_id` to reload, dropping the cached
+  board first so they all see the change.
+  """
+  @spec broadcast_leaderboard_update(String.t()) :: :ok
+  def broadcast_leaderboard_update(course_id) do
+    LeaderboardCache.invalidate(course_id)
+    Phoenix.PubSub.broadcast(Athena.PubSub, "leaderboard:#{course_id}", :update_leaderboard)
+  end
+
   defdelegate list_group_submissions_for_block(cohort_id, block_id), to: Submissions
   defdelegate delete_submission_with_rollback(user, submission), to: Submissions
   defdelegate save_draft(user, block_id, content, cohort_id \\ nil), to: Submissions
   defdelegate get_draft(user_id, block_id, cohort_id \\ nil), to: Submissions
+  defdelegate get_drafts(user_id, block_ids, cohort_id \\ nil), to: Submissions
   defdelegate clear_draft(user_id, block_id, cohort_id \\ nil), to: Submissions
   defdelegate enqueue_code_execution(submission), to: Submissions
   defdelegate test_code(user, block, code), to: Submissions
@@ -153,8 +174,10 @@ defmodule Athena.Learning do
   defdelegate get_child_submissions(parent_submission_id), to: Submissions
 
   @doc """
-  Gets an active exam attempt or creates a new one,
-  and broadcasts the result so the Grading dashboard updates in real-time.
+  Gets an active exam attempt or creates a new one. A new or just-finalized
+  attempt is broadcast so the Grading dashboard updates in real time;
+  reopening an attempt in progress (every exam page load) changes nothing
+  and broadcasts nothing.
   """
   def get_or_create_exam_attempt(
         course_id,
@@ -165,16 +188,24 @@ defmodule Athena.Learning do
         time_limit_sec,
         exam_config
       ) do
-    Submissions.get_or_create_exam_attempt(
-      course_id,
-      account_id,
-      exam_block_id,
-      block_type,
-      cohort_id,
-      time_limit_sec,
-      exam_config
-    )
-    |> notify_submission_subscribers()
+    case Submissions.fetch_or_create_exam_attempt(
+           course_id,
+           account_id,
+           exam_block_id,
+           block_type,
+           cohort_id,
+           time_limit_sec,
+           exam_config
+         ) do
+      {:existing, submission} ->
+        {:ok, submission}
+
+      {change, submission} when change in [:created, :finalized] ->
+        notify_submission_subscribers({:ok, submission})
+
+      other ->
+        other
+    end
   end
 
   defdelegate mark_completed(account_id, block_id, cohort_id \\ nil), to: Progress
@@ -224,7 +255,11 @@ defmodule Athena.Learning do
       {:submission_updated, submission}
     )
 
-    if submission.status != :draft do
+    # The grading list and gamification only care about real attempts: a
+    # code test run (`is_test_run`, flipped to :processing and back to
+    # :draft) and the transient :processing step of a real run would only
+    # make every open grading screen reload for nothing.
+    if grading_relevant?(submission) do
       Phoenix.PubSub.broadcast(
         Athena.PubSub,
         "grading:updates",
@@ -236,4 +271,8 @@ defmodule Athena.Learning do
   end
 
   defp notify_submission_subscribers(result), do: result
+
+  defp grading_relevant?(%{status: status}) when status in [:draft, :processing], do: false
+  defp grading_relevant?(%{content: %{"is_test_run" => true}}), do: false
+  defp grading_relevant?(_submission), do: true
 end

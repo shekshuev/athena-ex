@@ -38,6 +38,8 @@ defmodule Athena.Identity.Account do
     field :must_change_password, :boolean, default: false
     field :failed_login_attempts, :integer, default: 0
     field :last_failed_at, :utc_datetime
+    # When a `:temporary_blocked` status expires; nil for every other status.
+    field :blocked_until, :utc_datetime
     field :last_seen_at, :utc_datetime
 
     belongs_to :role, Role
@@ -63,6 +65,7 @@ defmodule Athena.Identity.Account do
       :failed_login_attempts,
       :last_failed_at
     ])
+    |> put_block_window()
     |> validate_required([:login, :role_id])
     |> validate_password_required()
     |> validate_length(:login, min: 3, max: 50)
@@ -101,6 +104,41 @@ defmodule Athena.Identity.Account do
     )
     |> put_change(:must_change_password, false)
     |> hash_password()
+  end
+
+  @doc "How long a temporary block lasts, in seconds."
+  @spec temporary_block_seconds() :: pos_integer()
+  def temporary_block_seconds, do: 30 * 60
+
+  # Keeps `blocked_until` consistent with a status change made through any
+  # path (the login lockout, the admin form, the unblock sweeper):
+  #   * entering `:temporary_blocked` starts the standard window, so a block
+  #     set by hand also lifts itself;
+  #   * leaving it clears the expiry;
+  #   * becoming `:active` also forgets past failed logins, otherwise the
+  #     next typo would re-block an account an admin just released.
+  @doc false
+  defp put_block_window(changeset) do
+    case get_change(changeset, :status) do
+      :temporary_blocked ->
+        put_change(changeset, :blocked_until, default_blocked_until())
+
+      :active ->
+        changeset
+        |> put_change(:blocked_until, nil)
+        |> put_change(:failed_login_attempts, 0)
+        |> put_change(:last_failed_at, nil)
+
+      :blocked ->
+        put_change(changeset, :blocked_until, nil)
+
+      nil ->
+        changeset
+    end
+  end
+
+  defp default_blocked_until do
+    DateTime.add(DateTime.utc_now(:second), temporary_block_seconds(), :second)
   end
 
   @doc false

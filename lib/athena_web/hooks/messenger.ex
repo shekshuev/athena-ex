@@ -16,11 +16,7 @@ defmodule AthenaWeb.Hooks.Messenger do
         {:cont, assign(socket, :unread_conversations_count, 0)}
 
       user ->
-        if connected?(socket) do
-          Phoenix.PubSub.subscribe(Athena.PubSub, "inbox:#{user.id}")
-          Phoenix.PubSub.subscribe(Athena.PubSub, "presence:lobby")
-          AthenaWeb.Presence.track(self(), "presence:lobby", user.id, %{})
-        end
+        if connected?(socket), do: subscribe_and_track(socket, user)
 
         socket =
           socket
@@ -29,6 +25,20 @@ defmodule AthenaWeb.Hooks.Messenger do
 
         {:cont, socket}
     end
+  end
+
+  # Every page tracks the user as online, but only the messenger shows who
+  # is: subscribing every page to the lobby would deliver each presence diff
+  # (any user navigating anywhere) to every open LiveView process just to be
+  # dropped.
+  defp subscribe_and_track(socket, user) do
+    Phoenix.PubSub.subscribe(Athena.PubSub, "inbox:#{user.id}")
+
+    if socket.view == AthenaWeb.MessengerLive.Index do
+      Phoenix.PubSub.subscribe(Athena.PubSub, "presence:lobby")
+    end
+
+    AthenaWeb.Presence.track(self(), "presence:lobby", user.id, %{})
   end
 
   # This hook is attached on every authenticated LiveView (for the nav

@@ -121,19 +121,23 @@ defmodule Athena.Engagement.BlockStats do
   @impl true
   def init({cohort_id, block_id}) do
     Phoenix.PubSub.subscribe(Athena.PubSub, "engagement:#{cohort_id}:#{block_id}")
+    schedule_idle_check()
 
+    # The bootstrap read runs in `handle_continue/2`, after `start_link`
+    # has returned: the shared DynamicSupervisor isn't held up while it
+    # runs, and callers simply wait in this process's mailbox.
+    {:ok, initial_state(cohort_id, block_id), {:continue, :bootstrap}}
+  end
+
+  @impl true
+  def handle_continue(:bootstrap, state) do
     dwells =
-      [block_id]
-      |> Events.list_events_for_scope(cohort_id)
+      [state.block_id]
+      |> Events.list_dwell_events(state.cohort_id)
       |> Events.pair_viewport_dwells()
       |> Enum.map(fn {_session_id, _account_id, dwell_seconds} -> dwell_seconds end)
 
-    state =
-      Enum.reduce(dwells, initial_state(cohort_id, block_id), &record_dwell(&2, &1))
-
-    schedule_idle_check()
-
-    {:ok, state}
+    {:noreply, Enum.reduce(dwells, state, &record_dwell(&2, &1))}
   end
 
   @impl true
@@ -150,29 +154,12 @@ defmodule Athena.Engagement.BlockStats do
   end
 
   @impl true
-  def handle_info({:engagement_event, %{event_type: :viewport_enter} = event}, state) do
-    pending = Map.put(state.pending_enters, event.session_id, event.occurred_at)
-    {:noreply, %{state | pending_enters: pending, last_event_at: DateTime.utc_now()}}
-  end
+  def handle_info({:engagement_events, events}, state) do
+    state =
+      events
+      |> Enum.sort_by(& &1.occurred_at, DateTime)
+      |> Enum.reduce(state, &apply_event/2)
 
-  def handle_info({:engagement_event, %{event_type: :viewport_exit} = event}, state) do
-    case Map.pop(state.pending_enters, event.session_id) do
-      {nil, _pending} ->
-        {:noreply, %{state | last_event_at: DateTime.utc_now()}}
-
-      {entered_at, pending} ->
-        dwell = max(DateTime.diff(event.occurred_at, entered_at, :second), 0)
-
-        new_state =
-          %{state | pending_enters: pending}
-          |> record_dwell(dwell)
-          |> Map.put(:last_event_at, DateTime.utc_now())
-
-        {:noreply, new_state}
-    end
-  end
-
-  def handle_info({:engagement_event, _other}, state) do
     {:noreply, %{state | last_event_at: DateTime.utc_now()}}
   end
 
@@ -188,6 +175,23 @@ defmodule Athena.Engagement.BlockStats do
   end
 
   # Internals
+
+  defp apply_event(%{event_type: :viewport_enter} = event, state) do
+    %{state | pending_enters: Map.put(state.pending_enters, event.session_id, event.occurred_at)}
+  end
+
+  defp apply_event(%{event_type: :viewport_exit} = event, state) do
+    case Map.pop(state.pending_enters, event.session_id) do
+      {nil, _pending} ->
+        state
+
+      {entered_at, pending} ->
+        dwell = max(DateTime.diff(event.occurred_at, entered_at, :second), 0)
+        record_dwell(%{state | pending_enters: pending}, dwell)
+    end
+  end
+
+  defp apply_event(_event, state), do: state
 
   defp initial_state(cohort_id, block_id) do
     %{

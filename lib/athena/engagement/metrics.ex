@@ -7,18 +7,21 @@ defmodule Athena.Engagement.Metrics do
   Every metric is *defined* in `Athena.Engagement.Accumulator`: events are
   folded into additive per-(student, block, day) counters, and metrics are
   derived from those. Course-wide aggregates (`student_radar/3`,
-  `cohort_flag_profile/3`, `course_overview/3`, ...) read past days from the
-  pre-aggregated `Athena.Engagement.Rollups` and only today from raw events,
-  falling back to raw events for the whole window while rollups aren't
-  ready (`Athena.Engagement.Rollups.ready?/0`). Pass `source: :raw` to force
-  the raw path. Both paths produce identical numbers.
+  `cohort_flag_profile/3`, `course_overview/3`, ...) read only the
+  pre-aggregated `Athena.Engagement.Rollups`, today included, so they lag
+  by at most one rollup run (a few minutes) and never scan raw events. Only
+  before the rollups were ever built (`Athena.Engagement.Rollups.built?/0`)
+  do they read raw events. Pass `source: :raw` to force the raw path. Both
+  paths produce identical numbers.
 
   Course-wide windows are whole app-timezone days: `since` is rounded down
   to the start of its day, so "last 7 days" means the same thing whether it
   is read from rollups or from raw events.
 
-  `get_metrics/1`, `funnel/2`, `time_series/3` (single block or section,
-  cheap) always read raw events.
+  `get_metrics/1` (one block or section, refreshed live while students
+  work) reads past days from rollups and today from raw events;
+  `time_series/3` reads weekly sums from rollups; `funnel/2` reads raw
+  events.
   """
 
   alias Athena.Content
@@ -80,14 +83,40 @@ defmodule Athena.Engagement.Metrics do
   end
 
   # `%{{account_id, block_id} => accumulator}` for one section's blocks.
+  # With a cohort and built rollups: past days from rollups and only today
+  # from raw events - this view refreshes while students work, so it stays
+  # live without rescanning the section's whole history every time.
   defp section_accumulators(section_blocks, scope) do
-    section_blocks
-    |> Enum.map(& &1.id)
-    |> Events.list_events_for_scope(Map.get(scope, :cohort_id), Map.get(scope, :since))
-    |> filter_by_account(Map.get(scope, :account_id))
-    |> Accumulator.build(positions(section_blocks))
-    |> Accumulator.by_account_block()
+    cohort_id = Map.get(scope, :cohort_id)
+    account_id = Map.get(scope, :account_id)
+
+    if cohort_id && Rollups.built?() do
+      from_day = scope |> Map.get(:since) |> to_app_day()
+
+      cohort_id
+      |> live_activity(section_blocks, from_day)
+      |> Map.fetch!(:acc_by_account_block)
+      |> filter_accumulators_by_account(account_id)
+    else
+      section_blocks
+      |> Enum.map(& &1.id)
+      |> Events.list_events_for_scope(cohort_id, Map.get(scope, :since))
+      |> filter_by_account(account_id)
+      |> Accumulator.build(positions(section_blocks))
+      |> Accumulator.by_account_block()
+    end
   end
+
+  defp to_app_day(nil), do: nil
+  defp to_app_day(since), do: since |> TimeZones.to_app_zone() |> DateTime.to_date()
+
+  defp filter_accumulators_by_account(accumulators, nil), do: accumulators
+
+  defp filter_accumulators_by_account(accumulators, account_id),
+    do:
+      Map.filter(accumulators, fn {{acc_account_id, _block_id}, _acc} ->
+        acc_account_id == account_id
+      end)
 
   defp block_metrics(block, section, accumulators, scope) do
     rule = Policy.resolve_engagement_rule(block, section)
@@ -169,14 +198,25 @@ defmodule Athena.Engagement.Metrics do
           %{week: Date.t(), value: number() | nil}
         ]
   def time_series(block_id, cohort_id, metric) do
-    [block_id]
-    |> Events.list_events_for_scope(cohort_id)
-    |> Enum.group_by(&week_start/1)
-    |> Enum.map(fn {week, week_events} ->
-      %{week: week, value: time_series_value(metric, week_events)}
-    end)
-    |> Enum.sort_by(& &1.week, Date)
+    if cohort_id && Rollups.built?() do
+      cohort_id
+      |> Rollups.weekly_block_totals(block_id)
+      |> Enum.map(&%{week: &1.week, value: rollup_series_value(metric, &1)})
+    else
+      [block_id]
+      |> Events.list_events_for_scope(cohort_id)
+      |> Enum.group_by(&week_start/1)
+      |> Enum.map(fn {week, week_events} ->
+        %{week: week, value: time_series_value(metric, week_events)}
+      end)
+      |> Enum.sort_by(& &1.week, Date)
+    end
   end
+
+  defp rollup_series_value(:avg_dwell_seconds, %{dwell_n: 0}), do: nil
+  defp rollup_series_value(:avg_dwell_seconds, week), do: week.dwell_sum / week.dwell_n
+  defp rollup_series_value(:sample_size, week), do: week.dwell_n
+  defp rollup_series_value(:nudge_shown_count, week), do: week.nudge_shown
 
   defp flatten_sections(sections) do
     Enum.flat_map(sections, fn section -> [section | flatten_sections(section.children)] end)
@@ -262,8 +302,8 @@ defmodule Athena.Engagement.Metrics do
     do: %{acc_by_account_block: %{}, active_by_day: %{}, hour_matrix: %{}}
 
   defp load_activity(cohort_id, blocks, from_day, source) do
-    if cohort_id && source != :raw && Rollups.ready?() do
-      hybrid_activity(cohort_id, blocks, from_day)
+    if cohort_id && source != :raw && Rollups.built?() do
+      rollup_activity(cohort_id, blocks, from_day)
     else
       blocks
       |> Enum.map(& &1.id)
@@ -273,9 +313,22 @@ defmodule Athena.Engagement.Metrics do
     end
   end
 
+  # Course-wide views: every day, today included, from rollups. They lag by
+  # at most one rollup run, and the cost no longer grows with how busy
+  # today is or with how far the worker has fallen behind.
+  defp rollup_activity(cohort_id, blocks, from_day) do
+    block_ids = Enum.map(blocks, & &1.id)
+
+    %{
+      acc_by_account_block: Rollups.account_block_totals(cohort_id, block_ids, from_day, nil),
+      active_by_day: Rollups.active_students_by_day(cohort_id, block_ids, from_day, nil),
+      hour_matrix: Rollups.hour_matrix(cohort_id, block_ids, from_day, nil)
+    }
+  end
+
   # Past days from rollups + today from raw events. Today is never read
   # from rollups, so the two never overlap.
-  defp hybrid_activity(cohort_id, blocks, from_day) do
+  defp live_activity(cohort_id, blocks, from_day) do
     block_ids = Enum.map(blocks, & &1.id)
     today = TimeZones.today()
 

@@ -85,3 +85,7 @@ config :athena, :start_background_listeners, false
 
 # Dashboards must reflect events recorded a moment earlier in the same test.
 config :athena, Athena.Engagement, dashboard_cache_ttl_ms: 0
+
+# Live refreshes apply immediately in tests instead of being debounced.
+config :athena, AthenaWeb.LearnLive.Player, refresh_debounce_ms: 0
+config :athena, Athena.Learning.LeaderboardCache, ttl_ms: 0

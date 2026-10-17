@@ -25,17 +25,28 @@ defmodule Athena.Engagement.Rollups do
   ## Reading
 
   Any window of days is a plain `SUM ... GROUP BY` over the rows
-  (`account_block_totals/4`, `active_students_by_day/4`, `hour_matrix/4`).
-  Callers combine past days from here with today's raw events (see
-  `Athena.Engagement.Metrics`), and fall back to raw events entirely while
-  `ready?/0` is false (rollups never built, or the worker is far behind).
+  (`account_block_totals/4`, `active_students_by_day/4`, `hour_matrix/4`,
+  `weekly_block_totals/2`). Course-wide dashboards read only these, today
+  included; the live per-section view adds today's raw events (see
+  `Athena.Engagement.Metrics`). Raw events are read instead only until the
+  rollups are first built (`built?/0`). `ready?/0` additionally says
+  whether the worker is caught up.
   """
 
   import Ecto.Query
 
   alias Athena.{Repo, TimeZones}
   alias Athena.Content.Block
-  alias Athena.Engagement.{Accumulator, DashboardCache, Event, Rollup, RollupCursor}
+
+  alias Athena.Engagement.{
+    Accumulator,
+    DashboardCache,
+    Event,
+    Events,
+    Purges,
+    Rollup,
+    RollupCursor
+  }
 
   @cursor "engagement_rollups"
   @default_batch_size 10_000
@@ -65,6 +76,25 @@ defmodule Athena.Engagement.Rollups do
     end
   end
 
+  @doc "Insertion time up to which every event has been folded in, or `nil` before the first run."
+  @spec cursor() :: DateTime.t() | nil
+  def cursor do
+    case Repo.get(RollupCursor, @cursor) do
+      nil -> nil
+      cursor -> cursor.last_inserted_at
+    end
+  end
+
+  @doc """
+  Whether the rollups have ever been built (the worker has run at least
+  once). Once they have, dashboards read them even while the worker is
+  behind - slightly stale numbers instead of a scan over raw events.
+  """
+  @spec built?() :: boolean()
+  def built? do
+    Repo.exists?(from(c in RollupCursor, where: c.name == @cursor))
+  end
+
   @doc """
   Folds every event inserted since the last run into the rollups, in
   batches. Returns how many new events (past the previous cursor) were
@@ -87,15 +117,23 @@ defmodule Athena.Engagement.Rollups do
   Drops every rollup and the cursor, so the next `process_new_events/1`
   rebuilds everything from raw events - needed after changing a threshold
   that is baked into the stored counters (`panic_debug_gap_seconds`).
-  """
-  @spec reset() :: :ok
-  def reset do
-    Repo.transaction(fn ->
-      Repo.delete_all(Rollup)
-      Repo.delete_all(RollupCursor)
-    end)
 
-    DashboardCache.clear()
+  Refused once raw events have been purged (`Athena.Engagement.Purges`):
+  the rollups are then the only record of those events and can't be
+  rebuilt.
+  """
+  @spec reset() :: :ok | {:error, :raw_events_purged}
+  def reset do
+    if Purges.any?() do
+      {:error, :raw_events_purged}
+    else
+      Repo.transaction(fn ->
+        Repo.delete_all(Rollup)
+        Repo.delete_all(RollupCursor)
+      end)
+
+      DashboardCache.clear()
+    end
   end
 
   defp process_batch(limit) do
@@ -139,10 +177,25 @@ defmodule Athena.Engagement.Rollups do
       end
 
     if events != [] do
-      Repo.transaction(fn ->
-        events |> dirty_buckets() |> Enum.each(&recompute/1)
-        save_cursor(upper)
-      end)
+      buckets = dirty_buckets(events)
+
+      positions_by_section =
+        buckets |> Enum.map(fn {{_cohort, section_id, _day}, _} -> section_id end) |> positions()
+
+      # A batch can recompute many day buckets; the default 15 s
+      # transaction timeout is too tight for a busy day.
+      Repo.transaction(
+        fn ->
+          lock()
+
+          buckets
+          |> drop_purged()
+          |> Enum.each(&recompute(&1, positions_by_section))
+
+          save_cursor(upper)
+        end,
+        timeout: :timer.minutes(5)
+      )
     end
 
     Enum.count(events, &(is_nil(cursor_at) or DateTime.compare(&1.inserted_at, cursor_at) == :gt))
@@ -180,14 +233,65 @@ defmodule Athena.Engagement.Rollups do
     |> Map.new()
   end
 
-  defp recompute({{cohort_id, section_id, day}, account_ids}) do
-    positions =
-      from(b in Block,
-        where: b.section_id == ^section_id,
-        select: {b.id, {b.section_id, b.order}}
-      )
-      |> Repo.all()
-      |> Map.new()
+  @lock_key 7_301_022
+
+  @doc """
+  Takes the rollup lock for the current transaction: held by every batch
+  while it recomputes, and by `Athena.Engagement.Purges` while it marks a
+  purge as started.
+  """
+  @spec lock() :: :ok
+  def lock do
+    Repo.query!("SELECT pg_advisory_xact_lock($1)", [@lock_key])
+    :ok
+  end
+
+  # A purged account's (or cohort's) days up to the purge are never
+  # recomputed: their raw events are gone, the stored rollups are all that
+  # is left (see `Athena.Engagement.Purges`).
+  defp drop_purged([]), do: []
+
+  defp drop_purged(buckets) do
+    cohort_ids = buckets |> Enum.map(fn {{cohort_id, _, _}, _} -> cohort_id end) |> Enum.uniq()
+    account_ids = buckets |> Enum.flat_map(&elem(&1, 1)) |> Enum.uniq()
+    protected = Purges.protected_days(cohort_ids, account_ids)
+
+    if protected == %{},
+      do: buckets,
+      else: Enum.flat_map(buckets, &allowed_bucket(&1, protected))
+  end
+
+  # The bucket with only the accounts it may still recompute, or nothing.
+  defp allowed_bucket({{cohort_id, _section_id, day} = key, account_ids}, protected) do
+    allowed =
+      if protected?(protected, {:cohort, cohort_id}, day),
+        do: [],
+        else: Enum.reject(account_ids, &protected?(protected, {:account, &1}, day))
+
+    if allowed == [], do: [], else: [{key, allowed}]
+  end
+
+  defp protected?(protected, key, day) do
+    case Map.get(protected, key) do
+      nil -> false
+      last_day -> Date.compare(day, last_day) != :gt
+    end
+  end
+
+  # `%{section_id => %{block_id => {section_id, order}}}` for every section
+  # of the batch, in one query.
+  defp positions(section_ids) do
+    from(b in Block,
+      where: b.section_id in ^Enum.uniq(section_ids),
+      select: {b.id, {b.section_id, b.order}}
+    )
+    |> Repo.all()
+    |> Enum.group_by(fn {_block_id, {section_id, _order}} -> section_id end)
+    |> Map.new(fn {section_id, entries} -> {section_id, Map.new(entries)} end)
+  end
+
+  defp recompute({{cohort_id, section_id, day}, account_ids}, positions_by_section) do
+    positions = Map.get(positions_by_section, section_id, %{})
 
     block_ids = Map.keys(positions)
     from_at = TimeZones.start_of_day(day)
@@ -199,6 +303,7 @@ defmodule Athena.Engagement.Rollups do
           e.cohort_id == ^cohort_id and e.account_id in ^account_ids and e.block_id in ^block_ids and
             e.occurred_at >= ^from_at and e.occurred_at < ^until
       )
+      |> Events.prune_before(from_at)
       |> Repo.all()
       |> Accumulator.build(positions)
 
@@ -298,6 +403,26 @@ defmodule Athena.Engagement.Rollups do
         {count, hour}, acc2 -> Map.update(acc2, {dow, hour}, count, &(&1 + count))
       end)
     end)
+  end
+
+  @doc """
+  One block's totals per week (weeks start on Monday) across the cohort:
+  `[%{week: date, dwell_sum: float, dwell_n: int, nudge_shown: int}]`,
+  oldest first.
+  """
+  @spec weekly_block_totals(binary(), binary()) :: [map()]
+  def weekly_block_totals(cohort_id, block_id) do
+    cohort_id
+    |> window([block_id], nil, nil)
+    |> group_by([r], fragment("date_trunc('week', ?)::date", r.day))
+    |> order_by([r], fragment("date_trunc('week', ?)::date", r.day))
+    |> select([r], %{
+      week: fragment("date_trunc('week', ?)::date", r.day),
+      dwell_sum: coalesce(sum(r.dwell_sum), 0.0),
+      dwell_n: coalesce(sum(r.dwell_n), 0),
+      nudge_shown: coalesce(sum(r.nudge_shown), 0)
+    })
+    |> Repo.all()
   end
 
   defp window(cohort_id, block_ids, from_day, to_day) do

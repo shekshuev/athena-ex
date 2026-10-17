@@ -32,13 +32,15 @@ defmodule Athena.Engagement do
     BlockStats,
     Metrics,
     Proctoring,
-    ProctoringMonitor
+    ProctoringMonitor,
+    Purges
   }
 
   @doc """
   Records one batch of raw events reported by a single Player session, then
-  broadcasts each event to its scoped PubSub topics so that any live
-  `BlockStats` process and any open teacher "live replay" view pick it up
+  broadcasts them on `"engagement:<cohort_id>:<block_id>"` - one message per
+  block in the batch, carrying that block's events - so that any live
+  `BlockStats` process and any open teacher dashboard pick them up
   incrementally.
   """
   @spec record_events(binary(), binary() | nil, binary(), [map()]) ::
@@ -46,7 +48,7 @@ defmodule Athena.Engagement do
   def record_events(account_id, cohort_id, session_id, events) do
     case Events.record_events(account_id, cohort_id, session_id, events) do
       {:ok, {count, rows}} ->
-        Enum.each(rows, &notify_engagement_subscribers/1)
+        notify_engagement_subscribers(rows)
         {:ok, count}
 
       {:error, :empty} = error ->
@@ -54,8 +56,14 @@ defmodule Athena.Engagement do
     end
   end
 
-  defdelegate get_session_timeline(account_id, session_id), to: Events
   defdelegate list_events_for_scope(block_ids, cohort_id \\ nil), to: Events
+
+  @doc """
+  Schedules the deletion of a student's (`:account`) or a cohort's
+  (`:cohort`) raw engagement events, keeping the aggregates computed from
+  them. Requires `engagement.delete`. See `Athena.Engagement.Purges`.
+  """
+  defdelegate purge_raw_events(user, scope, scope_id), to: Purges, as: :request
   defdelegate normalize_event(raw_event, section_id), to: Events
 
   @doc "The event types the proctoring monitor actually accumulates - used to decide whether a server-originated event is even worth forwarding."
@@ -201,28 +209,29 @@ defmodule Athena.Engagement do
   defp engagement_config, do: Application.get_env(:athena, Athena.Engagement, [])
 
   @doc false
-  defp notify_engagement_subscribers(row) do
-    event = %{
-      block_id: row.block_id,
-      section_id: row.section_id,
-      account_id: row.account_id,
-      cohort_id: row.cohort_id,
-      session_id: row.session_id,
-      event_type: row.event_type,
-      payload: row.payload,
-      occurred_at: row.occurred_at
-    }
+  defp notify_engagement_subscribers(rows) do
+    rows
+    |> Enum.group_by(&{&1.cohort_id, &1.block_id})
+    |> Enum.each(fn {{cohort_id, block_id}, block_rows} ->
+      events =
+        Enum.map(block_rows, fn row ->
+          %{
+            block_id: row.block_id,
+            section_id: row.section_id,
+            account_id: row.account_id,
+            cohort_id: row.cohort_id,
+            session_id: row.session_id,
+            event_type: row.event_type,
+            payload: row.payload,
+            occurred_at: row.occurred_at
+          }
+        end)
 
-    Phoenix.PubSub.broadcast(
-      Athena.PubSub,
-      "engagement:#{row.cohort_id}:#{row.block_id}",
-      {:engagement_event, event}
-    )
-
-    Phoenix.PubSub.broadcast(
-      Athena.PubSub,
-      "engagement_session:#{row.account_id}:#{row.session_id}",
-      {:engagement_event, event}
-    )
+      Phoenix.PubSub.broadcast(
+        Athena.PubSub,
+        "engagement:#{cohort_id}:#{block_id}",
+        {:engagement_events, events}
+      )
+    end)
   end
 end

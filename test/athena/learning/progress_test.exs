@@ -582,6 +582,43 @@ defmodule Athena.Learning.ProgressTest do
       result = Progress.course_progress_batch(user.id, [enrollment])
 
       assert result[enrollment.id] == %{completed: 0, total: 2, percent: 0}
+
+      # ...and stores it, so the next visit is served from the cache.
+      row = Repo.get_by(CourseProgressCache, account_id: user.id, course_id: course.id)
+      assert row.completed_count == 0
+    end
+
+    test "course_progress_batch/2 counts blocks added after the cache row was written",
+         %{user: user} do
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section)
+      Progress.mark_completed(user.id, block.id)
+
+      insert(:block, section: section)
+      insert(:block, section: section)
+
+      enrollment = insert(:enrollment, account_id: user.id, course_id: course.id)
+
+      assert Progress.course_progress_batch(user.id, [enrollment])[enrollment.id] ==
+               %{completed: 1, total: 3, percent: 33}
+    end
+
+    test "revoking a completion takes it back out of the cache", %{user: user} do
+      course = insert(:course)
+      section = insert(:section, course: course)
+      block = insert(:block, section: section)
+      insert(:block, section: section)
+      Progress.mark_completed(user.id, block.id)
+
+      Progress.revoke_completed(Repo, user.id, block.id)
+
+      row = Repo.get_by(CourseProgressCache, account_id: user.id, course_id: course.id)
+      assert row.completed_count == 0
+
+      # Revoking again (nothing left to revoke) doesn't go below zero.
+      Progress.revoke_completed(Repo, user.id, block.id)
+      assert Repo.reload!(row).completed_count == 0
     end
   end
 

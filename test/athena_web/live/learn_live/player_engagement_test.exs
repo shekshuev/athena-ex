@@ -694,6 +694,11 @@ defmodule AthenaWeb.LearnLive.PlayerEngagementTest do
       render_change(lv, "save_draft", %{"block_id" => block.id, "answer" => "first guess"})
       render_change(lv, "save_draft", %{"block_id" => block.id, "answer" => "second guess"})
 
+      # Revisions are held on the socket and written with the client's next
+      # batch, not one INSERT per autosave.
+      refute Enum.any?(Repo.all(Event), &(&1.event_type == :answer_changed))
+      render_hook(lv, "engagement_batch", %{"events" => []})
+
       stored = Repo.all(Event) |> Enum.filter(&(&1.block_id == block.id))
       types = stored |> Enum.map(& &1.event_type) |> Enum.sort()
 

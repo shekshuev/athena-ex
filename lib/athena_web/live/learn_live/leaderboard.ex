@@ -84,7 +84,7 @@ defmodule AthenaWeb.LearnLive.Leaderboard do
       </div>
 
       <div>
-        <table class="w-full text-lg">
+        <table id="leaderboard-table" class="w-full text-lg">
           <thead class="text-xs font-bold uppercase tracking-widest text-base-content/50 border-b border-base-200 text-left">
             <tr>
               <th class="py-4 px-2 w-16 text-center">#</th>

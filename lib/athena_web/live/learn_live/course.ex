@@ -10,6 +10,7 @@ defmodule AthenaWeb.LearnLive.Course do
 
   alias Athena.Content
   alias Athena.Learning
+  alias AthenaWeb.LearnLive.Player
 
   @doc """
   Initializes the LiveView, verifying user access, subscribing to real-time content updates,
@@ -39,12 +40,12 @@ defmodule AthenaWeb.LearnLive.Course do
       end
 
       overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
-      full_tree = Content.get_course_tree(course_id, user, overrides)
-      linear_sections = Content.list_linear_lessons(course_id, user, overrides)
-      block_counts = Content.count_blocks_by_course(course_id)
+      outline = Content.course_outline(course_id, user, overrides)
+      full_tree = outline.tree
+      block_counts = outline.block_counts
 
       accessible_ids =
-        Learning.accessible_section_ids(user, course_id, linear_sections, overrides)
+        Learning.accessible_section_ids(user, course_id, outline.linear_lessons, overrides)
 
       waterline_id = List.last(accessible_ids)
 
@@ -57,6 +58,7 @@ defmodule AthenaWeb.LearnLive.Course do
        |> assign(:accessible_ids, accessible_ids)
        |> assign(:waterline_id, waterline_id)
        |> assign(:block_counts, block_counts)
+       |> assign(:refresh_pending, false)
        |> assign(:viewing_parent_id, params["parent_id"])}
     else
       _ ->
@@ -90,28 +92,50 @@ defmodule AthenaWeb.LearnLive.Course do
   @spec handle_info(atom() | tuple(), Phoenix.LiveView.Socket.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
+  # Every builder autosave broadcasts `:refresh_content`; a teacher typing
+  # would otherwise rebuild this page for every open student several times
+  # a second, so bursts are folded into one refresh per debounce window.
   def handle_info(:refresh_content, socket) do
+    case {Player.refresh_debounce_ms(), socket.assigns.refresh_pending} do
+      {0, _pending} ->
+        {:noreply, refresh(socket)}
+
+      {_delay, true} ->
+        {:noreply, socket}
+
+      {delay, false} ->
+        Process.send_after(self(), :do_refresh, delay)
+        {:noreply, assign(socket, :refresh_pending, true)}
+    end
+  end
+
+  def handle_info(:do_refresh, socket),
+    do: {:noreply, socket |> assign(:refresh_pending, false) |> refresh()}
+
+  defp refresh(socket) do
     user = socket.assigns.current_user
     course_id = socket.assigns.course.id
 
     overrides = Learning.get_student_overrides(user.id, course_id, socket.assigns.cohort_id)
-    full_tree = Content.get_course_tree(course_id, user, overrides)
-    linear_sections = Content.list_linear_lessons(course_id, user, overrides)
-    block_counts = Content.count_blocks_by_course(course_id)
-    accessible_ids = Learning.accessible_section_ids(user, course_id, linear_sections, overrides)
+    outline = Content.course_outline(course_id, user, overrides)
+    full_tree = outline.tree
+    block_counts = outline.block_counts
+
+    accessible_ids =
+      Learning.accessible_section_ids(user, course_id, outline.linear_lessons, overrides)
+
     waterline_id = List.last(accessible_ids)
 
     {current_nodes, breadcrumbs} =
       get_nodes_and_breadcrumbs(full_tree, socket.assigns.viewing_parent_id)
 
-    {:noreply,
-     socket
-     |> assign(:full_tree, full_tree)
-     |> assign(:accessible_ids, accessible_ids)
-     |> assign(:waterline_id, waterline_id)
-     |> assign(:current_nodes, current_nodes)
-     |> assign(:block_counts, block_counts)
-     |> assign(:breadcrumbs, breadcrumbs)}
+    socket
+    |> assign(:full_tree, full_tree)
+    |> assign(:accessible_ids, accessible_ids)
+    |> assign(:waterline_id, waterline_id)
+    |> assign(:current_nodes, current_nodes)
+    |> assign(:block_counts, block_counts)
+    |> assign(:breadcrumbs, breadcrumbs)
   end
 
   @doc """

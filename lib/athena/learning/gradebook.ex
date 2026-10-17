@@ -156,12 +156,14 @@ defmodule Athena.Learning.Gradebook do
   defp catalog(course_id) do
     sections = course_id |> Content.get_course_tree(:all) |> flatten_sections()
 
-    blocks_by_section =
+    gradable =
       sections
       |> Enum.map(& &1.id)
-      |> Content.list_blocks_by_section_ids()
+      |> Content.list_block_headers_by_section_ids()
       |> Enum.filter(&Block.gradable?/1)
-      |> Enum.group_by(& &1.section_id)
+
+    bodies = block_bodies(Enum.map(gradable, & &1.id))
+    blocks_by_section = Enum.group_by(gradable, & &1.section_id)
 
     sections
     |> Enum.map(fn section ->
@@ -170,7 +172,9 @@ defmodule Athena.Learning.Gradebook do
         |> Map.get(section.id, [])
         |> Enum.sort_by(& &1.order)
         |> Enum.with_index(1)
-        |> Enum.map(fn {block, number} -> column(block, section, number) end)
+        |> Enum.map(fn {block, number} ->
+          column(block, section, number, Map.get(bodies, block.id))
+        end)
 
       %{section: section, blocks: columns}
     end)
@@ -181,20 +185,33 @@ defmodule Athena.Learning.Gradebook do
     Enum.flat_map(sections, fn section -> [section | flatten_sections(section.children)] end)
   end
 
-  defp column(block, section, number) do
+  # Only the `body` of each gradable block, for the column preview - not the
+  # rest of its content (options, test cases, embedded media).
+  defp block_bodies([]), do: %{}
+
+  defp block_bodies(block_ids) do
+    from(b in Block,
+      where: b.id in ^block_ids,
+      select: {b.id, fragment("?->'body'", b.content)}
+    )
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  defp column(block, section, number, body) do
     %{
       block: block,
       section: section,
       number: number,
-      preview: block_preview(block)
+      preview: block_preview(body)
     }
   end
 
-  defp block_preview(%Block{content: %{"body" => body}}) when is_map(body) do
+  defp block_preview(body) when is_map(body) do
     body |> Announcements.preview_text() |> String.slice(0, 120)
   end
 
-  defp block_preview(_block), do: ""
+  defp block_preview(_body), do: ""
 
   defp select_columns(catalog, filters) do
     block_ids = Map.get(filters, :block_ids)

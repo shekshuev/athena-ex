@@ -20,7 +20,7 @@ defmodule Athena.Gamification.Leagues do
   """
   import Ecto.Query
   alias Athena.Repo
-  alias Athena.Gamification.{Facts, LeagueResult, XpEvent}
+  alias Athena.Gamification.{LeagueResult, XpEvent}
   alias Athena.Learning.CohortMembership
   alias Athena.Identity.{Account, Profile}
 
@@ -33,11 +33,11 @@ defmodule Athena.Gamification.Leagues do
   """
   @spec current_week_standings(String.t()) :: [map()]
   def current_week_standings(cohort_id) do
+    week_start_dt = Athena.TimeZones.start_of_day(Athena.TimeZones.this_week_start())
+
     cohort_id
     |> member_ids()
-    |> Enum.map(fn account_id ->
-      %{account_id: account_id, weekly_xp: Facts.value("weekly_xp", %{}, account_id)}
-    end)
+    |> with_weekly_xp(week_start_dt, nil)
     |> rank_and_tier()
   end
 
@@ -106,11 +106,12 @@ defmodule Athena.Gamification.Leagues do
   end
 
   defp snapshot_cohort_week(cohort_id, week_start) do
+    week_start_dt = Athena.TimeZones.start_of_day(week_start)
+    week_end_dt = Athena.TimeZones.start_of_day(Date.add(week_start, 7))
+
     cohort_id
     |> member_ids()
-    |> Enum.map(fn account_id ->
-      %{account_id: account_id, weekly_xp: weekly_xp_for(account_id, week_start)}
-    end)
+    |> with_weekly_xp(week_start_dt, week_end_dt)
     |> rank_and_tier()
     |> Enum.each(&upsert_result(cohort_id, week_start, &1))
   end
@@ -138,18 +139,22 @@ defmodule Athena.Gamification.Leagues do
     |> Repo.all()
   end
 
-  defp weekly_xp_for(account_id, week_start) do
-    week_start_dt = Athena.TimeZones.start_of_day(week_start)
-    week_end_dt = Athena.TimeZones.start_of_day(Date.add(week_start, 7))
+  # XP earned by each member in [from, to) (`to` nil = up to now), in one
+  # grouped query rather than one sum per member.
+  defp with_weekly_xp([], _from, _to), do: []
 
-    XpEvent
-    |> where([e], e.account_id == ^account_id)
-    |> where([e], e.inserted_at >= ^week_start_dt and e.inserted_at < ^week_end_dt)
-    |> Repo.aggregate(:sum, :amount)
-    |> case do
-      nil -> 0
-      sum -> sum
-    end
+  defp with_weekly_xp(account_ids, from_dt, to_dt) do
+    query =
+      from(e in XpEvent,
+        where: e.account_id in ^account_ids and e.inserted_at >= ^from_dt,
+        group_by: e.account_id,
+        select: {e.account_id, sum(e.amount)}
+      )
+
+    query = if to_dt, do: where(query, [e], e.inserted_at < ^to_dt), else: query
+    sums = query |> Repo.all() |> Map.new()
+
+    Enum.map(account_ids, &%{account_id: &1, weekly_xp: Map.get(sums, &1, 0)})
   end
 
   defp rank_and_tier(entries) do

@@ -933,6 +933,47 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert updated_block.content["answer_type"] == "rich_text"
     end
 
+    test "an open question with a rich text answer renders every element id once", %{
+      conn: conn,
+      course: course,
+      section: section,
+      admin: admin
+    } do
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "quiz_question",
+          "section_id" => section.id,
+          "content" => %{
+            "question_type" => "open",
+            "answer_type" => "rich_text",
+            "body" => %{}
+          }
+        })
+
+      # LiveViewTest also reports duplicate ids, but from a separate process
+      # that the test may finish before; checking the markup is deterministic.
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder", on_error: :warn)
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      html =
+        lv
+        |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']")
+        |> render_click()
+
+      duplicates =
+        html
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("[id]")
+        |> LazyHTML.attribute("id")
+        |> Enum.frequencies()
+        |> Enum.filter(fn {_id, count} -> count > 1 end)
+
+      assert duplicates == []
+    end
+
     test "updates quiz exam metadata and parses tags correctly", %{
       conn: conn,
       course: course,
