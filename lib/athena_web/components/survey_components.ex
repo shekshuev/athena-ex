@@ -1699,12 +1699,12 @@ defmodule AthenaWeb.SurveyComponents do
 
   @doc """
   Plain text of a TipTap/ProseMirror document - used wherever a prompt has to
-  appear as a label, an axis title or a CSV cell rather than as rich content.
-  """
-  def prompt_text(%{"content" => content}) when is_list(content) do
-    content |> Enum.map_join(" ", &prompt_text/1) |> String.trim()
-  end
+  appear as a label or an axis title rather than as rich content.
 
-  def prompt_text(%{"text" => text}) when is_binary(text), do: text
-  def prompt_text(_doc), do: ""
+  Delegates to `Athena.Surveys.Prompt`, which the export also uses: a CSV
+  header is a question's text, and two implementations of "what does this
+  question say" would eventually disagree about which one a reader is looking
+  at.
+  """
+  defdelegate prompt_text(body), to: Athena.Surveys.Prompt, as: :to_text
 end

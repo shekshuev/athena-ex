@@ -32,7 +32,16 @@ defmodule Athena.Surveys do
   and a separate ledger. See `Athena.Surveys.SurveyResponse`.
   """
 
-  alias Athena.Surveys.{AnswerParams, Branches, Flow, Questions, Responses, Results, Surveys}
+  alias Athena.Surveys.{
+    AnswerParams,
+    Branches,
+    Export,
+    Flow,
+    Questions,
+    Responses,
+    Results,
+    Surveys
+  }
 
   @doc """
   Loads a survey's questions and rules into an `Athena.Surveys.Flow` - the
@@ -123,6 +132,10 @@ defmodule Athena.Surveys do
   defdelegate verbatims(question, opts \\ []), to: Results
   defdelegate respondent_labels(responses), to: Results
   defdelegate list_responses_for_labels(survey_id), to: Results
+
+  # Export
+  defdelegate export_wide(survey_id, opts \\ []), to: Export, as: :wide
+  defdelegate export_long(survey_id, opts \\ []), to: Export, as: :long
 
   # Responses
   defdelegate cast_answer_params(type, params), to: AnswerParams, as: :cast

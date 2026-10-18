@@ -45,6 +45,8 @@ defmodule Athena do
       Surveys.QuestionTypes,
       Surveys.Flow,
       Surveys.AnswerParams,
+      Surveys.Export,
+      Surveys.Prompt,
       Surveys.Results,
       Surveys.Stats,
       Surveys.Stats.Distributions,

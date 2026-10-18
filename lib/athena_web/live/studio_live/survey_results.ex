@@ -154,6 +154,37 @@ defmodule AthenaWeb.StudioLive.SurveyResults do
                 <.icon name="hero-arrow-path" class="size-4" />
                 {gettext("Refresh")}
               </.button>
+              <div
+                :if={Identity.can?(@current_user, "surveys.results.export")}
+                class="dropdown dropdown-end"
+              >
+                <div tabindex="0" role="button" class="btn btn-outline btn-sm" id="export-menu">
+                  <.icon name="hero-arrow-down-tray" class="size-4" />
+                  {gettext("Download")}
+                </div>
+                <ul class="dropdown-content menu z-20 w-64 rounded-lg border border-base-300 bg-base-100 p-2 shadow-xl">
+                  <li>
+                    <a href={export_path(@survey, @cohort_id, :wide)} id="export-wide">
+                      <div>
+                        <p class="font-bold">{gettext("Spreadsheet")}</p>
+                        <p class="text-xs text-base-content/60">
+                          {gettext("One row per person, one column per question")}
+                        </p>
+                      </div>
+                    </a>
+                  </li>
+                  <li>
+                    <a href={export_path(@survey, @cohort_id, :long)} id="export-long">
+                      <div>
+                        <p class="font-bold">{gettext("For SPSS or R")}</p>
+                        <p class="text-xs text-base-content/60">
+                          {gettext("One row per answer, with codes and labels")}
+                        </p>
+                      </div>
+                    </a>
+                  </li>
+                </ul>
+              </div>
               <.button size="sm" navigate={~p"/studio/surveys/#{@survey.id}/builder"}>
                 {gettext("Open builder")}
               </.button>
@@ -1122,6 +1153,17 @@ defmodule AthenaWeb.StudioLive.SurveyResults do
     |> Learning.get_cohorts_map()
     |> Enum.map(fn {id, cohort} -> {cohort.name, id} end)
     |> Enum.sort()
+  end
+
+  # The download follows whatever cohort filter is on screen, so what someone
+  # gets in the file is what they were looking at.
+  defp export_path(survey, cohort_id, shape) do
+    query = if cohort_id, do: "?" <> URI.encode_query(%{"cohort_id" => cohort_id}), else: ""
+
+    case shape do
+      :wide -> ~p"/studio/surveys/#{survey.id}/export.csv" <> query
+      :long -> ~p"/studio/surveys/#{survey.id}/export.long.csv" <> query
+    end
   end
 
   defp results_path(socket, overrides) do
