@@ -45,6 +45,8 @@ defmodule Athena do
       Surveys.QuestionTypes,
       Surveys.Flow,
       Surveys.AnswerParams,
+      Surveys.Stats,
+      Surveys.Stats.Distributions,
       Learning,
       Learning.Cohort,
       Learning.CohortMembership,
