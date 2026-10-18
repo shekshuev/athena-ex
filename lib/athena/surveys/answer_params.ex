@@ -119,7 +119,17 @@ defmodule Athena.Surveys.AnswerParams do
     end
   end
 
-  defp parse_number(string) do
+  @doc """
+  Parses a number out of a form string, or `:error`.
+
+  Public because the logic editor needs exactly the same parsing for a rule's
+  numeric operand: a rule comparing against the string "4" would never match
+  an answer holding the number 4.
+  """
+  @spec parse_number(term()) :: {:ok, number()} | :error
+  def parse_number(number) when is_number(number), do: {:ok, number}
+
+  def parse_number(string) when is_binary(string) do
     string = String.trim(string)
 
     case Integer.parse(string) do
@@ -133,6 +143,8 @@ defmodule Athena.Surveys.AnswerParams do
         end
     end
   end
+
+  def parse_number(_other), do: :error
 
   defp blank?(value), do: is_nil(value) or value == ""
 end

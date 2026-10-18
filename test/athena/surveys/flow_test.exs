@@ -647,6 +647,27 @@ defmodule Athena.Surveys.FlowTest do
       assert Flow.validate_graph(flow(questions, [with_row])) == []
     end
 
+    test "catches a clause whose operator has no value to compare against" do
+      [q0, _q1] = questions = Enum.map(0..1, &question(&1))
+
+      rule =
+        branch(q0, action: :end_survey, clauses: [clause(q0, :gte, %{})])
+
+      assert [%{issue: :clause_without_operand}] = Flow.validate_graph(flow(questions, [rule]))
+
+      # And such a clause never matches, so the rule is inert rather than
+      # dangerous while the author finishes editing it.
+      refute Flow.next_question(flow(questions, [rule]), q0, answers([{q0, 5}])) == :end
+    end
+
+    test "a presence operator needs no value and is not reported" do
+      [q0, _q1] = questions = Enum.map(0..1, &question(&1))
+
+      rule = branch(q0, action: :end_survey, clauses: [clause(q0, :answered, %{})])
+
+      assert Flow.validate_graph(flow(questions, [rule])) == []
+    end
+
     test "catches rules on a survey that shows everything at once" do
       [q0, _q1] = questions = Enum.map(0..1, &question(&1))
       rule = branch(q0, action: :end_survey)

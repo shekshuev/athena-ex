@@ -160,20 +160,46 @@ defmodule Athena.Surveys.BranchesTest do
       end
     end
 
-    test "every other operator requires an operand" do
+    test "a clause still missing its operand saves, and is reported rather than refused" do
       {survey, [q1 | _]} = survey_with_questions(2)
 
       operators = Athena.Surveys.BranchClause.operators() -- [:answered, :not_answered]
 
       for op <- operators do
-        assert {:error, changeset} =
+        # An author who has just switched the operator has not typed the new
+        # value yet. Refusing the save would mean the operator could never be
+        # changed at all, so the clause saves incomplete and
+        # `Flow.validate_graph/1` reports it.
+        assert {:ok, branch} =
                  Surveys.add_branch(survey, q1, %{
                    "action" => "end_survey",
                    "condition" => condition(q1.id, op, %{})
                  })
 
-        refute changeset.valid?, "#{op} accepted an empty value"
+        refute Athena.Surveys.BranchClause.complete?(hd(branch.condition.clauses)),
+               "#{op} was treated as complete with no operand"
+
+        issues = survey.id |> Surveys.load_flow() |> Surveys.validate_graph()
+
+        assert Enum.any?(issues, &(&1.issue == :clause_without_operand)),
+               "#{op} with no operand was not reported"
+
+        {:ok, _} = Surveys.delete_branch(branch)
       end
+    end
+
+    test "an operator that takes no operand has any leftover value cleared" do
+      {survey, [q1 | _]} = survey_with_questions(2)
+
+      {:ok, branch} =
+        Surveys.add_branch(survey, q1, %{
+          "action" => "end_survey",
+          "condition" => condition(q1.id, :answered, %{"number" => 3})
+        })
+
+      # A leftover operand must not be readable later as if it meant something.
+      assert hd(branch.condition.clauses).value == %{}
+      assert Athena.Surveys.BranchClause.complete?(hd(branch.condition.clauses))
     end
 
     test "an unknown operator is refused" do

@@ -17,7 +17,12 @@ defmodule Athena.Surveys.BranchCondition do
   @primary_key false
   embedded_schema do
     field :logic, Ecto.Enum, values: [:and, :or], default: :and
-    embeds_many :clauses, BranchClause
+    # `:delete` because the clause list is always written whole: `BranchClause`
+    # has no primary key, so Ecto cannot match a posted clause to a stored one
+    # and the default `:raise` would reject every edit. The editor addresses a
+    # clause by its `id` field and rebuilds the list, which is why the whole
+    # list arrives on every change.
+    embeds_many :clauses, BranchClause, on_replace: :delete
   end
 
   @type t :: %__MODULE__{logic: :and | :or, clauses: [BranchClause.t()]}

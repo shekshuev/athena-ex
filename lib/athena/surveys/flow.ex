@@ -59,7 +59,7 @@ defmodule Athena.Surveys.Flow do
   cannot be evaluated, is false, and is reported by `validate_graph/1`.
   """
 
-  alias Athena.Surveys.{Survey, SurveyAnswer, SurveyBranch, SurveyQuestion}
+  alias Athena.Surveys.{BranchClause, Survey, SurveyAnswer, SurveyBranch, SurveyQuestion}
 
   @enforce_keys [:survey, :questions, :branches, :by_id, :by_position]
   defstruct [:survey, :questions, :branches, :by_id, :by_position]
@@ -480,6 +480,8 @@ defmodule Athena.Surveys.Flow do
     * `:dangling_clause` - a clause testing a question not in this survey
     * `:matrix_clause_without_row` - a clause on a matrix question that does
       not say which row it means
+    * `:clause_without_operand` - a clause whose operator needs a value that
+      has not been filled in, so it can never match
     * `:cycle` - a loop through the rules
 
   An empty list means the logic is sound. Nothing here blocks saving: an
@@ -597,6 +599,9 @@ defmodule Athena.Surveys.Flow do
 
             tested.type == :multi_scale and not has_row?(clause) ->
               [Map.put(base, :issue, :matrix_clause_without_row)]
+
+            not BranchClause.complete?(clause) ->
+              [Map.put(base, :issue, :clause_without_operand)]
 
             true ->
               []

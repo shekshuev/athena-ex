@@ -22,10 +22,16 @@ defmodule AthenaWeb.SurveyComponents do
 
   A per-question form, rather than one form for the page, is what makes
   autosave natural: answering a question saves that question.
+
+  `:ranking` is the one exception: it is a drag-sortable list, not a form, and
+  pushes `survey_rank` with the move SortableJS reports. The caller computes
+  the resulting order from what it already holds - the same arrangement the
+  builder uses for reordering questions.
   """
 
   use AthenaWeb, :html
 
+  alias Athena.Surveys.BranchClause
   alias Athena.Surveys.QuestionTypes
   alias Athena.Surveys.QuestionTypes.Nps
 
@@ -1029,6 +1035,570 @@ defmodule AthenaWeb.SurveyComponents do
       />
     </form>
     """
+  end
+
+  # -- logic ----------------------------------------------------------------
+
+  @doc """
+  The branching rules attached to one question: a reorderable list of
+  "if ... then ..." rows.
+
+  Order is semantics here, not presentation - `Athena.Surveys.Flow` takes the
+  first rule whose condition holds - so the list is drag-sortable and the
+  position is shown.
+
+  Operators and operand inputs are narrowed to what the *tested* question can
+  actually answer (`Athena.Surveys.BranchClause.operators_for/1`). The engine
+  treats a mismatched operand as false, so an editor that offered "greater
+  than" on a free-text question would only help an author build a rule that
+  can never match.
+  """
+  attr :question, :map, required: true
+  attr :questions, :list, required: true
+  attr :rules, :list, required: true
+  attr :target, :any, default: nil
+
+  def logic_editor(assigns) do
+    ~H"""
+    <div class="space-y-3">
+      <ul
+        :if={@rules != []}
+        id={"rules-#{@question.id}"}
+        phx-hook="Sortable"
+        data-event-name="reorder_rules"
+        data-question-id={@question.id}
+        class="space-y-3"
+      >
+        <li
+          :for={{rule, index} <- Enum.with_index(@rules, 1)}
+          id={"rule-#{rule.id}"}
+          data-id={rule.id}
+        >
+          <.rule_row
+            rule={rule}
+            index={index}
+            question={@question}
+            questions={@questions}
+            target={@target}
+          />
+        </li>
+      </ul>
+
+      <p :if={@rules == []} class="text-sm text-base-content/50">
+        {gettext("No rules. Everyone goes on to the next question.")}
+      </p>
+
+      <button
+        type="button"
+        phx-click="add_rule"
+        phx-value-question_id={@question.id}
+        phx-target={@target}
+        id={"add-rule-#{@question.id}"}
+        class="btn btn-ghost btn-sm gap-1.5 text-primary"
+      >
+        <.icon name="hero-plus" class="size-4" />
+        {gettext("Add rule")}
+      </button>
+    </div>
+    """
+  end
+
+  attr :rule, :map, required: true
+  attr :index, :integer, required: true
+  attr :question, :map, required: true
+  attr :questions, :list, required: true
+  attr :target, :any, default: nil
+
+  defp rule_row(assigns) do
+    assigns = assign(assigns, :clauses, assigns.rule.condition.clauses || [])
+
+    ~H"""
+    <div class="rounded-lg border border-base-300 bg-base-200/40 p-4">
+      <div class="mb-3 flex items-center gap-2">
+        <span class="drag-handle cursor-grab text-base-content/30 hover:text-base-content/60">
+          <.icon name="hero-bars-2" class="size-4" />
+        </span>
+        <span class="text-xs font-bold uppercase tracking-wide text-base-content/50">
+          {gettext("Rule %{number}", number: @index)}
+        </span>
+        <span :if={@index == 1} class="text-xs text-base-content/40">
+          {gettext("checked first")}
+        </span>
+        <button
+          type="button"
+          phx-click="delete_rule"
+          phx-value-rule_id={@rule.id}
+          phx-target={@target}
+          id={"delete-rule-#{@rule.id}"}
+          class="btn btn-ghost btn-xs btn-square ml-auto text-base-content/40 hover:text-error"
+          aria-label={gettext("Delete rule")}
+        >
+          <.icon name="hero-x-mark" class="size-4" />
+        </button>
+      </div>
+
+      <div class="space-y-2">
+        <div :for={{clause, position} <- Enum.with_index(@clauses)} class="flex items-start gap-2">
+          <span class="w-10 shrink-0 pt-2 text-xs font-bold uppercase text-base-content/40">
+            <%= if position == 0 do %>
+              {gettext("If")}
+            <% else %>
+              <button
+                type="button"
+                phx-click="toggle_rule_logic"
+                phx-value-rule_id={@rule.id}
+                phx-target={@target}
+                class="link link-hover"
+              >
+                {logic_word(@rule.condition.logic)}
+              </button>
+            <% end %>
+          </span>
+
+          <.clause_form
+            clause={clause}
+            rule={@rule}
+            questions={@questions}
+            question={@question}
+            target={@target}
+          />
+
+          <button
+            :if={length(@clauses) > 1}
+            type="button"
+            phx-click="remove_clause"
+            phx-value-rule_id={@rule.id}
+            phx-value-clause_id={clause.id}
+            phx-target={@target}
+            class="btn btn-ghost btn-xs btn-square mt-1.5 text-base-content/40 hover:text-error"
+            aria-label={gettext("Remove condition")}
+          >
+            <.icon name="hero-minus" class="size-4" />
+          </button>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        phx-click="add_clause"
+        phx-value-rule_id={@rule.id}
+        phx-target={@target}
+        class="btn btn-ghost btn-xs mt-2 gap-1 text-primary"
+      >
+        <.icon name="hero-plus" class="size-3.5" />
+        {gettext("Add condition")}
+      </button>
+
+      <form
+        phx-change="update_rule"
+        phx-target={@target}
+        class="mt-3 flex flex-wrap items-end gap-2 border-t border-base-300/60 pt-3"
+      >
+        <input type="hidden" name="rule_id" value={@rule.id} />
+        <span class="pb-3 text-xs font-bold uppercase text-base-content/40">{gettext("Then")}</span>
+        <.input
+          type="select"
+          name="action"
+          value={to_string(@rule.action)}
+          options={action_options()}
+        />
+        <.input
+          :if={@rule.action == :goto_question}
+          type="select"
+          name="target_question_id"
+          value={@rule.target_question_id}
+          prompt={gettext("Choose a question")}
+          options={forward_question_options(@questions, @question)}
+        />
+        <.input
+          :if={@rule.action == :goto_page}
+          type="select"
+          name="target_page"
+          value={@rule.target_page}
+          prompt={gettext("Choose a page")}
+          options={forward_page_options(@questions, @question)}
+        />
+      </form>
+    </div>
+    """
+  end
+
+  attr :clause, :map, required: true
+  attr :rule, :map, required: true
+  attr :questions, :list, required: true
+  attr :question, :map, required: true
+  attr :target, :any, default: nil
+
+  defp clause_form(assigns) do
+    tested = Enum.find(assigns.questions, &(&1.id == assigns.clause.question_id))
+
+    assigns =
+      assigns
+      |> assign(:tested, tested)
+      |> assign(:measurement, tested && QuestionTypes.measurement(tested.type))
+
+    ~H"""
+    <form phx-change="update_clause" phx-target={@target} class="flex min-w-0 flex-1 flex-wrap gap-2">
+      <input type="hidden" name="rule_id" value={@rule.id} />
+      <input type="hidden" name="clause_id" value={@clause.id} />
+
+      <.input
+        type="select"
+        name="question_id"
+        value={@clause.question_id}
+        prompt={gettext("Choose a question")}
+        options={earlier_question_options(@questions, @question)}
+        class="select select-bordered select-sm min-w-40 flex-1"
+      />
+
+      <.input
+        :if={@tested}
+        type="select"
+        name="op"
+        value={to_string(@clause.op)}
+        options={operator_options(@measurement)}
+        class="select select-bordered select-sm"
+      />
+
+      <.clause_operand :if={@tested} clause={@clause} tested={@tested} measurement={@measurement} />
+    </form>
+    """
+  end
+
+  attr :clause, :map, required: true
+  attr :tested, :map, required: true
+  attr :measurement, :atom, required: true
+
+  defp clause_operand(assigns) do
+    assigns =
+      assign(assigns, :kind, BranchClause.operand_kind(assigns.clause.op, assigns.measurement))
+
+    ~H"""
+    <%= case @kind do %>
+      <% :none -> %>
+      <% :number -> %>
+        <.matrix_row_select :if={@tested.type == :multi_scale} clause={@clause} tested={@tested} />
+        <input
+          type="number"
+          name="value[number]"
+          value={@clause.value["number"]}
+          phx-debounce="500"
+          placeholder={gettext("value")}
+          class="input input-bordered input-sm w-24 tabular-nums"
+        />
+      <% :range -> %>
+        <.matrix_row_select :if={@tested.type == :multi_scale} clause={@clause} tested={@tested} />
+        <input
+          type="number"
+          name="value[from]"
+          value={@clause.value["from"]}
+          phx-debounce="500"
+          placeholder={gettext("from")}
+          class="input input-bordered input-sm w-20 tabular-nums"
+        />
+        <input
+          type="number"
+          name="value[to]"
+          value={@clause.value["to"]}
+          phx-debounce="500"
+          placeholder={gettext("to")}
+          class="input input-bordered input-sm w-20 tabular-nums"
+        />
+      <% :choices -> %>
+        <div class="flex min-w-0 flex-1 flex-wrap gap-2 rounded-lg border border-base-300 bg-base-100 px-3 py-2">
+          <input type="hidden" name="value[choice_ids][]" value="" />
+          <label
+            :for={{id, label} <- clause_choices(@tested)}
+            class="flex cursor-pointer items-center gap-1.5 text-xs"
+          >
+            <input
+              type="checkbox"
+              name="value[choice_ids][]"
+              value={id}
+              checked={id in List.wrap(@clause.value["choice_ids"])}
+              class="checkbox checkbox-xs"
+            />
+            {label}
+          </label>
+        </div>
+      <% :text -> %>
+        <input
+          type="text"
+          name="value[text]"
+          value={@clause.value["text"]}
+          phx-debounce="500"
+          placeholder={gettext("exact text")}
+          class="input input-bordered input-sm min-w-32 flex-1"
+        />
+      <% :texts -> %>
+        <input
+          type="text"
+          name="value[texts]"
+          value={@clause.value["texts"] |> List.wrap() |> Enum.join(", ")}
+          phx-debounce="500"
+          placeholder={gettext("comma-separated")}
+          class="input input-bordered input-sm min-w-32 flex-1"
+        />
+    <% end %>
+    """
+  end
+
+  attr :clause, :map, required: true
+  attr :tested, :map, required: true
+
+  defp matrix_row_select(assigns) do
+    ~H"""
+    <%!-- A matrix stores one answer per row, so a clause testing one has to
+          say which row it means. --%>
+    <.input
+      type="select"
+      name="value[row_id]"
+      value={@clause.value["row_id"]}
+      prompt={gettext("Which row?")}
+      options={Enum.map(rows(@tested), &{&1["text"], &1["id"]})}
+      class="select select-bordered select-sm"
+    />
+    """
+  end
+
+  @doc """
+  The logic review panel: the problems `Athena.Surveys.Flow.validate_graph/1`
+  found, and a compact outline of where each answer leads.
+
+  A text outline rather than a node graph on purpose - it is reviewable at a
+  glance, works on a phone, is readable by a screen reader, and needs no new
+  JavaScript. The diagram a flow chart would give is worth less than the list
+  an author can actually check.
+  """
+  attr :issues, :list, required: true
+  attr :questions, :list, required: true
+  attr :branches, :map, required: true
+
+  def logic_report(assigns) do
+    ~H"""
+    <div class="space-y-4">
+      <div :if={@issues == []} class="flex items-center gap-2 text-sm text-success">
+        <.icon name="hero-check-circle" class="size-5" />
+        {gettext("The logic is sound: no loops, no dead ends, no stale references.")}
+      </div>
+
+      <ul :if={@issues != []} class="space-y-2">
+        <li
+          :for={issue <- @issues}
+          class="flex gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm"
+        >
+          <.icon name="hero-exclamation-triangle" class="size-4 shrink-0 text-warning" />
+          <div>
+            <p class="font-medium">{issue_title(issue.issue)}</p>
+            <p class="mt-0.5 text-base-content/70">
+              {issue_detail(issue, @questions)}
+            </p>
+          </div>
+        </li>
+      </ul>
+
+      <div :if={@questions != []} class="rounded-lg bg-base-200/50 p-4">
+        <p class="mb-2 text-xs font-bold uppercase tracking-wide text-base-content/50">
+          {gettext("Flow outline")}
+        </p>
+        <ol class="space-y-1.5 text-sm">
+          <li :for={{question, index} <- Enum.with_index(@questions, 1)}>
+            <span class="font-medium tabular-nums text-base-content/40">{index}.</span>
+            <span class="font-medium">{short_prompt(question)}</span>
+            <ul class="ml-6 mt-0.5 space-y-0.5 text-xs text-base-content/60">
+              <li :for={rule <- Map.get(@branches, question.id, [])}>
+                {gettext("if")} {clause_summary(rule, @questions)} {gettext("then")} {action_summary(
+                  rule,
+                  @questions
+                )}
+              </li>
+              <li>
+                {gettext("otherwise")} {fall_through_summary(@questions, index)}
+              </li>
+            </ul>
+          </li>
+        </ol>
+      </div>
+    </div>
+    """
+  end
+
+  # -- logic helpers --------------------------------------------------------
+
+  defp logic_word(:and), do: gettext("and")
+  defp logic_word(:or), do: gettext("or")
+
+  defp action_options do
+    [
+      {gettext("go to question"), "goto_question"},
+      {gettext("go to page"), "goto_page"},
+      {gettext("skip the next question"), "skip_question"},
+      {gettext("end the survey"), "end_survey"}
+    ]
+  end
+
+  defp operator_options(measurement) do
+    measurement
+    |> BranchClause.operators_for()
+    |> Enum.map(&{operator_label(&1), to_string(&1)})
+  end
+
+  defp operator_label(:eq), do: gettext("is")
+  defp operator_label(:neq), do: gettext("is not")
+  defp operator_label(:gt), do: gettext("is more than")
+  defp operator_label(:gte), do: gettext("is at least")
+  defp operator_label(:lt), do: gettext("is less than")
+  defp operator_label(:lte), do: gettext("is at most")
+  defp operator_label(:between), do: gettext("is between")
+  defp operator_label(:in), do: gettext("is one of")
+  defp operator_label(:not_in), do: gettext("is none of")
+  defp operator_label(:contains_any), do: gettext("includes any of")
+  defp operator_label(:contains_all), do: gettext("includes all of")
+  defp operator_label(:answered), do: gettext("was answered")
+  defp operator_label(:not_answered), do: gettext("was not answered")
+
+  # A clause may only test an answer the respondent has already given.
+  defp earlier_question_options(questions, question) do
+    questions
+    |> Enum.filter(&(&1.position <= question.position))
+    |> Enum.map(&{short_prompt(&1), &1.id})
+  end
+
+  # Targets may only point forward, which is what keeps the flow acyclic.
+  defp forward_question_options(questions, question) do
+    questions
+    |> Enum.filter(&(&1.position > question.position))
+    |> Enum.map(&{short_prompt(&1), &1.id})
+  end
+
+  defp forward_page_options(questions, question) do
+    questions
+    |> Enum.filter(&(&1.position > question.position))
+    |> Enum.map(& &1.page)
+    |> Enum.uniq()
+    |> Enum.sort()
+    |> Enum.map(&{gettext("Page %{number}", number: &1 + 1), &1})
+  end
+
+  defp clause_choices(%{type: :dichotomous} = tested) do
+    [
+      {QuestionTypes.yes_choice_id(), tested.config["yes_label"]},
+      {QuestionTypes.no_choice_id(), tested.config["no_label"]}
+    ]
+  end
+
+  defp clause_choices(%{type: :ranking} = tested),
+    do: Enum.map(items(tested), &{&1["id"], &1["text"]})
+
+  defp clause_choices(tested) do
+    base = Enum.map(options(tested), &{&1["id"], &1["text"]})
+
+    if tested.config["other_allowed"] do
+      base ++ [{QuestionTypes.other_choice_id(), gettext("Other")}]
+    else
+      base
+    end
+  end
+
+  defp short_prompt(question) do
+    case prompt_text(question.body) do
+      "" -> gettext("Untitled question")
+      text -> String.slice(text, 0, 60)
+    end
+  end
+
+  defp clause_summary(rule, questions) do
+    rule.condition.clauses
+    |> List.wrap()
+    |> Enum.map_join(" #{logic_word(rule.condition.logic)} ", fn clause ->
+      tested = Enum.find(questions, &(&1.id == clause.question_id))
+      name = if tested, do: short_prompt(tested), else: gettext("a deleted question")
+
+      "#{name} #{operator_label(clause.op)} #{operand_summary(clause, tested)}"
+    end)
+  end
+
+  defp operand_summary(clause, tested) do
+    value = clause.value || %{}
+
+    cond do
+      Map.has_key?(value, "number") ->
+        to_string(value["number"])
+
+      Map.has_key?(value, "from") ->
+        "#{value["from"]}-#{value["to"]}"
+
+      Map.has_key?(value, "choice_ids") and tested ->
+        labels = Map.new(clause_choices(tested))
+
+        value["choice_ids"]
+        |> List.wrap()
+        |> Enum.map_join(", ", &Map.get(labels, &1, &1))
+
+      Map.has_key?(value, "text") ->
+        inspect(value["text"])
+
+      Map.has_key?(value, "texts") ->
+        value["texts"] |> List.wrap() |> Enum.join(", ")
+
+      true ->
+        ""
+    end
+  end
+
+  defp action_summary(rule, questions) do
+    case rule.action do
+      :end_survey ->
+        gettext("end the survey")
+
+      :skip_question ->
+        gettext("skip the next question")
+
+      :goto_page ->
+        gettext("go to page %{number}", number: rule.target_page + 1)
+
+      :goto_question ->
+        case Enum.find(questions, &(&1.id == rule.target_question_id)) do
+          nil -> gettext("go to a deleted question")
+          target -> gettext("go to %{question}", question: short_prompt(target))
+        end
+    end
+  end
+
+  defp fall_through_summary(questions, index) do
+    case Enum.at(questions, index) do
+      nil -> gettext("end the survey")
+      next -> gettext("go to %{question}", question: short_prompt(next))
+    end
+  end
+
+  defp issue_title(:all_at_once_with_rules), do: gettext("Rules cannot work on one page")
+  defp issue_title(:self_target), do: gettext("A rule jumps to its own question")
+  defp issue_title(:backward_target), do: gettext("A rule jumps backwards")
+  defp issue_title(:dangling_target), do: gettext("A rule points at a deleted question")
+  defp issue_title(:dangling_page), do: gettext("A rule points at an empty page")
+  defp issue_title(:forward_clause), do: gettext("A rule tests an answer nobody has given yet")
+  defp issue_title(:dangling_clause), do: gettext("A rule tests a question that is gone")
+
+  defp issue_title(:matrix_clause_without_row),
+    do: gettext("A matrix rule does not say which row")
+
+  defp issue_title(:clause_without_operand), do: gettext("A rule is missing its value")
+  defp issue_title(:cycle), do: gettext("The rules can loop")
+
+  defp issue_detail(%{issue: :all_at_once_with_rules}, _questions) do
+    gettext(
+      "This survey shows every question at once, so there is no later question to send anyone to. Switch it to one question per page."
+    )
+  end
+
+  defp issue_detail(issue, questions) do
+    owner = Enum.find(questions, &(&1.id == issue[:question_id]))
+
+    case owner do
+      nil -> gettext("Open the question's logic to fix it.")
+      question -> gettext("On: %{question}", question: short_prompt(question))
+    end
   end
 
   # -- shared helpers -------------------------------------------------------

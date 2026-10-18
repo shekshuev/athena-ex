@@ -30,10 +30,11 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
 
   use AthenaWeb, :live_view
 
-  import AthenaWeb.SurveyComponents, only: [question_editor: 1, prompt_text: 1]
+  import AthenaWeb.SurveyComponents,
+    only: [question: 1, question_editor: 1, logic_editor: 1, logic_report: 1, prompt_text: 1]
 
   alias Athena.Surveys
-  alias Athena.Surveys.QuestionTypes
+  alias Athena.Surveys.{AnswerParams, BranchClause, Flow, QuestionTypes, SurveyAnswer}
 
   on_mount {AthenaWeb.Hooks.Permission, "surveys.update"}
 
@@ -55,7 +56,9 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
              page_title: survey.title,
              expanded_id: nil,
              question_to_delete: nil,
-             type_menu_for: nil
+             type_menu_for: nil,
+             show_logic?: false,
+             preview: nil
            )
            |> load_questions()}
         else
@@ -112,6 +115,38 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
 
             <div class="flex shrink-0 flex-wrap items-center gap-2">
               <.button
+                :if={@questions != []}
+                size="sm"
+                phx-click="start_preview"
+                id="start-preview"
+              >
+                <.icon name="hero-play" class="size-4" />
+                {gettext("Preview")}
+              </.button>
+              <.button
+                :if={@questions != []}
+                size="sm"
+                phx-click="toggle_logic"
+                id="toggle-logic"
+                class={[
+                  "btn btn-outline btn-sm",
+                  @logic_issues != [] && "btn-warning"
+                ]}
+              >
+                <.icon
+                  name={
+                    if @logic_issues == [], do: "hero-check-circle", else: "hero-exclamation-triangle"
+                  }
+                  class="size-4"
+                />
+                {if @logic_issues == [],
+                  do: gettext("Logic"),
+                  else:
+                    ngettext("%{count} logic issue", "%{count} logic issues", length(@logic_issues),
+                      count: length(@logic_issues)
+                    )}
+              </.button>
+              <.button
                 :if={@survey.status == :draft}
                 variant="primary"
                 size="sm"
@@ -157,6 +192,25 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
           </div>
         </div>
 
+        <div
+          :if={@show_logic? && @questions != []}
+          id="logic-panel"
+          class="mb-6 rounded-xl border border-base-300 bg-base-100 p-5"
+        >
+          <div class="mb-4 flex items-center justify-between">
+            <h2 class="font-display font-bold">{gettext("Logic check")}</h2>
+            <button
+              type="button"
+              phx-click="toggle_logic"
+              class="btn btn-ghost btn-xs btn-square"
+              aria-label={gettext("Close")}
+            >
+              <.icon name="hero-x-mark" class="size-4" />
+            </button>
+          </div>
+          <.logic_report issues={@logic_issues} questions={@questions} branches={@branches} />
+        </div>
+
         <.empty_state
           :if={@questions == []}
           icon="hero-clipboard-document-list"
@@ -183,6 +237,8 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
             <.question_card
               question={question}
               index={index}
+              questions={@questions}
+              rules={Map.get(@branches, question.id, [])}
               expanded?={@expanded_id == question.id}
               type_menu?={@type_menu_for == question.id}
               editable?={@editable?}
@@ -205,6 +261,8 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
         </div>
       </.page_container>
 
+      <.preview_modal :if={@preview} preview={@preview} survey={@survey} />
+
       <.modal
         id="delete-question-modal"
         show={@question_to_delete != nil}
@@ -221,6 +279,8 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
 
   attr :question, :map, required: true
   attr :index, :integer, required: true
+  attr :questions, :list, required: true
+  attr :rules, :list, required: true
   attr :expanded?, :boolean, required: true
   attr :type_menu?, :boolean, required: true
   attr :editable?, :boolean, required: true
@@ -336,6 +396,19 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
           <.question_editor question={@question} />
         </div>
 
+        <%!-- Branching only has somewhere to go when a later question
+              exists, so the section hides itself on the last one rather than
+              offering a rule that could not do anything. --%>
+        <div
+          :if={@editable? && last_question?(@questions, @question)}
+          class="border-t border-base-200 pt-4"
+        >
+          <p class="mb-3 text-xs font-bold uppercase tracking-wide text-base-content/50">
+            {gettext("Branching")}
+          </p>
+          <.logic_editor question={@question} questions={@questions} rules={@rules} />
+        </div>
+
         <div
           :if={@editable?}
           class="flex items-center justify-end gap-1 border-t border-base-200 pt-4"
@@ -367,6 +440,89 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
       </div>
     </div>
     """
+  end
+
+  attr :preview, :map, required: true
+  attr :survey, :map, required: true
+
+  defp preview_modal(assigns) do
+    ~H"""
+    <div id="preview-modal" class="modal modal-open">
+      <div class="modal-box max-w-2xl rounded-xl border border-base-300">
+        <div class="mb-5 flex items-center justify-between">
+          <div>
+            <h3 class="font-display font-bold">{gettext("Preview")}</h3>
+            <p class="text-xs text-base-content/50">
+              {gettext("Nothing here is saved. Branching behaves exactly as it will for students.")}
+            </p>
+          </div>
+          <button
+            type="button"
+            phx-click="close_preview"
+            id="close-preview"
+            class="btn btn-ghost btn-sm btn-square"
+            aria-label={gettext("Close")}
+          >
+            <.icon name="hero-x-mark" class="size-4" />
+          </button>
+        </div>
+
+        <div :if={@preview.finished?} id="preview-finished" class="py-8 text-center">
+          <.icon name="hero-check-circle" class="mx-auto mb-3 size-12 text-success" />
+          <p class="font-bold">{gettext("End of the survey")}</p>
+          <p class="mt-1 text-sm text-base-content/60">
+            {ngettext(
+              "You answered %{count} question on this path.",
+              "You answered %{count} questions on this path.",
+              map_size(@preview.answers),
+              count: map_size(@preview.answers)
+            )}
+          </p>
+        </div>
+
+        <div :if={!@preview.finished? && @preview.current}>
+          <.question
+            question={@preview.current}
+            mode={:preview}
+            answers={@preview.answers}
+            event="preview_answer"
+          />
+        </div>
+
+        <div class="modal-action">
+          <.button
+            :if={!@preview.finished? && @preview.history != []}
+            size="sm"
+            variant="ghost"
+            phx-click="preview_back"
+            id="preview-back"
+          >
+            {gettext("Back")}
+          </.button>
+          <.button size="sm" variant="ghost" phx-click="restart_preview" id="preview-restart">
+            {gettext("Start over")}
+          </.button>
+          <.button
+            :if={!@preview.finished?}
+            size="sm"
+            variant="primary"
+            phx-click="preview_next"
+            id="preview-next"
+          >
+            {gettext("Next")}
+          </.button>
+        </div>
+      </div>
+      <div class="modal-backdrop bg-black/50" phx-click="close_preview"></div>
+    </div>
+    """
+  end
+
+  defp last_question?(questions, question) do
+    case List.last(questions) do
+      nil -> false
+      last -> last.id != question.id
+    end
   end
 
   attr :label, :string, required: true
@@ -658,6 +814,210 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
     end
   end
 
+  # -- logic ----------------------------------------------------------------
+
+  def handle_event("toggle_logic", _params, socket) do
+    {:noreply, assign(socket, show_logic?: not socket.assigns.show_logic?)}
+  end
+
+  def handle_event("add_rule", %{"question_id" => id}, socket) do
+    with :ok <- ensure_editable(socket),
+         {:ok, question} <- fetch_question(socket, id),
+         {:ok, _rule} <-
+           Surveys.add_branch(socket.assigns.survey, question, default_rule(question)) do
+      {:noreply, load_questions(socket)}
+    else
+      {:error, reason} -> {:noreply, report(socket, reason)}
+    end
+  end
+
+  def handle_event("delete_rule", %{"rule_id" => rule_id}, socket) do
+    with :ok <- ensure_editable(socket),
+         {:ok, rule} <- fetch_rule(socket, rule_id),
+         {:ok, _deleted} <- Surveys.delete_branch(rule) do
+      {:noreply, load_questions(socket)}
+    else
+      {:error, reason} -> {:noreply, report(socket, reason)}
+    end
+  end
+
+  def handle_event("update_rule", %{"rule_id" => rule_id} = params, socket) do
+    attrs = Map.take(params, ["action", "target_question_id", "target_page"])
+
+    save_rule(socket, rule_id, attrs)
+  end
+
+  def handle_event("reorder_rules", %{"id" => rule_id, "new_index" => new_index} = params, socket) do
+    with :ok <- ensure_editable(socket),
+         {:ok, question} <- fetch_question(socket, params["questionId"] || params["question_id"]) do
+      ordered =
+        question.id
+        |> rules_for(socket)
+        |> Enum.map(& &1.id)
+        |> List.delete(rule_id)
+        |> List.insert_at(new_index, rule_id)
+
+      case Surveys.reorder_branches(question.id, ordered) do
+        {:ok, _rules} -> {:noreply, load_questions(socket)}
+        {:error, reason} -> {:noreply, report(socket, reason)}
+      end
+    else
+      {:error, reason} -> {:noreply, report(socket, reason)}
+    end
+  end
+
+  def handle_event("toggle_rule_logic", %{"rule_id" => rule_id}, socket) do
+    with {:ok, rule} <- fetch_rule(socket, rule_id) do
+      flipped = if rule.condition.logic == :and, do: :or, else: :and
+
+      save_rule(socket, rule_id, %{
+        "condition" => %{
+          "logic" => flipped,
+          "clauses" => Enum.map(rule.condition.clauses, &clause_to_params/1)
+        }
+      })
+    else
+      {:error, reason} -> {:noreply, report(socket, reason)}
+    end
+  end
+
+  def handle_event("add_clause", %{"rule_id" => rule_id}, socket) do
+    with {:ok, rule} <- fetch_rule(socket, rule_id) do
+      owner = Enum.find(socket.assigns.questions, &(&1.id == rule.question_id))
+
+      save_rule(socket, rule_id, %{
+        "condition" => %{
+          "logic" => rule.condition.logic,
+          "clauses" =>
+            Enum.map(rule.condition.clauses, &clause_to_params/1) ++
+              [BranchClause.new(%{"question_id" => owner && owner.id})]
+        }
+      })
+    else
+      {:error, reason} -> {:noreply, report(socket, reason)}
+    end
+  end
+
+  def handle_event("remove_clause", %{"rule_id" => rule_id, "clause_id" => clause_id}, socket) do
+    with {:ok, rule} <- fetch_rule(socket, rule_id) do
+      remaining =
+        rule.condition.clauses
+        |> Enum.reject(&(&1.id == clause_id))
+        |> Enum.map(&clause_to_params/1)
+
+      save_rule(socket, rule_id, %{
+        "condition" => %{"logic" => rule.condition.logic, "clauses" => remaining}
+      })
+    else
+      {:error, reason} -> {:noreply, report(socket, reason)}
+    end
+  end
+
+  def handle_event(
+        "update_clause",
+        %{"rule_id" => rule_id, "clause_id" => clause_id} = params,
+        socket
+      ) do
+    with {:ok, rule} <- fetch_rule(socket, rule_id) do
+      clauses =
+        Enum.map(rule.condition.clauses, fn clause ->
+          if clause.id == clause_id do
+            rebuild_clause(clause, params, socket)
+          else
+            clause_to_params(clause)
+          end
+        end)
+
+      save_rule(socket, rule_id, %{
+        "condition" => %{"logic" => rule.condition.logic, "clauses" => clauses}
+      })
+    else
+      {:error, reason} -> {:noreply, report(socket, reason)}
+    end
+  end
+
+  # -- preview --------------------------------------------------------------
+
+  def handle_event("start_preview", _params, socket) do
+    {:noreply, assign(socket, preview: fresh_preview(socket))}
+  end
+
+  def handle_event("close_preview", _params, socket) do
+    {:noreply, assign(socket, preview: nil)}
+  end
+
+  def handle_event("restart_preview", _params, socket) do
+    {:noreply, assign(socket, preview: fresh_preview(socket))}
+  end
+
+  def handle_event("preview_answer", %{"question_id" => id} = params, socket) do
+    preview = socket.assigns.preview
+
+    with %{} <- preview,
+         {:ok, question} <- fetch_question(socket, id) do
+      {:noreply, assign(socket, preview: record_preview_answer(preview, question, params))}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  # Ranking is the one type that does not post a form: SortableJS reports a
+  # move, and the resulting order is computed from what is already on screen.
+  # The dataset arrives camelCased, hence "questionId".
+  def handle_event(
+        "survey_rank",
+        %{"questionId" => question_id, "id" => item_id, "new_index" => new_index},
+        socket
+      ) do
+    preview = socket.assigns.preview
+
+    with %{} <- preview,
+         {:ok, question} <- fetch_question(socket, question_id) do
+      reordered =
+        preview
+        |> current_rank_order(question)
+        |> List.delete(item_id)
+        |> List.insert_at(new_index, item_id)
+
+      params = %{"value" => %{"choice_ids" => reordered}}
+
+      {:noreply, assign(socket, preview: record_preview_answer(preview, question, params))}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("preview_next", _params, socket) do
+    preview = socket.assigns.preview
+
+    case Flow.next_question(preview.flow, preview.current, preview.answers) do
+      :end ->
+        {:noreply, assign(socket, preview: %{preview | finished?: true})}
+
+      {:question, next} ->
+        {:noreply,
+         assign(socket,
+           preview: %{
+             preview
+             | current: next,
+               history: [preview.current.id | preview.history]
+           }
+         )}
+    end
+  end
+
+  def handle_event("preview_back", _params, socket) do
+    preview = socket.assigns.preview
+
+    case Flow.previous(preview.flow, preview.history) do
+      :none ->
+        {:noreply, socket}
+
+      {:question, previous, rest} ->
+        {:noreply, assign(socket, preview: %{preview | current: previous, history: rest})}
+    end
+  end
+
   # -- survey lifecycle -----------------------------------------------------
 
   def handle_event("rename_survey", %{"title" => title}, socket) do
@@ -740,12 +1100,18 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
   end
 
   defp load_questions(socket) do
-    questions = Surveys.list_questions(socket.assigns.survey.id)
+    survey = socket.assigns.survey
+    questions = Surveys.list_questions(survey.id)
+    branches = Surveys.branches_by_question(survey.id)
+
+    flow = Flow.build(survey, questions, branches |> Map.values() |> List.flatten())
 
     assign(socket,
       questions: questions,
-      editable?: Surveys.survey_editable?(socket.assigns.survey),
-      response_count: length(Surveys.list_responses(socket.assigns.survey.id))
+      branches: branches,
+      logic_issues: Flow.validate_graph(flow),
+      editable?: Surveys.survey_editable?(survey),
+      response_count: length(Surveys.list_responses(survey.id))
     )
   end
 
@@ -782,6 +1148,185 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
 
   defp config_list(config, key), do: List.wrap(config[key])
 
+  # -- logic helpers --------------------------------------------------------
+
+  defp fetch_rule(socket, rule_id) do
+    case Enum.find(all_rules(socket), &(&1.id == rule_id)) do
+      nil -> {:error, :rule_not_found}
+      rule -> {:ok, rule}
+    end
+  end
+
+  defp all_rules(socket), do: socket.assigns.branches |> Map.values() |> List.flatten()
+
+  defp rules_for(question_id, socket), do: Map.get(socket.assigns.branches, question_id, [])
+
+  defp save_rule(socket, rule_id, attrs) do
+    with :ok <- ensure_editable(socket),
+         {:ok, rule} <- fetch_rule(socket, rule_id),
+         {:ok, _updated} <- Surveys.update_branch(rule, attrs) do
+      {:noreply, load_questions(socket)}
+    else
+      {:error, reason} -> {:noreply, report(socket, reason)}
+    end
+  end
+
+  # A new rule starts as "if this question was answered, end the survey": both
+  # halves are valid immediately, so the rule saves and the author edits it in
+  # place rather than filling a blank form before anything exists.
+  defp default_rule(question) do
+    %{
+      "action" => "end_survey",
+      "condition" => %{
+        "logic" => "and",
+        "clauses" => [BranchClause.new(%{"question_id" => question.id})]
+      }
+    }
+  end
+
+  defp clause_to_params(clause) do
+    %{
+      "id" => clause.id,
+      "question_id" => clause.question_id,
+      "op" => clause.op,
+      "value" => clause.value
+    }
+  end
+
+  # The browser posts whatever inputs were on screen when the author changed
+  # something. Two of those changes invalidate the operand that came with
+  # them: picking a different question to test, and picking an operator that
+  # needs a different kind of operand. In both cases the operand is reset
+  # rather than carried over - `Flow` reads a mismatched operand as false, so
+  # keeping it would leave a rule that silently never matches.
+  defp rebuild_clause(clause, params, socket) do
+    question_id = params["question_id"] || clause.question_id
+    op = parse_op(params["op"]) || clause.op
+
+    tested = Enum.find(socket.assigns.questions, &(&1.id == question_id))
+
+    value =
+      cond do
+        is_nil(tested) -> %{}
+        # A different question means a different set of possible answers, so
+        # whatever operand came with the old one is meaningless.
+        question_id != clause.question_id -> %{}
+        # Casting for the operator now selected is enough on its own: an
+        # operand belonging to a different kind simply does not survive the
+        # cast. Clearing it outright instead would make an operator change
+        # impossible, since the browser always posts the previous inputs on
+        # the round-trip that re-renders them.
+        true -> cast_operand(op, tested, params["value"] || %{})
+      end
+
+    %{"id" => clause.id, "question_id" => question_id, "op" => op, "value" => value}
+  end
+
+  defp parse_op(nil), do: nil
+
+  defp parse_op(string) do
+    Enum.find(BranchClause.operators(), &(to_string(&1) == string))
+  end
+
+  defp cast_operand(op, tested, posted) do
+    measurement = QuestionTypes.measurement(tested.type)
+
+    base =
+      case BranchClause.operand_kind(op, measurement) do
+        :none -> %{}
+        :number -> put_parsed_number(%{}, posted, "number")
+        :range -> %{} |> put_parsed_number(posted, "from") |> put_parsed_number(posted, "to")
+        :choices -> %{"choice_ids" => posted_choice_ids(posted)}
+        :text -> %{"text" => posted["text"] || ""}
+        :texts -> %{"texts" => split_texts(posted["texts"])}
+      end
+
+    maybe_put_row(base, tested, posted)
+  end
+
+  # Carried alongside the operand, not instead of it: a matrix clause needs
+  # both the row it tests and the value it compares against.
+  defp maybe_put_row(value, %{type: :multi_scale}, posted) do
+    case posted["row_id"] do
+      row when is_binary(row) and row != "" -> Map.put(value, "row_id", row)
+      _ -> value
+    end
+  end
+
+  defp maybe_put_row(value, _tested, _posted), do: value
+
+  defp put_parsed_number(acc, posted, key) do
+    case AnswerParams.parse_number(posted[key]) do
+      {:ok, number} -> Map.put(acc, key, number)
+      :error -> acc
+    end
+  end
+
+  defp posted_choice_ids(posted) do
+    posted
+    |> Map.get("choice_ids", [])
+    |> List.wrap()
+    |> Enum.reject(&(&1 in [nil, ""]))
+  end
+
+  defp split_texts(nil), do: []
+
+  defp split_texts(string) do
+    string |> String.split(",") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+  end
+
+  # -- preview helpers ------------------------------------------------------
+
+  defp fresh_preview(socket) do
+    flow =
+      Flow.build(socket.assigns.survey, socket.assigns.questions, all_rules(socket))
+
+    %{
+      flow: flow,
+      current: Flow.first_question(flow),
+      answers: %{},
+      history: [],
+      finished?: false
+    }
+  end
+
+  defp current_rank_order(preview, question) do
+    case Map.get(preview.answers, {question.id, ""}) do
+      %{value_choice_ids: ids} when is_list(ids) and ids != [] ->
+        ids
+
+      _ ->
+        question.config |> config_list("items") |> Enum.map(& &1["id"])
+    end
+  end
+
+  # The preview derives its answers through the real answer changeset and then
+  # throws the struct away instead of inserting it. That is what makes the
+  # preview trustworthy: the projections a condition is evaluated against are
+  # produced by exactly the code that produces them in the player, so a branch
+  # that fires here fires there.
+  defp record_preview_answer(preview, question, params) do
+    value = AnswerParams.cast(question.type, params)
+
+    changeset =
+      SurveyAnswer.changeset(
+        %SurveyAnswer{},
+        %{
+          response_id: Ecto.UUID.generate(),
+          question_id: question.id,
+          value: value
+        },
+        question.type
+      )
+
+    if changeset.valid? do
+      answer = Ecto.Changeset.apply_changes(changeset)
+      %{preview | answers: Map.put(preview.answers, {question.id, answer.row_key}, answer)}
+    else
+      preview
+    end
+  end
+
   defp truthy?(true), do: true
   defp truthy?("true"), do: true
   defp truthy?(_value), do: false
@@ -800,6 +1345,17 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
   defp report(socket, :unknown_type),
     do: put_flash(socket, :error, gettext("Unknown question type."))
 
+  defp report(socket, :rule_not_found),
+    do: put_flash(socket, :error, gettext("That rule no longer exists."))
+
+  defp report(socket, :all_at_once),
+    do:
+      put_flash(
+        socket,
+        :error,
+        gettext("Switch to one question per page before adding branching rules.")
+      )
+
   defp report(socket, :question_not_found),
     do: put_flash(socket, :error, gettext("That question no longer exists."))
 
@@ -812,11 +1368,28 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
   defp report(socket, _reason),
     do: put_flash(socket, :error, gettext("That change could not be saved."))
 
+  # `traverse_errors` nests: an embed's errors arrive as a map (or a list of
+  # maps for `embeds_many`), not as a flat list of messages.
   defp changeset_message(changeset) do
     changeset
     |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
-    |> Enum.map_join("; ", fn {field, messages} ->
-      "#{field}: #{messages |> List.flatten() |> Enum.join(", ")}"
+    |> flatten_messages()
+    |> Enum.join("; ")
+  end
+
+  defp flatten_messages(errors) when is_map(errors) do
+    Enum.flat_map(errors, fn {field, nested} ->
+      Enum.map(flatten_messages(nested), &"#{field}: #{&1}")
     end)
   end
+
+  defp flatten_messages(errors) when is_list(errors) do
+    Enum.flat_map(errors, fn
+      message when is_binary(message) -> [message]
+      nested -> flatten_messages(nested)
+    end)
+  end
+
+  defp flatten_messages(message) when is_binary(message), do: [message]
+  defp flatten_messages(_other), do: []
 end
