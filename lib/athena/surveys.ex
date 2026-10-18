@@ -32,7 +32,27 @@ defmodule Athena.Surveys do
   and a separate ledger. See `Athena.Surveys.SurveyResponse`.
   """
 
-  alias Athena.Surveys.{Branches, Questions, Responses, Surveys}
+  alias Athena.Surveys.{Branches, Flow, Questions, Responses, Surveys}
+
+  @doc """
+  Loads a survey's questions and rules into an `Athena.Surveys.Flow` - the
+  pure branching engine.
+
+  This is the only place the flow touches the database; `Flow` itself is
+  pure, which is what lets the builder's preview walk a branch in socket
+  assigns while the player runs the identical logic against real rows.
+  """
+  @spec load_flow(Athena.Surveys.Survey.t() | binary()) :: Flow.t() | nil
+  def load_flow(%Athena.Surveys.Survey{} = survey) do
+    Flow.build(survey, Questions.list_questions(survey.id), Branches.list_branches(survey.id))
+  end
+
+  def load_flow(survey_id) when is_binary(survey_id) do
+    case Surveys.get_survey(survey_id) do
+      nil -> nil
+      survey -> load_flow(survey)
+    end
+  end
 
   # Surveys
   defdelegate list_surveys_for_user(user, params \\ %{}, opts \\ []),
@@ -77,6 +97,15 @@ defmodule Athena.Surveys do
   defdelegate delete_branch(branch), to: Branches
   defdelegate reorder_branches(question_id, ordered_ids), to: Branches
   defdelegate any_branches?(survey), to: Branches
+
+  # Flow
+  defdelegate first_question(flow), to: Flow
+  defdelegate next_question(flow, current, answers), to: Flow
+  defdelegate next_page(flow, page, answers), to: Flow
+  defdelegate previous_question(flow, history), to: Flow, as: :previous
+  defdelegate visible_questions(flow, answers \\ %{}), to: Flow
+  defdelegate questions_on_page(flow, page), to: Flow
+  defdelegate validate_graph(flow), to: Flow
 
   # Responses
   defdelegate get_response(survey_id, account_id), to: Responses
