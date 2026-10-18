@@ -133,13 +133,20 @@ EngagementHooks.EngagementTracker = {
       { threshold: SCROLL_THRESHOLDS },
     );
 
+    // A `:survey` block carries no `data-block-id` at all, so it never reaches
+    // this observer. The opt-out attribute is the belt to that braces: any
+    // other view that reuses the block wrapper can mark a node
+    // `data-engagement="off"` and stay out of telemetry without having to
+    // know how the tracker finds things.
     this.observeBlocks = () => {
-      this.el.querySelectorAll("[data-block-id]").forEach((node) => {
-        if (!this.observedNodes.has(node)) {
-          this.observer.observe(node);
-          this.observedNodes.add(node);
-        }
-      });
+      this.el
+        .querySelectorAll('[data-block-id]:not([data-engagement="off"])')
+        .forEach((node) => {
+          if (!this.observedNodes.has(node)) {
+            this.observer.observe(node);
+            this.observedNodes.add(node);
+          }
+        });
     };
     this.observeBlocks();
 

@@ -19,7 +19,11 @@ defmodule AthenaWeb.LearnLive.Player do
   alias Athena.Engagement
   alias Athena.Execution
   alias Athena.Learning
+  alias Athena.Surveys
+  alias Athena.Surveys.Flow
   alias AthenaWeb.LearnLive.EngagementSignals
+
+  import AthenaWeb.SurveyComponents, only: [question: 1]
   import AthenaWeb.BlockComponents
 
   @doc """
@@ -196,9 +200,370 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:refresh_pending, nil)
       |> assign(:unlock_timer, nil)
       |> assign(:schedule_times, load_schedule_times(ctx.outline.all_linear_lessons))
+      |> assign(:survey_block_ids, survey_block_ids(blocks))
+      |> assign(:survey_state, load_survey_state(blocks, ctx.user))
 
     {:ok, schedule_next_unlock(socket)}
   end
+
+  # -- survey rendering -----------------------------------------------------
+
+  attr :block, :map, required: true
+  attr :state, :map, default: nil
+  attr :completed?, :boolean, default: false
+
+  defp survey_block(%{state: nil} = assigns), do: survey_notice(assigns)
+
+  defp survey_block(%{state: %{status: :missing}} = assigns), do: survey_notice(assigns)
+
+  defp survey_block(%{state: %{status: :unavailable}} = assigns) do
+    ~H"""
+    <.survey_shell title={gettext("Survey not open yet")}>
+      <p class="text-sm text-base-content/60">
+        {gettext("Your instructor has not published this survey yet.")}
+      </p>
+    </.survey_shell>
+    """
+  end
+
+  defp survey_block(%{state: %{status: :closed}} = assigns) do
+    ~H"""
+    <.survey_shell title={@state.survey.title}>
+      <p class="text-sm text-base-content/60">
+        {gettext("This survey is closed and no longer accepts answers.")}
+      </p>
+    </.survey_shell>
+    """
+  end
+
+  defp survey_block(%{state: %{status: :completed}} = assigns) do
+    ~H"""
+    <.survey_shell title={@state.survey.title}>
+      <div class="flex items-start gap-3">
+        <.icon name="hero-check-circle" class="size-6 shrink-0 text-success" />
+        <div class="text-sm">
+          <p class="font-bold">{gettext("Thank you, your answers are in.")}</p>
+          <p class="mt-1 text-base-content/60">
+            {gettext("Answers from your group are reported together, never one by one.")}
+          </p>
+        </div>
+      </div>
+    </.survey_shell>
+    """
+  end
+
+  # Reached the end of the path: nothing left to answer, so the only thing to
+  # do is send it. Submitting is a separate step from answering the last
+  # question so that nobody submits by accident on a branch they did not mean
+  # to take.
+  defp survey_block(%{state: %{current: nil}} = assigns) do
+    ~H"""
+    <.survey_shell title={@state.survey.title}>
+      <p class="mb-5 text-sm text-base-content/60">
+        {gettext("That is everything. Send your answers when you are ready.")}
+      </p>
+      <div class="flex flex-wrap gap-2">
+        <.button
+          :if={@state.history != []}
+          variant="ghost"
+          size="sm"
+          phx-click="survey_back"
+          phx-value-block_id={@block.id}
+          id={"survey-back-#{@block.id}"}
+        >
+          {gettext("Back")}
+        </.button>
+        <.button
+          variant="primary"
+          size="sm"
+          phx-click="survey_submit"
+          phx-value-block_id={@block.id}
+          id={"survey-submit-#{@block.id}"}
+        >
+          {gettext("Send my answers")}
+        </.button>
+      </div>
+    </.survey_shell>
+    """
+  end
+
+  defp survey_block(assigns) do
+    ~H"""
+    <.survey_shell title={@block.content["title_override"] || @state.survey.title}>
+      <div
+        :if={@state.survey.settings.show_progress}
+        class="mb-5 flex items-center gap-3 text-xs text-base-content/50"
+      >
+        <%!-- Counts the path this student is actually on, not the whole
+              survey: with branching the two differ, and the larger number
+              would be a lie. --%>
+        <progress
+          class="progress progress-primary h-1.5 flex-1"
+          value={survey_answered_count(@state)}
+          max={survey_path_length(@state)}
+        >
+        </progress>
+        <span class="tabular-nums">
+          {gettext("%{answered} of %{total}",
+            answered: survey_answered_count(@state),
+            total: survey_path_length(@state)
+          )}
+        </span>
+      </div>
+
+      <.question
+        question={@state.current}
+        mode={:play}
+        answers={@state.answers}
+        event="survey_answer"
+      />
+
+      <div class="mt-5 flex flex-wrap items-center gap-2">
+        <.button
+          :if={@state.survey.settings.allow_back && @state.history != []}
+          variant="ghost"
+          size="sm"
+          phx-click="survey_back"
+          phx-value-block_id={@block.id}
+          id={"survey-back-#{@block.id}"}
+        >
+          {gettext("Back")}
+        </.button>
+        <.button
+          variant="primary"
+          size="sm"
+          phx-click="survey_next"
+          phx-value-block_id={@block.id}
+          id={"survey-next-#{@block.id}"}
+        >
+          {gettext("Next")}
+        </.button>
+        <button
+          :if={!@state.current.required}
+          type="button"
+          phx-click="survey_skip"
+          phx-value-block_id={@block.id}
+          id={"survey-skip-#{@block.id}"}
+          class="btn btn-ghost btn-sm text-base-content/50"
+        >
+          {gettext("Skip this one")}
+        </button>
+      </div>
+    </.survey_shell>
+    """
+  end
+
+  attr :block, :map, required: true
+  attr :state, :map, default: nil
+  attr :completed?, :boolean, default: false
+
+  defp survey_notice(assigns) do
+    ~H"""
+    <.survey_shell title={gettext("Survey unavailable")}>
+      <p class="text-sm text-base-content/60">
+        {gettext("This survey could not be loaded. Please let your instructor know.")}
+      </p>
+    </.survey_shell>
+    """
+  end
+
+  attr :title, :string, required: true
+  slot :inner_block, required: true
+
+  defp survey_shell(assigns) do
+    ~H"""
+    <section class="rounded-xl border border-base-300 bg-base-100 p-6 sm:p-8">
+      <header class="mb-5 flex items-center gap-3">
+        <.icon name="hero-clipboard-document-list" class="size-5 shrink-0 text-primary" />
+        <h2 class="font-display font-bold">{@title}</h2>
+      </header>
+      {render_slot(@inner_block)}
+    </section>
+    """
+  end
+
+  # Answers given on this path, counted per question rather than per stored
+  # row so a matrix counts once however many rows it has.
+  defp survey_answered_count(state) do
+    state.answers
+    |> Map.keys()
+    |> Enum.map(fn {question_id, _row} -> question_id end)
+    |> Enum.uniq()
+    |> length()
+  end
+
+  defp survey_path_length(state) do
+    max(length(Surveys.visible_questions(state.flow, state.answers)), 1)
+  end
+
+  # -- survey helpers -------------------------------------------------------
+
+  @doc false
+  defp fetch_survey(socket, block_id) do
+    case Map.get(socket.assigns.survey_state || %{}, block_id) do
+      %{status: :open} = state -> {:ok, state}
+      _ -> :error
+    end
+  end
+
+  # A question posts its own id, not the block's - the shared renderer is also
+  # used by the builder's preview, which has no block. There are at most a
+  # handful of survey blocks on a page, so finding the owner is a scan.
+  @doc false
+  defp find_survey(socket, question_id) do
+    Enum.find_value(socket.assigns.survey_state || %{}, :error, fn {block_id, state} ->
+      with %{status: :open, flow: flow} <- state,
+           %{} <- Flow.question(flow, question_id) do
+        {:ok, block_id, state}
+      else
+        _ -> nil
+      end
+    end)
+  end
+
+  @doc false
+  defp survey_question(state, question_id) do
+    case Flow.question(state.flow, question_id) do
+      nil -> :error
+      question -> {:ok, question}
+    end
+  end
+
+  @doc false
+  defp ensure_response(%{response: %{}} = state, _socket), do: {:ok, state}
+
+  defp ensure_response(state, socket) do
+    context = %{
+      course_id: socket.assigns.course.id,
+      block_id: survey_block_id(socket, state)
+    }
+
+    case Surveys.get_or_start_response(state.survey, socket.assigns.current_user, context) do
+      {:ok, response} ->
+        {:ok, %{state | response: response, answers: Surveys.answers_map(response.id)}}
+
+      {:already_completed, response} ->
+        {:ok, %{state | response: response, status: :completed}}
+
+      {:error, _reason} ->
+        :error
+    end
+  end
+
+  defp survey_block_id(socket, state) do
+    Enum.find_value(socket.assigns.survey_state || %{}, fn {block_id, candidate} ->
+      if candidate[:survey] && candidate.survey.id == state.survey.id, do: block_id
+    end)
+  end
+
+  # Takes a state whose response already exists: both callers go through
+  # `ensure_response/2` first, and advancing without one would mean losing the
+  # resume point silently.
+  @doc false
+  defp advance_survey(socket, block_id, %{response: %{}} = state) do
+    case Surveys.next_question(state.flow, state.current, state.answers) do
+      :end ->
+        {:noreply,
+         put_survey_state(socket, block_id, %{state | current: nil, history: state.history})}
+
+      {:question, next} ->
+        Surveys.advance_response(state.response, next.id)
+
+        {:noreply,
+         put_survey_state(socket, block_id, %{
+           state
+           | current: next,
+             history: [state.current.id | state.history]
+         })}
+    end
+  end
+
+  @doc false
+  defp put_survey_state(socket, block_id, state) do
+    assign(socket, :survey_state, Map.put(socket.assigns.survey_state, block_id, state))
+  end
+
+  @doc false
+  defp survey_rank_order(state, question) do
+    case Map.get(state.answers, {question.id, ""}) do
+      %{value_choice_ids: ids} when is_list(ids) and ids != [] ->
+        ids
+
+      _ ->
+        question.config |> Map.get("items") |> List.wrap() |> Enum.map(& &1["id"])
+    end
+  end
+
+  # Marks the block complete and runs the ordinary unlock path, but only if it
+  # is not already complete - submitting a survey twice must not re-broadcast
+  # progress or re-award anything downstream.
+  @doc false
+  defp complete_survey_gate(socket, block_id) do
+    if block_id in socket.assigns.completed_ids do
+      socket
+    else
+      unlock_next_content(socket, block_id)
+    end
+  end
+
+  # Computed once per section and kept in assigns: the authoritative
+  # engagement filter consults it on every batch, which arrives several times
+  # a minute, and it must not become a query.
+  @doc false
+  defp survey_block_ids(blocks) do
+    blocks
+    |> Enum.filter(&(&1.type == :survey))
+    |> MapSet.new(& &1.id)
+  end
+
+  @doc false
+  defp load_survey_state(blocks, user) do
+    blocks
+    |> Enum.filter(&(&1.type == :survey))
+    |> Map.new(fn block -> {block.id, build_survey_state(block, user)} end)
+  end
+
+  @doc false
+  defp build_survey_state(block, user) do
+    case Surveys.get_survey(block.content["survey_id"]) do
+      nil ->
+        %{status: :missing}
+
+      survey ->
+        flow = Surveys.load_flow(survey)
+        response = Surveys.get_response(survey.id, user.id)
+
+        %{
+          survey: survey,
+          flow: flow,
+          question_count: length(flow.questions),
+          response: response,
+          answers: response_answers(response),
+          current: resume_point(flow, response),
+          history: [],
+          status: survey_status(survey, response)
+        }
+    end
+  end
+
+  defp response_answers(nil), do: %{}
+  defp response_answers(response), do: Surveys.answers_map(response.id)
+
+  # Resuming lands on the question the student left off at. The path they took
+  # to get there is not stored, only where they are, so "Back" is unavailable
+  # until they move forward again - the alternative would be guessing at a
+  # path that branching makes unguessable.
+  defp resume_point(flow, nil), do: Surveys.first_question(flow)
+
+  defp resume_point(flow, response) do
+    Flow.question(flow, response.current_question_id) ||
+      Surveys.first_question(flow)
+  end
+
+  defp survey_status(_survey, %{status: :completed}), do: :completed
+  defp survey_status(%{status: :published}, _response), do: :open
+  defp survey_status(%{status: :closed}, _response), do: :closed
+  defp survey_status(_survey, _response), do: :unavailable
 
   # The section's blocks the user may see, in order. The section is passed
   # to the policy so `:inherit` blocks don't each load it again.
@@ -516,6 +881,126 @@ defmodule AthenaWeb.LearnLive.Player do
     handle_event("save_draft", params, socket)
   end
 
+  # -- surveys --------------------------------------------------------------
+  #
+  # A survey block behaves like any other block: it renders in place and the
+  # player never navigates away from the lesson for it, unlike `:quiz_exam`
+  # and `:ticket_exam`, which take over the screen.
+  #
+  # The response row is created lazily, on the first answer or the first step
+  # forward, rather than when the page loads. Opening a lesson is not
+  # answering a survey, and auto-creating a row for everyone who scrolled past
+  # would fill the results with empty responses and make the completion funnel
+  # meaningless.
+
+  def handle_event("survey_answer", %{"question_id" => question_id} = params, socket) do
+    with {:ok, block_id, state} <- find_survey(socket, question_id),
+         {:ok, question} <- survey_question(state, question_id),
+         {:ok, state} <- ensure_response(state, socket) do
+      value = Surveys.cast_answer_params(question.type, params)
+
+      case Surveys.save_answer(state.response, question, value) do
+        {:ok, answer} ->
+          answers = Map.put(state.answers, {question.id, answer.row_key}, answer)
+          {:noreply, put_survey_state(socket, block_id, %{state | answers: answers})}
+
+        {:error, _changeset} ->
+          # A malformed value is dropped rather than stored as nothing: a
+          # blank is a different finding from a bad entry, and the student
+          # still sees what they typed.
+          {:noreply, put_survey_state(socket, block_id, state)}
+      end
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("survey_skip", %{"block_id" => block_id}, socket) do
+    with {:ok, state} <- fetch_survey(socket, block_id),
+         %{} = question <- state.current,
+         {:ok, state} <- ensure_response(state, socket),
+         {:ok, answer} <- Surveys.skip_answer(state.response, question) do
+      answers = Map.put(state.answers, {question.id, answer.row_key}, answer)
+
+      advance_survey(socket, block_id, %{state | answers: answers})
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("survey_next", %{"block_id" => block_id}, socket) do
+    with {:ok, state} <- fetch_survey(socket, block_id),
+         {:ok, state} <- ensure_response(state, socket) do
+      advance_survey(socket, block_id, state)
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("survey_back", %{"block_id" => block_id}, socket) do
+    with {:ok, state} <- fetch_survey(socket, block_id),
+         {:question, previous, rest} <- Surveys.previous_question(state.flow, state.history) do
+      state = %{state | current: previous, history: rest}
+
+      if state.response, do: Surveys.advance_response(state.response, previous.id)
+
+      {:noreply, put_survey_state(socket, block_id, state)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("survey_submit", %{"block_id" => block_id}, socket) do
+    with {:ok, state} <- fetch_survey(socket, block_id),
+         {:ok, state} <- ensure_response(state, socket),
+         {:ok, response} <- Surveys.complete_response(state.response) do
+      socket =
+        put_survey_state(socket, block_id, %{
+          state
+          | response: response,
+            status: :completed,
+            current: nil
+        })
+
+      # The gate is the ordinary one, so `completion_rule: :submit` on a survey
+      # block behaves exactly as it does on any other block and the rest of
+      # the player needs no special case.
+      {:noreply, complete_survey_gate(socket, block_id)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  # Ranking is the one question type that is not a form: SortableJS reports a
+  # move and the resulting order is computed from what is on screen. The
+  # dataset arrives camelCased.
+  def handle_event(
+        "survey_rank",
+        %{"questionId" => question_id, "id" => item_id, "new_index" => new_index},
+        socket
+      ) do
+    with {:ok, block_id, state} <- find_survey(socket, question_id),
+         {:ok, question} <- survey_question(state, question_id),
+         {:ok, state} <- ensure_response(state, socket) do
+      reordered =
+        state
+        |> survey_rank_order(question)
+        |> List.delete(item_id)
+        |> List.insert_at(new_index, item_id)
+
+      case Surveys.save_answer(state.response, question, %{"choice_ids" => reordered}) do
+        {:ok, answer} ->
+          answers = Map.put(state.answers, {question.id, answer.row_key}, answer)
+          {:noreply, put_survey_state(socket, block_id, %{state | answers: answers})}
+
+        {:error, _changeset} ->
+          {:noreply, socket}
+      end
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
   def handle_event("engagement_batch", %{"events" => events}, socket) do
     section_id = socket.assigns.section.id
 
@@ -523,6 +1008,11 @@ defmodule AthenaWeb.LearnLive.Player do
       events
       |> Enum.map(&Engagement.normalize_event(&1, section_id))
       |> Enum.reject(&is_nil/1)
+      # Before `record_events/4` *and* before the nudge reduce: a survey
+      # collects nothing, and a nudge about one would be telemetry by another
+      # name - the student would be told the server is watching how long they
+      # spend on a feedback question.
+      |> Engagement.reject_survey_events(socket.assigns.survey_block_ids)
 
     {buffered, socket} = EngagementSignals.take_buffered_events(socket)
 
@@ -1715,10 +2205,17 @@ defmodule AthenaWeb.LearnLive.Player do
             <% is_locked = is_passed or is_review_needed %>
             <% mode = if is_locked, do: :review, else: :play %>
 
+            <%!-- A `:survey` block deliberately carries no `data-block-id`:
+                  the engagement tracker finds nodes by that attribute, so its
+                  absence is what keeps a feedback question out of telemetry
+                  at the source. `data-engagement="off"` says so out loud for
+                  anything else that walks this markup, and the server filter
+                  in `engagement_batch` is the authority. --%>
             <div
               id={"block-wrapper-#{block.id}"}
-              data-block-id={block.id}
+              data-block-id={if block.type != :survey, do: block.id}
               data-block-type={block.type}
+              data-engagement={if block.type == :survey, do: "off"}
               class="animate-in slide-in-from-bottom-4 fade-in duration-500 fill-mode-both"
             >
               <%= case block.type do %>
@@ -1753,6 +2250,12 @@ defmodule AthenaWeb.LearnLive.Player do
                       </button>
                     </div>
                   </form>
+                <% :survey -> %>
+                  <.survey_block
+                    block={block}
+                    state={Map.get(@survey_state || %{}, block.id)}
+                    completed?={block.id in @completed_ids}
+                  />
                 <% type when type in [:quiz_exam, :ticket_exam] -> %>
                   <div class="relative">
                     <.content_block

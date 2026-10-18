@@ -8,6 +8,14 @@ defmodule Athena.Factory do
   alias Athena.Media.{File, FileShare, Quota}
   alias Athena.Announcements.Announcement
 
+  alias Athena.Surveys.{
+    Survey,
+    SurveyQuestion,
+    SurveyBranch,
+    SurveyResponse,
+    SurveyAnswer
+  }
+
   alias Athena.Content.{
     Course,
     Section,
@@ -68,6 +76,91 @@ defmodule Athena.Factory do
       author_id: Ecto.UUID.generate(),
       important: false
     }
+  end
+
+  def survey_factory do
+    %Survey{
+      title: sequence(:title, &"Survey #{&1}"),
+      description: tiptap_doc("Tell us how the course went."),
+      status: :draft,
+      owner_id: Ecto.UUID.generate(),
+      settings: %Athena.Surveys.SurveySettings{}
+    }
+  end
+
+  @doc """
+  A `:scale` question by default - the type most survey tests want, and the
+  one whose answers project to `value_numeric` for the statistics.
+  """
+  def survey_question_factory do
+    %SurveyQuestion{
+      survey: build(:survey),
+      type: :scale,
+      body: tiptap_doc("How clear was this topic?"),
+      required: false,
+      position: 0,
+      page: 0,
+      config: %{"min" => 1, "max" => 5, "step" => 1}
+    }
+  end
+
+  def survey_branch_factory do
+    %SurveyBranch{
+      survey: build(:survey),
+      question: build(:survey_question),
+      position: 0,
+      action: :end_survey,
+      condition: %Athena.Surveys.BranchCondition{
+        logic: :and,
+        clauses: [
+          %Athena.Surveys.BranchClause{
+            question_id: Ecto.UUID.generate(),
+            op: :lte,
+            value: %{"number" => 2}
+          }
+        ]
+      }
+    }
+  end
+
+  def survey_response_factory do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    %SurveyResponse{
+      survey: build(:survey),
+      account_id: Ecto.UUID.generate(),
+      cohort_id: nil,
+      status: :in_progress,
+      started_at: now,
+      last_activity_at: now
+    }
+  end
+
+  def survey_answer_factory do
+    %SurveyAnswer{
+      response: build(:survey_response),
+      question: build(:survey_question),
+      row_key: "",
+      value: %{"number" => 4},
+      value_numeric: 4.0,
+      skipped: false,
+      answered_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    }
+  end
+
+  @doc """
+  Builds the option list a choice question's config needs, returning
+  `{config, option_ids}` so a test can answer with a real option id rather
+  than digging it back out of the stored config.
+  """
+  def choice_config(labels) do
+    options =
+      Enum.map(labels, fn label ->
+        %{"id" => Ecto.UUID.generate(), "text" => label}
+      end)
+
+    {%{"options" => options, "other_allowed" => false, "randomize" => false},
+     Enum.map(options, & &1["id"])}
   end
 
   @doc """

@@ -10,6 +10,7 @@ defmodule Athena.Content.Block do
   import Ecto.Changeset
 
   alias Athena.Content.{
+    BlockTypes,
     QuizQuestion,
     QuizExam,
     TicketExam,
@@ -18,7 +19,8 @@ defmodule Athena.Content.Block do
     CompletionRule,
     EngagementRule,
     CodeChallenge,
-    FileAssignment
+    FileAssignment,
+    SurveyRef
   }
 
   @type t :: %__MODULE__{}
@@ -40,9 +42,7 @@ defmodule Athena.Content.Block do
   @derive {Jason.Encoder, only: [:id, :type, :content]}
 
   schema "blocks" do
-    field :type, Ecto.Enum,
-      values:
-        ~w(text code quiz_question quiz_exam ticket_exam video image attachment file_assignment)a
+    field :type, Ecto.Enum, values: BlockTypes.all()
 
     field :content, :map, default: %{}
     field :order, :integer, default: 0
@@ -62,17 +62,14 @@ defmodule Athena.Content.Block do
     timestamps(type: :utc_datetime)
   end
 
-  @gradable_types ~w(code quiz_question quiz_exam ticket_exam file_assignment)a
-
   @doc """
   Whether a block of this type can have student `Submission`s at all (as
   opposed to pure content - text/image/video/attachment) - used to decide
   whether a "View Submissions" link to the grading screen makes sense for it.
   """
   @spec gradable?(t() | atom()) :: boolean()
-  def gradable?(%__MODULE__{type: type}), do: gradable?(type)
-  def gradable?(type) when type in @gradable_types, do: true
-  def gradable?(_type), do: false
+  def gradable?(%__MODULE__{type: type}), do: BlockTypes.gradable?(type)
+  def gradable?(type), do: BlockTypes.gradable?(type)
 
   @doc """
   Builds a changeset for block creation or update.
@@ -114,6 +111,9 @@ defmodule Athena.Content.Block do
 
   defp build_embed_changeset(:file_assignment, content_map),
     do: FileAssignment.changeset(%FileAssignment{}, content_map)
+
+  defp build_embed_changeset(:survey, content_map),
+    do: SurveyRef.changeset(%SurveyRef{}, content_map)
 
   defp build_embed_changeset(_, _), do: nil
 

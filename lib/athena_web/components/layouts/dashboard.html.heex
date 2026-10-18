@@ -124,7 +124,8 @@
         "courses.read",
         "competitions.read",
         "library.read",
-        "characters.read"
+        "characters.read",
+        "surveys.read"
       ]) do %>
         <div class="py-4 overflow-hidden">
           <div class="h-px bg-base-300 w-full"></div>
@@ -159,6 +160,16 @@
                 <.icon name="hero-bookmark-square" class="size-6 shrink-0" />
                 <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
                   {gettext("Library")}
+                </span>
+              </div>
+            </.link>
+          </li>
+          <li :if={Identity.can?(@current_user, "surveys.read")}>
+            <.link navigate={~p"/studio/surveys"} class="flex items-center">
+              <div class="flex items-center gap-2">
+                <.icon name="hero-clipboard-document-list" class="size-6 shrink-0" />
+                <span class="group-[.is-collapsed]/sidebar:hidden font-bold truncate">
+                  {gettext("Surveys")}
                 </span>
               </div>
             </.link>

@@ -331,6 +331,66 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
             <div class="divider my-4"></div>
           <% end %>
 
+          <%= if @block.type == :survey do %>
+            <div class="space-y-4 mb-6">
+              <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
+                {gettext("Survey")}
+              </div>
+
+              <%!-- The block holds only a reference, so the same survey can
+                    appear in several courses and its answers stay one
+                    dataset. Everything about its questions is edited in the
+                    survey's own builder. --%>
+              <div class="flex flex-col gap-3">
+                <.button
+                  type="button"
+                  phx-click="open_survey_picker"
+                  phx-value-block_id={@block.id}
+                  size="sm"
+                  id={"pick-survey-#{@block.id}"}
+                >
+                  <.icon name="hero-arrows-right-left" class="size-4" />
+                  {gettext("Choose a different survey")}
+                </.button>
+
+                <.link
+                  :if={@block.content["survey_id"]}
+                  navigate={~p"/studio/surveys/#{@block.content["survey_id"]}/builder"}
+                  class="btn btn-ghost btn-sm text-primary"
+                >
+                  <.icon name="hero-pencil-square" class="size-4" />
+                  {gettext("Edit this survey")}
+                </.link>
+
+                <.input
+                  type="text"
+                  name="block[content][title_override]"
+                  value={@block.content["title_override"]}
+                  label={gettext("Heading in this course (optional)")}
+                  phx-debounce="500"
+                />
+
+                <label class="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={!!@block.content["show_results_to_student"]}
+                    phx-click="toggle_survey_results_visible"
+                    phx-value-id={@block.id}
+                    class="toggle toggle-sm"
+                  />
+                  {gettext("Show the summary to students afterwards")}
+                </label>
+
+                <p class="text-xs text-base-content/50">
+                  {gettext(
+                    "Off by default: showing the running tally to people who have not answered yet nudges them towards the majority."
+                  )}
+                </p>
+              </div>
+            </div>
+            <div class="divider my-4"></div>
+          <% end %>
+
           <%= if @block.type == :quiz_exam do %>
             <div class="space-y-4 mb-6">
               <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">

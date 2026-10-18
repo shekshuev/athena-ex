@@ -43,6 +43,13 @@ defmodule AthenaWeb.Router do
     get "/cohorts/:id/gradebook/:course_id/export.csv", GradebookExportController, :download
   end
 
+  scope "/studio", AthenaWeb do
+    pipe_through :browser
+
+    get "/surveys/:id/export.csv", SurveyExportController, :download
+    get "/surveys/:id/export.long.csv", SurveyExportController, :download_long
+  end
+
   live_session :public,
     layout: {AthenaWeb.Layouts, :app},
     on_mount: [{AthenaWeb.Hooks.Timezone, :default}, {AthenaWeb.Hooks.Auth, :default}] do
@@ -111,6 +118,12 @@ defmodule AthenaWeb.Router do
         live "/library/new", Library, :new
         live "/library/:id/edit", Library, :edit
         live "/library/:id/editor", LibraryEditor, :index
+
+        live "/surveys", Surveys, :index
+        live "/surveys/new", Surveys, :new
+        live "/surveys/:id/edit", Surveys, :edit
+        live "/surveys/:id/builder", SurveyBuilder, :index
+        live "/surveys/:id/results", SurveyResults, :index
 
         live "/characters", Characters, :index
         live "/characters/new", Characters, :new

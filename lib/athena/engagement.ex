@@ -56,6 +56,32 @@ defmodule Athena.Engagement do
     end
   end
 
+  @doc """
+  Drops events belonging to `:survey` blocks.
+
+  A survey collects no telemetry. That is not a preference: engagement events
+  are account-keyed and timestamped, so `engagement_events(account_id,
+  block_id, occurred_at)` would say exactly who was looking at a feedback
+  question and when - which is worth more to a curious instructor than the
+  survey's own privacy rules are worth to a student, and would quietly undo
+  them.
+
+  The client is kept from reporting these in the first place (the player
+  omits `data-block-id` on a survey block, and the tracker skips nodes marked
+  `data-engagement="off"`), but a client is a client. This is the
+  authoritative check, and it lives here - rather than inline in the player -
+  because `Player`, `Exam` and `TicketExam` each have their own copy of the
+  batch handler and the rule must not survive in only two of them.
+  """
+  @spec reject_survey_events([map()], MapSet.t()) :: [map()]
+  def reject_survey_events(events, survey_block_ids) do
+    if MapSet.size(survey_block_ids) == 0 do
+      events
+    else
+      Enum.reject(events, &MapSet.member?(survey_block_ids, &1[:block_id] || &1["block_id"]))
+    end
+  end
+
   defdelegate list_events_for_scope(block_ids, cohort_id \\ nil), to: Events
 
   @doc """
