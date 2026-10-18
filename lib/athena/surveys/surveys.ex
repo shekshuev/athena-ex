@@ -272,6 +272,38 @@ defmodule Athena.Surveys.Surveys do
   end
 
   @doc """
+  Response counts for many surveys at once, as `%{survey_id => count}`.
+
+  A list screen showing a count per row would otherwise be N+1, and the
+  count is also what decides whether the row offers "Edit" or "Open" - so it
+  is needed for every row, not just on demand.
+  """
+  @spec count_responses_for([binary()]) :: %{binary() => non_neg_integer()}
+  def count_responses_for([]), do: %{}
+
+  def count_responses_for(survey_ids) do
+    SurveyResponse
+    |> where([r], r.survey_id in ^survey_ids)
+    |> group_by([r], r.survey_id)
+    |> select([r], {r.survey_id, count(r.id)})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  @doc "Question counts for many surveys at once, as `%{survey_id => count}`."
+  @spec count_questions_for([binary()]) :: %{binary() => non_neg_integer()}
+  def count_questions_for([]), do: %{}
+
+  def count_questions_for(survey_ids) do
+    SurveyQuestion
+    |> where([q], q.survey_id in ^survey_ids)
+    |> group_by([q], q.survey_id)
+    |> select([q], {q.survey_id, count(q.id)})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  @doc """
   Whether `user` may manage this specific survey - the permission *and* the
   record-level `own_only` policy, so a non-owner holding `surveys.update` with
   that policy is refused on someone else's survey rather than only being

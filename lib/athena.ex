@@ -43,6 +43,7 @@ defmodule Athena do
       Surveys.BranchClause,
       Surveys.QuestionTypes,
       Surveys.Flow,
+      Surveys.AnswerParams,
       Learning,
       Learning.Cohort,
       Learning.CohortMembership,

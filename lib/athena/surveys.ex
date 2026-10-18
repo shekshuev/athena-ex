@@ -32,7 +32,7 @@ defmodule Athena.Surveys do
   and a separate ledger. See `Athena.Surveys.SurveyResponse`.
   """
 
-  alias Athena.Surveys.{Branches, Flow, Questions, Responses, Surveys}
+  alias Athena.Surveys.{AnswerParams, Branches, Flow, Questions, Responses, Surveys}
 
   @doc """
   Loads a survey's questions and rules into an `Athena.Surveys.Flow` - the
@@ -73,6 +73,8 @@ defmodule Athena.Surveys do
   defdelegate survey_editable?(survey), to: Surveys, as: :editable?
   defdelegate survey_has_responses?(survey), to: Surveys, as: :has_responses?
   defdelegate question_count(survey), to: Surveys
+  defdelegate count_responses_for(survey_ids), to: Surveys
+  defdelegate count_questions_for(survey_ids), to: Surveys
   defdelegate can_manage_survey?(user, survey), to: Surveys, as: :can_manage?
 
   # Questions
@@ -108,6 +110,7 @@ defmodule Athena.Surveys do
   defdelegate validate_graph(flow), to: Flow
 
   # Responses
+  defdelegate cast_answer_params(type, params), to: AnswerParams, as: :cast
   defdelegate get_response(survey_id, account_id), to: Responses
 
   defdelegate get_or_start_response(survey, user, context \\ %{}),

@@ -112,6 +112,11 @@ defmodule AthenaWeb.Router do
         live "/library/:id/edit", Library, :edit
         live "/library/:id/editor", LibraryEditor, :index
 
+        live "/surveys", Surveys, :index
+        live "/surveys/new", Surveys, :new
+        live "/surveys/:id/edit", Surveys, :edit
+        live "/surveys/:id/builder", SurveyBuilder, :index
+
         live "/characters", Characters, :index
         live "/characters/new", Characters, :new
         live "/characters/:id/edit", Characters, :edit
