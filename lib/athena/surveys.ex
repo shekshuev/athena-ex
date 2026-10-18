@@ -106,6 +106,7 @@ defmodule Athena.Surveys do
   defdelegate change_question_type(question, type), to: Questions
   defdelegate delete_question(question), to: Questions
   defdelegate duplicate_question(question), to: Questions
+  defdelegate move_question(question, direction), to: Questions
   defdelegate reorder_questions(survey_id, ordered_ids), to: Questions
 
   # Branches

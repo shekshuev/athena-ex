@@ -39,6 +39,39 @@ defmodule Athena.Surveys.QuestionsTest do
       end
     end
 
+    test "with after_id it is inserted below that question, not at the end" do
+      survey = insert(:survey)
+      {:ok, first} = Surveys.add_question(survey, :scale)
+      {:ok, last} = Surveys.add_question(survey, :numeric)
+
+      {:ok, inserted} = Surveys.add_question(survey, :open_text, %{"after_id" => first.id})
+
+      assert ids(survey.id) == [first.id, inserted.id, last.id]
+      assert positions(survey.id) == [0, 1, 2]
+    end
+
+    test "a question inserted into a page inherits that page" do
+      survey = insert(:survey)
+      {:ok, first} = Surveys.add_question(survey, :scale)
+      insert(:survey_question, survey: survey, page: 1, position: 1)
+
+      {:ok, inserted} = Surveys.add_question(survey, :numeric, %{"after_id" => first.id})
+
+      # Otherwise a question added mid-survey would step over a page break and
+      # appear on the wrong screen.
+      assert inserted.page == first.page
+    end
+
+    test "an after_id from another survey is ignored rather than honoured" do
+      survey = insert(:survey)
+      stranger = insert(:survey_question, survey: insert(:survey))
+      {:ok, _first} = Surveys.add_question(survey, :scale)
+
+      {:ok, appended} = Surveys.add_question(survey, :numeric, %{"after_id" => stranger.id})
+
+      assert appended.position == 1
+    end
+
     test "a new question lands on the last page" do
       survey = insert(:survey)
       insert(:survey_question, survey: survey, page: 2, position: 0)
@@ -238,6 +271,52 @@ defmodule Athena.Surveys.QuestionsTest do
 
       assert [%{"id" => copied_row}] = copy.config["rows"]
       refute copied_row == row_id
+    end
+  end
+
+  describe "move_question/2" do
+    setup do
+      survey = insert(:survey)
+
+      questions =
+        for type <- [:scale, :open_text, :numeric] do
+          {:ok, question} = Surveys.add_question(survey, type)
+          question
+        end
+
+      %{survey: survey, questions: questions}
+    end
+
+    test "moves one place up and down", ctx do
+      [a, b, c] = ctx.questions
+
+      {:ok, _} = Surveys.move_question(b, :up)
+      assert ids(ctx.survey.id) == [b.id, a.id, c.id]
+
+      {:ok, _} = Surveys.move_question(Surveys.get_question(b.id), :down)
+      assert ids(ctx.survey.id) == [a.id, b.id, c.id]
+    end
+
+    test "a question deleted from under the call is a no-op, not a crash", ctx do
+      [a, _b, _c] = ctx.questions
+      {:ok, _} = Surveys.delete_question(a)
+
+      # The stale struct is still in the caller's hands - a second tab, or a
+      # click that raced a delete.
+      assert {:ok, questions} = Surveys.move_question(a, :down)
+      assert length(questions) == 2
+    end
+
+    test "at an edge it is a no-op rather than an error", ctx do
+      [a, _b, c] = ctx.questions
+
+      # Kept alongside drag-and-drop because dragging needs a mouse and a
+      # steady hand, and reordering a survey should not.
+      {:ok, _} = Surveys.move_question(a, :up)
+      {:ok, _} = Surveys.move_question(c, :down)
+
+      assert ids(ctx.survey.id) == Enum.map(ctx.questions, & &1.id)
+      assert positions(ctx.survey.id) == [0, 1, 2]
     end
   end
 

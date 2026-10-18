@@ -226,7 +226,7 @@ msgid "Cannot enroll: the following students already have access to this course:
 msgstr ""
 
 #: lib/athena/content/library.ex:153
-#: lib/athena/content/library_block.ex:63
+#: lib/athena/content/library_block.ex:62
 #, elixir-autogen, elixir-format
 msgid "is pinned to a course and cannot be deleted"
 msgstr ""

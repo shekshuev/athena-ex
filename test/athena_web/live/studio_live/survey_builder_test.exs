@@ -289,6 +289,39 @@ defmodule AthenaWeb.StudioLive.SurveyBuilderTest do
       assert Surveys.get_question(first.id)
     end
 
+    test "the inline panel adds below the question being edited", ctx do
+      [a, b, _c] = ctx.questions
+
+      ctx.lv |> element("#expand-#{a.id}") |> render_click()
+      ctx.lv |> element("#inline-add-nps-#{a.id}") |> render_click()
+
+      questions = Surveys.list_questions(a.survey_id)
+
+      # Not at the end: the inline control exists so an author can grow the
+      # survey where they are looking.
+      assert Enum.map(questions, & &1.type) == [:scale, :nps, :open_text, :numeric]
+      assert Enum.at(questions, 1).id != b.id
+    end
+
+    test "the bottom panel appends", ctx do
+      ctx.lv |> element("#add-nps") |> render_click()
+
+      assert Surveys.list_questions(hd(ctx.questions).survey_id)
+             |> List.last()
+             |> Map.get(:type) == :nps
+    end
+
+    test "the gutter arrows move a question one place", ctx do
+      [a, b, c] = ctx.questions
+
+      # Drag needs a mouse; these do not.
+      render_click(ctx.lv, "move_question_down", %{"question_id" => a.id})
+      assert Enum.map(Surveys.list_questions(a.survey_id), & &1.id) == [b.id, a.id, c.id]
+
+      render_click(ctx.lv, "move_question_up", %{"question_id" => a.id})
+      assert Enum.map(Surveys.list_questions(a.survey_id), & &1.id) == [a.id, b.id, c.id]
+    end
+
     test "a drag reorder applies the resulting order, not just the move", ctx do
       [a, b, c] = ctx.questions
 
@@ -421,6 +454,12 @@ defmodule AthenaWeb.StudioLive.SurveyBuilderTest do
 
     test "the add-question picker is gone", ctx do
       refute has_element?(ctx.lv, "#add-scale")
+    end
+
+    test "the gutter arrows are refused too", ctx do
+      render_click(ctx.lv, "move_question_down", %{"question_id" => ctx.question.id})
+
+      assert Surveys.get_question(ctx.question.id).position == 0
     end
 
     test "a mutating event is refused even if it is sent anyway", ctx do

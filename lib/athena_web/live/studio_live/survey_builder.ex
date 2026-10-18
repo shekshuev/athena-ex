@@ -280,22 +280,52 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
           description={gettext("Add your first question to start building the survey.")}
         />
 
-        <ul
+        <div
           :if={@questions != []}
           id="survey-questions"
           phx-hook="Sortable"
           data-event-name="reorder"
           class="space-y-4"
         >
-          <li
+          <div
             :for={{question, index} <- Enum.with_index(@questions, 1)}
             id={"question-#{question.id}"}
             data-id={question.id}
+            class="relative group flex flex-col scroll-mt-20"
           >
-            <.page_divider
-              :if={new_page?(@questions, question)}
-              page={question.page}
-            />
+            <.page_divider :if={new_page?(@questions, question)} page={question.page} />
+
+            <%!-- Outside the card, in the gutter, the way the course builder
+                  puts them: controls overlapping the content would compete
+                  with the question's own inputs for the same clicks. --%>
+            <div
+              :if={@editable?}
+              class="absolute -left-8 top-2 z-20 hidden flex-col items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 sm:flex"
+            >
+              <.button
+                phx-click="move_question_up"
+                phx-value-question_id={question.id}
+                class="min-h-7 h-7 w-7 flex items-center justify-center bg-base-100 border border-base-300 shadow-xs hover:text-primary hover:border-primary transition-colors cursor-pointer rounded-sm text-base-content/50"
+                title={gettext("Move Up")}
+              >
+                <.icon name="hero-chevron-up" class="size-4" />
+              </.button>
+              <div
+                class="cursor-grab drag-handle min-h-7 h-7 w-7 flex items-center justify-center bg-base-100 border border-base-300 shadow-xs hover:text-primary hover:border-primary transition-colors rounded-sm text-base-content/50"
+                title={gettext("Drag to Reorder")}
+              >
+                <.icon name="hero-bars-3" class="size-4" />
+              </div>
+              <.button
+                phx-click="move_question_down"
+                phx-value-question_id={question.id}
+                class="min-h-7 h-7 w-7 flex items-center justify-center bg-base-100 border border-base-300 shadow-xs hover:text-primary hover:border-primary transition-colors cursor-pointer rounded-sm text-base-content/50"
+                title={gettext("Move Down")}
+              >
+                <.icon name="hero-chevron-down" class="size-4" />
+              </.button>
+            </div>
+
             <.question_card
               question={question}
               index={index}
@@ -305,20 +335,27 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
               type_menu?={@type_menu_for == question.id}
               editable?={@editable?}
             />
-          </li>
-        </ul>
 
-        <div :if={@editable?} class="mt-6">
-          <.type_picker label={gettext("Add question")} />
+            <%!-- Adds directly below this question rather than at the end. --%>
+            <div
+              :if={@editable? && @expanded_id == question.id}
+              class="relative z-40 mt-6 mb-10 flex justify-center animate-in fade-in zoom-in duration-200"
+            >
+              <.add_question_panel variant="inline" after_id={question.id} />
+            </div>
+          </div>
+        </div>
+
+        <div :if={@editable?} class="mt-auto pt-8 z-30">
+          <.add_question_panel variant="bottom" />
           <.button
             :if={@questions != []}
-            size="sm"
-            class="mt-3"
             phx-click="add_page_break"
             id="add-page-break"
+            class="btn btn-outline btn-sm rounded-sm mt-3 bg-base-100 border-base-200 hover:border-primary hover:text-primary hover:bg-base-100 font-bold"
           >
             <.icon name="hero-scissors" class="size-4" />
-            {gettext("Add page break")}
+            {gettext("Page break")}
           </.button>
         </div>
       </.page_container>
@@ -352,20 +389,14 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
     <div
       data-active={to_string(@expanded?)}
       class={[
-        "rounded-xl border bg-base-100 transition-all",
+        "rounded-sm bg-base-100 transition-all",
         if(@expanded?,
-          do: "border-primary/40 shadow-md",
-          else: "border-base-300 shadow-sm hover:border-base-content/20"
+          do: "border-2 border-primary",
+          else: "border border-base-200 hover:border-base-content/20"
         )
       ]}
     >
       <div class="flex items-start gap-3 p-5">
-        <span
-          :if={@editable?}
-          class="drag-handle mt-1 cursor-grab text-base-content/25 hover:text-base-content/60"
-        >
-          <.icon name="hero-bars-2" class="size-4" />
-        </span>
         <span class="mt-0.5 w-5 shrink-0 text-sm font-black tabular-nums text-base-content/40">
           {@index}
         </span>
@@ -403,7 +434,7 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
           </button>
           <div
             :if={@type_menu?}
-            class="absolute left-0 z-20 mt-1 w-64 rounded-lg border border-base-300 bg-base-100 p-1 shadow-xl"
+            class="absolute left-0 z-20 mt-1 w-64 rounded-sm border border-base-300 bg-base-100 p-1 shadow-xl"
           >
             <button
               :for={type <- QuestionTypes.all()}
@@ -412,7 +443,7 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
               phx-value-question_id={@question.id}
               phx-value-type={type}
               class={[
-                "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-base-200",
+                "flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm transition-colors hover:bg-base-200",
                 type == @question.type && "bg-primary/10 text-primary"
               ]}
             >
@@ -434,7 +465,7 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
             data-readonly={to_string(not @editable?)}
             data-on-change="update_prompt"
             data-content={Jason.encode!(@question.body)}
-            class="editor-wrapper prose prose-sm min-h-16 max-w-none rounded-lg border border-base-300 px-3 py-2"
+            class="editor-wrapper prose prose-sm min-h-16 max-w-none rounded-sm border border-base-300 px-3 py-2"
           >
           </div>
         </div>
@@ -587,25 +618,46 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
     end
   end
 
-  attr :label, :string, required: true
+  attr :variant, :string, required: true
+  attr :after_id, :string, default: nil
 
-  defp type_picker(assigns) do
+  # Two shapes, as in the course builder: a grid of equal buttons at the foot
+  # of the page that appends, and a compact toolbar under the question you are
+  # editing that inserts right below it. `after_id` is what tells the two
+  # apart - the bottom panel sends none.
+  defp add_question_panel(%{variant: "bottom"} = assigns) do
     ~H"""
-    <div class="rounded-xl border border-dashed border-base-300 p-4">
-      <p class="mb-3 text-xs font-bold uppercase tracking-wide text-base-content/50">{@label}</p>
-      <div class="flex flex-wrap gap-2">
-        <button
-          :for={type <- QuestionTypes.all()}
-          type="button"
-          phx-click="add_question"
-          phx-value-type={type}
-          id={"add-#{type}"}
-          class="btn btn-outline btn-sm gap-1.5"
-        >
-          <.icon name={type_icon(type)} class="size-4" />
-          {type_label(type)}
-        </button>
-      </div>
+    <div class="mt-2 grid grid-cols-2 gap-3 rounded-sm transition-colors sm:grid-cols-5">
+      <.button
+        :for={type <- QuestionTypes.all()}
+        phx-click="add_question"
+        phx-value-type={type}
+        phx-value-after_id={@after_id}
+        id={"add-#{type}"}
+        class="btn btn-outline rounded-sm bg-base-100 border-base-200 hover:border-primary hover:text-primary hover:bg-base-100 flex-col h-auto py-4 gap-2 font-bold"
+      >
+        <.icon name={type_icon(type)} class="size-6 opacity-70" />
+        <span>{type_label(type)}</span>
+      </.button>
+    </div>
+    """
+  end
+
+  defp add_question_panel(%{variant: "inline"} = assigns) do
+    ~H"""
+    <div class="flex flex-wrap items-center gap-1 rounded-sm border border-base-300 bg-base-100 p-1.5">
+      <.button
+        :for={type <- QuestionTypes.all()}
+        id={"inline-add-#{type}-#{@after_id}"}
+        phx-hook="TippyTooltip"
+        data-tippy-content={type_label(type)}
+        phx-click="add_question"
+        phx-value-type={type}
+        phx-value-after_id={@after_id}
+        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary"
+      >
+        <.icon name={type_icon(type)} class="size-5" />
+      </.button>
     </div>
     """
   end
@@ -674,10 +726,12 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
   # -- questions ------------------------------------------------------------
 
   @impl true
-  def handle_event("add_question", %{"type" => type}, socket) do
+  def handle_event("add_question", %{"type" => type} = params, socket) do
+    attrs = %{"after_id" => blank_to_nil(params["after_id"])}
+
     with :ok <- ensure_editable(socket),
          {:ok, atom_type} <- known_type(type),
-         {:ok, question} <- Surveys.add_question(socket.assigns.survey, atom_type) do
+         {:ok, question} <- Surveys.add_question(socket.assigns.survey, atom_type, attrs) do
       {:noreply,
        socket
        |> assign(expanded_id: question.id)
@@ -685,6 +739,14 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
     else
       {:error, reason} -> {:noreply, report(socket, reason)}
     end
+  end
+
+  def handle_event("move_question_up", %{"question_id" => id}, socket) do
+    move_question(socket, id, :up)
+  end
+
+  def handle_event("move_question_down", %{"question_id" => id}, socket) do
+    move_question(socket, id, :down)
   end
 
   def handle_event("expand", %{"question_id" => id}, socket) do
@@ -1152,6 +1214,20 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
     end
   end
 
+  defp move_question(socket, id, direction) do
+    with :ok <- ensure_editable(socket),
+         {:ok, question} <- fetch_question(socket, id),
+         {:ok, _questions} <- Surveys.move_question(question, direction) do
+      {:noreply, load_questions(socket)}
+    else
+      {:error, reason} -> {:noreply, report(socket, reason)}
+    end
+  end
+
+  # The bottom panel renders no `after_id`, so the attribute arrives as "".
+  defp blank_to_nil(value) when value in [nil, ""], do: nil
+  defp blank_to_nil(value), do: value
+
   defp fetch_question(socket, id) do
     case Enum.find(socket.assigns.questions, &(&1.id == id)) do
       nil -> {:error, :question_not_found}
@@ -1196,7 +1272,9 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
         report(socket, :no_questions)
 
       last ->
-        case Surveys.add_question(socket.assigns.survey, :open_text, %{"page" => last.page + 1}) do
+        attrs = %{"page" => last.page + 1, "after_id" => nil}
+
+        case Surveys.add_question(socket.assigns.survey, :open_text, attrs) do
           {:ok, question} -> socket |> assign(expanded_id: question.id) |> load_questions()
           {:error, reason} -> report(socket, reason)
         end

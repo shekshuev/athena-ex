@@ -29,27 +29,106 @@ defmodule Athena.Surveys.Questions do
   def get_question(id), do: Repo.get(SurveyQuestion, id)
 
   @doc """
-  Appends a question of `type` to a survey, pre-filled with
+  Adds a question of `type`, pre-filled with
   `QuestionTypes.default_config/1` so a new card is immediately valid and
   answerable rather than an error until the author finishes it.
+
+  Appends by default. With `"after_id"` in `attrs` it is inserted directly
+  after that question instead, inheriting its page - which is what the
+  builder's inline "add below this one" control needs, and what keeps a page
+  break from being stepped over by a question added into the middle of a
+  page.
   """
   @spec add_question(Survey.t(), QuestionTypes.t(), map()) ::
-          {:ok, SurveyQuestion.t()} | {:error, Ecto.Changeset.t()}
+          {:ok, SurveyQuestion.t()} | {:error, Ecto.Changeset.t() | any()}
   def add_question(%Survey{} = survey, type, attrs \\ %{}) do
-    attrs =
-      %{
-        "survey_id" => survey.id,
-        "type" => type,
-        "position" => next_position(survey.id),
-        "page" => last_page(survey.id),
-        "body" => empty_body(),
-        "config" => QuestionTypes.default_config(type)
-      }
-      |> Map.merge(normalize(attrs))
+    {after_id, attrs} = attrs |> normalize() |> Map.pop("after_id")
 
+    case after_id && get_question(after_id) do
+      %SurveyQuestion{survey_id: survey_id} = previous when survey_id == survey.id ->
+        insert_after(survey, type, previous, attrs)
+
+      _ ->
+        insert_at_end(survey, type, attrs)
+    end
+  end
+
+  defp insert_at_end(survey, type, attrs) do
+    survey
+    |> new_question_attrs(type, next_position(survey.id), last_page(survey.id))
+    |> Map.merge(attrs)
+    |> insert_question()
+  end
+
+  # Shift then insert, rather than insert then renumber: the gap is opened in
+  # one `update_all`, so there is never a moment where two questions claim the
+  # same place.
+  defp insert_after(survey, type, previous, attrs) do
+    Repo.transaction(fn ->
+      position = previous.position + 1
+      shift_down(survey.id, position)
+
+      result =
+        survey
+        |> new_question_attrs(type, position, previous.page)
+        |> Map.merge(attrs)
+        |> insert_question()
+
+      case result do
+        {:ok, question} -> question
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+    end)
+  end
+
+  defp new_question_attrs(survey, type, position, page) do
+    %{
+      "survey_id" => survey.id,
+      "type" => type,
+      "position" => position,
+      "page" => page,
+      "body" => empty_body(),
+      "config" => QuestionTypes.default_config(type)
+    }
+  end
+
+  defp insert_question(attrs) do
     %SurveyQuestion{}
     |> SurveyQuestion.changeset(attrs)
     |> Repo.insert()
+  end
+
+  @doc """
+  Moves a question one place up or down.
+
+  Kept alongside drag-and-drop rather than replaced by it: dragging needs a
+  mouse and a steady hand, and reordering a survey should not.
+  """
+  @spec move_question(SurveyQuestion.t(), :up | :down) ::
+          {:ok, [SurveyQuestion.t()]} | {:error, any()}
+  def move_question(%SurveyQuestion{} = question, direction) do
+    ids = question.survey_id |> list_questions() |> Enum.map(& &1.id)
+
+    # The nil check has to come before the arithmetic, not after it: a
+    # question deleted from under this call would have crashed on `index - 1`
+    # long before a guard further down could notice.
+    case Enum.find_index(ids, &(&1 == question.id)) do
+      nil ->
+        {:ok, list_questions(question.survey_id)}
+
+      index ->
+        target = if direction == :up, do: index - 1, else: index + 1
+
+        if target >= 0 and target < length(ids) do
+          ids
+          |> List.delete_at(index)
+          |> List.insert_at(target, question.id)
+          |> then(&reorder_questions(question.survey_id, &1))
+        else
+          # Already at an edge: a no-op, not an error.
+          {:ok, list_questions(question.survey_id)}
+        end
+    end
   end
 
   @doc """
@@ -186,6 +265,13 @@ defmodule Athena.Surveys.Questions do
 
       list_questions(survey_id)
     end)
+  end
+
+  defp shift_down(survey_id, from_position) do
+    SurveyQuestion
+    |> where([q], q.survey_id == ^survey_id)
+    |> where([q], q.position >= ^from_position)
+    |> Repo.update_all(inc: [position: 1])
   end
 
   defp shift_down(survey_id, from_position, except_id) do
