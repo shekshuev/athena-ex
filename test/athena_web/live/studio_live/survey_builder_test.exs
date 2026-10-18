@@ -341,6 +341,66 @@ defmodule AthenaWeb.StudioLive.SurveyBuilderTest do
     end
   end
 
+  describe "where it is used" do
+    test "a published survey in no course says nobody can answer it", ctx do
+      {:ok, _question} = Surveys.add_question(ctx.survey, :scale)
+      {:ok, published} = Surveys.publish_survey(ctx.survey)
+
+      {:ok, lv, html} = builder(ctx.conn, published)
+
+      # A survey reaches students through a block in a course and nowhere
+      # else, and the symptom of a missing block is otherwise just silence.
+      assert has_element?(lv, "#unused-banner")
+      assert html =~ "not in any course"
+      refute has_element?(lv, "#usage-panel")
+    end
+
+    test "a draft is not flagged: it is not meant to be answerable yet", ctx do
+      {:ok, _question} = Surveys.add_question(ctx.survey, :scale)
+
+      {:ok, lv, _html} = builder(ctx.conn, ctx.survey)
+
+      refute has_element?(lv, "#unused-banner")
+    end
+
+    test "once placed, it lists the courses students reach it through", ctx do
+      {:ok, _question} = Surveys.add_question(ctx.survey, :scale)
+      {:ok, published} = Surveys.publish_survey(ctx.survey)
+
+      course = insert(:course, title: "Databases", status: :published)
+      section = insert(:section, course: course, title: "Week 1")
+
+      insert(:block,
+        section: section,
+        type: :survey,
+        content: %{"survey_id" => published.id}
+      )
+
+      {:ok, lv, html} = builder(ctx.conn, published)
+
+      refute has_element?(lv, "#unused-banner")
+      assert has_element?(lv, "#usage-panel")
+      assert html =~ "Databases"
+      assert html =~ "Week 1"
+    end
+
+    test "flags a placement in a course that is not published either", ctx do
+      {:ok, _question} = Surveys.add_question(ctx.survey, :scale)
+      {:ok, published} = Surveys.publish_survey(ctx.survey)
+
+      course = insert(:course, title: "Draft course", status: :draft)
+      section = insert(:section, course: course)
+
+      insert(:block, section: section, type: :survey, content: %{"survey_id" => published.id})
+
+      {:ok, _lv, html} = builder(ctx.conn, published)
+
+      # Placed but still unreachable, for a different reason - worth saying,
+      # since the author would otherwise go looking at the survey.
+      assert html =~ "course not published"
+    end
+  end
+
   describe "the structural lock" do
     setup %{conn: conn, user: user} do
       {:ok, survey} = Surveys.create_survey(user, %{"title" => "Locked"})

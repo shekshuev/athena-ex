@@ -79,6 +79,27 @@ defmodule AthenaWeb.StudioLive.SurveysTest do
       assert lv |> element("##{dom_id(locked)}") |> render() =~ "Open"
     end
 
+    test "marks a published survey that is in no course", %{conn: conn, user: user} do
+      stranded = insert(:survey, owner_id: user.id, title: "Stranded", status: :published)
+      placed = insert(:survey, owner_id: user.id, title: "Placed", status: :published)
+
+      section = insert(:section, course: insert(:course))
+      insert(:block, section: section, type: :survey, content: %{"survey_id" => placed.id})
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/surveys")
+
+      assert lv |> element("##{dom_id(stranded)}") |> render() =~ "not in any course"
+      refute lv |> element("##{dom_id(placed)}") |> render() =~ "not in any course"
+    end
+
+    test "a draft is not marked, being not meant to be answerable yet", %{conn: conn, user: user} do
+      draft = insert(:survey, owner_id: user.id, title: "Draft one", status: :draft)
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/surveys")
+
+      refute lv |> element("##{dom_id(draft)}") |> render() =~ "not in any course"
+    end
+
     test "search filters by title", %{conn: conn, user: user} do
       insert(:survey, owner_id: user.id, title: "Pace and workload")
       insert(:survey, owner_id: user.id, title: "Final impressions")

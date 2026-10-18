@@ -34,6 +34,58 @@ defmodule Athena.Content.Blocks do
   end
 
   @doc """
+  Where a survey is actually used: every `:survey` block pointing at it, with
+  the course and section it sits in.
+
+  A survey reaches students through a block in a course and nowhere else, so
+  this is what tells an author whether anybody can answer the thing they just
+  published - and, positively, which courses they would be changing if they
+  edited it.
+  """
+  @spec courses_using_survey(binary()) :: [map()]
+  def courses_using_survey(survey_id) when is_binary(survey_id) do
+    from(b in Block,
+      join: s in Section,
+      on: s.id == b.section_id,
+      join: c in Course,
+      on: c.id == s.course_id,
+      where: b.type == :survey and fragment("? ->> 'survey_id'", b.content) == ^survey_id,
+      where: is_nil(c.deleted_at),
+      order_by: [asc: c.title, asc: s.order],
+      select: %{
+        block_id: b.id,
+        section_id: s.id,
+        section_title: s.title,
+        course_id: c.id,
+        course_title: c.title,
+        course_status: c.status
+      }
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  How many `:survey` blocks point at each of `survey_ids`, as
+  `%{survey_id => count}`.
+
+  Batched because the survey list shows this per row, and one query per row
+  would be N+1 on a screen whose whole job is to list surveys.
+  """
+  @spec survey_usage_counts([binary()]) :: %{binary() => non_neg_integer()}
+  def survey_usage_counts([]), do: %{}
+
+  def survey_usage_counts(survey_ids) do
+    from(b in Block,
+      where: b.type == :survey,
+      where: fragment("? ->> 'survey_id'", b.content) in ^survey_ids,
+      group_by: fragment("? ->> 'survey_id'", b.content),
+      select: {fragment("? ->> 'survey_id'", b.content), count(b.id)}
+    )
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  @doc """
   Retrieves all blocks for multiple sections.
   Used for bulk operations like calculating course-wide unlock schedules.
   """

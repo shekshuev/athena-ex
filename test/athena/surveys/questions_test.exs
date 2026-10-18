@@ -179,7 +179,11 @@ defmodule Athena.Surveys.QuestionsTest do
     test "answers to a deleted question go with it" do
       survey = insert(:survey, status: :published)
       question = insert(:survey_question, survey: survey, type: :scale)
-      {:ok, response} = Surveys.get_or_start_response(survey, insert(:account))
+      course = insert(:course)
+
+      {:ok, response} =
+        Surveys.get_or_start_response(survey, insert(:account), %{course_id: course.id})
+
       {:ok, _} = Surveys.save_answer(response, question, %{"number" => 3})
 
       {:ok, _} = Surveys.delete_question(question)

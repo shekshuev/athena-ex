@@ -17,6 +17,15 @@ defmodule Athena.Surveys.ResponsesTest do
     insert(:survey, Map.merge(%{status: :published}, Map.new(attrs)))
   end
 
+  # A response always belongs to a course: that is where the cohort comes
+  # from, and `get_or_start/3` refuses to create one without it. Tests that do
+  # not care which course go through here.
+  defp start(survey, student, course \\ nil) do
+    course = course || insert(:course)
+
+    Surveys.get_or_start_response(survey, student, %{course_id: course.id})
+  end
+
   defp cohort_enrolled(course) do
     student = insert(:account)
     cohort = insert(:cohort)
@@ -55,14 +64,20 @@ defmodule Athena.Surveys.ResponsesTest do
       assert response.cohort_id == nil
     end
 
-    test "a standalone survey has no course to resolve against" do
+    test "a response cannot be created without a course" do
       student = insert(:account)
       survey = published_survey()
 
-      assert {:ok, response} = Surveys.get_or_start_response(survey, student)
+      # Without a course there is no cohort to resolve, so every respondent
+      # would be attributed to their account and named in the results - the
+      # opposite of what a feedback survey promises. A caller that forgot the
+      # course has a wiring bug, not a mode to support quietly.
+      assert {:error, :no_course} = Surveys.get_or_start_response(survey, student, %{})
 
-      assert response.cohort_id == nil
-      assert response.course_id == nil
+      assert {:error, :no_course} =
+               Surveys.get_or_start_response(survey, student, %{course_id: nil})
+
+      assert Repo.aggregate(SurveyResponse, :count) == 0
     end
 
     test "attribution is resolved server-side and cannot be supplied by the caller" do
@@ -105,7 +120,7 @@ defmodule Athena.Surveys.ResponsesTest do
 
       for status <- [:draft, :closed, :archived] do
         survey = insert(:survey, status: status)
-        assert {:error, :not_open} = Surveys.get_or_start_response(survey, student)
+        assert {:error, :not_open} = start(survey, student)
       end
     end
 
@@ -113,8 +128,8 @@ defmodule Athena.Surveys.ResponsesTest do
       student = insert(:account)
       survey = published_survey()
 
-      {:ok, first} = Surveys.get_or_start_response(survey, student)
-      {:ok, second} = Surveys.get_or_start_response(survey, student)
+      {:ok, first} = start(survey, student)
+      {:ok, second} = start(survey, student)
 
       assert first.id == second.id
       assert Repo.aggregate(SurveyResponse, :count) == 1
@@ -124,17 +139,17 @@ defmodule Athena.Surveys.ResponsesTest do
       student = insert(:account)
       survey = published_survey()
 
-      {:ok, response} = Surveys.get_or_start_response(survey, student)
+      {:ok, response} = start(survey, student)
       {:ok, _} = Surveys.complete_response(response)
 
-      assert {:already_completed, completed} = Surveys.get_or_start_response(survey, student)
+      assert {:already_completed, completed} = start(survey, student)
       assert completed.id == response.id
     end
 
     test "the database refuses a second response even if the context is bypassed" do
       student = insert(:account)
       survey = published_survey()
-      {:ok, _} = Surveys.get_or_start_response(survey, student)
+      {:ok, _} = start(survey, student)
 
       assert {:error, changeset} =
                %SurveyResponse{}
@@ -150,8 +165,8 @@ defmodule Athena.Surveys.ResponsesTest do
     test "two students answering the same survey are independent" do
       survey = published_survey()
 
-      {:ok, a} = Surveys.get_or_start_response(survey, insert(:account))
-      {:ok, b} = Surveys.get_or_start_response(survey, insert(:account))
+      {:ok, a} = start(survey, insert(:account))
+      {:ok, b} = start(survey, insert(:account))
 
       refute a.id == b.id
     end
@@ -161,7 +176,7 @@ defmodule Athena.Surveys.ResponsesTest do
     setup do
       survey = published_survey()
       question = insert(:survey_question, survey: survey, type: :scale)
-      {:ok, response} = Surveys.get_or_start_response(survey, insert(:account))
+      {:ok, response} = start(survey, insert(:account))
 
       %{survey: survey, question: question, response: response}
     end
@@ -238,7 +253,7 @@ defmodule Athena.Surveys.ResponsesTest do
       survey = published_survey()
       q1 = insert(:survey_question, survey: survey, position: 0)
       _q2 = insert(:survey_question, survey: survey, position: 1)
-      {:ok, response} = Surveys.get_or_start_response(survey, insert(:account))
+      {:ok, response} = start(survey, insert(:account))
 
       {:ok, _} = Surveys.save_answer(response, q1, %{"number" => 3})
       {:ok, _} = Surveys.abandon_response(response)
@@ -251,8 +266,8 @@ defmodule Athena.Surveys.ResponsesTest do
 
     test "an in-progress response is counted, not hidden" do
       survey = published_survey()
-      {:ok, _} = Surveys.get_or_start_response(survey, insert(:account))
-      {:ok, done} = Surveys.get_or_start_response(survey, insert(:account))
+      {:ok, _} = start(survey, insert(:account))
+      {:ok, done} = start(survey, insert(:account))
       {:ok, _} = Surveys.complete_response(done)
 
       counts = Surveys.count_responses_by_status(survey.id)
@@ -264,7 +279,7 @@ defmodule Athena.Surveys.ResponsesTest do
   describe "lifecycle of one response" do
     test "completing stamps completed_at once and keeps the first value" do
       survey = published_survey()
-      {:ok, response} = Surveys.get_or_start_response(survey, insert(:account))
+      {:ok, response} = start(survey, insert(:account))
 
       {:ok, completed} = Surveys.complete_response(response)
       assert completed.completed_at
@@ -276,7 +291,7 @@ defmodule Athena.Surveys.ResponsesTest do
     test "advancing moves the resume point" do
       survey = published_survey()
       question = insert(:survey_question, survey: survey)
-      {:ok, response} = Surveys.get_or_start_response(survey, insert(:account))
+      {:ok, response} = start(survey, insert(:account))
 
       {:ok, advanced} = Surveys.advance_response(response, question.id)
 
@@ -288,7 +303,7 @@ defmodule Athena.Surveys.ResponsesTest do
       survey = published_survey()
       question = insert(:survey_question, survey: survey)
 
-      {:ok, response} = Surveys.get_or_start_response(survey, student)
+      {:ok, response} = start(survey, student)
       {:ok, _} = Surveys.save_answer(response, question, %{"number" => 1})
       {:ok, _} = Surveys.complete_response(response)
 
@@ -296,7 +311,7 @@ defmodule Athena.Surveys.ResponsesTest do
 
       # The answers go with it - that is why the function is named for deletion.
       assert Repo.aggregate(SurveyAnswer, :count) == 0
-      assert {:ok, fresh} = Surveys.get_or_start_response(survey, student)
+      assert {:ok, fresh} = start(survey, student)
       assert fresh.status == :in_progress
     end
   end
@@ -310,7 +325,7 @@ defmodule Athena.Surveys.ResponsesTest do
       {:ok, cohort_response} =
         Surveys.get_or_start_response(survey, student, %{course_id: course.id})
 
-      {:ok, _solo} = Surveys.get_or_start_response(survey, insert(:account))
+      {:ok, _solo} = start(survey, insert(:account))
       {:ok, _} = Surveys.complete_response(cohort_response)
 
       assert [found] = Surveys.list_responses(survey.id, cohort_id: cohort.id)

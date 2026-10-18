@@ -10,6 +10,9 @@ defmodule Athena.Surveys.Responses do
   student's own session - the cohort is never accepted from the client, or a
   student could choose which group their feedback counted towards.
 
+  It needs a course, so `get_or_start/3` refuses to create a response without
+  one. A survey reaches students as a block in a course and nowhere else.
+
   A `nil` cohort means individual enrollment, and that is what tells the
   results layer it may show who answered. See
   `Athena.Surveys.SurveyResponse` for the full rule.
@@ -40,12 +43,13 @@ defmodule Athena.Surveys.Responses do
   ]
 
   @doc """
-  Resolves the cohort a response should be attributed to.
+  Resolves the cohort a response should be attributed to: the cohort the
+  student is enrolled through, or `nil` when they are enrolled individually.
 
-  A survey answered inside a course uses the cohort the student is enrolled
-  through; `nil` when they are enrolled individually. A standalone survey has
-  no course to resolve against and so attributes to the account until
-  `survey_targets` exists.
+  Needs a course, which is why a response cannot be created without one - see
+  `get_or_start/3`. With no course there is nothing to resolve against, so
+  every respondent would end up attributed to their account and named in the
+  results, which is the opposite of what a feedback survey promises.
   """
   @spec resolve_cohort(binary(), binary() | nil) :: binary() | nil
   def resolve_cohort(_account_id, nil), do: nil
@@ -71,8 +75,13 @@ defmodule Athena.Surveys.Responses do
   @doc """
   Starts a response, or returns the one already in progress.
 
-  `context` carries `:course_id` and `:block_id` when the survey is being
-  answered inside a course, and is empty for a standalone run.
+  `context` must carry a `:course_id`, and carries the `:block_id` the survey
+  was answered through. A survey reaches students as a block inside a course
+  and nowhere else, and that is enforced here rather than assumed: without a
+  course there is no cohort to resolve, so every respondent would be
+  attributed to their account and named in the results - the opposite of what
+  a feedback survey promises. `{:error, :no_course}` is a wiring mistake
+  worth failing on, not a mode to support quietly.
 
   Returns `{:already_completed, response}` when the student has finished the
   survey - the caller shows "you have already answered this" rather than
@@ -82,8 +91,8 @@ defmodule Athena.Surveys.Responses do
   @spec get_or_start(Survey.t(), map(), map()) ::
           {:ok, SurveyResponse.t()}
           | {:already_completed, SurveyResponse.t()}
-          | {:error, :not_open | Ecto.Changeset.t()}
-  def get_or_start(%Survey{} = survey, user, context \\ %{}) do
+          | {:error, :not_open | :no_course | Ecto.Changeset.t()}
+  def get_or_start(%Survey{} = survey, user, context) do
     case get_response(survey.id, user.id) do
       %SurveyResponse{status: :completed} = response ->
         {:already_completed, response}
@@ -96,9 +105,8 @@ defmodule Athena.Surveys.Responses do
     end
   end
 
-  defp start(%Survey{status: :published} = survey, user, context) do
-    course_id = Map.get(context, :course_id)
-
+  defp start(%Survey{status: :published} = survey, user, %{course_id: course_id} = context)
+       when is_binary(course_id) do
     %SurveyResponse{}
     |> SurveyResponse.create_changeset(%{
       survey_id: survey.id,
@@ -113,7 +121,10 @@ defmodule Athena.Surveys.Responses do
   # A draft, closed or archived survey is not answerable. Checked here rather
   # than only in the UI, since a block can keep pointing at a survey that was
   # closed after the course was published.
-  defp start(%Survey{}, _user, _context), do: {:error, :not_open}
+  defp start(%Survey{status: status}, _user, _context) when status != :published,
+    do: {:error, :not_open}
+
+  defp start(%Survey{}, _user, _context), do: {:error, :no_course}
 
   @doc """
   Saves one answer, replacing any previous answer to the same question (and

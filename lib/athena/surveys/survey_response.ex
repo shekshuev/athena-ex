@@ -34,9 +34,11 @@ defmodule Athena.Surveys.SurveyResponse do
   student answering twice, and it is how an interrupted response is found
   again on the next page load.
 
-  `course_id`/`block_id` are provenance for a survey answered inside a course,
-  and `nil` for a standalone one. Bare ids, no foreign keys, per this
-  codebase's cross-context convention.
+  `course_id` and `block_id` record where the survey was answered. A response
+  always has a course - see `Athena.Surveys.Responses.get_or_start/3`, which
+  refuses to create one without it, because the cohort is resolved from the
+  course and a response with no cohort names its respondent. Bare ids, no
+  foreign keys, per this codebase's cross-context convention.
   """
 
   use Ecto.Schema

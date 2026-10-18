@@ -15,6 +15,7 @@ defmodule AthenaWeb.StudioLive.Surveys do
 
   use AthenaWeb, :live_view
 
+  alias Athena.Content
   alias Athena.Identity
   alias Athena.Surveys
   alias Athena.Surveys.Survey
@@ -52,6 +53,7 @@ defmodule AthenaWeb.StudioLive.Surveys do
            show_archived?: show_archived?,
            counts: response_counts(surveys),
            question_counts: question_counts(surveys),
+           usage_counts: Content.survey_usage_counts(Enum.map(surveys, & &1.id)),
            live_action: socket.assigns.live_action,
            form: new_form()
          )
@@ -301,6 +303,14 @@ defmodule AthenaWeb.StudioLive.Surveys do
                     count: Map.get(@counts, survey.id, 0)
                   )}
                 </span>
+                <%!-- A published survey in no course is a survey nobody can
+                      answer, and the symptom is otherwise just silence. --%>
+                <.badge
+                  :if={survey.status == :published and Map.get(@usage_counts, survey.id, 0) == 0}
+                  tone="warning"
+                >
+                  {gettext("not in any course")}
+                </.badge>
               </div>
             </div>
 

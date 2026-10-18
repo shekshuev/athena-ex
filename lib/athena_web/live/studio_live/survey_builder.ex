@@ -33,6 +33,7 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
   import AthenaWeb.SurveyComponents,
     only: [question: 1, question_editor: 1, logic_editor: 1, logic_report: 1, prompt_text: 1]
 
+  alias Athena.Content
   alias Athena.Surveys
   alias Athena.Surveys.{AnswerParams, BranchClause, Flow, QuestionTypes, SurveyAnswer}
 
@@ -185,6 +186,57 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
             </div>
           </div>
         </.sticky_header>
+
+        <%!-- A survey reaches students through a block in a course and
+              nowhere else, so a published survey nobody has placed is a
+              survey nobody can answer. Said out loud, because the symptom
+              otherwise is silence: an author waits for responses that cannot
+              arrive. --%>
+        <div
+          :if={@survey.status == :published and @usage == []}
+          id="unused-banner"
+          class="mb-6 flex gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4"
+        >
+          <.icon name="hero-exclamation-triangle" class="size-5 shrink-0 text-warning" />
+          <div class="text-sm">
+            <p class="font-bold">{gettext("Nobody can answer this yet")}</p>
+            <p class="mt-1 text-base-content/70">
+              {gettext(
+                "It is published, but it is not in any course. Open a course in the builder and add a Survey block pointing at it."
+              )}
+            </p>
+          </div>
+        </div>
+
+        <div
+          :if={@usage != []}
+          id="usage-panel"
+          class="mb-6 rounded-lg border border-base-300 bg-base-100 p-4"
+        >
+          <p class="mb-2 text-xs font-bold uppercase tracking-wide text-base-content/50">
+            {gettext("Students reach it through")}
+          </p>
+          <ul class="space-y-1 text-sm">
+            <li :for={place <- @usage} class="flex flex-wrap items-center gap-2">
+              <.link
+                navigate={
+                  ~p"/studio/courses/#{place.course_id}/builder/sections/#{place.section_id}/blocks/#{place.block_id}"
+                }
+                class="link link-hover font-medium"
+              >
+                {place.course_title}
+              </.link>
+              <span class="text-base-content/40">/</span>
+              <span class="text-base-content/60">{place.section_title}</span>
+              <.badge :if={place.course_status != :published} tone="warning">
+                {gettext("course not published")}
+              </.badge>
+            </li>
+          </ul>
+          <p :if={length(@usage) > 1} class="mt-2 text-xs text-base-content/50">
+            {gettext("Editing it changes every one of these, and the answers stay one dataset.")}
+          </p>
+        </div>
 
         <div
           :if={not @editable?}
@@ -1118,6 +1170,7 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
 
     assign(socket,
       questions: questions,
+      usage: Content.courses_using_survey(survey.id),
       branches: branches,
       logic_issues: Flow.validate_graph(flow),
       editable?: Surveys.survey_editable?(survey),

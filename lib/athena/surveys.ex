@@ -1,12 +1,23 @@
 defmodule Athena.Surveys do
   @moduledoc """
-  Surveys: standalone questionnaires for collecting feedback from students.
+  Surveys: self-contained questionnaires for collecting feedback from
+  students.
 
-  A survey is authored once in its own builder, lives outside the content
-  library, and is referenced from a course by a `:survey` block - where it
-  renders in place, like any other block, rather than taking over the screen
-  the way `:quiz_exam` and `:ticket_exam` do. It is not graded, earns no XP,
-  and collects no engagement telemetry.
+  A survey is authored once in its own builder and lives outside the content
+  library - "self-contained" in the sense that it is one whole thing rather
+  than assembled from library questions the way `:quiz_exam` is.
+
+  It reaches students through a `:survey` block in a course and **nowhere
+  else**: there it renders in place, like any other block, rather than taking
+  over the screen the way `:quiz_exam` and `:ticket_exam` do. It is not
+  graded, earns no XP, and collects no engagement telemetry.
+
+  That a course is always involved is an invariant, not a convenience:
+  `Athena.Surveys.Responses.resolve_cohort/2` needs the course to find the
+  cohort a response belongs to, and without a cohort every respondent would
+  be named in the results. `Athena.Content.courses_using_survey/1` is how an
+  author sees where a survey is actually placed, and a published survey in no
+  course is flagged as unanswerable.
 
   ## Shape of the context
 
@@ -141,9 +152,7 @@ defmodule Athena.Surveys do
   defdelegate cast_answer_params(type, params), to: AnswerParams, as: :cast
   defdelegate get_response(survey_id, account_id), to: Responses
 
-  defdelegate get_or_start_response(survey, user, context \\ %{}),
-    to: Responses,
-    as: :get_or_start
+  defdelegate get_or_start_response(survey, user, context), to: Responses, as: :get_or_start
 
   defdelegate save_answer(response, question, value, opts \\ []), to: Responses
   defdelegate skip_answer(response, question, value \\ %{}), to: Responses

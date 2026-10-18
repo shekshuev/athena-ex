@@ -1,12 +1,12 @@
 defmodule Athena.Surveys.Survey do
   @moduledoc """
-  A standalone questionnaire used to collect feedback from students.
+  A self-contained questionnaire used to collect feedback from students.
 
   A survey is **not** a library block. Unlike `:quiz_exam`/`:ticket_exam`,
   which assemble themselves from a pool of `Athena.Content.LibraryBlock`
   questions, a survey is authored once as a whole and referenced from a
-  course by a `:survey` block (`Athena.Content.SurveyRef`) - or distributed
-  on its own. It is not graded and earns no XP.
+  course by a `:survey` block (`Athena.Content.SurveyRef`). That reference is
+  the only way students reach it. It is not graded and earns no XP.
 
   `description` stores a TipTap/ProseMirror JSON document (jsonb), the same as
   `Athena.Announcements.Announcement.body`.
