@@ -19,8 +19,8 @@ defmodule Athena.Surveys.QuestionTypes do
   alias Athena.Surveys.QuestionTypes.{
     Dichotomous,
     Matching,
-    MultiScale,
     MultipleChoice,
+    MultiScale,
     Nps,
     Numeric,
     OpenText,

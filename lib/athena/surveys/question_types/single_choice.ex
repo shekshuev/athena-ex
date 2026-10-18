@@ -12,6 +12,7 @@ defmodule Athena.Surveys.QuestionTypes.SingleChoice do
   """
   use Ecto.Schema
   import Ecto.Changeset
+  alias Athena.Surveys.QuestionTypes
   alias Athena.Surveys.QuestionTypes.Option
 
   @derive Jason.Encoder
@@ -33,6 +34,6 @@ defmodule Athena.Surveys.QuestionTypes.SingleChoice do
     schema
     |> cast(attrs, [:other_allowed, :randomize])
     |> cast_embed(:options, with: &Option.changeset/2)
-    |> Athena.Surveys.QuestionTypes.validate_min_options(2)
+    |> QuestionTypes.validate_min_options(2)
   end
 end

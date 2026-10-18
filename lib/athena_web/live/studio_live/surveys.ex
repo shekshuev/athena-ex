@@ -123,9 +123,8 @@ defmodule AthenaWeb.StudioLive.Surveys do
   end
 
   def handle_event("archive_click", %{"id" => id}, socket) do
-    with {:ok, survey} <- authorized(socket, id, "surveys.delete") do
-      {:noreply, assign(socket, survey_to_archive: survey)}
-    else
+    case authorized(socket, id, "surveys.delete") do
+      {:ok, survey} -> {:noreply, assign(socket, survey_to_archive: survey)}
       {:error, message} -> {:noreply, put_flash(socket, :error, message)}
     end
   end

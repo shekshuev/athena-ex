@@ -37,7 +37,7 @@ defmodule Athena.Surveys.BranchCondition do
   end
 
   defp validate_min_clauses(changeset) do
-    if length(get_field(changeset, :clauses) || []) < 1 do
+    if (get_field(changeset, :clauses) || []) == [] do
       add_error(changeset, :clauses, "must have at least 1 clause")
     else
       changeset

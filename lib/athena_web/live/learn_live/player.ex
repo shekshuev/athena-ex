@@ -20,6 +20,7 @@ defmodule AthenaWeb.LearnLive.Player do
   alias Athena.Execution
   alias Athena.Learning
   alias Athena.Surveys
+  alias Athena.Surveys.Flow
   alias AthenaWeb.LearnLive.EngagementSignals
 
   import AthenaWeb.SurveyComponents, only: [question: 1]
@@ -412,7 +413,7 @@ defmodule AthenaWeb.LearnLive.Player do
   defp find_survey(socket, question_id) do
     Enum.find_value(socket.assigns.survey_state || %{}, :error, fn {block_id, state} ->
       with %{status: :open, flow: flow} <- state,
-           %{} <- Athena.Surveys.Flow.question(flow, question_id) do
+           %{} <- Flow.question(flow, question_id) do
         {:ok, block_id, state}
       else
         _ -> nil
@@ -422,7 +423,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
   @doc false
   defp survey_question(state, question_id) do
-    case Athena.Surveys.Flow.question(state.flow, question_id) do
+    case Flow.question(state.flow, question_id) do
       nil -> :error
       question -> {:ok, question}
     end
@@ -552,7 +553,7 @@ defmodule AthenaWeb.LearnLive.Player do
   defp resume_point(flow, nil), do: Surveys.first_question(flow)
 
   defp resume_point(flow, response) do
-    Athena.Surveys.Flow.question(flow, response.current_question_id) ||
+    Flow.question(flow, response.current_question_id) ||
       Surveys.first_question(flow)
   end
 

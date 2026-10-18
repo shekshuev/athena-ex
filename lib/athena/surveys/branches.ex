@@ -12,7 +12,7 @@ defmodule Athena.Surveys.Branches do
   import Ecto.Query
 
   alias Athena.Repo
-  alias Athena.Surveys.{Survey, SurveyBranch, SurveyQuestion}
+  alias Athena.Surveys.{Positions, Survey, SurveyBranch, SurveyQuestion}
 
   @doc "Lists every rule of a survey, in evaluation order."
   @spec list_branches(binary()) :: [SurveyBranch.t()]
@@ -124,15 +124,7 @@ defmodule Athena.Surveys.Branches do
       ordered = ordered_ids |> Enum.uniq() |> Enum.filter(&Map.has_key?(by_id, &1))
       remaining = Enum.reject(existing, &(&1.id in ordered))
 
-      (Enum.map(ordered, &Map.fetch!(by_id, &1)) ++ remaining)
-      |> Enum.with_index()
-      |> Enum.each(fn {branch, index} ->
-        if branch.position != index do
-          branch
-          |> Ecto.Changeset.change(%{position: index})
-          |> Repo.update!()
-        end
-      end)
+      Positions.apply_order(Enum.map(ordered, &Map.fetch!(by_id, &1)) ++ remaining)
 
       list_for_question(question_id)
     end)
@@ -157,18 +149,8 @@ defmodule Athena.Surveys.Branches do
     |> Repo.aggregate(:count)
   end
 
-  defp renumber(question_id) do
-    question_id
-    |> list_for_question()
-    |> Enum.with_index()
-    |> Enum.each(fn {branch, index} ->
-      if branch.position != index do
-        branch
-        |> Ecto.Changeset.change(%{position: index})
-        |> Repo.update!()
-      end
-    end)
-  end
+  defp renumber(question_id),
+    do: question_id |> list_for_question() |> Positions.apply_order()
 
   defp normalize(attrs) do
     Map.new(attrs, fn {key, value} -> {to_string(key), value} end)

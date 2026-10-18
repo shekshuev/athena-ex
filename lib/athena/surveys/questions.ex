@@ -13,7 +13,7 @@ defmodule Athena.Surveys.Questions do
   import Ecto.Query
 
   alias Athena.Repo
-  alias Athena.Surveys.{QuestionTypes, Survey, SurveyBranch, SurveyQuestion}
+  alias Athena.Surveys.{Positions, QuestionTypes, Survey, SurveyBranch, SurveyQuestion}
 
   @doc "Lists a survey's questions in `position` order."
   @spec list_questions(binary()) :: [SurveyQuestion.t()]
@@ -182,15 +182,7 @@ defmodule Athena.Surveys.Questions do
       ordered = ordered_ids |> Enum.uniq() |> Enum.filter(&Map.has_key?(by_id, &1))
       remaining = Enum.reject(existing, &(&1.id in ordered))
 
-      (Enum.map(ordered, &Map.fetch!(by_id, &1)) ++ remaining)
-      |> Enum.with_index()
-      |> Enum.each(fn {question, index} ->
-        if question.position != index do
-          question
-          |> Ecto.Changeset.change(%{position: index})
-          |> Repo.update!()
-        end
-      end)
+      Positions.apply_order(Enum.map(ordered, &Map.fetch!(by_id, &1)) ++ remaining)
 
       list_questions(survey_id)
     end)
@@ -204,18 +196,7 @@ defmodule Athena.Surveys.Questions do
     |> Repo.update_all(inc: [position: 1])
   end
 
-  defp renumber(survey_id) do
-    survey_id
-    |> list_questions()
-    |> Enum.with_index()
-    |> Enum.each(fn {question, index} ->
-      if question.position != index do
-        question
-        |> Ecto.Changeset.change(%{position: index})
-        |> Repo.update!()
-      end
-    end)
-  end
+  defp renumber(survey_id), do: survey_id |> list_questions() |> Positions.apply_order()
 
   # A rule is invalidated both by its owning question disappearing (handled by
   # the FK cascade) and by any of its *clauses* referencing it, which the

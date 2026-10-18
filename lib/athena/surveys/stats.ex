@@ -327,42 +327,51 @@ defmodule Athena.Surveys.Stats do
           {:error, :empty_margin}
 
         true ->
-          expected =
-            Enum.map(row_totals, fn row_total ->
-              Enum.map(col_totals, fn col_total -> row_total * col_total / total end)
-            end)
-
-          statistic =
-            Enum.zip(table, expected)
-            |> Enum.reduce(0.0, fn {observed_row, expected_row}, acc ->
-              acc +
-                (Enum.zip(observed_row, expected_row)
-                 |> Enum.reduce(0.0, fn {observed, e}, inner ->
-                   inner + :math.pow(observed - e, 2) / e
-                 end))
-            end)
-
-          rows = length(table)
-          cols = length(col_totals)
-          df = (rows - 1) * (cols - 1)
-          flat_expected = List.flatten(expected)
-
-          {:ok,
-           %{
-             chi_square: statistic,
-             df: df,
-             p: D.chi_square_p(statistic, df),
-             n: total,
-             cramers_v: :math.sqrt(statistic / (total * min(rows - 1, cols - 1))),
-             expected: expected,
-             min_expected: Enum.min(flat_expected),
-             small_expected_cells: Enum.count(flat_expected, &(&1 < 5))
-           }}
+          chi_square_result(table, row_totals, col_totals, total)
       end
     end
   end
 
   def chi_square(_table), do: {:error, :insufficient_data}
+
+  defp chi_square_result(table, row_totals, col_totals, total) do
+    expected = expected_counts(row_totals, col_totals, total)
+    statistic = chi_square_statistic(table, expected)
+
+    rows = length(table)
+    cols = length(col_totals)
+    df = (rows - 1) * (cols - 1)
+    flat_expected = List.flatten(expected)
+
+    {:ok,
+     %{
+       chi_square: statistic,
+       df: df,
+       p: D.chi_square_p(statistic, df),
+       n: total,
+       cramers_v: :math.sqrt(statistic / (total * min(rows - 1, cols - 1))),
+       expected: expected,
+       min_expected: Enum.min(flat_expected),
+       # The test's validity rests on these, so they travel with the
+       # statistic rather than being left for a reader to work out.
+       small_expected_cells: Enum.count(flat_expected, &(&1 < 5))
+     }}
+  end
+
+  # What each cell would hold if the two variables were independent.
+  defp expected_counts(row_totals, col_totals, total) do
+    Enum.map(row_totals, fn row_total ->
+      Enum.map(col_totals, &(row_total * &1 / total))
+    end)
+  end
+
+  # Sum over every cell of (observed - expected)^2 / expected.
+  defp chi_square_statistic(table, expected) do
+    table
+    |> Enum.zip(expected)
+    |> Enum.flat_map(fn {observed_row, expected_row} -> Enum.zip(observed_row, expected_row) end)
+    |> Enum.reduce(0.0, fn {observed, e}, acc -> acc + :math.pow(observed - e, 2) / e end)
+  end
 
   defp validate_table(table) do
     widths = table |> Enum.map(&length/1) |> Enum.uniq()
@@ -518,7 +527,7 @@ defmodule Athena.Surveys.Stats do
   """
   @spec anova_one_way([values()]) :: {:ok, map()} | {:error, atom()}
   def anova_one_way(groups) when is_list(groups) do
-    usable = Enum.filter(groups, &(length(&1) >= 1))
+    usable = Enum.reject(groups, &(&1 == []))
 
     cond do
       length(usable) < 2 ->
@@ -539,11 +548,7 @@ defmodule Athena.Surveys.Stats do
             acc + length(group) * :math.pow(mean(group) - grand_mean, 2)
           end)
 
-        ss_within =
-          Enum.reduce(usable, 0.0, fn group, acc ->
-            group_mean = mean(group)
-            acc + Enum.reduce(group, 0.0, fn v, inner -> inner + :math.pow(v - group_mean, 2) end)
-          end)
+        ss_within = Enum.reduce(usable, 0.0, fn group, acc -> acc + sum_of_squares(group) end)
 
         df_between = k - 1
         df_within = n - k
@@ -551,26 +556,40 @@ defmodule Athena.Surveys.Stats do
         if ss_within == 0.0 and ss_between == 0.0 do
           {:error, :no_variance}
         else
-          ms_between = ss_between / df_between
-          ms_within = ss_within / df_within
-
-          f = if ms_within == 0.0, do: :infinity, else: ms_between / ms_within
-          p = if f == :infinity, do: 0.0, else: D.f_p(f, df_between, df_within)
-
-          {:ok,
-           %{
-             f: f,
-             df_between: df_between,
-             df_within: df_within,
-             p: p,
-             eta_squared: ss_between / (ss_between + ss_within),
-             ss_between: ss_between,
-             ss_within: ss_within,
-             group_means: Enum.map(usable, &mean/1),
-             group_sizes: Enum.map(usable, &length/1)
-           }}
+          anova_result(usable, ss_between, ss_within, df_between, df_within)
         end
     end
+  end
+
+  # Squared deviations from a group's own mean.
+  defp sum_of_squares(values) do
+    group_mean = mean(values)
+
+    Enum.reduce(values, 0.0, fn value, acc -> acc + :math.pow(value - group_mean, 2) end)
+  end
+
+  defp anova_result(groups, ss_between, ss_within, df_between, df_within) do
+    ms_between = ss_between / df_between
+    ms_within = ss_within / df_within
+
+    # Zero within-group variance with groups that differ is a perfect
+    # separation: the F is infinite rather than 0/0, and saying so beats
+    # inventing a number.
+    f = if ms_within == 0.0, do: :infinity, else: ms_between / ms_within
+    p = if f == :infinity, do: 0.0, else: D.f_p(f, df_between, df_within)
+
+    {:ok,
+     %{
+       f: f,
+       df_between: df_between,
+       df_within: df_within,
+       p: p,
+       eta_squared: ss_between / (ss_between + ss_within),
+       ss_between: ss_between,
+       ss_within: ss_within,
+       group_means: Enum.map(groups, &mean/1),
+       group_sizes: Enum.map(groups, &length/1)
+     }}
   end
 
   @doc """
@@ -579,7 +598,7 @@ defmodule Athena.Surveys.Stats do
   """
   @spec kruskal_wallis([values()]) :: {:ok, map()} | {:error, atom()}
   def kruskal_wallis(groups) when is_list(groups) do
-    usable = Enum.filter(groups, &(length(&1) >= 1))
+    usable = Enum.reject(groups, &(&1 == []))
 
     if length(usable) < 2 or Enum.sum(Enum.map(usable, &length/1)) < 3 do
       {:error, :insufficient_data}

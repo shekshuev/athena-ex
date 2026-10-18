@@ -33,6 +33,7 @@ defmodule AthenaWeb.StudioLive.SurveyResults do
   alias Athena.Learning
   alias Athena.Surveys
   alias Athena.Surveys.QuestionTypes
+  alias Athena.Surveys.Stats
   alias AthenaWeb.StudioLive.SurveyChartConfig, as: Charts
 
   on_mount {AthenaWeb.Hooks.Permission, ["surveys.results.read", "surveys.read"]}
@@ -985,7 +986,7 @@ defmodule AthenaWeb.StudioLive.SurveyResults do
   defp effect_value(result, :cramers_v), do: Map.get(result, :cramers_v)
 
   defp effect_sentence(kind, value) do
-    band = Athena.Surveys.Stats.effect_band(kind, value)
+    band = Stats.effect_band(kind, value)
 
     gettext("Effect size %{value} (%{band}).", value: number(value), band: band_label(band))
   end

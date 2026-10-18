@@ -9,12 +9,12 @@ defmodule AthenaWeb.StudioLive.Builder do
   use AthenaWeb, :live_view
 
   alias Athena.Content
-  alias Athena.Surveys
   alias Athena.Content.Block
-  alias Athena.Identity
   alias Athena.Execution
+  alias Athena.Identity
   alias Athena.Learning
   alias Athena.Media.Config, as: MediaConfig
+  alias Athena.Surveys
 
   on_mount {AthenaWeb.Hooks.Permission, ["courses.read", "competitions.read"]}
 

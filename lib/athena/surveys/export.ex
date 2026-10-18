@@ -147,20 +147,17 @@ defmodule Athena.Surveys.Export do
       number = question.position + 1
 
       case question.type do
-        :multi_scale ->
-          question
-          |> rows()
-          |> Enum.map(fn row ->
-            %{
-              question: question,
-              row_key: row["id"],
-              header: "Q#{number}.#{row["text"]}"
-            }
-          end)
-
-        _ ->
-          [%{question: question, row_key: "", header: "Q#{number}. #{prompt}"}]
+        :multi_scale -> matrix_columns(question, number)
+        _ -> [%{question: question, row_key: "", header: "Q#{number}. #{prompt}"}]
       end
+    end)
+  end
+
+  # A matrix is a battery of separate items, so it gets a column per row
+  # rather than one column with nothing sensible to put in it.
+  defp matrix_columns(question, number) do
+    Enum.map(rows(question), fn row ->
+      %{question: question, row_key: row["id"], header: "Q#{number}.#{row["text"]}"}
     end)
   end
 
@@ -212,24 +209,27 @@ defmodule Athena.Surveys.Export do
         format_number(answer.value_numeric)
 
       answer.value_choice_ids not in [nil, []] ->
-        labels = choice_labels(question)
-
-        answer.value_choice_ids
-        |> Enum.map_join("; ", fn id ->
-          cond do
-            id == QuestionTypes.other_choice_id() ->
-              "Other: #{answer.value_text}"
-
-            true ->
-              Map.get(labels, id, id)
-          end
-        end)
+        choices_label(question, answer)
 
       is_number(answer.value_numeric) ->
         format_number(answer.value_numeric)
 
       true ->
         answer.value_text
+    end
+  end
+
+  defp choices_label(question, answer) do
+    labels = choice_labels(question)
+
+    Enum.map_join(answer.value_choice_ids, "; ", &choice_text(&1, labels, answer))
+  end
+
+  defp choice_text(id, labels, answer) do
+    if id == QuestionTypes.other_choice_id() do
+      "Other: #{answer.value_text}"
+    else
+      Map.get(labels, id, id)
     end
   end
 

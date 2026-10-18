@@ -419,12 +419,7 @@ defmodule Athena.Surveys.Results do
           |> Enum.uniq()
           |> Enum.sort_by(&category_order(col_question, &1))
 
-        tally = Enum.frequencies(pairs)
-
-        table =
-          Enum.map(row_keys, fn row_key ->
-            Enum.map(col_keys, fn col_key -> Map.get(tally, {row_key, col_key}, 0) end)
-          end)
+        table = tabulate(pairs, row_keys, col_keys)
 
         {:ok,
          %{
@@ -440,6 +435,14 @@ defmodule Athena.Surveys.Results do
          }}
       end
     end
+  end
+
+  defp tabulate(pairs, row_keys, col_keys) do
+    tally = Enum.frequencies(pairs)
+
+    Enum.map(row_keys, fn row_key ->
+      Enum.map(col_keys, &Map.get(tally, {row_key, &1}, 0))
+    end)
   end
 
   defp ensure_crosstabbable(question) do

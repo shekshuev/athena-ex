@@ -101,22 +101,27 @@ defmodule AthenaWeb.SurveyComponents do
   attr :event, :string, required: true
   attr :target, :any, default: nil
 
+  # One clause per type rather than one function with a ten-way `case`: each
+  # clause is then as simple as what it dispatches to, and an unhandled type
+  # raises at the clause boundary instead of falling through.
   defp answer_field(%{mode: :review} = assigns), do: review_answer(assigns)
 
-  defp answer_field(assigns) do
-    case assigns.question.type do
-      :single_choice -> single_choice_field(assigns)
-      :multiple_choice -> multiple_choice_field(assigns)
-      :dichotomous -> dichotomous_field(assigns)
-      :open_text -> open_text_field(assigns)
-      :numeric -> numeric_field(assigns)
-      :scale -> scale_field(assigns)
-      :multi_scale -> multi_scale_field(assigns)
-      :matching -> matching_field(assigns)
-      :ranking -> ranking_field(assigns)
-      :nps -> nps_field(assigns)
-    end
-  end
+  defp answer_field(%{question: %{type: :single_choice}} = assigns),
+    do: single_choice_field(assigns)
+
+  defp answer_field(%{question: %{type: :multiple_choice}} = assigns),
+    do: multiple_choice_field(assigns)
+
+  defp answer_field(%{question: %{type: :dichotomous}} = assigns),
+    do: dichotomous_field(assigns)
+
+  defp answer_field(%{question: %{type: :open_text}} = assigns), do: open_text_field(assigns)
+  defp answer_field(%{question: %{type: :numeric}} = assigns), do: numeric_field(assigns)
+  defp answer_field(%{question: %{type: :scale}} = assigns), do: scale_field(assigns)
+  defp answer_field(%{question: %{type: :multi_scale}} = assigns), do: multi_scale_field(assigns)
+  defp answer_field(%{question: %{type: :matching}} = assigns), do: matching_field(assigns)
+  defp answer_field(%{question: %{type: :ranking}} = assigns), do: ranking_field(assigns)
+  defp answer_field(%{question: %{type: :nps}} = assigns), do: nps_field(assigns)
 
   # One wrapper for every type, so the posted shape is uniform. `phx-submit`
   # is bound as well as `phx-change`: without it, Enter in a text field
@@ -537,8 +542,7 @@ defmodule AthenaWeb.SurveyComponents do
       _ ->
         answer
         |> chosen_ids()
-        |> Enum.map(&choice_label(question, &1, answer))
-        |> Enum.join(", ")
+        |> Enum.map_join(", ", &choice_label(question, &1, answer))
     end
   end
 
@@ -645,19 +649,23 @@ defmodule AthenaWeb.SurveyComponents do
     """
   end
 
-  defp render_config(assigns) do
-    case assigns.question.type do
-      type when type in [:single_choice, :multiple_choice] -> choice_config(assigns)
-      :dichotomous -> dichotomous_config(assigns)
-      :open_text -> open_text_config(assigns)
-      :numeric -> numeric_config(assigns)
-      :scale -> scale_config(assigns)
-      :multi_scale -> multi_scale_config(assigns)
-      :matching -> matching_config(assigns)
-      :ranking -> ranking_config(assigns)
-      :nps -> nps_config(assigns)
-    end
-  end
+  defp render_config(%{question: %{type: type}} = assigns)
+       when type in [:single_choice, :multiple_choice],
+       do: choice_config(assigns)
+
+  defp render_config(%{question: %{type: :dichotomous}} = assigns),
+    do: dichotomous_config(assigns)
+
+  defp render_config(%{question: %{type: :open_text}} = assigns), do: open_text_config(assigns)
+  defp render_config(%{question: %{type: :numeric}} = assigns), do: numeric_config(assigns)
+  defp render_config(%{question: %{type: :scale}} = assigns), do: scale_config(assigns)
+
+  defp render_config(%{question: %{type: :multi_scale}} = assigns),
+    do: multi_scale_config(assigns)
+
+  defp render_config(%{question: %{type: :matching}} = assigns), do: matching_config(assigns)
+  defp render_config(%{question: %{type: :ranking}} = assigns), do: ranking_config(assigns)
+  defp render_config(%{question: %{type: :nps}} = assigns), do: nps_config(assigns)
 
   defp choice_config(assigns) do
     ~H"""

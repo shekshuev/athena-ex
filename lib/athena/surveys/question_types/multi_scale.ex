@@ -47,7 +47,7 @@ defmodule Athena.Surveys.QuestionTypes.MultiScale do
   end
 
   defp validate_min_rows(changeset) do
-    if length(get_field(changeset, :rows) || []) < 1 do
+    if (get_field(changeset, :rows) || []) == [] do
       add_error(changeset, :rows, "must have at least 1 row")
     else
       changeset

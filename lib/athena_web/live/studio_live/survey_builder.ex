@@ -725,10 +725,12 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
   end
 
   def handle_event("toggle_required", %{"question_id" => id}, socket) do
-    with {:ok, question} <- fetch_question(socket, id) do
-      update_question(socket, id, %{"required" => not question.required})
-    else
-      {:error, reason} -> {:noreply, report(socket, reason)}
+    case fetch_question(socket, id) do
+      {:ok, question} ->
+        update_question(socket, id, %{"required" => not question.required})
+
+      {:error, reason} ->
+        {:noreply, report(socket, reason)}
     end
   end
 
@@ -776,30 +778,34 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
   # SortableJS reports only the move, not the resulting order, so the new
   # order is computed from the list this LiveView already holds.
   def handle_event("reorder", %{"id" => id, "new_index" => new_index}, socket) do
-    with :ok <- ensure_editable(socket) do
-      ordered =
-        socket.assigns.questions
-        |> Enum.map(& &1.id)
-        |> List.delete(id)
-        |> List.insert_at(new_index, id)
+    case ensure_editable(socket) do
+      :ok ->
+        ordered =
+          socket.assigns.questions
+          |> Enum.map(& &1.id)
+          |> List.delete(id)
+          |> List.insert_at(new_index, id)
 
-      case Surveys.reorder_questions(socket.assigns.survey.id, ordered) do
-        {:ok, _questions} -> {:noreply, load_questions(socket)}
-        {:error, reason} -> {:noreply, report(socket, reason)}
-      end
-    else
-      {:error, reason} -> {:noreply, report(socket, reason)}
+        case Surveys.reorder_questions(socket.assigns.survey.id, ordered) do
+          {:ok, _questions} -> {:noreply, load_questions(socket)}
+          {:error, reason} -> {:noreply, report(socket, reason)}
+        end
+
+      {:error, reason} ->
+        {:noreply, report(socket, reason)}
     end
   end
 
   def handle_event("add_page_break", _params, socket) do
-    with :ok <- ensure_editable(socket) do
-      # A page break is not a row of its own: it is the page number of every
-      # question from here on. Modelling it as data rather than as a marker
-      # question keeps `Flow` free of a type that is not a question.
-      {:noreply, bump_last_page(socket)}
-    else
-      {:error, reason} -> {:noreply, report(socket, reason)}
+    case ensure_editable(socket) do
+      :ok ->
+        # A page break is not a row of its own: it is the page number of every
+        # question from here on. Modelling it as data rather than as a marker
+        # question keeps `Flow` free of a type that is not a question.
+        {:noreply, bump_last_page(socket)}
+
+      {:error, reason} ->
+        {:noreply, report(socket, reason)}
     end
   end
 
@@ -808,32 +814,38 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
   def handle_event("update_config", %{"question_id" => id} = params, socket) do
     config = Map.get(params, "config", %{})
 
-    with {:ok, question} <- fetch_question(socket, id) do
-      update_question(socket, id, %{"config" => Map.merge(question.config, config)})
-    else
-      {:error, reason} -> {:noreply, report(socket, reason)}
+    case fetch_question(socket, id) do
+      {:ok, question} ->
+        update_question(socket, id, %{"config" => Map.merge(question.config, config)})
+
+      {:error, reason} ->
+        {:noreply, report(socket, reason)}
     end
   end
 
   def handle_event("toggle_config_flag", %{"question_id" => id, "key" => key}, socket) do
-    with {:ok, question} <- fetch_question(socket, id) do
-      flipped = not truthy?(question.config[key])
-      update_question(socket, id, %{"config" => Map.put(question.config, key, flipped)})
-    else
-      {:error, reason} -> {:noreply, report(socket, reason)}
+    case fetch_question(socket, id) do
+      {:ok, question} ->
+        flipped = not truthy?(question.config[key])
+        update_question(socket, id, %{"config" => Map.put(question.config, key, flipped)})
+
+      {:error, reason} ->
+        {:noreply, report(socket, reason)}
     end
   end
 
   def handle_event("add_list_item", %{"question_id" => id, "list_key" => key}, socket) do
-    with {:ok, question} <- fetch_question(socket, id) do
-      existing = List.wrap(question.config[key])
-      item = new_list_item(key, length(existing) + 1)
+    case fetch_question(socket, id) do
+      {:ok, question} ->
+        existing = List.wrap(question.config[key])
+        item = new_list_item(key, length(existing) + 1)
 
-      update_question(socket, id, %{
-        "config" => Map.put(question.config, key, existing ++ [item])
-      })
-    else
-      {:error, reason} -> {:noreply, report(socket, reason)}
+        update_question(socket, id, %{
+          "config" => Map.put(question.config, key, existing ++ [item])
+        })
+
+      {:error, reason} ->
+        {:noreply, report(socket, reason)}
     end
   end
 
@@ -842,12 +854,14 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
         %{"question_id" => id, "list_key" => key, "item_id" => item_id},
         socket
       ) do
-    with {:ok, question} <- fetch_question(socket, id) do
-      remaining = question.config |> config_list(key) |> Enum.reject(&(&1["id"] == item_id))
+    case fetch_question(socket, id) do
+      {:ok, question} ->
+        remaining = question.config |> config_list(key) |> Enum.reject(&(&1["id"] == item_id))
 
-      update_question(socket, id, %{"config" => Map.put(question.config, key, remaining)})
-    else
-      {:error, reason} -> {:noreply, report(socket, reason)}
+        update_question(socket, id, %{"config" => Map.put(question.config, key, remaining)})
+
+      {:error, reason} ->
+        {:noreply, report(socket, reason)}
     end
   end
 
@@ -862,17 +876,14 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
         },
         socket
       ) do
-    with {:ok, question} <- fetch_question(socket, id) do
-      updated =
-        question.config
-        |> config_list(key)
-        |> Enum.map(fn item ->
-          if item["id"] == item_id, do: Map.put(item, field, text), else: item
-        end)
+    case fetch_question(socket, id) do
+      {:ok, question} ->
+        updated = put_item_field(config_list(question.config, key), item_id, field, text)
 
-      update_question(socket, id, %{"config" => Map.put(question.config, key, updated)})
-    else
-      {:error, reason} -> {:noreply, report(socket, reason)}
+        update_question(socket, id, %{"config" => Map.put(question.config, key, updated)})
+
+      {:error, reason} ->
+        {:noreply, report(socket, reason)}
     end
   end
 
@@ -929,49 +940,55 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
   end
 
   def handle_event("toggle_rule_logic", %{"rule_id" => rule_id}, socket) do
-    with {:ok, rule} <- fetch_rule(socket, rule_id) do
-      flipped = if rule.condition.logic == :and, do: :or, else: :and
+    case fetch_rule(socket, rule_id) do
+      {:ok, rule} ->
+        flipped = if rule.condition.logic == :and, do: :or, else: :and
 
-      save_rule(socket, rule_id, %{
-        "condition" => %{
-          "logic" => flipped,
-          "clauses" => Enum.map(rule.condition.clauses, &clause_to_params/1)
-        }
-      })
-    else
-      {:error, reason} -> {:noreply, report(socket, reason)}
+        save_rule(socket, rule_id, %{
+          "condition" => %{
+            "logic" => flipped,
+            "clauses" => Enum.map(rule.condition.clauses, &clause_to_params/1)
+          }
+        })
+
+      {:error, reason} ->
+        {:noreply, report(socket, reason)}
     end
   end
 
   def handle_event("add_clause", %{"rule_id" => rule_id}, socket) do
-    with {:ok, rule} <- fetch_rule(socket, rule_id) do
-      owner = Enum.find(socket.assigns.questions, &(&1.id == rule.question_id))
+    case fetch_rule(socket, rule_id) do
+      {:ok, rule} ->
+        owner = Enum.find(socket.assigns.questions, &(&1.id == rule.question_id))
 
-      save_rule(socket, rule_id, %{
-        "condition" => %{
-          "logic" => rule.condition.logic,
-          "clauses" =>
-            Enum.map(rule.condition.clauses, &clause_to_params/1) ++
-              [BranchClause.new(%{"question_id" => owner && owner.id})]
-        }
-      })
-    else
-      {:error, reason} -> {:noreply, report(socket, reason)}
+        save_rule(socket, rule_id, %{
+          "condition" => %{
+            "logic" => rule.condition.logic,
+            "clauses" =>
+              Enum.map(rule.condition.clauses, &clause_to_params/1) ++
+                [BranchClause.new(%{"question_id" => owner && owner.id})]
+          }
+        })
+
+      {:error, reason} ->
+        {:noreply, report(socket, reason)}
     end
   end
 
   def handle_event("remove_clause", %{"rule_id" => rule_id, "clause_id" => clause_id}, socket) do
-    with {:ok, rule} <- fetch_rule(socket, rule_id) do
-      remaining =
-        rule.condition.clauses
-        |> Enum.reject(&(&1.id == clause_id))
-        |> Enum.map(&clause_to_params/1)
+    case fetch_rule(socket, rule_id) do
+      {:ok, rule} ->
+        remaining =
+          rule.condition.clauses
+          |> Enum.reject(&(&1.id == clause_id))
+          |> Enum.map(&clause_to_params/1)
 
-      save_rule(socket, rule_id, %{
-        "condition" => %{"logic" => rule.condition.logic, "clauses" => remaining}
-      })
-    else
-      {:error, reason} -> {:noreply, report(socket, reason)}
+        save_rule(socket, rule_id, %{
+          "condition" => %{"logic" => rule.condition.logic, "clauses" => remaining}
+        })
+
+      {:error, reason} ->
+        {:noreply, report(socket, reason)}
     end
   end
 
@@ -980,21 +997,16 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
         %{"rule_id" => rule_id, "clause_id" => clause_id} = params,
         socket
       ) do
-    with {:ok, rule} <- fetch_rule(socket, rule_id) do
-      clauses =
-        Enum.map(rule.condition.clauses, fn clause ->
-          if clause.id == clause_id do
-            rebuild_clause(clause, params, socket)
-          else
-            clause_to_params(clause)
-          end
-        end)
+    case fetch_rule(socket, rule_id) do
+      {:ok, rule} ->
+        clauses = rebuild_clauses(rule, clause_id, params, socket)
 
-      save_rule(socket, rule_id, %{
-        "condition" => %{"logic" => rule.condition.logic, "clauses" => clauses}
-      })
-    else
-      {:error, reason} -> {:noreply, report(socket, reason)}
+        save_rule(socket, rule_id, %{
+          "condition" => %{"logic" => rule.condition.logic, "clauses" => clauses}
+        })
+
+      {:error, reason} ->
+        {:noreply, report(socket, reason)}
     end
   end
 
@@ -1210,6 +1222,28 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
   defp new_list_item(_key, n), do: %{"id" => Ecto.UUID.generate(), "text" => "Option #{n}"}
 
   defp config_list(config, key), do: List.wrap(config[key])
+
+  # Addressed by id, not by position: a list index shifts while someone is
+  # typing in a sibling and no longer means what it meant when it was
+  # rendered.
+  defp put_item_field(items, item_id, field, text) do
+    Enum.map(items, fn item ->
+      if item["id"] == item_id, do: Map.put(item, field, text), else: item
+    end)
+  end
+
+  # The whole clause list is always written back, because `BranchClause` has
+  # no primary key and Ecto cannot match a posted clause to a stored one -
+  # see `Athena.Surveys.BranchCondition`.
+  defp rebuild_clauses(rule, clause_id, params, socket) do
+    Enum.map(rule.condition.clauses, fn clause ->
+      if clause.id == clause_id do
+        rebuild_clause(clause, params, socket)
+      else
+        clause_to_params(clause)
+      end
+    end)
+  end
 
   # -- logic helpers --------------------------------------------------------
 

@@ -8,6 +8,7 @@ defmodule Athena.Surveys.QuestionTypes.MultipleChoice do
   """
   use Ecto.Schema
   import Ecto.Changeset
+  alias Athena.Surveys.QuestionTypes
   alias Athena.Surveys.QuestionTypes.Option
 
   @derive Jason.Encoder
@@ -33,7 +34,7 @@ defmodule Athena.Surveys.QuestionTypes.MultipleChoice do
     schema
     |> cast(attrs, [:other_allowed, :randomize, :min_select, :max_select])
     |> cast_embed(:options, with: &Option.changeset/2)
-    |> Athena.Surveys.QuestionTypes.validate_min_options(2)
+    |> QuestionTypes.validate_min_options(2)
     |> validate_number(:min_select, greater_than: 0)
     |> validate_number(:max_select, greater_than: 0)
     |> validate_select_range()
