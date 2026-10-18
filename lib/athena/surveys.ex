@@ -32,7 +32,7 @@ defmodule Athena.Surveys do
   and a separate ledger. See `Athena.Surveys.SurveyResponse`.
   """
 
-  alias Athena.Surveys.{AnswerParams, Branches, Flow, Questions, Responses, Surveys}
+  alias Athena.Surveys.{AnswerParams, Branches, Flow, Questions, Responses, Results, Surveys}
 
   @doc """
   Loads a survey's questions and rules into an `Athena.Surveys.Flow` - the
@@ -108,6 +108,21 @@ defmodule Athena.Surveys do
   defdelegate visible_questions(flow, answers \\ %{}), to: Flow
   defdelegate questions_on_page(flow, page), to: Flow
   defdelegate validate_graph(flow), to: Flow
+
+  # Results
+  defdelegate results_summary(survey_id), to: Results, as: :summary
+  defdelegate completion_funnel(survey_id), to: Results
+  defdelegate frequencies(question, opts \\ []), to: Results
+  defdelegate question_descriptives(question, opts \\ []), to: Results, as: :descriptives
+  defdelegate crosstab(row_question, col_question, opts \\ []), to: Results
+  defdelegate nps_bands(question, opts \\ []), to: Results
+  defdelegate matrix_counts(question, opts \\ []), to: Results
+  defdelegate correlations(survey_id, opts \\ []), to: Results
+  defdelegate compare_groups(question, opts \\ []), to: Results
+  defdelegate reliability(question, opts \\ []), to: Results
+  defdelegate verbatims(question, opts \\ []), to: Results
+  defdelegate respondent_labels(responses), to: Results
+  defdelegate list_responses_for_labels(survey_id), to: Results
 
   # Responses
   defdelegate cast_answer_params(type, params), to: AnswerParams, as: :cast

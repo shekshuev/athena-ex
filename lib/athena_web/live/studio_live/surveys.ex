@@ -312,6 +312,18 @@ defmodule AthenaWeb.StudioLive.Surveys do
                   do: gettext("Edit"),
                   else: gettext("Open")}
               </.button>
+              <.button
+                :if={
+                  Map.get(@counts, survey.id, 0) > 0 &&
+                    Identity.can?(@current_user, "surveys.results.read")
+                }
+                size="sm"
+                variant="primary"
+                navigate={~p"/studio/surveys/#{survey.id}/results"}
+                id={"results-#{survey.id}"}
+              >
+                {gettext("Results")}
+              </.button>
               <button
                 :if={survey.status == :archived && Identity.can?(@current_user, "surveys.update")}
                 type="button"

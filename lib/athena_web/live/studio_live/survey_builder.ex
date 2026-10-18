@@ -115,6 +115,16 @@ defmodule AthenaWeb.StudioLive.SurveyBuilder do
 
             <div class="flex shrink-0 flex-wrap items-center gap-2">
               <.button
+                :if={@response_count > 0}
+                size="sm"
+                variant="primary"
+                navigate={~p"/studio/surveys/#{@survey.id}/results"}
+                id="open-results"
+              >
+                <.icon name="hero-chart-bar" class="size-4" />
+                {gettext("Results")}
+              </.button>
+              <.button
                 :if={@questions != []}
                 size="sm"
                 phx-click="start_preview"
