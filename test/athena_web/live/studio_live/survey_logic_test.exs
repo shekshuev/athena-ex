@@ -20,7 +20,7 @@ defmodule AthenaWeb.StudioLive.SurveyLogicTest do
       insert(:account,
         role:
           insert(:role,
-            permissions: ["surveys.read", "surveys.create", "surveys.update", "surveys.publish"]
+            permissions: ["surveys.read", "surveys.create", "surveys.update"]
           )
       )
 

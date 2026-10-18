@@ -15,8 +15,7 @@ defmodule AthenaWeb.SurveyExportControllerTest do
   end
 
   setup %{conn: conn} do
-    {conn, user} =
-      sign_in(conn, ["surveys.read", "surveys.results.read", "surveys.results.export"])
+    {conn, user} = sign_in(conn, ["surveys.read"])
 
     survey = insert(:survey, owner_id: user.id, status: :published, title: "Mid-course feedback")
     {:ok, question} = Surveys.add_question(survey, :open_text)
@@ -38,8 +37,11 @@ defmodule AthenaWeb.SurveyExportControllerTest do
   end
 
   describe "permissions" do
-    test "the export permission is required", ctx do
-      {conn, _user} = sign_in(ctx.conn, ["surveys.read", "surveys.results.read"])
+    test "surveys.read is required", ctx do
+      # Export is reading: anyone who can open the results screen can already
+      # read every verbatim on it, so a separate right to copy them into a
+      # file would add a checkbox without adding protection.
+      {conn, _user} = sign_in(ctx.conn, [])
 
       conn = get(conn, ~p"/studio/surveys/#{ctx.survey.id}/export.csv")
 
@@ -49,10 +51,7 @@ defmodule AthenaWeb.SurveyExportControllerTest do
     test "own_only is enforced on the record, not just the screen", %{conn: conn} do
       stranger = insert(:survey, owner_id: Ecto.UUID.generate(), status: :published)
 
-      {conn, _user} =
-        sign_in(conn, ["surveys.read", "surveys.results.export"], %{
-          "surveys.read" => ["own_only"]
-        })
+      {conn, _user} = sign_in(conn, ["surveys.read"], %{"surveys.read" => ["own_only"]})
 
       # The link is on a screen they cannot reach, but a URL is a URL.
       conn = get(conn, ~p"/studio/surveys/#{stranger.id}/export.csv")

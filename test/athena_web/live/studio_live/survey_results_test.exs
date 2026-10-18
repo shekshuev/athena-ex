@@ -20,7 +20,7 @@ defmodule AthenaWeb.StudioLive.SurveyResultsTest do
   end
 
   setup %{conn: conn} do
-    {conn, user} = sign_in(conn, ["surveys.read", "surveys.results.read"])
+    {conn, user} = sign_in(conn, ["surveys.read"])
     survey = insert(:survey, owner_id: user.id, status: :published)
 
     %{conn: conn, user: user, survey: survey}
@@ -56,7 +56,7 @@ defmodule AthenaWeb.StudioLive.SurveyResultsTest do
   end
 
   describe "access" do
-    test "needs a results permission", %{conn: conn, user: user} do
+    test "needs surveys.read", %{conn: conn, user: user} do
       survey = insert(:survey, owner_id: user.id)
       {plain_conn, _user} = sign_in(conn, [])
 
@@ -64,15 +64,12 @@ defmodule AthenaWeb.StudioLive.SurveyResultsTest do
     end
 
     test "own_only keeps a reader out of someone else's results", %{conn: conn} do
-      {conn, _user} =
-        sign_in(conn, ["surveys.read", "surveys.results.read"])
-
       stranger = insert(:survey, owner_id: Ecto.UUID.generate())
 
       # The screen gate passes, but the record-level policy does not.
       role =
         insert(:role,
-          permissions: ["surveys.read", "surveys.results.read"],
+          permissions: ["surveys.read"],
           policies: %{"surveys.read" => ["own_only"]}
         )
 

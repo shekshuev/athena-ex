@@ -17,8 +17,7 @@ defmodule Athena.Identity.Definitions do
   gamification.create gamification.read gamification.update gamification.delete
   files.read files.create files.delete files.update
   announcements.create announcements.read announcements.update announcements.delete
-  surveys.create surveys.read surveys.update surveys.delete surveys.publish
-  surveys.results.read surveys.results.export
+  surveys.create surveys.read surveys.update surveys.delete
   docs.read
   system.cache
   admin

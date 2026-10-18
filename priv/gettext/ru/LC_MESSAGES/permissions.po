@@ -50,6 +50,9 @@ msgstr "Вовлечённость"
 msgid "files"
 msgstr "Файлы"
 
+msgid "surveys"
+msgstr "Опросы"
+
 msgid "create"
 msgstr "Создание"
 

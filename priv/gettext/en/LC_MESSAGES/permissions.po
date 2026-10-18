@@ -50,6 +50,9 @@ msgstr "Engagement"
 msgid "files"
 msgstr "Files"
 
+msgid "surveys"
+msgstr "Surveys"
+
 msgid "create"
 msgstr "Create"
 

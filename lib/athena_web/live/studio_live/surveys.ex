@@ -322,10 +322,7 @@ defmodule AthenaWeb.StudioLive.Surveys do
                   else: gettext("Open")}
               </.button>
               <.button
-                :if={
-                  Map.get(@counts, survey.id, 0) > 0 &&
-                    Identity.can?(@current_user, "surveys.results.read")
-                }
+                :if={Map.get(@counts, survey.id, 0) > 0}
                 size="sm"
                 variant="primary"
                 navigate={~p"/studio/surveys/#{survey.id}/results"}

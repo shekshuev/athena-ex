@@ -19,6 +19,11 @@ defmodule AthenaWeb.SurveyExportController do
   screen uses, so a cohort respondent is a cohort and an opaque number here
   too, and no account id is written. Timestamps are days, not instants - see
   `Athena.Surveys.Export`.
+
+  Gated on `surveys.read`, not on a right of its own. Anyone who can open the
+  results screen can already read every verbatim on it, so a separate
+  permission to copy them into a file would add a checkbox without adding any
+  protection.
   """
   use AthenaWeb, :controller
 
@@ -36,10 +41,9 @@ defmodule AthenaWeb.SurveyExportController do
     user = conn.assigns.current_user
 
     with %{} = survey <- Surveys.get_survey(survey_id),
-         true <- Identity.can?(user, "surveys.results.export"),
          # The record-level policy as well as the permission: a role holding
-         # the export right under `own_only` must be refused on someone
-         # else's survey, not merely kept off the screen that links here.
+         # `surveys.read` under `own_only` must be refused on someone else's
+         # survey, not merely kept off the screen that links here.
          true <- Identity.can?(user, "surveys.read", survey) do
       opts = cohort_opts(params)
       table = build(survey.id, shape, opts)

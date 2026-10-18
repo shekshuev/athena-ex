@@ -36,7 +36,7 @@ defmodule AthenaWeb.StudioLive.SurveyResults do
   alias Athena.Surveys.Stats
   alias AthenaWeb.StudioLive.SurveyChartConfig, as: Charts
 
-  on_mount {AthenaWeb.Hooks.Permission, ["surveys.results.read", "surveys.read"]}
+  on_mount {AthenaWeb.Hooks.Permission, "surveys.read"}
 
   @tabs ~w(overview questions compare verbatims)
 
@@ -155,10 +155,7 @@ defmodule AthenaWeb.StudioLive.SurveyResults do
                 <.icon name="hero-arrow-path" class="size-4" />
                 {gettext("Refresh")}
               </.button>
-              <div
-                :if={Identity.can?(@current_user, "surveys.results.export")}
-                class="dropdown dropdown-end"
-              >
+              <div class="dropdown dropdown-end">
                 <div tabindex="0" role="button" class="btn btn-outline btn-sm" id="export-menu">
                   <.icon name="hero-arrow-down-tray" class="size-4" />
                   {gettext("Download")}
