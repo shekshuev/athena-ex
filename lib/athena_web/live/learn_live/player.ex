@@ -456,15 +456,18 @@ defmodule AthenaWeb.LearnLive.Player do
     end)
   end
 
+  # Takes a state whose response already exists: both callers go through
+  # `ensure_response/2` first, and advancing without one would mean losing the
+  # resume point silently.
   @doc false
-  defp advance_survey(socket, block_id, state) do
+  defp advance_survey(socket, block_id, %{response: %{}} = state) do
     case Surveys.next_question(state.flow, state.current, state.answers) do
       :end ->
         {:noreply,
          put_survey_state(socket, block_id, %{state | current: nil, history: state.history})}
 
       {:question, next} ->
-        if state.response, do: Surveys.advance_response(state.response, next.id)
+        Surveys.advance_response(state.response, next.id)
 
         {:noreply,
          put_survey_state(socket, block_id, %{

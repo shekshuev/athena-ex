@@ -488,10 +488,31 @@ defmodule Athena.Surveys.Results do
   defp category_order(question, key) when is_binary(key),
     do: {1, option_position(question, key), key}
 
-  # Cohorts first, by id, with the self-paced group last - it is a residual
-  # category, not a cohort, and reads better at the bottom of a table.
-  defp group_order(:individual), do: {1, ""}
-  defp group_order(cohort_id) when is_binary(cohort_id), do: {0, cohort_id}
+  # Resolved once per comparison and handed to the caller, so a results table
+  # does not look a cohort's name up per row inside its own render.
+  defp group_names(keys) do
+    names =
+      keys
+      |> Enum.filter(&is_binary/1)
+      |> Learning.get_cohorts_map()
+      |> Map.new(fn {id, cohort} -> {id, cohort.name} end)
+
+    Map.new(keys, fn
+      :individual -> {:individual, nil}
+      cohort_id -> {cohort_id, Map.get(names, cohort_id)}
+    end)
+  end
+
+  # By name, not by cohort id: ids are random UUIDs, so ordering by them puts
+  # the same two groups in a different order on every run - which is both
+  # unreadable and untestable. The self-paced group sorts last, being a
+  # residual category rather than a cohort.
+  defp sort_group_keys(keys, names) do
+    Enum.sort_by(keys, fn
+      :individual -> {1, ""}
+      cohort_id -> {0, Map.get(names, cohort_id) || ""}
+    end)
+  end
 
   @doc """
   Pearson and Spearman between every pair of quantitative questions.
@@ -592,7 +613,8 @@ defmodule Athena.Surveys.Results do
   end
 
   defp quantitative_comparison(question, groups) do
-    labels = Map.keys(groups)
+    names = group_names(Map.keys(groups))
+    labels = sort_group_keys(Map.keys(groups), names)
     values = Enum.map(labels, &Map.fetch!(groups, &1))
 
     {parametric, nonparametric} =
@@ -605,9 +627,14 @@ defmodule Athena.Surveys.Results do
      %{
        kind: :quantitative,
        question: question,
+       group_names: names,
        groups:
          Enum.map(labels, fn label ->
-           %{label: label, descriptives: Stats.descriptives(Map.fetch!(groups, label))}
+           %{
+             label: label,
+             name: Map.get(names, label),
+             descriptives: Stats.descriptives(Map.fetch!(groups, label))
+           }
          end),
        parametric: parametric,
        nonparametric: nonparametric
@@ -628,7 +655,8 @@ defmodule Athena.Surveys.Results do
         end
       end)
 
-    group_keys = rows |> Enum.map(&elem(&1, 0)) |> Enum.uniq() |> Enum.sort_by(&group_order/1)
+    names = rows |> Enum.map(&elem(&1, 0)) |> Enum.uniq() |> group_names()
+    group_keys = rows |> Enum.map(&elem(&1, 0)) |> Enum.uniq() |> sort_group_keys(names)
 
     categories =
       rows |> Enum.map(&elem(&1, 1)) |> Enum.uniq() |> Enum.sort_by(&category_order(question, &1))
@@ -645,6 +673,7 @@ defmodule Athena.Surveys.Results do
        kind: :nominal,
        question: question,
        group_keys: group_keys,
+       group_names: names,
        category_labels: Enum.map(categories, &category_label(question, &1)),
        table: table,
        test: Stats.chi_square(table)

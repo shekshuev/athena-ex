@@ -80,6 +80,16 @@ defmodule Athena.Surveys.QuestionTypes do
   def all, do: @all
 
   @doc """
+  The fixed range of an `:nps` question.
+
+  Exposed here rather than from `Nps` itself because the per-type config
+  modules are internal to this context - the registry is what the rest of the
+  app talks to.
+  """
+  @spec nps_range() :: Range.t()
+  def nps_range, do: Nps.min()..Nps.max()
+
+  @doc """
   The measurement level of a type, which decides what statistics may be run
   over it.
   """

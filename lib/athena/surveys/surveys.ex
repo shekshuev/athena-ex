@@ -20,7 +20,7 @@ defmodule Athena.Surveys.Surveys do
   @spec list_for_user(map(), map(), keyword()) ::
           {:ok, {[Survey.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_for_user(user, params \\ %{}, opts \\ []) do
-    Survey
+    from(s in Survey)
     |> Acl.scope_query(user, "surveys.read")
     |> exclude_archived(Keyword.get(opts, :include_archived, false))
     |> Flop.validate_and_run(params, for: Survey)

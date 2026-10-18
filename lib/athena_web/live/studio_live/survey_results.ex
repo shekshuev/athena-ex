@@ -708,7 +708,7 @@ defmodule AthenaWeb.StudioLive.SurveyResults do
                 </thead>
                 <tbody>
                   <tr :for={group <- comparison.groups}>
-                    <td>{group_label(group.label)}</td>
+                    <td>{group_label(group.name)}</td>
                     <td class="text-right tabular-nums">{group.descriptives.n}</td>
                     <td class="text-right tabular-nums font-medium">
                       {number(group.descriptives.mean)}
@@ -740,7 +740,7 @@ defmodule AthenaWeb.StudioLive.SurveyResults do
                 </thead>
                 <tbody>
                   <tr :for={{row, key} <- Enum.zip(comparison.table, comparison.group_keys)}>
-                    <th class="font-normal">{group_label(key)}</th>
+                    <th class="font-normal">{group_label(comparison.group_names[key])}</th>
                     <td :for={count <- row} class="text-right tabular-nums">{count}</td>
                   </tr>
                 </tbody>
@@ -1001,20 +1001,15 @@ defmodule AthenaWeb.StudioLive.SurveyResults do
   defp coefficient({:error, :no_variance}, _key), do: gettext("no spread")
   defp coefficient({:error, _reason}, _key), do: "–"
 
-  defp group_label(:individual), do: gettext("Self-paced")
-  defp group_label(cohort_id) when is_binary(cohort_id), do: cohort_name(cohort_id)
-
-  defp cohort_name(cohort_id) do
-    case Learning.get_cohorts_map([cohort_id]) do
-      %{^cohort_id => cohort} -> cohort.name
-      _ -> gettext("Unknown group")
-    end
-  end
+  # `Results` resolves the names once per comparison; looking them up here
+  # would be one query per row inside a render.
+  defp group_label(nil), do: gettext("Self-paced")
+  defp group_label(name) when is_binary(name), do: name
 
   defp group_rows(comparison) do
     Enum.map(comparison.groups, fn group ->
       %{
-        label: group_label(group.label),
+        label: group_label(group.name),
         mean: group.descriptives.mean,
         se: group.descriptives.se
       }

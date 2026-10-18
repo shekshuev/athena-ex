@@ -446,6 +446,7 @@ defmodule Athena.Surveys.ResultsTest do
 
       assert result.kind == :quantitative
       assert length(result.groups) == 2
+      assert Enum.map(result.groups, & &1.name) == ["Group A", "Group B"]
 
       # Both tests, side by side: when they disagree that is informative.
       assert {:ok, %{p: parametric_p}} = result.parametric
@@ -479,7 +480,11 @@ defmodule Athena.Surveys.ResultsTest do
 
       # A comparison with a group of one per person is not a comparison.
       assert length(result.groups) == 2
-      assert Enum.any?(result.groups, &(&1.label == :individual))
+
+      # The self-paced group sorts last, being a residual category rather
+      # than a cohort, and carries no name to show.
+      assert List.last(result.groups).label == :individual
+      assert List.last(result.groups).name == nil
     end
 
     test "a nominal question is compared with a chi-square, not a mean" do
@@ -487,8 +492,8 @@ defmodule Athena.Surveys.ResultsTest do
       {config, [yes, no]} = choice_config(["Yes", "No"])
       question = insert(:survey_question, survey: survey, type: :single_choice, config: config)
 
-      a = insert(:cohort)
-      b = insert(:cohort)
+      a = insert(:cohort, name: "Group A")
+      b = insert(:cohort, name: "Group B")
 
       for choice <- [yes, yes, yes, no],
           do: respond(survey, [{question, %{"choice_id" => choice}}], cohort_id: a.id)
@@ -500,6 +505,11 @@ defmodule Athena.Surveys.ResultsTest do
 
       assert result.kind == :nominal
       assert result.category_labels == ["Yes", "No"]
+      # Rows are ordered by cohort *name*, so the table reads the same way
+      # twice. Ordering by the cohort id - a random UUID - shuffled it on
+      # every run, which is both unreadable and untestable.
+      assert result.group_keys == [a.id, b.id]
+      assert result.group_names == %{a.id => "Group A", b.id => "Group B"}
       assert result.table == [[3, 1], [1, 3]]
       assert {:ok, %{df: 1}} = result.test
     end
@@ -522,6 +532,7 @@ defmodule Athena.Surveys.ResultsTest do
       # comparator has to cope with both; the self-paced group sorts last
       # because it is a residual category, not a cohort.
       assert List.last(result.group_keys) == :individual
+      assert result.group_names[:individual] == nil
       assert result.table == [[2, 1], [0, 2]]
     end
 

@@ -33,7 +33,6 @@ defmodule AthenaWeb.SurveyComponents do
 
   alias Athena.Surveys.BranchClause
   alias Athena.Surveys.QuestionTypes
-  alias Athena.Surveys.QuestionTypes.Nps
 
   # -- respondent-facing ----------------------------------------------------
 
@@ -359,7 +358,7 @@ defmodule AthenaWeb.SurveyComponents do
     <.answer_form question={@question} event={@event} target={@target}>
       <div class="flex flex-wrap gap-1.5">
         <label
-          :for={point <- Nps.min()..Nps.max()}
+          :for={point <- QuestionTypes.nps_range()}
           class={[
             "flex size-10 cursor-pointer items-center justify-center rounded-lg border text-sm font-bold tabular-nums transition-all",
             if(numeric_eq(@answer, point),
