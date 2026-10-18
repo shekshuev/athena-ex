@@ -7,6 +7,10 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
 
   @impl true
   def render(assigns) do
+    # Optional: only a `:survey` block needs it, and a caller rendering a
+    # canvas of text and quiz blocks should not have to know that.
+    assigns = assign_new(assigns, :surveys, fn -> %{} end)
+
     ~H"""
     <div class="flex-1 flex flex-col relative h-full min-w-0">
       <%!-- Sticks to the top of the scrolling canvas, pulled up over its p-8 padding.
@@ -200,6 +204,8 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
                 mode={@mode}
                 active={@active_block_id == block.id}
                 characters={@characters}
+                survey={survey_for(@surveys, block)}
+                survey_question_count={survey_question_count(@surveys, block)}
               />
               <div
                 :if={@active_block_id != block.id && block.type == :text}
@@ -311,6 +317,15 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       >
         <.icon name="hero-folder-plus" class="size-6 opacity-70" />
         <span>{gettext("Assignment")}</span>
+      </.button>
+
+      <.button
+        phx-click="open_survey_picker"
+        phx-value-after_id={@after_id}
+        class="btn btn-outline rounded-sm bg-base-100 border-base-200 hover:border-primary hover:text-primary hover:bg-base-100 flex-col h-auto py-4 gap-2 font-bold"
+      >
+        <.icon name="hero-clipboard-document-list" class="size-6 opacity-70" />
+        <span>{gettext("Survey")}</span>
       </.button>
 
       <.button
@@ -427,6 +442,17 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         <.icon name="hero-folder-plus" class="size-5" />
       </.button>
 
+      <.button
+        id={"inline-add-survey-#{@after_id}"}
+        phx-hook="TippyTooltip"
+        data-tippy-content={gettext("Survey")}
+        phx-click="open_survey_picker"
+        phx-value-after_id={@after_id}
+        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary"
+      >
+        <.icon name="hero-clipboard-document-list" class="size-5" />
+      </.button>
+
       <div class="divider divider-horizontal mx-0 w-1"></div>
 
       <.button
@@ -456,6 +482,19 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
 
   # Keeps the first crumb and the last two visible; everything in between
   # is folded into a single "…" dropdown so deep paths fit on one line.
+  # Surveys referenced by `:survey` blocks, loaded once by the builder and
+  # keyed by survey id - a per-block lookup in the template would be a query
+  # inside a render.
+  defp survey_for(surveys, %{type: :survey} = block),
+    do: get_in(surveys, [block.content["survey_id"], :survey])
+
+  defp survey_for(_surveys, _block), do: nil
+
+  defp survey_question_count(surveys, %{type: :survey} = block),
+    do: get_in(surveys, [block.content["survey_id"], :question_count]) || 0
+
+  defp survey_question_count(_surveys, _block), do: 0
+
   defp collapse_breadcrumbs(crumbs) when length(crumbs) <= 3 do
     last_index = length(crumbs) - 1
 

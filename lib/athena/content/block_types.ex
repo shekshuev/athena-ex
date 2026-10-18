@@ -13,13 +13,18 @@ defmodule Athena.Content.BlockTypes do
   in a subset is written down next to it.
   """
 
-  @all ~w(text code quiz_question quiz_exam ticket_exam video image attachment file_assignment)a
+  @all ~w(text code quiz_question quiz_exam ticket_exam video image attachment file_assignment survey)a
 
   # Types that cannot be stored as a reusable `Athena.Content.LibraryBlock`.
-  @non_library ~w()a
+  # A survey is authored once as a whole in its own builder and referenced by
+  # id, so there is nothing reusable to put in the library - and a library
+  # copy would be a second survey collecting answers nobody looks at.
+  @non_library ~w(survey)a
 
-  # Types `Athena.Gamification.XpRule` must not award XP for.
-  @non_xp_awardable ~w()a
+  # Types `Athena.Gamification.XpRule` must not award XP for. A survey is not
+  # graded and answering it honestly must not be worth more or less than
+  # answering it carelessly, so there is nothing to reward.
+  @non_xp_awardable ~w(survey)a
 
   # Pure content (text/image/video/attachment) never has a `Submission`, so a
   # "View Submissions" link to the grading screen makes no sense for it.

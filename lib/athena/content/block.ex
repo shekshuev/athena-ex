@@ -19,7 +19,8 @@ defmodule Athena.Content.Block do
     CompletionRule,
     EngagementRule,
     CodeChallenge,
-    FileAssignment
+    FileAssignment,
+    SurveyRef
   }
 
   @type t :: %__MODULE__{}
@@ -110,6 +111,9 @@ defmodule Athena.Content.Block do
 
   defp build_embed_changeset(:file_assignment, content_map),
     do: FileAssignment.changeset(%FileAssignment{}, content_map)
+
+  defp build_embed_changeset(:survey, content_map),
+    do: SurveyRef.changeset(%SurveyRef{}, content_map)
 
   defp build_embed_changeset(_, _), do: nil
 

@@ -27,6 +27,12 @@ defmodule AthenaWeb.BlockComponents do
   attr :characters, :list, default: []
   attr :proctoring, :boolean, default: false
 
+  # A `:survey` block renders its own questions, which only the player and the
+  # builder preview can supply - the component just needs the survey's title
+  # and question count for the authoring views.
+  attr :survey, :map, default: nil
+  attr :survey_question_count, :integer, default: 0
+
   def content_block(assigns) do
     ~H"""
     <div class={wrapper_classes(@mode, @active)}>
@@ -79,6 +85,13 @@ defmodule AthenaWeb.BlockComponents do
             pending_file_urls={@pending_file_urls}
             draft={@draft}
           />
+        <% :survey -> %>
+          <.render_survey
+            block={@block}
+            mode={@mode}
+            survey={@survey}
+            survey_question_count={@survey_question_count}
+          />
         <% _ -> %>
           <div class="p-4 text-warning italic border border-warning/20 bg-warning/5 rounded-sm">
             {gettext("Unknown block type: %{type}", type: @block.type)}
@@ -129,6 +142,74 @@ defmodule AthenaWeb.BlockComponents do
     </div>
     """
   end
+
+  @doc false
+  # The authoring view of a survey block. In `:play` the player renders the
+  # survey's questions itself through `AthenaWeb.SurveyComponents`, because
+  # only it holds the response and the branching state - so this card is what
+  # the builder, the library-style previews and the course map show.
+  attr :block, :map, required: true
+  attr :mode, :atom, required: true
+  attr :survey, :map, default: nil
+  attr :survey_question_count, :integer, default: 0
+
+  defp render_survey(%{survey: nil} = assigns) do
+    ~H"""
+    <div class="rounded-sm border border-warning/30 bg-warning/5 p-5">
+      <div class="flex gap-3">
+        <.icon name="hero-exclamation-triangle" class="size-5 shrink-0 text-warning" />
+        <div class="text-sm">
+          <p class="font-bold">{gettext("No survey selected")}</p>
+          <p class="mt-1 text-base-content/70">
+            {gettext(
+              "Pick a survey for this block, or students will see nothing here. A survey that was deleted leaves the block empty too."
+            )}
+          </p>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_survey(assigns) do
+    ~H"""
+    <div class="rounded-sm border border-base-300 bg-base-100 p-5">
+      <div class="flex flex-wrap items-start gap-4">
+        <div class="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+          <.icon name="hero-clipboard-document-list" class="size-6 text-primary" />
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="font-display font-bold">
+            {@block.content["title_override"] || @survey.title}
+          </p>
+          <div class="mt-1 flex flex-wrap items-center gap-3 text-xs text-base-content/50">
+            <span>
+              {ngettext("%{count} question", "%{count} questions", @survey_question_count,
+                count: @survey_question_count
+              )}
+            </span>
+            <span>{survey_status_label(@survey.status)}</span>
+            <span>{gettext("not graded, no telemetry")}</span>
+          </div>
+        </div>
+        <.link
+          :if={@mode in [:edit, :preview]}
+          navigate={~p"/studio/surveys/#{@survey.id}/builder"}
+          class="btn btn-outline btn-sm"
+        >
+          {gettext("Open builder")}
+        </.link>
+      </div>
+    </div>
+    """
+  end
+
+  defp survey_status_label(:draft),
+    do: gettext("Draft - students will not see it until it is published")
+
+  defp survey_status_label(:published), do: gettext("Published")
+  defp survey_status_label(:closed), do: gettext("Closed to new responses")
+  defp survey_status_label(:archived), do: gettext("Archived")
 
   defp render_image(assigns) do
     ~H"""

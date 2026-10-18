@@ -9,6 +9,7 @@ defmodule AthenaWeb.StudioLive.Builder do
   use AthenaWeb, :live_view
 
   alias Athena.Content
+  alias Athena.Surveys
   alias Athena.Content.Block
   alias Athena.Identity
   alias Athena.Execution
@@ -59,6 +60,11 @@ defmodule AthenaWeb.StudioLive.Builder do
          library_picker_open: false,
          library_blocks: [],
          library_search: "",
+         surveys: %{},
+         survey_picker_open: false,
+         survey_picker_results: [],
+         survey_picker_after_id: nil,
+         survey_picker_block_id: nil,
          show_media_modal: false,
          active_upload_block_id: nil,
          upload_type: nil,
@@ -272,7 +278,7 @@ defmodule AthenaWeb.StudioLive.Builder do
           socket
           |> assign(:active_section_id, section_id)
           |> assign(:active_block_id, block_id)
-          |> assign(:blocks, blocks)
+          |> assign_blocks(blocks)
           |> assign(:viewing_parent_id, section.parent_id)
           |> maybe_push_scroll(block_id, current_block_id)
         else
@@ -305,7 +311,7 @@ defmodule AthenaWeb.StudioLive.Builder do
     socket
     |> assign(:active_section_id, active_section_id)
     |> assign(:active_block_id, nil)
-    |> assign(:blocks, blocks)
+    |> assign_blocks(blocks)
     |> assign(:viewing_parent_id, nil)
   end
 
@@ -841,6 +847,72 @@ defmodule AthenaWeb.StudioLive.Builder do
     else
       {:noreply, socket}
     end
+  end
+
+  def handle_event("add_survey_block", params, socket) do
+    if can_edit?(socket) do
+      attrs = %{
+        "type" => "survey",
+        "content" => %{"survey_id" => params["survey_id"]},
+        "section_id" => socket.assigns.active_section_id,
+        "after_id" => clean_after_id(params["after_id"])
+      }
+
+      create_and_assign_block(socket, attrs, gettext("Failed to create survey block"))
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("open_survey_picker", params, socket) do
+    if can_edit?(socket) do
+      {:noreply,
+       assign(socket,
+         survey_picker_open: true,
+         survey_picker_after_id: clean_after_id(params["after_id"]),
+         survey_picker_block_id: params["block_id"],
+         survey_picker_results: list_pickable_surveys(socket, "")
+       )}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("close_survey_picker", _params, socket) do
+    {:noreply, assign(socket, survey_picker_open: false, survey_picker_block_id: nil)}
+  end
+
+  def handle_event("search_surveys", %{"search" => search}, socket) do
+    {:noreply, assign(socket, survey_picker_results: list_pickable_surveys(socket, search))}
+  end
+
+  # Picking a survey either creates a new block or repoints an existing one -
+  # the same picker serves the canvas button and the inspector.
+  def handle_event("pick_survey", %{"survey_id" => survey_id}, socket) do
+    socket = assign(socket, survey_picker_open: false)
+
+    case socket.assigns.survey_picker_block_id do
+      nil ->
+        handle_event(
+          "add_survey_block",
+          %{"survey_id" => survey_id, "after_id" => socket.assigns.survey_picker_after_id},
+          socket
+        )
+
+      block_id ->
+        update_survey_block(socket, block_id, %{"survey_id" => survey_id})
+    end
+  end
+
+  def handle_event("toggle_survey_results_visible", %{"id" => block_id}, socket) do
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+    current = block && block.content["show_results_to_student"]
+
+    update_survey_block(socket, block_id, %{"show_results_to_student" => !current})
+  end
+
+  def handle_event("update_survey_title_override", %{"id" => block_id} = params, socket) do
+    update_survey_block(socket, block_id, %{"title_override" => params["title_override"]})
   end
 
   def handle_event("add_quiz_option", %{"id" => block_id}, socket) do
@@ -1818,6 +1890,7 @@ defmodule AthenaWeb.StudioLive.Builder do
               viewing_parent_id={@viewing_parent_id}
               breadcrumbs={@breadcrumbs}
               characters={@characters}
+              surveys={@surveys}
             />
           </div>
         </div>
@@ -1960,6 +2033,63 @@ defmodule AthenaWeb.StudioLive.Builder do
         on_cancel={JS.push("cancel_block_delete")}
         on_confirm={JS.push("confirm_delete_block")}
       />
+
+      <.slide_over
+        id="survey-picker-slideover"
+        show={@survey_picker_open}
+        title={gettext("Choose a survey")}
+        on_close={JS.push("close_survey_picker")}
+      >
+        <div class="flex flex-col h-full -m-6">
+          <div class="p-6 border-b border-base-300 shrink-0 bg-base-100 sticky z-10">
+            <.form
+              for={nil}
+              id="survey-search-form"
+              phx-change="search_surveys"
+              phx-submit="search_surveys"
+            >
+              <div class="relative">
+                <.icon
+                  name="hero-magnifying-glass"
+                  class="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-base-content/40"
+                />
+                <input
+                  type="text"
+                  name="search"
+                  placeholder={gettext("Search surveys...")}
+                  class="input w-full pl-10"
+                  phx-debounce="300"
+                  autocomplete="off"
+                />
+              </div>
+            </.form>
+          </div>
+
+          <div class="flex-1 overflow-y-auto">
+            <button
+              :for={survey <- @survey_picker_results}
+              type="button"
+              phx-click="pick_survey"
+              phx-value-survey_id={survey.id}
+              id={"pick-survey-option-#{survey.id}"}
+              class="w-full text-left flex items-center justify-between gap-4 py-5 px-6 border-b border-base-200 transition-all hover:bg-base-200/50"
+            >
+              <div class="min-w-0">
+                <p class="font-bold truncate">{survey.title}</p>
+                <p class="text-xs text-base-content/50 mt-0.5">{survey.status}</p>
+              </div>
+              <.icon name="hero-plus" class="size-5 shrink-0 text-primary" />
+            </button>
+
+            <.empty_state
+              :if={@survey_picker_results == []}
+              icon="hero-clipboard-document-list"
+              title={gettext("No surveys to choose from")}
+              description={gettext("Create one in Studio first, then come back to add it here.")}
+            />
+          </div>
+        </div>
+      </.slide_over>
 
       <.slide_over
         id="library-picker-slideover"
@@ -2242,7 +2372,7 @@ defmodule AthenaWeb.StudioLive.Builder do
 
         {:noreply,
          socket
-         |> assign(blocks: updated_blocks)
+         |> assign_blocks(updated_blocks)
          |> push_patch(
            to:
              builder_block_path(
@@ -2506,6 +2636,75 @@ defmodule AthenaWeb.StudioLive.Builder do
     do: ~p"/studio/courses/#{id}/builder/sections/#{section_id}/blocks/#{block_id}"
 
   defp can_edit?(socket), do: socket.assigns.role in [:owner, :writer]
+
+  # Only surveys the author may actually read: the picker must not become a
+  # directory of other people's feedback forms.
+  # Every path that sets `:blocks` goes through here, so the referenced
+  # surveys can never drift out of step with the blocks referencing them.
+  defp assign_blocks(socket, blocks) do
+    socket
+    |> assign(:blocks, blocks)
+    |> assign(:surveys, load_referenced_surveys(blocks))
+  end
+
+  # Keyed by survey id so the canvas can look one up per block without a
+  # query in the render path.
+  defp load_referenced_surveys(blocks) do
+    blocks
+    |> Enum.filter(&(&1.type == :survey))
+    |> Enum.map(& &1.content["survey_id"])
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> Map.new(fn survey_id ->
+      case Surveys.get_survey(survey_id) do
+        nil ->
+          {survey_id, %{survey: nil, question_count: 0}}
+
+        survey ->
+          {survey_id, %{survey: survey, question_count: Surveys.question_count(survey)}}
+      end
+    end)
+  end
+
+  defp list_pickable_surveys(socket, search) do
+    params =
+      if search in [nil, ""],
+        do: %{},
+        else: %{
+          "filters" => %{"0" => %{"field" => "title", "op" => "ilike_and", "value" => search}}
+        }
+
+    case Surveys.list_surveys_for_user(socket.assigns.current_user, params) do
+      {:ok, {surveys, _meta}} -> surveys
+      {:error, _meta} -> []
+    end
+  end
+
+  defp update_survey_block(socket, block_id, changes) do
+    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+
+    if can_edit?(socket) && block && block.type == :survey do
+      content = Map.merge(block.content, stringify(changes))
+
+      case Content.update_block(socket.assigns.current_user, block, %{"content" => content}) do
+        {:ok, updated} ->
+          Phoenix.PubSub.broadcast(
+            Athena.PubSub,
+            "builder:#{socket.assigns.course.id}",
+            :refresh_tree
+          )
+
+          {:noreply, assign_blocks(socket, replace_block(socket.assigns.blocks, updated))}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, gettext("Failed to update survey block"))}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  defp stringify(map), do: Map.new(map, fn {key, value} -> {to_string(key), value} end)
 
   # Metrics/engagement thresholds are meant to be configured only by whoever
   # actually understands the methodology, independent of general course-edit
