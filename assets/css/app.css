@@ -944,6 +944,41 @@
     height: auto;
     cursor: zoom-out;
   }
+
+  /* Briefly tints the block a `/go/blocks/:id` permalink scrolled to (see
+     the `scroll_to_block` listener in app.js), so it's clear *which* block
+     the link meant, not just that the page scrolled somewhere. */
+  .permalink-highlight {
+    animation: permalink-flash 2s ease-out;
+  }
+
+  @keyframes permalink-flash {
+    0%,
+    40% {
+      background-color: color-mix(in oklch, var(--color-primary) 12%, transparent);
+      outline: 2px solid var(--color-primary);
+      outline-offset: 4px;
+    }
+    100% {
+      background-color: transparent;
+      outline-color: transparent;
+    }
+  }
+
+  /* `.copy-icon-default`/`.copy-icon-success` pair toggled by the
+     `ClipboardCopy` hook's `.is-copied` class - a brief checkmark swap,
+     same convention as the TipTap "copy code" button's icon swap. */
+  .copy-icon-success {
+    display: none;
+  }
+
+  .is-copied .copy-icon-default {
+    display: none;
+  }
+
+  .is-copied .copy-icon-success {
+    display: inline;
+  }
 }
 
 /* Built-in documentation (`AthenaWeb.DocsLive`): table of contents, page,

@@ -35,8 +35,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   end
 
   def mount(%{"id" => course_id, "block_id" => block_id} = params, _session, socket) do
-    return_to = Map.get(params, "return_to", ~p"/learn/courses/#{course_id}/play")
-    mount_exam(course_id, block_id, socket, return_to)
+    mount_exam(course_id, block_id, socket, params["return_to"])
   end
 
   # The static (disconnected) render only shows a skeleton: starting or
@@ -64,6 +63,14 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   defp resolve_exam_mount(socket, course_id, block_id, user_id, team_id, cohort_id, return_to) do
     with {:ok, block} <- Content.get_block(block_id),
          time_limit_sec <- get_time_limit_sec(block) do
+      # Default to the section the exam block itself lives in - not a
+      # section-less `/play` (which `Player` resolves to the *first* section
+      # of the course) - so a student who times out or finishes lands back
+      # where they started, not at the beginning of the course. Normally
+      # `Player.enter_exam/3` already supplies a precise `return_to`; this
+      # only matters for a stale/bookmarked exam URL with no query param.
+      return_to = return_to || ~p"/learn/courses/#{course_id}/play/#{block.section_id}"
+
       case Learning.get_or_create_exam_attempt(
              course_id,
              user_id,

@@ -19,7 +19,8 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
     {:ok,
      socket
      |> assign(assigns)
-     |> assign_new(:current_user, fn -> nil end)}
+     |> assign_new(:current_user, fn -> nil end)
+     |> assign_new(:course, fn -> nil end)}
   end
 
   @doc """
@@ -37,9 +38,13 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
       </div>
       <%= cond do %>
         <% @active_block -> %>
-          <.block_inspector block={@active_block} current_user={@current_user} />
+          <.block_inspector block={@active_block} current_user={@current_user} course={@course} />
         <% @active_section -> %>
-          <.section_inspector section={@active_section} current_user={@current_user} />
+          <.section_inspector
+            section={@active_section}
+            current_user={@current_user}
+            course={@course}
+          />
         <% true -> %>
           <div class="flex-1 flex items-center justify-center p-4 text-center">
             <p class="text-sm text-base-content/50 italic">
@@ -182,6 +187,19 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
       </div>
 
       <div class="pt-4 border-t border-base-300 mt-auto pb-4 space-y-2">
+        <button
+          :if={@section.id}
+          type="button"
+          id={"copy-section-link-#{@section.id}"}
+          phx-hook="ClipboardCopy"
+          data-copy-text={url(~p"/go/sections/#{@section.id}")}
+          class="btn btn-outline w-full"
+        >
+          <.icon name="hero-link" class="size-4 copy-icon-default" />
+          <.icon name="hero-check" class="size-4 copy-icon-success text-success" />
+          {gettext("Copy Link")}
+        </button>
+
         <.button
           type="button"
           phx-click="open_move_modal"
@@ -899,6 +917,19 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
       </div>
 
       <div class="pt-4 border-t border-base-300 mt-auto pb-4 space-y-2">
+        <button
+          :if={@block.id}
+          type="button"
+          id={"copy-block-link-#{@block.id}"}
+          phx-hook="ClipboardCopy"
+          data-copy-text={url(~p"/go/blocks/#{@block.id}")}
+          class="btn btn-outline w-full"
+        >
+          <.icon name="hero-link" class="size-4 copy-icon-default" />
+          <.icon name="hero-check" class="size-4 copy-icon-success text-success" />
+          {gettext("Copy Link")}
+        </button>
+
         <.button
           type="button"
           phx-click="open_save_library_modal"

@@ -93,7 +93,7 @@ defmodule AthenaWeb.LearnLive.ExamTest do
 
       result = live(conn, ~p"/learn/courses/#{course.id}/exam/#{block.id}")
       assert {:error, {:live_redirect, %{to: to}}} = result
-      assert to == "/learn/courses/#{course.id}/play"
+      assert to == "/learn/courses/#{course.id}/play/#{section.id}"
 
       {:ok, _lv, html} = follow_redirect(result, conn)
       assert html =~ "already completed"
@@ -137,7 +137,7 @@ defmodule AthenaWeb.LearnLive.ExamTest do
 
       assert rejected.status == :rejected
 
-      assert_redirect(lv, ~p"/learn/courses/#{course.id}/play")
+      assert_redirect(lv, ~p"/learn/courses/#{course.id}/play/#{section.id}")
 
       # The teacher's own write set the final grade - the student leaving
       # must not trigger a second, auto-computed grade over it.
@@ -519,6 +519,54 @@ defmodule AthenaWeb.LearnLive.ExamTest do
                account_id: user.id,
                block_id: block.id
              )
+    end
+  end
+
+  describe "Returning to where the exam was started from" do
+    test "finishing an exam started from a non-first section returns there, not the course's first section",
+         %{conn: conn, course: course, user: user} do
+      _first_section = insert(:section, course: course, order: 0)
+      second_section = insert(:section, course: course, order: 1)
+
+      block =
+        insert(:block, section: second_section, type: :quiz_exam, content: %{"count" => 1})
+
+      question = %{
+        "id" => Ecto.UUID.generate(),
+        "type" => "quiz_question",
+        "content" => %{
+          "question_type" => "exact_match",
+          "body" => %{"text" => "What is 2+2?"},
+          "correct_answer" => "4"
+        }
+      }
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :pending,
+        expires_at:
+          DateTime.utc_now() |> DateTime.add(3600, :second) |> DateTime.truncate(:second),
+        content: %{
+          "type" => "quiz_exam",
+          "started_at" => DateTime.utc_now(),
+          "questions" => [question]
+        }
+      )
+
+      {:ok, player_lv, _html} =
+        live(conn, ~p"/learn/courses/#{course.id}/play/#{second_section.id}")
+
+      {:ok, exam_lv, _html} =
+        player_lv
+        |> element("button[phx-click='continue_exam']")
+        |> render_click()
+        |> follow_redirect(conn)
+
+      exam_lv |> form("#exam-quiz-#{question["id"]}", %{"answer" => "4"}) |> render_submit()
+      exam_lv |> render_click("finish_exam", %{})
+
+      assert_redirect(exam_lv, ~p"/learn/courses/#{course.id}/play/#{second_section.id}")
     end
   end
 end

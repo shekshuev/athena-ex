@@ -606,6 +606,68 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
     end
   end
 
+  describe "Link modal (TipTap insert/edit link)" do
+    test "opening, saving, and removing a link pushes the matching event to the editor", %{
+      conn: conn,
+      admin: admin
+    } do
+      block = insert(:library_block, type: :text, owner_id: admin.id)
+      block_id = block.id
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block_id}/editor")
+
+      html =
+        render_click(lv, "open_link_modal", %{
+          "block_id" => block_id,
+          "href" => nil,
+          "text" => "some text"
+        })
+
+      assert html =~ "link-form"
+
+      lv
+      |> form("#link-form", %{"link" => %{"href" => "https://example.com", "text" => "Example"}})
+      |> render_submit()
+
+      assert_push_event(lv, "apply_link", %{
+        block_id: ^block_id,
+        href: "https://example.com",
+        text: "Example"
+      })
+
+      refute has_element?(lv, "#link-modal")
+
+      render_click(lv, "open_link_modal", %{
+        "block_id" => block_id,
+        "href" => "https://example.com",
+        "text" => "Example"
+      })
+
+      lv
+      |> element("button[phx-click='remove_link']")
+      |> render_click()
+
+      assert_push_event(lv, "remove_link", %{block_id: ^block_id})
+    end
+
+    test "cancelling the link modal closes it without pushing an event", %{
+      conn: conn,
+      admin: admin
+    } do
+      block = insert(:library_block, type: :text, owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      render_click(lv, "open_link_modal", %{"block_id" => block.id, "href" => nil, "text" => nil})
+
+      assert has_element?(lv, "#link-modal")
+
+      render_click(lv, "cancel_link_modal")
+
+      refute has_element?(lv, "#link-modal")
+    end
+  end
+
   describe "Real-time Collaboration (PubSub)" do
     test "redirects when access is revoked via refresh_library message", %{
       conn: conn,

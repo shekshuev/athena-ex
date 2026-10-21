@@ -31,7 +31,15 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
   def mount(params, _session, socket) do
     {:ok,
      socket
-     |> assign(cohort_search_query: "", cohort_search_results: [], selected_cohort: nil)
+     |> assign(
+       cohort_search_query: "",
+       cohort_search_results: [],
+       selected_cohort: nil,
+       show_link_modal: false,
+       link_modal_block_id: nil,
+       link_modal_href: nil,
+       link_modal_text: nil
+     )
      |> load_announcement(socket.assigns.live_action, params)}
   end
 
@@ -107,6 +115,30 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
   end
 
   @impl true
+  def handle_event(
+        "open_link_modal",
+        %{"block_id" => block_id, "href" => href, "text" => text},
+        socket
+      ) do
+    {:noreply,
+     assign(socket,
+       show_link_modal: true,
+       link_modal_block_id: block_id,
+       link_modal_href: href,
+       link_modal_text: text
+     )}
+  end
+
+  def handle_event("cancel_link_modal", _, socket) do
+    {:noreply,
+     assign(socket,
+       show_link_modal: false,
+       link_modal_block_id: nil,
+       link_modal_href: nil,
+       link_modal_text: nil
+     )}
+  end
+
   def handle_event("validate", %{"announcement" => params}, socket) do
     params = TimeZones.localize_params(params, ~w(starts_at ends_at))
 
@@ -144,6 +176,31 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
     params = Map.put(params, "cohort_id", cohort_id)
 
     save_announcement(socket, socket.assigns.live_action, params)
+  end
+
+  @impl true
+  def handle_info({AthenaWeb.LinkFormComponent, {:apply_link, block_id, href, text}}, socket) do
+    {:noreply,
+     socket
+     |> assign(
+       show_link_modal: false,
+       link_modal_block_id: nil,
+       link_modal_href: nil,
+       link_modal_text: nil
+     )
+     |> push_event("apply_link", %{block_id: block_id, href: href, text: text})}
+  end
+
+  def handle_info({AthenaWeb.LinkFormComponent, {:remove_link, block_id}}, socket) do
+    {:noreply,
+     socket
+     |> assign(
+       show_link_modal: false,
+       link_modal_block_id: nil,
+       link_modal_href: nil,
+       link_modal_text: nil
+     )
+     |> push_event("remove_link", %{block_id: block_id})}
   end
 
   defp save_announcement(socket, :new, params) do
@@ -370,6 +427,23 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
           </div>
         </div>
       </.form>
+
+      <.modal
+        :if={@show_link_modal}
+        id="link-modal"
+        show={true}
+        title={gettext("Link")}
+        on_cancel={JS.push("cancel_link_modal")}
+      >
+        <.live_component
+          module={AthenaWeb.LinkFormComponent}
+          id="link-form"
+          block_id={@link_modal_block_id}
+          href={@link_modal_href}
+          text={@link_modal_text}
+          on_cancel={JS.push("cancel_link_modal")}
+        />
+      </.modal>
     </.page_container>
     """
   end

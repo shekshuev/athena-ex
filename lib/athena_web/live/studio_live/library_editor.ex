@@ -69,6 +69,10 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
          running_tests: %{},
          characters: Content.characters_for_picker(socket.assigns.current_user),
          show_character_modal: false,
+         show_link_modal: false,
+         link_modal_block_id: nil,
+         link_modal_href: nil,
+         link_modal_text: nil,
          test_run_session: nil,
          test_run_active_exam: nil
        )}
@@ -148,6 +152,30 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
      socket
      |> assign(characters: characters, show_character_modal: false)
      |> push_event("characters_updated", %{characters: characters})}
+  end
+
+  def handle_info({AthenaWeb.LinkFormComponent, {:apply_link, block_id, href, text}}, socket) do
+    {:noreply,
+     socket
+     |> assign(
+       show_link_modal: false,
+       link_modal_block_id: nil,
+       link_modal_href: nil,
+       link_modal_text: nil
+     )
+     |> push_event("apply_link", %{block_id: block_id, href: href, text: text})}
+  end
+
+  def handle_info({AthenaWeb.LinkFormComponent, {:remove_link, block_id}}, socket) do
+    {:noreply,
+     socket
+     |> assign(
+       show_link_modal: false,
+       link_modal_block_id: nil,
+       link_modal_href: nil,
+       link_modal_text: nil
+     )
+     |> push_event("remove_link", %{block_id: block_id})}
   end
 
   def handle_info(
@@ -498,6 +526,34 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
   def handle_event("cancel_character_modal", _, socket) do
     {:noreply, assign(socket, show_character_modal: false)}
+  end
+
+  def handle_event(
+        "open_link_modal",
+        %{"block_id" => block_id, "href" => href, "text" => text},
+        socket
+      ) do
+    if can_edit?(socket) do
+      {:noreply,
+       assign(socket,
+         show_link_modal: true,
+         link_modal_block_id: block_id,
+         link_modal_href: href,
+         link_modal_text: text
+       )}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("cancel_link_modal", _, socket) do
+    {:noreply,
+     assign(socket,
+       show_link_modal: false,
+       link_modal_block_id: nil,
+       link_modal_href: nil,
+       link_modal_text: nil
+     )}
   end
 
   def handle_event("media_upload_clipboard_request", params, socket) do
@@ -1430,6 +1486,23 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
           character={%Athena.Content.Character{}}
           current_user={@current_user}
           on_cancel={JS.push("cancel_character_modal")}
+        />
+      </.modal>
+
+      <.modal
+        :if={@show_link_modal}
+        id="link-modal"
+        show={true}
+        title={gettext("Link")}
+        on_cancel={JS.push("cancel_link_modal")}
+      >
+        <.live_component
+          module={AthenaWeb.LinkFormComponent}
+          id="link-form"
+          block_id={@link_modal_block_id}
+          href={@link_modal_href}
+          text={@link_modal_text}
+          on_cancel={JS.push("cancel_link_modal")}
         />
       </.modal>
 

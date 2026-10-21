@@ -1147,6 +1147,110 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
     end
   end
 
+  describe "Link modal (TipTap insert/edit link)" do
+    test "opening, saving, and removing a link pushes the matching event to the editor", %{
+      conn: conn,
+      course: course,
+      admin: admin
+    } do
+      {:ok, section} =
+        Content.create_section(admin, %{
+          "title" => "Section",
+          "course_id" => course.id,
+          "owner_id" => admin.id
+        })
+
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "section_id" => section.id,
+          "type" => "text",
+          "owner_id" => admin.id
+        })
+
+      block_id = block.id
+
+      {:ok, lv, _html} =
+        live(
+          conn,
+          ~p"/studio/courses/#{course.id}/builder/sections/#{section.id}/blocks/#{block_id}"
+        )
+
+      html =
+        render_click(lv, "open_link_modal", %{
+          "block_id" => block_id,
+          "href" => nil,
+          "text" => "some text"
+        })
+
+      assert html =~ "link-form"
+
+      lv
+      |> form("#link-form", %{"link" => %{"href" => "https://example.com", "text" => "Example"}})
+      |> render_submit()
+
+      assert_push_event(lv, "apply_link", %{
+        block_id: ^block_id,
+        href: "https://example.com",
+        text: "Example"
+      })
+
+      refute has_element?(lv, "#link-modal")
+
+      render_click(lv, "open_link_modal", %{
+        "block_id" => block_id,
+        "href" => "https://example.com",
+        "text" => "Example"
+      })
+
+      lv
+      |> element("button[phx-click='remove_link']")
+      |> render_click()
+
+      assert_push_event(lv, "remove_link", %{block_id: ^block_id})
+    end
+
+    test "cancelling the link modal closes it without pushing an event", %{
+      conn: conn,
+      course: course
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      render_click(lv, "open_link_modal", %{
+        "block_id" => Ecto.UUID.generate(),
+        "href" => nil,
+        "text" => nil
+      })
+
+      assert has_element?(lv, "#link-modal")
+
+      render_click(lv, "cancel_link_modal")
+
+      refute has_element?(lv, "#link-modal")
+    end
+
+    test "submitting a blank URL shows an error and keeps the modal open", %{
+      conn: conn,
+      course: course
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      render_click(lv, "open_link_modal", %{
+        "block_id" => Ecto.UUID.generate(),
+        "href" => nil,
+        "text" => "some text"
+      })
+
+      html =
+        lv
+        |> form("#link-form", %{"link" => %{"href" => "  ", "text" => "some text"}})
+        |> render_submit()
+
+      assert html =~ "Enter a URL"
+      assert has_element?(lv, "#link-modal")
+      refute_push_event(lv, "apply_link", %{})
+    end
+  end
+
   describe "Media Upload State" do
     setup %{course: course, admin: admin} do
       {:ok, section} =
@@ -1617,6 +1721,51 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert :ok = Oban.Testing.perform_job(Athena.Execution.TestWorker, job.args, repo: Repo)
 
       assert render(player) =~ "ACCEPTED"
+    end
+  end
+
+  describe "Player's Copy Link gutter" do
+    test "hidden inside a Test Run preview, present in a real play session", %{
+      conn: conn,
+      course: course,
+      admin: admin
+    } do
+      {:ok, section} =
+        Content.create_section(admin, %{"title" => "Lesson", "course_id" => course.id})
+
+      {:ok, block} =
+        Content.create_block(admin, %{
+          "type" => "text",
+          "section_id" => section.id,
+          "content" => %{"text" => "hello"}
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/studio/courses/#{course.id}/builder")
+
+      lv
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      lv
+      |> element("button[phx-click='start_test_run']")
+      |> render_click()
+
+      session = Repo.one!(Athena.Learning.TestRunSession)
+      player = find_live_child(lv, "test-run-player-#{session.id}")
+      assert player
+
+      refute render(player) =~ "copy-link-#{block.id}"
+
+      # A real (non-test-run) student with access sees the same block with
+      # the gutter present.
+      student = insert(:account, role: insert(:role, permissions: []))
+      insert(:enrollment, account_id: student.id, course_id: course.id)
+      student_conn = init_test_session(build_conn(), %{"account_id" => student.id})
+
+      {:ok, _real_lv, html} =
+        live(student_conn, ~p"/learn/courses/#{course.id}/play/#{section.id}")
+
+      assert html =~ "copy-link-#{block.id}"
     end
   end
 

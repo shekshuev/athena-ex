@@ -74,6 +74,10 @@ defmodule AthenaWeb.StudioLive.Builder do
          hide_mobile_nav: true,
          characters: Content.characters_for_picker(socket.assigns.current_user),
          show_character_modal: false,
+         show_link_modal: false,
+         link_modal_block_id: nil,
+         link_modal_href: nil,
+         link_modal_text: nil,
          test_run_session: nil,
          test_run_active_exam: nil
        )}
@@ -143,6 +147,30 @@ defmodule AthenaWeb.StudioLive.Builder do
      socket
      |> assign(characters: characters, show_character_modal: false)
      |> push_event("characters_updated", %{characters: characters})}
+  end
+
+  def handle_info({AthenaWeb.LinkFormComponent, {:apply_link, block_id, href, text}}, socket) do
+    {:noreply,
+     socket
+     |> assign(
+       show_link_modal: false,
+       link_modal_block_id: nil,
+       link_modal_href: nil,
+       link_modal_text: nil
+     )
+     |> push_event("apply_link", %{block_id: block_id, href: href, text: text})}
+  end
+
+  def handle_info({AthenaWeb.LinkFormComponent, {:remove_link, block_id}}, socket) do
+    {:noreply,
+     socket
+     |> assign(
+       show_link_modal: false,
+       link_modal_block_id: nil,
+       link_modal_href: nil,
+       link_modal_text: nil
+     )
+     |> push_event("remove_link", %{block_id: block_id})}
   end
 
   def handle_info(
@@ -1361,6 +1389,34 @@ defmodule AthenaWeb.StudioLive.Builder do
     {:noreply, assign(socket, show_character_modal: false)}
   end
 
+  def handle_event(
+        "open_link_modal",
+        %{"block_id" => block_id, "href" => href, "text" => text},
+        socket
+      ) do
+    if can_edit?(socket) do
+      {:noreply,
+       assign(socket,
+         show_link_modal: true,
+         link_modal_block_id: block_id,
+         link_modal_href: href,
+         link_modal_text: text
+       )}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("cancel_link_modal", _, socket) do
+    {:noreply,
+     assign(socket,
+       show_link_modal: false,
+       link_modal_block_id: nil,
+       link_modal_href: nil,
+       link_modal_text: nil
+     )}
+  end
+
   def handle_event("media_upload_clipboard_request", params, socket) do
     if can_edit?(socket) do
       %{
@@ -1905,6 +1961,7 @@ defmodule AthenaWeb.StudioLive.Builder do
             module={AthenaWeb.StudioLive.Builder.InspectorComponent}
             id="inspector-component"
             current_user={@current_user}
+            course={@course}
             active_section={@active_section}
             active_block={@active_block}
             block_changeset={assigns[:active_block_changeset]}
@@ -1937,6 +1994,23 @@ defmodule AthenaWeb.StudioLive.Builder do
           character={%Athena.Content.Character{}}
           current_user={@current_user}
           on_cancel={JS.push("cancel_character_modal")}
+        />
+      </.modal>
+
+      <.modal
+        :if={@show_link_modal}
+        id="link-modal"
+        show={true}
+        title={gettext("Link")}
+        on_cancel={JS.push("cancel_link_modal")}
+      >
+        <.live_component
+          module={AthenaWeb.LinkFormComponent}
+          id="link-form"
+          block_id={@link_modal_block_id}
+          href={@link_modal_href}
+          text={@link_modal_text}
+          on_cancel={JS.push("cancel_link_modal")}
         />
       </.modal>
 
@@ -2623,16 +2697,21 @@ defmodule AthenaWeb.StudioLive.Builder do
 
   defp builder_root_path(%{id: id}), do: ~p"/studio/courses/#{id}/builder"
 
-  defp builder_section_path(%{type: :competition, id: id}, section_id),
+  # Public - also called by `Athena.Content.Permalinks` to resolve a
+  # shareable `/go/...` link into the Builder for whoever can edit this
+  # course, without re-deriving the competition-vs-course branching.
+  @doc false
+  def builder_section_path(%{type: :competition, id: id}, section_id),
     do: ~p"/studio/competitions/#{id}/builder/sections/#{section_id}"
 
-  defp builder_section_path(%{id: id}, section_id),
+  def builder_section_path(%{id: id}, section_id),
     do: ~p"/studio/courses/#{id}/builder/sections/#{section_id}"
 
-  defp builder_block_path(%{type: :competition, id: id}, section_id, block_id),
+  @doc false
+  def builder_block_path(%{type: :competition, id: id}, section_id, block_id),
     do: ~p"/studio/competitions/#{id}/builder/sections/#{section_id}/blocks/#{block_id}"
 
-  defp builder_block_path(%{id: id}, section_id, block_id),
+  def builder_block_path(%{id: id}, section_id, block_id),
     do: ~p"/studio/courses/#{id}/builder/sections/#{section_id}/blocks/#{block_id}"
 
   defp can_edit?(socket), do: socket.assigns.role in [:owner, :writer]
