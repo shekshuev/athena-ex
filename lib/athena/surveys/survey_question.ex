@@ -20,6 +20,7 @@ defmodule Athena.Surveys.SurveyQuestion do
   import Ecto.Changeset
 
   alias Athena.Surveys.{QuestionTypes, Survey}
+  alias Athena.Content.Tiptap
 
   @type t :: %__MODULE__{}
 
@@ -45,6 +46,7 @@ defmodule Athena.Surveys.SurveyQuestion do
   def changeset(question, attrs) do
     question
     |> cast(attrs, [:position, :page, :type, :body, :help_text, :required, :config, :survey_id])
+    |> update_change(:body, &Tiptap.strip_colors/1)
     |> validate_required([:type, :body, :survey_id])
     |> validate_number(:position, greater_than_or_equal_to: 0)
     |> validate_number(:page, greater_than_or_equal_to: 0)

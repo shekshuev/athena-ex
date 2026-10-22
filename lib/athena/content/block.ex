@@ -20,7 +20,8 @@ defmodule Athena.Content.Block do
     EngagementRule,
     CodeChallenge,
     FileAssignment,
-    SurveyRef
+    SurveyRef,
+    Tiptap
   }
 
   @type t :: %__MODULE__{}
@@ -78,6 +79,7 @@ defmodule Athena.Content.Block do
   def changeset(block, attrs) do
     block
     |> cast(attrs, [:type, :content, :order, :section_id, :visibility])
+    |> update_change(:content, &Tiptap.strip_colors/1)
     |> cast_embed(:access_rules, with: &AccessRules.changeset/2)
     |> cast_embed(:completion_rule, with: &CompletionRule.changeset/2)
     |> cast_embed(:engagement_rule, with: &EngagementRule.changeset/2)

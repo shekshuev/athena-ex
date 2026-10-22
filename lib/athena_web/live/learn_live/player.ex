@@ -2153,18 +2153,10 @@ defmodule AthenaWeb.LearnLive.Player do
   def render(%{loading: true} = assigns) do
     ~H"""
     <.page_container size="narrow" class="py-10 pb-32">
-      <div id="player-loading" class="space-y-6" aria-busy="true">
-        <div class="h-6 w-40 bg-base-200 rounded-sm animate-pulse"></div>
-        <div class="h-10 w-2/3 bg-base-300 rounded-sm animate-pulse"></div>
-        <div
-          :for={i <- 1..3}
-          class="bg-base-100 border border-base-200 rounded-sm p-6 animate-pulse"
-          style={"animation-delay: #{i * 80}ms"}
-        >
-          <div class="h-3 w-1/4 bg-base-300 rounded-sm mb-3"></div>
-          <div class="h-3 w-full bg-base-200 rounded-sm mb-2"></div>
-          <div class="h-3 w-2/3 bg-base-200 rounded-sm"></div>
-        </div>
+      <div class="space-y-6" aria-busy="true">
+        <div class="h-6 w-40 bg-base-200 rounded-sm motion-safe:animate-pulse"></div>
+        <div class="h-10 w-2/3 bg-base-300 rounded-sm motion-safe:animate-pulse"></div>
+        <.loading_skeleton id="player-loading" rows={3} item_class="p-6" />
       </div>
     </.page_container>
     """

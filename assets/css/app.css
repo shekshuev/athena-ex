@@ -551,6 +551,66 @@
   margin-bottom: 0 !important;
 }
 
+/* Boxed aside ("tip") - same geometry as `.tiptap-details` above, with the
+   accent taken from the theme's semantic tokens so each variant is legible
+   on both themes. The colour recipe matches the docs-site callouts further
+   down this file. */
+.prose .tiptap-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  margin: 1em 0;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--color-base-300);
+  border-left: 3px solid var(--color-info);
+  border-radius: var(--radius-box, 0.25rem);
+  background: color-mix(in oklch, var(--color-info) 6%, var(--color-base-100));
+}
+
+.prose .tiptap-tip > .tip-icon {
+  display: flex;
+  flex-shrink: 0;
+  margin-top: 0.125em;
+  color: var(--color-info);
+  user-select: none;
+}
+
+.prose .tiptap-tip > .tip-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.prose .tiptap-tip > .tip-body > :first-child {
+  margin-top: 0 !important;
+}
+.prose .tiptap-tip > .tip-body > :last-child {
+  margin-bottom: 0 !important;
+}
+
+.prose .tiptap-tip[data-variant="success"] {
+  border-left-color: var(--color-success);
+  background: color-mix(in oklch, var(--color-success) 6%, var(--color-base-100));
+}
+.prose .tiptap-tip[data-variant="success"] > .tip-icon {
+  color: var(--color-success);
+}
+
+.prose .tiptap-tip[data-variant="warning"] {
+  border-left-color: var(--color-warning);
+  background: color-mix(in oklch, var(--color-warning) 8%, var(--color-base-100));
+}
+.prose .tiptap-tip[data-variant="warning"] > .tip-icon {
+  color: var(--color-warning);
+}
+
+.prose .tiptap-tip[data-variant="error"] {
+  border-left-color: var(--color-error);
+  background: color-mix(in oklch, var(--color-error) 6%, var(--color-base-100));
+}
+.prose .tiptap-tip[data-variant="error"] > .tip-icon {
+  color: var(--color-error);
+}
+
 .prose .tiptap-dialogue {
   display: flex;
   flex-direction: column;
@@ -934,15 +994,73 @@
     }
   }
 
-  /* The full-size preview opened by clicking a `.js-lightbox-img` thumbnail
-     (see app.js). Toggled by clicking the enlarged image itself: fit-to-
-     viewport by default, natural size (scrollable/pannable) once zoomed. */
-  #lightbox-img.lightbox-img-zoomed {
-    max-width: none;
-    max-height: none;
+  /* The full-size preview opened by clicking a `.js-lightbox-img` thumbnail.
+     The overlay is built by `initLightbox()` in js/lightbox.js and lives on
+     `document.body`, outside the DOM LiveView patches - which is also why its
+     styling is plain CSS here rather than utility classes in a template. */
+  .lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: none;
+    place-items: center;
+    padding: 1rem;
+    overflow: auto;
+    overscroll-behavior: contain;
+    background-color: rgb(0 0 0 / 0.8);
+  }
+
+  .lightbox.lightbox--open {
+    display: grid;
+  }
+
+  .lightbox__img {
+    max-width: 100%;
+    max-height: 85vh;
     width: auto;
     height: auto;
+    border-radius: var(--radius-box, 0.25rem);
+    object-fit: contain;
+    cursor: zoom-in;
+    user-select: none;
+    touch-action: manipulation;
+  }
+
+  /* Toggled by clicking the enlarged image itself: fit-to-viewport by
+     default, natural size (scrollable/pannable) once zoomed. */
+  .lightbox.lightbox--zoomed .lightbox__img {
+    max-width: none;
+    max-height: none;
     cursor: zoom-out;
+  }
+
+  /* Fixed to the viewport, not to the (possibly scrolled-out-of-view) image,
+     so there is always a visible way out of the overlay. */
+  .lightbox__close {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    display: grid;
+    place-items: center;
+    padding: 0.5rem;
+    border: 1px solid rgb(255 255 255 / 0.2);
+    border-radius: var(--radius-box, 0.25rem);
+    background-color: rgb(0 0 0 / 0.5);
+    color: rgb(255 255 255 / 0.8);
+    cursor: pointer;
+    transition:
+      color 0.15s,
+      background-color 0.15s;
+  }
+
+  .lightbox__close:hover {
+    background-color: rgb(0 0 0 / 0.75);
+    color: rgb(255 255 255);
+  }
+
+  /* Keeps the page behind the overlay from scrolling under it. */
+  body.lightbox-open {
+    overflow: hidden;
   }
 
   /* Briefly tints the block a `/go/blocks/:id` permalink scrolled to (see

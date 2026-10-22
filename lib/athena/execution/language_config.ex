@@ -99,10 +99,28 @@ defmodule Athena.Execution.LanguageConfig do
 
   def cm_lang(_), do: "python"
 
+  # Languages a Tiptap code block can be *highlighted* as but the runner
+  # cannot execute, so they stay out of `@cm_languages` (which drives
+  # `cm_lang/1` for the CodeMirror editor in runnable code blocks).
+  # `plaintext` and `bash` come with lowlight's `common` bundle; `powershell`
+  # is registered explicitly in app.js.
+  @highlight_only_languages [
+    {"plaintext", "Text"},
+    {"bash", "Bash"},
+    {"powershell", "PowerShell"}
+  ]
+
   @doc """
   Returns `{cm_mode, label}` pairs for every supported CodeMirror language,
   for UI pickers such as the Tiptap code-block language switcher.
   """
   @spec cm_languages() :: [{String.t(), String.t()}]
   def cm_languages, do: Enum.map(@cm_languages, fn {_id, cm_mode, label} -> {cm_mode, label} end)
+
+  @doc """
+  Returns `{highlight mode, label}` pairs for the Tiptap code-block language
+  picker: every runnable language plus the highlight-only ones.
+  """
+  @spec tiptap_languages() :: [{String.t(), String.t()}]
+  def tiptap_languages, do: cm_languages() ++ @highlight_only_languages
 end

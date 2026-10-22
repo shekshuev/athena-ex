@@ -198,17 +198,12 @@ defmodule AthenaWeb.DashboardLive.Index do
       <h1 class="text-3xl font-display font-black uppercase tracking-tight text-base-content">
         {gettext("Dashboard")}
       </h1>
-      <div id="dashboard-loading" class="grid gap-4 md:grid-cols-2" aria-busy="true">
-        <div
-          :for={i <- 1..4}
-          class="bg-base-100 border border-base-200 rounded-sm p-6 animate-pulse"
-          style={"animation-delay: #{i * 80}ms"}
-        >
-          <div class="h-3 w-1/3 bg-base-300 rounded-sm mb-3"></div>
-          <div class="h-3 w-full bg-base-200 rounded-sm mb-2"></div>
-          <div class="h-3 w-2/3 bg-base-200 rounded-sm"></div>
-        </div>
-      </div>
+      <.loading_skeleton
+        id="dashboard-loading"
+        rows={4}
+        class="grid gap-4 md:grid-cols-2"
+        item_class="p-6"
+      />
     </.page_container>
     """
   end

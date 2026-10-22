@@ -577,6 +577,8 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
                   :if={@course_charts_loading}
                   id="course-charts-loading"
                   rows={4}
+                  class="space-y-3 mb-4"
+                  label={gettext("Loading engagement data")}
                 />
 
                 <div :if={!@course_charts_loading} id="course-charts" class="space-y-4 mb-4">
@@ -638,7 +640,13 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
                   </div>
                 </div>
               <% else %>
-                <.loading_skeleton :if={is_nil(@course_map)} id="course-map-loading" rows={6} />
+                <.loading_skeleton
+                  :if={is_nil(@course_map)}
+                  id="course-map-loading"
+                  rows={6}
+                  class="space-y-3 mb-4"
+                  label={gettext("Loading engagement data")}
+                />
                 <.course_map
                   :if={@course_map}
                   map={@course_map}
@@ -692,7 +700,13 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
         </form>
       </div>
 
-      <.loading_skeleton :if={@student_radar_loading} id="student-radar-loading" rows={6} />
+      <.loading_skeleton
+        :if={@student_radar_loading}
+        id="student-radar-loading"
+        rows={6}
+        class="space-y-3 mb-4"
+        label={gettext("Loading engagement data")}
+      />
 
       <%= if !@student_radar_loading do %>
         <.level_tiles
@@ -763,30 +777,6 @@ defmodule AthenaWeb.TeachingLive.CohortEngagement do
   defp window_label("30"), do: gettext("last 30 days")
   defp window_label("all"), do: gettext("whole course")
   defp window_label(_seven), do: gettext("last 7 days")
-
-  attr :id, :string, required: true
-  attr :rows, :integer, default: 4
-
-  defp loading_skeleton(assigns) do
-    ~H"""
-    <div
-      id={@id}
-      class="space-y-3 mb-4"
-      aria-busy="true"
-      aria-label={gettext("Loading engagement data")}
-    >
-      <div
-        :for={i <- 1..@rows}
-        class="bg-base-100 border border-base-200 rounded-sm p-4 animate-pulse"
-        style={"animation-delay: #{i * 80}ms"}
-      >
-        <div class="h-3 w-1/4 bg-base-300 rounded-sm mb-3"></div>
-        <div class="h-3 w-full bg-base-200 rounded-sm mb-2"></div>
-        <div class="h-3 w-2/3 bg-base-200 rounded-sm"></div>
-      </div>
-    </div>
-    """
-  end
 
   defp metrics_table(assigns) do
     assigns = assign_new(assigns, :compact, fn -> false end)

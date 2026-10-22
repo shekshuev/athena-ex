@@ -203,15 +203,13 @@ defmodule AthenaWeb.TeachingLive.CourseEngagementCompare do
         </div>
       </div>
 
-      <div
+      <.loading_skeleton
         :if={@loading}
         id="cohort-compare-loading"
-        class="space-y-3"
-        aria-busy="true"
-      >
-        <div :for={_ <- 1..3} class="h-24 rounded-sm bg-base-100 border border-base-200 animate-pulse">
-        </div>
-      </div>
+        rows={3}
+        variant={:blocks}
+        label={gettext("Loading engagement data")}
+      />
 
       <%= if !@loading and @pairs != [] do %>
         <section id="compare-insights" class="bg-base-100 border border-base-200 rounded-sm p-4">

@@ -986,6 +986,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                 id="library-editor-test-run"
                 type="button"
                 phx-click="start_test_run"
+                phx-disable-with={gettext("Starting...")}
                 class="btn btn-outline btn-sm"
                 title={gettext("Play this template as a test student")}
               >

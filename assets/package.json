@@ -57,6 +57,7 @@
     "chart.js": "^4.5.1",
     "codemirror": "^6.0.2",
     "daisyui": "^5.5.19",
+    "highlight.js": "^11.11.1",
     "katex": "^0.16.45",
     "lowlight": "^3.3.0",
     "mammoth": "^1.12.0",

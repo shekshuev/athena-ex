@@ -514,6 +514,51 @@ defmodule AthenaWeb.CoreComponents do
   end
 
   @doc """
+  Renders a pulsing placeholder for content that is still loading - the
+  counterpart to `spinner/1` for a whole region rather than a single action.
+
+  Prefer this over a centred spinner wherever the eventual shape of the
+  content is known: it keeps the layout from jumping when the data lands.
+
+  `:cards` draws bordered cards with a heading bar and two text bars;
+  `:blocks` draws bare bordered rectangles, for regions whose content has no
+  obvious internal structure. `class` replaces the container's layout classes,
+  so a grid of placeholders is just `class="grid gap-4 md:grid-cols-2"`.
+
+  ## Examples
+
+      <.loading_skeleton :if={@loading} id="course-charts-loading" rows={4} />
+      <.loading_skeleton :if={@loading} id="compare-loading" rows={3} variant={:blocks} />
+  """
+  attr :id, :string, required: true
+  attr :rows, :integer, default: 4
+  attr :variant, :atom, default: :cards, values: [:cards, :blocks]
+  attr :class, :any, default: "space-y-3", doc: "replaces the container's layout classes"
+  attr :item_class, :any, default: nil, doc: "per-placeholder classes; defaults per variant"
+  attr :label, :string, default: nil
+
+  def loading_skeleton(assigns) do
+    ~H"""
+    <div id={@id} class={@class} aria-busy="true" aria-label={@label || gettext("Loading...")}>
+      <div
+        :for={i <- 1..@rows}
+        class={[
+          "bg-base-100 border border-base-200 rounded-sm motion-safe:animate-pulse",
+          @item_class || if(@variant == :blocks, do: "h-24", else: "p-4")
+        ]}
+        style={"animation-delay: #{i * 80}ms"}
+      >
+        <%= if @variant == :cards do %>
+          <div class="h-3 w-1/4 bg-base-300 rounded-sm mb-3"></div>
+          <div class="h-3 w-full bg-base-200 rounded-sm mb-2"></div>
+          <div class="h-3 w-2/3 bg-base-200 rounded-sm"></div>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
   Renders an input with label and error messages.
 
   A `Phoenix.HTML.FormField` may be passed as argument,

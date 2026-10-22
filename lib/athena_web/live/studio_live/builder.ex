@@ -33,7 +33,11 @@ defmodule AthenaWeb.StudioLive.Builder do
         Phoenix.PubSub.subscribe(Athena.PubSub, "public_courses")
       end
 
-      sections = Content.get_course_tree(course.id)
+      # The static (disconnected) render only shows a skeleton, so it skips the
+      # section tree and block list: running those twice per page view (static
+      # + connected mount) doubled the builder's query load for no visible
+      # gain. Authorization above still runs in both renders.
+      sections = if connected?(socket), do: Content.get_course_tree(course.id), else: []
       active_section_id = if sections != [], do: hd(sections).id, else: nil
 
       blocks =
@@ -42,6 +46,7 @@ defmodule AthenaWeb.StudioLive.Builder do
       {:ok,
        socket
        |> assign(
+         loading: not connected?(socket),
          role: role,
          course: course,
          sections: sections,
@@ -1896,6 +1901,33 @@ defmodule AthenaWeb.StudioLive.Builder do
   end
 
   @impl true
+  def render(%{loading: true} = assigns) do
+    ~H"""
+    <div
+      class="hidden lg:flex fixed inset-0 pt-16 lg:pt-0 z-50 bg-base-200"
+      aria-busy="true"
+      aria-label={gettext("Loading course...")}
+    >
+      <div class="w-64 xl:w-80 flex flex-col bg-base-100 border-r border-base-300 shrink-0 z-10 p-4">
+        <.loading_skeleton
+          id="builder-sidebar-loading"
+          rows={6}
+          variant={:blocks}
+          class="space-y-2"
+          item_class="h-9"
+        />
+      </div>
+
+      <div class="flex-1 min-w-0 overflow-hidden p-8">
+        <div class="max-w-3xl mx-auto space-y-4">
+          <div class="h-8 w-1/3 bg-base-300 rounded-sm motion-safe:animate-pulse"></div>
+          <.loading_skeleton id="builder-loading" rows={3} item_class="p-6" />
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   def render(assigns) do
     active_section = find_section_in_tree(assigns.sections, assigns.active_section_id)
     active_block = Enum.find(assigns.blocks, &(&1.id == assigns.active_block_id))
@@ -2277,7 +2309,9 @@ defmodule AthenaWeb.StudioLive.Builder do
             <.button type="button" class="btn btn-outline" phx-click="cancel_save_library">
               {gettext("Cancel")}
             </.button>
-            <.button type="submit" class="btn btn-primary">{gettext("Save Template")}</.button>
+            <.button type="submit" class="btn btn-primary" phx-disable-with={gettext("Saving...")}>
+              {gettext("Save Template")}
+            </.button>
           </div>
         </.form>
       </.modal>

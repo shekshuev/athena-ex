@@ -6,6 +6,8 @@ defmodule Athena.Learning.SubmissionContent do
   import Ecto.Changeset
   use Gettext, backend: AthenaWeb.Gettext
 
+  alias Athena.Content.Tiptap
+
   @primary_key false
   @derive Jason.Encoder
   embedded_schema do
@@ -31,6 +33,8 @@ defmodule Athena.Learning.SubmissionContent do
       :exam_answers
     ])
     |> validate_required([:type])
+    |> update_change(:text_answer, &Tiptap.strip_colors_in_doc_string/1)
+    |> update_change(:exam_answers, &Tiptap.strip_colors/1)
     |> validate_type_requirements()
   end
 

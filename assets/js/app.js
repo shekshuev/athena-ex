@@ -16,7 +16,6 @@ import { Compartment, EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { Editor, Extension } from "@tiptap/core";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
-import Color from "@tiptap/extension-color";
 import Details from "@tiptap/extension-details";
 import DetailsContent from "@tiptap/extension-details-content";
 import DetailsSummary from "@tiptap/extension-details-summary";
@@ -35,6 +34,7 @@ import TextStyle from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 import { EditorView, basicSetup } from "codemirror";
+import powershell from "highlight.js/lib/languages/powershell";
 import { common, createLowlight } from "lowlight";
 import * as mammoth from "mammoth";
 import { Socket } from "phoenix";
@@ -48,7 +48,9 @@ import "tippy.js/dist/tippy.css";
 import ImageResize from "tiptap-extension-resize-image";
 import topbar from "../vendor/topbar";
 import { Dialogue, DialogueLine, insertDialogue } from "./tiptap/dialogue";
+import { Tip } from "./tiptap/tip";
 import { ChartsHooks } from "./charts_hooks";
+import { initLightbox } from "./lightbox";
 import {
   EngagementHooks,
   engagementTrackingActive,
@@ -59,6 +61,10 @@ import { attachInputTelemetry } from "./input_telemetry";
 import { MessengerHooks } from "./messenger_hooks";
 
 const lowlight = createLowlight(common);
+// `plaintext` and `bash` ship with lowlight's `common` bundle; PowerShell
+// does not, so it is registered by hand - see `@highlight_only_languages`
+// in Athena.Execution.LanguageConfig for the picker side.
+lowlight.register("powershell", powershell);
 
 // The upstream NodeView (`tiptap-extension-resize-image`) always renders the
 // image through its own interactive NodeView, which only copies plain
@@ -70,7 +76,7 @@ const lowlight = createLowlight(common);
 // editable or read-only mode. Tagging the rendered <img> here instead is
 // the only way it actually gets styled, and - for a read-only (play/review)
 // render - the only way it ends up with `.js-lightbox-img`, so the
-// document-level click listener further down can open the lightbox for
+// delegated listener in js/lightbox.js can open the lightbox for
 // TipTap-embedded images too, not just standalone `:image` blocks.
 const ResizableImage = ImageResize.extend({
   name: "image",
@@ -597,8 +603,14 @@ Hooks.TiptapEditor = {
         },
         emptyEditorClass: "is-editor-empty",
       }),
+      // `TextStyle` without `@tiptap/extension-color`: the mark has to stay in
+      // the schema or ProseMirror rejects every stored document that still
+      // carries it (and the block then renders as nothing), but with the
+      // colour extension gone nothing parses `color` out of pasted HTML, so
+      // text pasted from a site no longer arrives with a hard-coded colour
+      // that is invisible on the opposite theme. `Athena.Content.Tiptap`
+      // strips the colours already in the database, and on every write.
       TextStyle,
-      Color,
       Subscript,
       Superscript,
       Mathematics.configure({
@@ -617,6 +629,7 @@ Hooks.TiptapEditor = {
         HTMLAttributes: { class: "tiptap-details-content" },
       }),
       ResizableImage.configure({ inline: false }),
+      Tip,
       Dialogue,
       DialogueLine.configure({
         getCharacters: () => hook.characters,
@@ -639,6 +652,20 @@ Hooks.TiptapEditor = {
           } else {
             tableControl.classList.add("hidden");
           }
+        }
+      }
+
+      const tipControl = toolbar.querySelector(".tiptap-tip-control");
+      if (tipControl) {
+        if (editor.isActive("tip")) {
+          tipControl.classList.remove("hidden");
+
+          const variant = editor.getAttributes("tip").variant || "info";
+          const label = tipControl.querySelector(".current-tip-label");
+          const item = tipControl.querySelector(`[data-tip-variant="${variant}"]`);
+          if (label) label.textContent = item ? item.textContent : variant;
+        } else {
+          tipControl.classList.add("hidden");
         }
       }
 
@@ -921,6 +948,29 @@ Hooks.TiptapEditor = {
             return;
           }
 
+          const tipToggle = e.target.closest('[data-action="toggle-tip-dropdown"]');
+          if (tipToggle) {
+            e.preventDefault();
+            e.stopPropagation();
+            tipToggle.closest(".dropdown").classList.toggle("dropdown-open");
+            return;
+          }
+
+          const tipItem = e.target.closest("[data-tip-variant]");
+          if (tipItem) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            this.editor
+              .chain()
+              .focus()
+              .updateAttributes("tip", { variant: tipItem.dataset.tipVariant })
+              .run();
+
+            tipItem.closest(".dropdown")?.classList.remove("dropdown-open");
+            return;
+          }
+
           const langItem = e.target.closest("[data-lang]");
           if (langItem) {
             e.preventDefault();
@@ -940,8 +990,11 @@ Hooks.TiptapEditor = {
             return;
           }
 
-          const dropdown = toolbar.querySelector(".tiptap-lang-control");
-          if (dropdown) dropdown.classList.remove("dropdown-open");
+          for (const dropdown of toolbar.querySelectorAll(
+            ".tiptap-lang-control, .tiptap-tip-control",
+          )) {
+            dropdown.classList.remove("dropdown-open");
+          }
 
           const btn = e.target.closest("button");
           if (!btn) return;
@@ -1022,6 +1075,7 @@ Hooks.TiptapEditor = {
               chain.setDetails().run();
             }
           }
+          if (action === "tip") chain.toggleTip().run();
           if (action === "divider") chain.setHorizontalRule().run();
 
           if (action === "align-left") chain.setTextAlign("left").run();
@@ -1055,7 +1109,6 @@ Hooks.TiptapEditor = {
             const action = e.target.dataset.action;
             const chain = this.editor.chain().focus();
 
-            if (action === "text-color") chain.setColor(e.target.value).run();
             if (action === "highlight-color")
               chain.setHighlight({ color: e.target.value }).run();
           }
@@ -1250,7 +1303,7 @@ Hooks.TiptapEditor = {
     document.addEventListener("click", this.handleGlobalClick);
 
     // Reserved `image_zoom` telemetry (see `Athena.Engagement.Event`) for
-    // the lightbox opened by app.js's document-level click listener on
+    // the lightbox opened by the delegated listener in js/lightbox.js on
     // `.js-lightbox-img` - only these read-only-rendered images carry that
     // class (see the `ResizableImage.addNodeView` override above), so this
     // never fires in the editable Builder/Library views.
@@ -1497,45 +1550,6 @@ Uploaders.S3 = function (entries, onViewError) {
   });
 };
 
-// Click-to-preview lightbox for read-only content images (block-based
-// `:image` blocks and read-only TipTap-rendered images alike, both marked
-// with `.js-lightbox-img`). A single document-level delegated listener
-// rather than a per-hook one, since TipTap's own images live inside a
-// `phx-update="ignore"` container LiveView never re-scans, and delegation
-// means new images (patched in later) work without re-attaching anything.
-//
-// Clicking the enlarged image itself (inside the dialog) toggles between
-// fit-to-viewport and natural size - see `.lightbox-img-zoomed` in app.css.
-// `touch-manipulation` on both images suppresses the browser's own
-// double-tap-to-zoom, which would otherwise fight our toggle and zoom the
-// whole page instead of just the picture (most noticeable on a tablet/
-// touch laptop, e.g. an instructor QA-ing a course in the builder's test
-// run) - the open dialog visually "disappearing" was the page itself
-// having been zoomed/panned out from under it, not an actual close.
-document.addEventListener("click", (e) => {
-  const lightbox = document.getElementById("lightbox");
-  const lightboxImg = document.getElementById("lightbox-img");
-  if (!lightbox || !lightboxImg) return;
-
-  if (e.target === lightboxImg) {
-    lightboxImg.classList.toggle("lightbox-img-zoomed");
-    return;
-  }
-
-  const img = e.target.closest(".js-lightbox-img");
-  if (!img) return;
-
-  lightboxImg.src = img.currentSrc || img.src;
-  lightboxImg.alt = img.alt || "";
-  lightboxImg.classList.remove("lightbox-img-zoomed");
-
-  // Guards against a (harmless but noisy) `InvalidStateError` if this ever
-  // fires twice for the same open - e.g. a duplicated listener after a
-  // dev-mode asset reload - which would otherwise throw before the `src`/
-  // `alt` update above takes visual effect.
-  if (!lightbox.open) lightbox.showModal();
-});
-
 // Scrolls the open thread either to the bottom (new message just sent/
 // received) or to the "new messages" divider (just opened a conversation
 // with unread history) – see AthenaWeb.MessengerLive.Index.
@@ -1711,6 +1725,8 @@ window.addEventListener("phx:force_logout", (e) => {
 });
 liveSocket.connect();
 window.liveSocket = liveSocket;
+
+initLightbox();
 if (process.env.NODE_ENV === "development") {
   window.addEventListener(
     "phx:live_reload:attached",

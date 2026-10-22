@@ -20,6 +20,8 @@ defmodule Athena.Announcements.Announcement do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias Athena.Content.Tiptap
+
   @type t :: %__MODULE__{}
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -62,6 +64,7 @@ defmodule Athena.Announcements.Announcement do
       :starts_at,
       :ends_at
     ])
+    |> update_change(:body, &Tiptap.strip_colors/1)
     |> validate_required([:title, :body, :scope, :author_id])
     |> validate_length(:title, max: 200)
     |> validate_cohort_id_for_scope()

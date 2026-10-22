@@ -189,33 +189,33 @@ msgstr ""
 msgid "must have either account_id or cohort_id"
 msgstr ""
 
-#: lib/athena/learning/submission_content.ex:70
-#: lib/athena/learning/submission_content.ex:115
+#: lib/athena/learning/submission_content.ex:74
+#: lib/athena/learning/submission_content.ex:119
 #, elixir-autogen, elixir-format
 msgid "at least one file is required"
 msgstr ""
 
-#: lib/athena/learning/submission_content.ex:45
+#: lib/athena/learning/submission_content.ex:49
 #, elixir-autogen, elixir-format
 msgid "can't be blank for text answer"
 msgstr ""
 
-#: lib/athena/learning/submission_content.ex:56
+#: lib/athena/learning/submission_content.ex:60
 #, elixir-autogen, elixir-format
 msgid "code cannot be empty"
 msgstr ""
 
-#: lib/athena/learning/submission_content.ex:103
+#: lib/athena/learning/submission_content.ex:107
 #, elixir-autogen, elixir-format
 msgid "exam answers cannot be empty"
 msgstr ""
 
-#: lib/athena/learning/submission_content.ex:59
+#: lib/athena/learning/submission_content.ex:63
 #, elixir-autogen, elixir-format
 msgid "language is required for code"
 msgstr ""
 
-#: lib/athena/learning/submission_content.ex:87
+#: lib/athena/learning/submission_content.ex:91
 #, elixir-autogen, elixir-format
 msgid "please provide an answer or select a choice"
 msgstr ""
@@ -226,7 +226,7 @@ msgid "Cannot enroll: the following students already have access to this course:
 msgstr ""
 
 #: lib/athena/content/library.ex:153
-#: lib/athena/content/library_block.ex:62
+#: lib/athena/content/library_block.ex:64
 #, elixir-autogen, elixir-format
 msgid "is pinned to a course and cannot be deleted"
 msgstr ""

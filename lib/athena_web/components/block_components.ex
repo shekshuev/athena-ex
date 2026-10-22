@@ -217,13 +217,14 @@ defmodule AthenaWeb.BlockComponents do
       <figure class="m-0">
         <img
           id={"image-#{@mode}-#{@block.id}"}
-          phx-hook="ImageZoomTracker"
+          phx-hook={if @mode in [:play, :review], do: "ImageZoomTracker"}
           data-block-id={@block.id}
           src={@block.content["url"]}
           alt={@block.content["alt"]}
           class={[
             "rounded-sm w-full object-cover border border-base-200",
-            @mode in [:play, :review] && "js-lightbox-img cursor-zoom-in touch-manipulation"
+            @mode in [:play, :review, :preview] &&
+              "js-lightbox-img cursor-zoom-in touch-manipulation"
           ]}
         />
       </figure>
@@ -864,7 +865,7 @@ defmodule AthenaWeb.BlockComponents do
                   do: Jason.encode!(opt["text"]),
                   else: Jason.encode!(wrap_text_in_paragraph(opt["text"]))
               }
-              class="prose prose-base max-w-none text-base-content pointer-events-none [&_p]:my-0"
+              class="prose prose-base max-w-none text-base-content pointer-events-none [&_p]:my-0 [&_img]:pointer-events-auto"
             >
             </div>
             <%= if @mode == :review do %>
@@ -934,7 +935,7 @@ defmodule AthenaWeb.BlockComponents do
                       do: Jason.encode!(pair["left"]),
                       else: Jason.encode!(wrap_text_in_paragraph(pair["left"]))
                   }
-                  class="prose prose-base max-w-none text-base-content pointer-events-none [&_p]:my-0"
+                  class="prose prose-base max-w-none text-base-content pointer-events-none [&_p]:my-0 [&_img]:pointer-events-auto"
                 >
                 </div>
               </div>
@@ -1003,7 +1004,7 @@ defmodule AthenaWeb.BlockComponents do
                       do: Jason.encode!(pair["right"]),
                       else: Jason.encode!(wrap_text_in_paragraph(pair["right"]))
                   }
-                  class="prose prose-base max-w-none text-base-content pointer-events-none [&_p]:my-0"
+                  class="prose prose-base max-w-none text-base-content pointer-events-none [&_p]:my-0 [&_img]:pointer-events-auto"
                 >
                 </div>
               </div>
@@ -1954,7 +1955,13 @@ defmodule AthenaWeb.BlockComponents do
   def tiptap_toolbar(%{mode: :edit} = assigns) do
     assigns =
       assigns
-      |> assign(:cm_languages, Execution.cm_languages())
+      |> assign(:tiptap_languages, Execution.tiptap_languages())
+      |> assign(:tip_variants, [
+        {"info", gettext("Info"), "hero-information-circle", "text-info"},
+        {"success", gettext("Success"), "hero-check-circle", "text-success"},
+        {"warning", gettext("Warning"), "hero-exclamation-triangle", "text-warning"},
+        {"error", gettext("Danger"), "hero-x-circle", "text-error"}
+      ])
       |> assign_new(:block_id, fn -> nil end)
 
     ~H"""
@@ -2172,8 +2179,8 @@ defmodule AthenaWeb.BlockComponents do
           </div>
           <ul class="dropdown-content menu p-1 shadow-lg bg-base-100 rounded-sm w-36 text-xs border border-base-300 max-h-60 overflow-y-auto">
             <li><a data-lang="auto">Auto</a></li>
-            <li :for={{cm_mode, label} <- @cm_languages}>
-              <a data-lang={cm_mode}>{label}</a>
+            <li :for={{mode, label} <- @tiptap_languages}>
+              <a data-lang={mode}>{label}</a>
             </li>
           </ul>
         </div>
@@ -2193,6 +2200,33 @@ defmodule AthenaWeb.BlockComponents do
         >
           <.icon name="hero-chevron-down" class="size-5" />
         </button>
+        <button
+          type="button"
+          class="join-item btn btn-sm btn-ghost rounded-sm px-3"
+          data-action="tip"
+          data-tippy-content={"#{gettext("Tip / Callout")} ($mod+$shift+I)"}
+        >
+          <.icon name="hero-information-circle" class="size-5" />
+        </button>
+        <%!-- Hidden until the caret is inside a tip, like the code-block
+        language picker above - see the `onSelectionUpdate` handler in app.js. --%>
+        <div class="dropdown dropdown-end hidden tiptap-tip-control join-item relative z-50">
+          <div
+            role="button"
+            data-action="toggle-tip-dropdown"
+            class="btn btn-sm btn-ghost mx-1 px-2 text-xs"
+          >
+            <span class="current-tip-label">{gettext("Info")}</span>
+            <.icon name="hero-chevron-down" class="size-3 ml-1" />
+          </div>
+          <ul class="dropdown-content menu p-1 shadow-lg bg-base-100 rounded-sm w-36 text-xs border border-base-300">
+            <li :for={{variant, label, icon, icon_class} <- @tip_variants}>
+              <a data-tip-variant={variant}>
+                <.icon name={icon} class={["size-4", icon_class]} />{label}
+              </a>
+            </li>
+          </ul>
+        </div>
         <button
           type="button"
           class="join-item btn btn-sm btn-ghost rounded-sm px-3"

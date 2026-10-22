@@ -760,17 +760,9 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   @impl true
   def render(%{loading: true} = assigns) do
     ~H"""
-    <div id="exam-loading" class="max-w-3xl mx-auto px-4 py-10 space-y-6" aria-busy="true">
-      <div class="h-8 w-1/2 bg-base-300 rounded-sm animate-pulse"></div>
-      <div
-        :for={i <- 1..3}
-        class="bg-base-100 border border-base-200 rounded-sm p-6 animate-pulse"
-        style={"animation-delay: #{i * 80}ms"}
-      >
-        <div class="h-3 w-1/3 bg-base-300 rounded-sm mb-3"></div>
-        <div class="h-3 w-full bg-base-200 rounded-sm mb-2"></div>
-        <div class="h-3 w-2/3 bg-base-200 rounded-sm"></div>
-      </div>
+    <div class="max-w-3xl mx-auto px-4 py-10 space-y-6" aria-busy="true">
+      <div class="h-8 w-1/2 bg-base-300 rounded-sm motion-safe:animate-pulse"></div>
+      <.loading_skeleton id="exam-loading" rows={3} item_class="p-6" />
     </div>
     """
   end

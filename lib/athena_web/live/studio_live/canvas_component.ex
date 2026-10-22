@@ -92,6 +92,7 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
           type="button"
           phx-click="start_test_run"
           phx-value-section_id={@active_section_id}
+          phx-disable-with={gettext("Starting...")}
           class="btn btn-sm btn-outline shrink-0"
           title={gettext("Play through this section as a test student")}
         >

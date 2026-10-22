@@ -13,7 +13,8 @@ defmodule Athena.Content.LibraryBlock do
     TicketExam,
     CodeChallenge,
     FileAssignment,
-    CourseLibraryBlock
+    CourseLibraryBlock,
+    Tiptap
   }
 
   use Gettext, backend: AthenaWeb.Gettext
@@ -53,6 +54,7 @@ defmodule Athena.Content.LibraryBlock do
   def changeset(library_block, attrs) do
     library_block
     |> cast(attrs, [:title, :type, :content, :tags, :owner_id, :is_public])
+    |> update_change(:content, &Tiptap.strip_colors/1)
     |> validate_required([:title, :type, :content, :owner_id])
     |> validate_length(:title, min: 3, max: 255)
     |> validate_content_by_type()
