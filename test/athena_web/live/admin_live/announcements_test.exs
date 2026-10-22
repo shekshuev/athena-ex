@@ -161,6 +161,62 @@ defmodule AthenaWeb.AdminLive.AnnouncementsTest do
     end
   end
 
+  describe "Announcements page (link modal)" do
+    test "opening, saving, and removing a link pushes the matching event to the editor",
+         %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/admin/announcements/new")
+
+      html =
+        render_click(lv, "open_link_modal", %{
+          "block_id" => "announcement-body",
+          "href" => nil,
+          "text" => "some text"
+        })
+
+      assert html =~ "link-form"
+
+      lv
+      |> form("#link-form", %{"link" => %{"href" => "https://example.com", "text" => "Example"}})
+      |> render_submit()
+
+      assert_push_event(lv, "apply_link", %{
+        block_id: "announcement-body",
+        href: "https://example.com",
+        text: "Example"
+      })
+
+      refute has_element?(lv, "#link-modal")
+
+      render_click(lv, "open_link_modal", %{
+        "block_id" => "announcement-body",
+        "href" => "https://example.com",
+        "text" => "Example"
+      })
+
+      lv
+      |> element("button[phx-click='remove_link']")
+      |> render_click()
+
+      assert_push_event(lv, "remove_link", %{block_id: "announcement-body"})
+    end
+
+    test "cancelling the link modal closes it without pushing an event", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/admin/announcements/new")
+
+      render_click(lv, "open_link_modal", %{
+        "block_id" => "announcement-body",
+        "href" => nil,
+        "text" => nil
+      })
+
+      assert has_element?(lv, "#link-modal")
+
+      render_click(lv, "cancel_link_modal")
+
+      refute has_element?(lv, "#link-modal")
+    end
+  end
+
   describe "Announcements page (Delete action)" do
     test "deletes the announcement when confirmed", %{conn: conn, admin: admin} do
       {:ok, announcement} =

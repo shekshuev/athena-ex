@@ -6,8 +6,11 @@ defmodule Athena.Content do
   mutating operations to broadcast real-time updates via PubSub.
   """
 
-  alias Athena.Content.{Courses, Sections, Blocks, Library, Policy, Characters}
+  alias Athena.Content.{Courses, Sections, Blocks, Library, Policy, Characters, Permalinks}
   alias Athena.Content.{Course, Section, Block}
+
+  defdelegate resolve_block_permalink(user, block_id), to: Permalinks, as: :resolve_block
+  defdelegate resolve_section_permalink(user, section_id), to: Permalinks, as: :resolve_section
 
   defdelegate list_courses(user, params \\ %{}), to: Courses
   defdelegate list_public_competitions(), to: Courses

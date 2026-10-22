@@ -116,7 +116,7 @@ defmodule AthenaWeb.LearnLive.TicketExamTest do
 
       result = live(conn, ~p"/learn/courses/#{course.id}/ticket/#{block.id}")
       assert {:error, {:live_redirect, %{to: to}}} = result
-      assert to == "/learn/courses/#{course.id}/play"
+      assert to == "/learn/courses/#{course.id}/play/#{section.id}"
 
       {:ok, _lv, html} = follow_redirect(result, conn)
       assert html =~ "already completed"
@@ -166,7 +166,7 @@ defmodule AthenaWeb.LearnLive.TicketExamTest do
 
       assert rejected.status == :rejected
 
-      assert_redirect(lv, ~p"/learn/courses/#{course.id}/play")
+      assert_redirect(lv, ~p"/learn/courses/#{course.id}/play/#{section.id}")
 
       assert Athena.Repo.reload!(submission).feedback == "Caught copying answers."
     end
@@ -462,6 +462,58 @@ defmodule AthenaWeb.LearnLive.TicketExamTest do
                account_id: user.id,
                block_id: block.id
              )
+    end
+  end
+
+  describe "Returning to where the ticket exam was started from" do
+    test "finishing a ticket exam started from a non-first section returns there, not the course's first section",
+         %{conn: conn, course: course, user: user} do
+      _first_section = insert(:section, course: course, order: 0)
+      second_section = insert(:section, course: course, order: 1)
+
+      block =
+        insert(:block,
+          section: second_section,
+          type: :ticket_exam,
+          content: %{"slots" => [%{"id" => "1", "tags" => []}]}
+        )
+
+      question = %{
+        "id" => Ecto.UUID.generate(),
+        "type" => "quiz_question",
+        "content" => %{
+          "question_type" => "exact_match",
+          "body" => %{"text" => "What is 2+2?"},
+          "correct_answer" => "4"
+        }
+      }
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :pending,
+        expires_at:
+          DateTime.utc_now() |> DateTime.add(3600, :second) |> DateTime.truncate(:second),
+        content: %{
+          "type" => "ticket_exam",
+          "started_at" => DateTime.utc_now(),
+          "questions" => [question]
+        }
+      )
+
+      {:ok, player_lv, _html} =
+        live(conn, ~p"/learn/courses/#{course.id}/play/#{second_section.id}")
+
+      {:ok, ticket_lv, _html} =
+        player_lv
+        |> element("button[phx-click='continue_exam']")
+        |> render_click()
+        |> follow_redirect(conn)
+
+      ticket_lv |> form("#ticket-quiz-#{question["id"]}", %{"answer" => "4"}) |> render_submit()
+      ticket_lv |> render_click("finish_exam", %{})
+
+      assert_redirect(ticket_lv, ~p"/learn/courses/#{course.id}/play/#{second_section.id}")
     end
   end
 end

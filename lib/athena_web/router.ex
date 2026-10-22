@@ -88,6 +88,9 @@ defmodule AthenaWeb.Router do
       live "/profile/:id", AccountLive.Profile, :index
       live "/daily-challenge", LearnLive.DailyChallenge, :index
 
+      live "/go/blocks/:id", PermalinkLive, :block
+      live "/go/sections/:id", PermalinkLive, :section
+
       live "/files", FileLive.Index, :index
       live "/announcements", AnnouncementLive.Index, :index
 

@@ -102,7 +102,15 @@ defmodule AthenaWeb.LearnLive.Player do
           outline: outline
         }
 
-        setup_player_state(socket, course, section_id, linear_lessons, accessible_ids, ctx)
+        setup_player_state(
+          socket,
+          course,
+          section_id,
+          linear_lessons,
+          accessible_ids,
+          ctx,
+          params["block"]
+        )
       else
         {:ok,
          socket
@@ -139,7 +147,15 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp setup_player_state(socket, course, section_id, linear_lessons, accessible_ids, ctx) do
+  defp setup_player_state(
+         socket,
+         course,
+         section_id,
+         linear_lessons,
+         accessible_ids,
+         ctx,
+         scroll_to_block_id
+       ) do
     section = Content.get_section(section_id) |> elem(1)
     blocks = visible_section_blocks(section, ctx.user, ctx.overrides, ctx.opts)
 
@@ -202,6 +218,7 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:schedule_times, load_schedule_times(ctx.outline.all_linear_lessons))
       |> assign(:survey_block_ids, survey_block_ids(blocks))
       |> assign(:survey_state, load_survey_state(blocks, ctx.user))
+      |> maybe_push_scroll_to_block(scroll_to_block_id)
 
     {:ok, schedule_next_unlock(socket)}
   end
@@ -576,6 +593,19 @@ defmodule AthenaWeb.LearnLive.Player do
     |> Enum.filter(&Content.can_view?(user, &1, overrides, opts))
     |> Enum.sort_by(& &1.order)
   end
+
+  # A `/go/blocks/:id` permalink lands here as `?block=` - reuses the same
+  # `scroll_to_block` event/listener the Builder's own deep-linking already
+  # relies on (see `maybe_push_scroll/3` there). Safe to call unconditionally
+  # (not gated on `connected?`): `push_event` before the socket connects is
+  # a documented no-op, and `mount/3` runs again once it does. If the block
+  # is gated behind an earlier, still-incomplete block in this same section
+  # (not yet in `@visible_blocks`), the listener itself already no-ops on a
+  # missing DOM target - no special-casing needed here.
+  defp maybe_push_scroll_to_block(socket, nil), do: socket
+
+  defp maybe_push_scroll_to_block(socket, block_id),
+    do: push_event(socket, "scroll_to_block", %{id: block_id})
 
   @doc false
   defp load_pending_file_urls(blocks, drafts) do
@@ -1394,11 +1424,14 @@ defmodule AthenaWeb.LearnLive.Player do
       send(socket.parent_pid, {:test_run_enter_exam, block_id, block_type})
       {:noreply, socket}
     else
+      course_id = socket.assigns.course.id
+      return_to = ~p"/learn/courses/#{course_id}/play/#{socket.assigns.section.id}"
+
       route =
         if block_type == :ticket_exam do
-          ~p"/learn/courses/#{socket.assigns.course.id}/ticket/#{block_id}"
+          ~p"/learn/courses/#{course_id}/ticket/#{block_id}?return_to=#{return_to}"
         else
-          ~p"/learn/courses/#{socket.assigns.course.id}/exam/#{block_id}"
+          ~p"/learn/courses/#{course_id}/exam/#{block_id}?return_to=#{return_to}"
         end
 
       {:noreply, push_navigate(socket, to: route)}
@@ -2216,8 +2249,26 @@ defmodule AthenaWeb.LearnLive.Player do
               data-block-id={if block.type != :survey, do: block.id}
               data-block-type={block.type}
               data-engagement={if block.type == :survey, do: "off"}
-              class="animate-in slide-in-from-bottom-4 fade-in duration-500 fill-mode-both"
+              class="relative group animate-in slide-in-from-bottom-4 fade-in duration-500 fill-mode-both"
             >
+              <div
+                :if={!@test_run}
+                class="hidden lg:flex absolute -left-12 top-0 flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <button
+                  type="button"
+                  id={"copy-link-#{block.id}"}
+                  phx-hook="ClipboardCopy"
+                  data-copy-text={url(~p"/go/blocks/#{block.id}")}
+                  class="btn btn-ghost btn-xs btn-square"
+                  title={gettext("Copy link to this block")}
+                >
+                  <.icon name="hero-link" class="size-4 copy-icon-default" />
+                  <.icon name="hero-check" class="size-4 copy-icon-success text-success" />
+                </button>
+                <%!-- future per-block actions (e.g. bookmark) go here as additional siblings --%>
+              </div>
+
               <%= case block.type do %>
                 <% :quiz_question -> %>
                   <form

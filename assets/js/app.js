@@ -247,6 +247,31 @@ Hooks.TippyTooltip = {
   },
 };
 
+// Copies `data-copy-text` to the clipboard on click (reuses `copyToClipboard`,
+// otherwise only used by the TipTap "copy code" button) and briefly toggles
+// an `.is-copied` class for a checkmark-style visual confirmation - used by
+// the permalink "Copy Link" buttons (Builder inspector, Player hover gutter).
+Hooks.ClipboardCopy = {
+  mounted() {
+    this.onClick = () => {
+      copyToClipboard(this.el.dataset.copyText)
+        .then(() => {
+          this.el.classList.add("is-copied");
+          clearTimeout(this._resetTimeout);
+          this._resetTimeout = setTimeout(() => {
+            this.el.classList.remove("is-copied");
+          }, 1500);
+        })
+        .catch(() => {});
+    };
+    this.el.addEventListener("click", this.onClick);
+  },
+  destroyed() {
+    this.el.removeEventListener("click", this.onClick);
+    clearTimeout(this._resetTimeout);
+  },
+};
+
 // Shared by every answer editor: forwards the input-telemetry module's
 // reports to the page's engagement batch. Pastes and drops go out at once
 // (the exam's integrity view reacts to them); typing summaries ride along
@@ -493,6 +518,26 @@ Hooks.TiptapEditor = {
     const isReadOnly = this.el.dataset.readonly === "true";
     let timeout;
 
+    // Opens the server-rendered "insert/edit link" modal (`LinkFormComponent`,
+    // wired per-host - see `open_link_modal`/`apply_link`/`remove_link` in
+    // builder.ex, library_editor.ex, announcement_form.ex). The server has no
+    // visibility into TipTap's live cursor/selection (this editor lives in a
+    // `phx-update="ignore"` container), so the current link's href (if the
+    // cursor is inside one) and the selected text are read here, first, and
+    // sent along as the modal's initial values.
+    const openLinkModal = () => {
+      hook.pushEvent("open_link_modal", {
+        block_id: blockId,
+        href: this.editor.getAttributes("link").href || null,
+        text:
+          this.editor.state.doc.textBetween(
+            this.editor.state.selection.from,
+            this.editor.state.selection.to,
+            " ",
+          ) || null,
+      });
+    };
+
     hook.characters = this.el.dataset.characters
       ? JSON.parse(this.el.dataset.characters)
       : [];
@@ -648,8 +693,7 @@ Hooks.TiptapEditor = {
 
           if (isMod && event.key.toLowerCase() === "k") {
             event.preventDefault();
-            const url = window.prompt("URL:");
-            if (url) this.editor.chain().focus().setLink({ href: url }).run();
+            openLinkModal();
             return true;
           }
 
@@ -993,10 +1037,7 @@ Hooks.TiptapEditor = {
           if (action === "del-col") chain.deleteColumn().run();
           if (action === "del-table") chain.deleteTable().run();
 
-          if (action === "link") {
-            const url = window.prompt("URL:");
-            if (url) chain.setLink({ href: url }).run();
-          }
+          if (action === "link") openLinkModal();
           if (action === "image") {
             hook.pushEvent("request_media_upload", {
               block_id: blockId,
@@ -1166,6 +1207,37 @@ Hooks.TiptapEditor = {
         }
       };
       window.addEventListener("phx:insert_media", this.handleInsertMedia);
+
+      this.handleApplyLink = (e) => {
+        if (e.detail.block_id !== blockId) return;
+        const { href, text } = e.detail;
+
+        if (text) {
+          // Replaces the current selection (or inserts at the cursor, if
+          // nothing was selected) with a single text node carrying the
+          // link mark directly - `insertContentAt` collapses the selection
+          // onto its own inserted content, so a separate trailing
+          // `setLink()` call wouldn't reliably land on the new text.
+          const { from, to } = this.editor.state.selection;
+          this.editor
+            .chain()
+            .focus()
+            .insertContentAt(
+              { from, to },
+              { type: "text", text, marks: [{ type: "link", attrs: { href } }] },
+            )
+            .run();
+        } else {
+          this.editor.chain().focus().setLink({ href }).run();
+        }
+      };
+      window.addEventListener("phx:apply_link", this.handleApplyLink);
+
+      this.handleRemoveLink = (e) => {
+        if (e.detail.block_id !== blockId) return;
+        this.editor.chain().focus().unsetLink().run();
+      };
+      window.addEventListener("phx:remove_link", this.handleRemoveLink);
     }
 
     this.handleGlobalClick = (e) => {
@@ -1235,6 +1307,12 @@ Hooks.TiptapEditor = {
     if (this.editor) this.editor.destroy();
     if (this.handleInsertMedia) {
       window.removeEventListener("phx:insert_media", this.handleInsertMedia);
+    }
+    if (this.handleApplyLink) {
+      window.removeEventListener("phx:apply_link", this.handleApplyLink);
+    }
+    if (this.handleRemoveLink) {
+      window.removeEventListener("phx:remove_link", this.handleRemoveLink);
     }
     if (this.handleCharactersUpdated) {
       window.removeEventListener(
@@ -1552,6 +1630,11 @@ window.addEventListener("phx:scroll_to_block", (e) => {
       behavior: "smooth",
       block: "start",
     });
+
+    // Scrolling alone doesn't say *which* block a permalink meant, if the
+    // section has several similar-looking ones - a brief highlight does.
+    element.classList.add("permalink-highlight");
+    setTimeout(() => element.classList.remove("permalink-highlight"), 2000);
   }, 150);
 });
 

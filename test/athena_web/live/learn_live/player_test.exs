@@ -817,7 +817,12 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       assert html =~ "Start Assessment"
 
       lv |> element("button[phx-click='start_exam']") |> render_click()
-      assert_redirect(lv, "/learn/courses/#{course.id}/exam/#{block.id}")
+
+      assert_redirect(
+        lv,
+        "/learn/courses/#{course.id}/exam/#{block.id}?return_to=" <>
+          URI.encode_www_form(~p"/learn/courses/#{course.id}/play/#{s1.id}")
+      )
 
       sub = Athena.Repo.one(Athena.Learning.Submission)
       assert sub.status == :pending
@@ -842,7 +847,12 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       refute html =~ "Start Assessment"
 
       lv |> element("button[phx-click='continue_exam']") |> render_click()
-      assert_redirect(lv, "/learn/courses/#{course.id}/exam/#{block.id}")
+
+      assert_redirect(
+        lv,
+        "/learn/courses/#{course.id}/exam/#{block.id}?return_to=" <>
+          URI.encode_www_form(~p"/learn/courses/#{course.id}/play/#{s1.id}")
+      )
     end
 
     test "renders completed state with score if exam is graded successfully", %{
@@ -934,7 +944,11 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       lv |> element("button[phx-click='start_exam']") |> render_click()
 
-      assert_redirect(lv, "/learn/courses/#{course.id}/ticket/#{block.id}")
+      assert_redirect(
+        lv,
+        "/learn/courses/#{course.id}/ticket/#{block.id}?return_to=" <>
+          URI.encode_www_form(~p"/learn/courses/#{course.id}/play/#{s1.id}")
+      )
 
       sub = Athena.Repo.one(Athena.Learning.Submission)
       assert sub.status == :pending
@@ -969,7 +983,11 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
 
       lv |> element("button[phx-click='continue_exam']") |> render_click()
 
-      assert_redirect(lv, "/learn/courses/#{course.id}/ticket/#{block.id}")
+      assert_redirect(
+        lv,
+        "/learn/courses/#{course.id}/ticket/#{block.id}?return_to=" <>
+          URI.encode_www_form(~p"/learn/courses/#{course.id}/play/#{s1.id}")
+      )
     end
   end
 
@@ -2362,6 +2380,31 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       })
 
       refute Athena.Repo.get_by(Athena.Learning.Submission, block_id: block.id, status: :draft)
+    end
+  end
+
+  describe "Permalink block anchor (?block=)" do
+    test "mounting with ?block= pushes scroll_to_block for that block", %{
+      conn: conn,
+      course: course
+    } do
+      s1 = insert(:section, course: course)
+      block = insert(:block, section: s1, type: :text)
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}?block=#{block.id}")
+
+      assert_push_event(lv, "scroll_to_block", %{id: block_id})
+      assert block_id == block.id
+    end
+
+    test "mounting with no ?block= pushes nothing", %{conn: conn, course: course} do
+      s1 = insert(:section, course: course)
+      insert(:block, section: s1, type: :text)
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      refute_push_event(lv, "scroll_to_block", %{})
     end
   end
 end

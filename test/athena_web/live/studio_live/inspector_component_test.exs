@@ -42,6 +42,20 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "Delete Section"
     end
 
+    test "renders a Copy Link button pointing at the section's permalink" do
+      section = insert(:section)
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: section,
+          active_block: nil
+        )
+
+      assert html =~ "Copy Link"
+      assert html =~ ~s(data-copy-text="http://localhost:4000/go/sections/#{section.id}")
+    end
+
     test "renders reset_waterline checkbox regardless of visibility", %{section: section} do
       html =
         render_component(InspectorComponent,
@@ -115,6 +129,24 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       refute html =~ "Programming Language"
       assert html =~ "Save to Library"
       assert html =~ "Delete Block"
+
+      # `build/1` (unlike `insert/1`) never gets a real id for a block -
+      # there's nothing to link to yet.
+      refute html =~ "Copy Link"
+    end
+
+    test "renders a Copy Link button pointing at the block's permalink, once it has a real id" do
+      block = insert(:block, type: :text)
+
+      html =
+        render_component(InspectorComponent,
+          id: "inspector",
+          active_section: nil,
+          active_block: block
+        )
+
+      assert html =~ "Copy Link"
+      assert html =~ ~s(data-copy-text="http://localhost:4000/go/blocks/#{block.id}")
     end
 
     test "renders button_text input when completion rule is button", %{block: base_block} do
