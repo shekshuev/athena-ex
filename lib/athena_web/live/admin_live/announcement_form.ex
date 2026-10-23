@@ -140,7 +140,10 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
   end
 
   def handle_event("validate", %{"announcement" => params}, socket) do
-    params = TimeZones.localize_params(params, ~w(starts_at ends_at))
+    params =
+      params
+      |> decode_body()
+      |> TimeZones.localize_params(~w(starts_at ends_at))
 
     changeset =
       socket.assigns.announcement
@@ -171,7 +174,11 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
   end
 
   def handle_event("save", %{"announcement" => params}, socket) do
-    params = TimeZones.localize_params(params, ~w(starts_at ends_at))
+    params =
+      params
+      |> decode_body()
+      |> TimeZones.localize_params(~w(starts_at ends_at))
+
     cohort_id = socket.assigns.selected_cohort && socket.assigns.selected_cohort.id
     params = Map.put(params, "cohort_id", cohort_id)
 
@@ -202,6 +209,31 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
      )
      |> push_event("remove_link", %{block_id: block_id})}
   end
+
+  # The TipTap hook writes `JSON.stringify(doc)` into the hidden input, so
+  # `body` always arrives as a string while the column is a `:map`. Decoding
+  # it here - rather than only inside `Athena.Announcements` - keeps the
+  # changeset (and therefore `@form[:body].value`) holding a real map on
+  # every `validate` round-trip. Without that the cast failed, the form fell
+  # back to echoing the raw param string, and `Jason.encode!/1` in the
+  # template wrapped it in another layer of quotes on each re-render; after
+  # a couple of keystrokes the submitted body was a string nested several
+  # levels deep, which no longer decoded to a document and silently failed
+  # to save.
+  # A value that is already a JSON string is passed through: encoding it again
+  # is what produced the nested-quotes bug described above.
+  defp body_json(value) when is_binary(value), do: value
+  defp body_json(nil), do: "{}"
+  defp body_json(value), do: Jason.encode!(value)
+
+  defp decode_body(%{"body" => body} = params) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, decoded} -> Map.put(params, "body", decoded)
+      {:error, _not_json} -> params
+    end
+  end
+
+  defp decode_body(params), do: params
 
   defp save_announcement(socket, :new, params) do
     case Announcements.create_announcement(socket.assigns.current_user, params) do
@@ -308,8 +340,17 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
               type="hidden"
               name="announcement[body]"
               id="announcement-body-input"
-              value={Jason.encode!(@form[:body].value || %{})}
+              value={body_json(@form[:body].value)}
             />
+
+            <%!--
+              Read straight off the changeset rather than through `<.input>`:
+              the body is written by the TipTap hook, so the hidden input is
+              never "used" and `used_input?/1` would suppress the message -
+              which is why a rejected body previously looked like Save simply
+              doing nothing.
+            --%>
+            <.error :for={msg <- translate_errors(@form.errors, :body)}>{msg}</.error>
 
             <div class="editor-wrapper group/tiptap relative outline-none" tabindex="-1">
               <.tiptap_toolbar mode={:edit} />
@@ -320,7 +361,7 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
                 data-input-id="announcement-body-input"
                 data-readonly="false"
                 phx-update="ignore"
-                data-content={Jason.encode!(@form[:body].value || %{})}
+                data-content={body_json(@form[:body].value)}
                 class="prose prose-base max-w-none min-h-75 border border-base-300 rounded-sm p-4 focus:outline-none"
               >
               </div>
@@ -346,6 +387,10 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
                 name="announcement[cohort_id]"
                 value={@selected_cohort && @selected_cohort.id}
               />
+
+              <%!-- Hidden input again, so the same reasoning as for the body
+                    applies: without this, "pick a cohort" never appeared. --%>
+              <.error :for={msg <- translate_errors(@form.errors, :cohort_id)}>{msg}</.error>
 
               <div
                 :if={@selected_cohort}

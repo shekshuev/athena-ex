@@ -88,6 +88,51 @@ defmodule AthenaWeb.AdminLive.AnnouncementsTest do
       assert Athena.Repo.get_by(Athena.Announcements.Announcement, title: "Brand New")
     end
 
+    test "a body survives a validate round-trip and still saves", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/admin/announcements/new")
+
+      body = Jason.encode!(tiptap_doc("Hello there"))
+
+      # Any change re-renders the hidden body input. The TipTap hook lives in
+      # a `phx-update="ignore"` container and does not rewrite the input on a
+      # patch, so what the browser submits next is whatever the server put
+      # there - which is how this used to accumulate a layer of JSON quoting
+      # per keystroke until the body no longer decoded to a document and the
+      # save failed with nothing shown on screen.
+      lv
+      |> form("#announcement-form")
+      |> render_change(%{
+        "announcement" => %{"title" => "Round trip", "body" => body, "scope" => "global"}
+      })
+
+      rendered_body =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query_by_id("announcement-body-input")
+        |> LazyHTML.attribute("value")
+        |> List.first()
+
+      assert rendered_body == body
+
+      lv
+      |> form("#announcement-form")
+      |> render_submit(%{
+        "announcement" => %{
+          "title" => "Round trip",
+          "body" => rendered_body,
+          "scope" => "global"
+        }
+      })
+
+      assert_redirect(lv, ~p"/admin/announcements")
+
+      saved = Athena.Repo.get_by(Athena.Announcements.Announcement, title: "Round trip")
+      assert saved
+      assert saved.body["type"] == "doc"
+      assert Athena.Announcements.preview_text(saved.body) =~ "Hello there"
+    end
+
     test "creates a cohort announcement via the cohort search box", %{conn: conn, admin: admin} do
       {:ok, cohort} = Cohorts.create_cohort(admin, %{"name" => "Bootcamp"})
 

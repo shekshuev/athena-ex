@@ -295,7 +295,7 @@ msgstr ""
 #: lib/athena_web/components/core_components.ex:1715
 #: lib/athena_web/components/link_form_component.ex:91
 #: lib/athena_web/live/account_live/profile.ex:443
-#: lib/athena_web/live/admin_live/announcement_form.ex:422
+#: lib/athena_web/live/admin_live/announcement_form.ex:467
 #: lib/athena_web/live/admin_live/gamification.ex:381
 #: lib/athena_web/live/admin_live/role_form_component.ex:203
 #: lib/athena_web/live/admin_live/user_form_component.ex:260
@@ -335,7 +335,7 @@ msgstr ""
 
 #: lib/athena_web/live/admin_live/announcements.ex:188
 #: lib/athena_web/live/admin_live/roles.ex:213
-#: lib/athena_web/live/admin_live/users.ex:334
+#: lib/athena_web/live/admin_live/users.ex:336
 #: lib/athena_web/live/studio_live/characters.ex:222
 #: lib/athena_web/live/studio_live/competitions.ex:387
 #: lib/athena_web/live/studio_live/courses.ex:467
@@ -353,9 +353,9 @@ msgstr ""
 #: lib/athena_web/live/admin_live/gamification.ex:302
 #: lib/athena_web/live/admin_live/roles.ex:230
 #: lib/athena_web/live/admin_live/roles.ex:272
-#: lib/athena_web/live/admin_live/users.ex:360
-#: lib/athena_web/live/admin_live/users.ex:404
-#: lib/athena_web/live/admin_live/users.ex:419
+#: lib/athena_web/live/admin_live/users.ex:362
+#: lib/athena_web/live/admin_live/users.ex:406
+#: lib/athena_web/live/admin_live/users.ex:421
 #: lib/athena_web/live/file_live/index.ex:346
 #: lib/athena_web/live/file_live/index.ex:400
 #: lib/athena_web/live/messenger_live/message_component.ex:118
@@ -432,7 +432,7 @@ msgid "Role updated successfully"
 msgstr ""
 
 #: lib/athena_web/components/link_form_component.ex:94
-#: lib/athena_web/live/admin_live/announcement_form.ex:425
+#: lib/athena_web/live/admin_live/announcement_form.ex:470
 #: lib/athena_web/live/admin_live/files.ex:314
 #: lib/athena_web/live/admin_live/gamification.ex:383
 #: lib/athena_web/live/admin_live/role_form_component.ex:205
@@ -451,7 +451,7 @@ msgstr ""
 
 #: lib/athena_web/live/account_live/profile.ex:507
 #: lib/athena_web/live/account_live/profile.ex:553
-#: lib/athena_web/live/admin_live/announcement_form.ex:424
+#: lib/athena_web/live/admin_live/announcement_form.ex:469
 #: lib/athena_web/live/admin_live/files.ex:312
 #: lib/athena_web/live/admin_live/gamification.ex:382
 #: lib/athena_web/live/admin_live/role_form_component.ex:204
@@ -507,7 +507,7 @@ msgstr ""
 msgid "Active"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/users.ex:400
+#: lib/athena_web/live/admin_live/users.ex:402
 #, elixir-autogen, elixir-format
 msgid "Are you sure you want to delete this account? This will also block profile access."
 msgstr ""
@@ -528,7 +528,7 @@ msgstr ""
 msgid "Create User"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/users.ex:398
+#: lib/athena_web/live/admin_live/users.ex:400
 #, elixir-autogen, elixir-format
 msgid "Delete User"
 msgstr ""
@@ -549,7 +549,7 @@ msgstr ""
 msgid "First Name"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/users.ex:317
+#: lib/athena_web/live/admin_live/users.ex:319
 #, elixir-autogen, elixir-format
 msgid "Full Name"
 msgstr ""
@@ -589,7 +589,7 @@ msgstr ""
 
 #: lib/athena_web/live/admin_live/files.ex:282
 #: lib/athena_web/live/admin_live/user_form_component.ex:210
-#: lib/athena_web/live/admin_live/users.ex:331
+#: lib/athena_web/live/admin_live/users.ex:333
 #, elixir-autogen, elixir-format
 msgid "Role"
 msgstr ""
@@ -605,7 +605,7 @@ msgid "Select a role..."
 msgstr ""
 
 #: lib/athena_web/live/admin_live/user_form_component.ex:218
-#: lib/athena_web/live/admin_live/users.ex:320
+#: lib/athena_web/live/admin_live/users.ex:322
 #: lib/athena_web/live/studio_live/competitions.ex:375
 #: lib/athena_web/live/studio_live/courses.ex:442
 #: lib/athena_web/live/teaching_live/cohort_details.ex:318
@@ -1015,7 +1015,7 @@ msgstr ""
 #: lib/athena_web/live/admin_live/announcements.ex:197
 #: lib/athena_web/live/admin_live/gamification.ex:272
 #: lib/athena_web/live/admin_live/roles.ex:222
-#: lib/athena_web/live/admin_live/users.ex:343
+#: lib/athena_web/live/admin_live/users.ex:345
 #: lib/athena_web/live/messenger_live/message_component.ex:108
 #: lib/athena_web/live/studio_live/characters.ex:233
 #: lib/athena_web/live/studio_live/surveys.ex:290
@@ -1650,7 +1650,7 @@ msgstr ""
 msgid "This student is already in the cohort."
 msgstr ""
 
-#: lib/athena_web/live/admin_live/announcement_form.ex:296
+#: lib/athena_web/live/admin_live/announcement_form.ex:328
 #: lib/athena_web/live/admin_live/announcements.ex:170
 #: lib/athena_web/live/admin_live/gamification.ex:325
 #: lib/athena_web/live/studio_live/competition_form_component.ex:106
@@ -2597,7 +2597,7 @@ msgid "Leaderboard - %{course}"
 msgstr ""
 
 #: lib/athena_web/components/block_components.ex:2234
-#: lib/athena_web/live/admin_live/announcement_form.ex:435
+#: lib/athena_web/live/admin_live/announcement_form.ex:480
 #: lib/athena_web/live/studio_live/builder.ex:2036
 #: lib/athena_web/live/studio_live/library_editor.ex:1497
 #, elixir-autogen, elixir-format
@@ -2649,7 +2649,7 @@ msgstr ""
 msgid "Superscript"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/announcement_form.ex:252
+#: lib/athena_web/live/admin_live/announcement_form.ex:284
 #: lib/athena_web/live/admin_live/announcements.ex:251
 #: lib/athena_web/live/announcement_live/index.ex:109
 #: lib/athena_web/live/learn_live/leaderboard.ex:91
@@ -2678,8 +2678,8 @@ msgstr ""
 msgid "All Statuses"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/announcement_form.ex:245
-#: lib/athena_web/live/admin_live/announcement_form.ex:253
+#: lib/athena_web/live/admin_live/announcement_form.ex:277
+#: lib/athena_web/live/admin_live/announcement_form.ex:285
 #: lib/athena_web/live/admin_live/announcements.ex:252
 #: lib/athena_web/live/admin_live/gamification.ex:350
 #: lib/athena_web/live/announcement_live/index.ex:110
@@ -4347,7 +4347,7 @@ msgid "Choose image"
 msgstr ""
 
 #: lib/athena_web/components/core_components.ex:990
-#: lib/athena_web/live/admin_live/announcement_form.ex:363
+#: lib/athena_web/live/admin_live/announcement_form.ex:408
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:712
 #: lib/athena_web/live/teaching_live/cohort_gradebook.ex:823
 #: lib/athena_web/live/teaching_live/enrollment_form_component.ex:135
@@ -4405,7 +4405,7 @@ msgstr ""
 #: lib/athena_web/live/admin_live/announcements.ex:216
 #: lib/athena_web/live/admin_live/gamification.ex:291
 #: lib/athena_web/live/admin_live/roles.ex:241
-#: lib/athena_web/live/admin_live/users.ex:371
+#: lib/athena_web/live/admin_live/users.ex:373
 #: lib/athena_web/live/studio_live/characters.ex:251
 #: lib/athena_web/live/studio_live/competitions.ex:448
 #: lib/athena_web/live/studio_live/courses.ex:553
@@ -4486,7 +4486,7 @@ msgstr ""
 msgid "Failed to upload avatar"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/announcement_form.ex:248
+#: lib/athena_web/live/admin_live/announcement_form.ex:280
 #: lib/athena_web/live/admin_live/announcements.ex:246
 #: lib/athena_web/live/admin_live/gamification.ex:348
 #: lib/athena_web/live/announcement_live/index.ex:75
@@ -4628,7 +4628,7 @@ msgstr ""
 msgid "No upcoming access-window deadlines."
 msgstr ""
 
-#: lib/athena_web/live/admin_live/users.ex:370
+#: lib/athena_web/live/admin_live/users.ex:372
 #, elixir-autogen, elixir-format
 msgid "No users yet"
 msgstr ""
@@ -5346,7 +5346,7 @@ msgstr ""
 msgid "All contexts"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/announcement_form.ex:211
+#: lib/athena_web/live/admin_live/announcement_form.ex:243
 #, elixir-autogen, elixir-format
 msgid "Announcement created successfully"
 msgstr ""
@@ -5356,7 +5356,7 @@ msgstr ""
 msgid "Announcement deleted successfully"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/announcement_form.ex:232
+#: lib/athena_web/live/admin_live/announcement_form.ex:264
 #, elixir-autogen, elixir-format
 msgid "Announcement updated successfully"
 msgstr ""
@@ -5402,7 +5402,7 @@ msgstr ""
 msgid "Assign Coaches"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/announcement_form.ex:334
+#: lib/athena_web/live/admin_live/announcement_form.ex:375
 #: lib/athena_web/live/admin_live/announcements.ex:180
 #, elixir-autogen, elixir-format
 msgid "Audience"
@@ -5413,7 +5413,7 @@ msgstr ""
 msgid "Author"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/announcement_form.ex:263
+#: lib/athena_web/live/admin_live/announcement_form.ex:295
 #, elixir-autogen, elixir-format
 msgid "Back to Announcements"
 msgstr ""
@@ -5430,7 +5430,7 @@ msgstr ""
 msgid "Back to Teams"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/announcement_form.ex:304
+#: lib/athena_web/live/admin_live/announcement_form.ex:336
 #, elixir-autogen, elixir-format
 msgid "Body"
 msgstr ""
@@ -5477,7 +5477,7 @@ msgstr ""
 msgid "Coaches"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/announcement_form.ex:341
+#: lib/athena_web/live/admin_live/announcement_form.ex:382
 #, elixir-autogen, elixir-format
 msgid "Cohort or team"
 msgstr ""
@@ -5716,7 +5716,7 @@ msgstr ""
 msgid "Manage your competitions and challenges."
 msgstr ""
 
-#: lib/athena_web/live/admin_live/announcement_form.ex:418
+#: lib/athena_web/live/admin_live/announcement_form.ex:463
 #, elixir-autogen, elixir-format
 msgid "Mark as important"
 msgstr ""
@@ -5852,7 +5852,7 @@ msgstr ""
 msgid "Search announcements..."
 msgstr ""
 
-#: lib/athena_web/live/admin_live/announcement_form.ex:374
+#: lib/athena_web/live/admin_live/announcement_form.ex:419
 #, elixir-autogen, elixir-format
 msgid "Search by cohort or team name..."
 msgstr ""
@@ -5878,7 +5878,7 @@ msgstr ""
 msgid "Section complete. Cross-section navigation isn't available in a test run."
 msgstr ""
 
-#: lib/athena_web/live/admin_live/announcement_form.ex:336
+#: lib/athena_web/live/admin_live/announcement_form.ex:377
 #, elixir-autogen, elixir-format
 msgid "Select audience"
 msgstr ""
@@ -6034,12 +6034,12 @@ msgstr ""
 msgid "View all"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/announcement_form.ex:407
+#: lib/athena_web/live/admin_live/announcement_form.ex:452
 #, elixir-autogen, elixir-format
 msgid "Visible from (optional)"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/announcement_form.ex:413
+#: lib/athena_web/live/admin_live/announcement_form.ex:458
 #, elixir-autogen, elixir-format
 msgid "Visible until (optional)"
 msgstr ""
@@ -6109,8 +6109,8 @@ msgstr ""
 msgid "You don't have permission to edit this competition."
 msgstr ""
 
-#: lib/athena_web/live/admin_live/announcement_form.ex:219
-#: lib/athena_web/live/admin_live/announcement_form.ex:240
+#: lib/athena_web/live/admin_live/announcement_form.ex:251
+#: lib/athena_web/live/admin_live/announcement_form.ex:272
 #, elixir-autogen, elixir-format
 msgid "You don't have permission to post to this cohort."
 msgstr ""
@@ -8782,7 +8782,7 @@ msgstr ""
 msgid "Play this template as a test student"
 msgstr ""
 
-#: lib/athena_web/live/admin_live/users.ex:328
+#: lib/athena_web/live/admin_live/users.ex:330
 #, elixir-autogen, elixir-format
 msgid "until %{time}"
 msgstr ""
@@ -8793,8 +8793,8 @@ msgstr ""
 msgid "Could not schedule the deletion."
 msgstr ""
 
-#: lib/athena_web/live/admin_live/users.ex:352
-#: lib/athena_web/live/admin_live/users.ex:413
+#: lib/athena_web/live/admin_live/users.ex:354
+#: lib/athena_web/live/admin_live/users.ex:415
 #: lib/athena_web/live/teaching_live/cohort_details.ex:265
 #: lib/athena_web/live/teaching_live/cohort_details.ex:503
 #, elixir-autogen, elixir-format
@@ -8806,7 +8806,7 @@ msgstr ""
 msgid "Delete the raw activity events recorded in this group (time on content, scrolling, video, tab switches, exam proctoring timelines)? Engagement statistics and grades already computed from them are kept. This cannot be undone."
 msgstr ""
 
-#: lib/athena_web/live/admin_live/users.ex:415
+#: lib/athena_web/live/admin_live/users.ex:417
 #, elixir-autogen, elixir-format
 msgid "Delete this user's raw activity events (time on content, scrolling, video, tab switches, exam proctoring timelines)? Engagement statistics and grades already computed from them are kept. This cannot be undone."
 msgstr ""
@@ -8827,12 +8827,12 @@ msgstr ""
 msgid "You don't have permission to do this."
 msgstr ""
 
-#: lib/athena_web/live/admin_live/announcement_form.ex:279
+#: lib/athena_web/live/admin_live/announcement_form.ex:311
 #, elixir-autogen, elixir-format
 msgid "Announcements can only be sent globally (admins only) or to a cohort/team you instruct. Ask an admin to assign you as an instructor first."
 msgstr ""
 
-#: lib/athena_web/live/admin_live/announcement_form.ex:276
+#: lib/athena_web/live/admin_live/announcement_form.ex:308
 #, elixir-autogen, elixir-format
 msgid "You're not an instructor of any cohort or team yet."
 msgstr ""
