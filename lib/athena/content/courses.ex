@@ -137,12 +137,24 @@ defmodule Athena.Content.Courses do
 
   @doc """
   Searches active courses by title for autocomplete components.
+
+  Scoped to one `:type` (default `:standard`), so a cohort's course picker
+  never offers competitions, a team's competition picker never offers
+  ordinary courses, and neither ever offers a `:library_preview` wrapper.
+
+  ## Options
+
+    * `:type` - the course type to search within, default `:standard`
+    * `:limit` - maximum rows to return, default `10`
   """
-  def search_courses_by_title(user, query, limit \\ 10) do
+  def search_courses_by_title(user, query, opts \\ []) do
     search_term = "%#{query}%"
+    limit = Keyword.get(opts, :limit, 10)
+    type = Keyword.get(opts, :type, :standard)
 
     Course
     |> where([c], ilike(c.title, ^search_term) and is_nil(c.deleted_at))
+    |> where([c], c.type == ^type)
     |> scope_course_reads(user)
     |> limit(^limit)
     |> Repo.all()

@@ -1,12 +1,16 @@
 defmodule AthenaWeb.StudioLive.Surveys do
   @moduledoc """
-  The survey list: every survey the current user may read, with its status and
-  response counts, plus create/rename/archive.
+  The survey list: every survey the current user may read, with its question
+  and response counts, plus create and delete.
 
-  Authoring lives in `AthenaWeb.StudioLive.SurveyBuilder` and results will
-  attach here (the list is where someone goes to ask "what did students
-  say"), which is why both sit under `/studio` rather than splitting
-  authoring from reading across two sections of the app.
+  Laid out as the same searchable, sortable, paginated `<.table>` every other
+  list page in the app uses, with the filters carried in the query string so a
+  patch (sorting, paging, opening the create modal) never loses them.
+
+  Authoring lives in `AthenaWeb.StudioLive.SurveyBuilder` and results attach
+  here (the list is where someone goes to ask "what did students say"), which
+  is why both sit under `/studio` rather than splitting authoring from reading
+  across two sections of the app.
 
   Scoping is `Athena.Identity.Acl.scope_query/3` inside
   `Athena.Surveys.Surveys.list_for_user/3`, not re-derived here, so a role
@@ -26,35 +30,25 @@ defmodule AthenaWeb.StudioLive.Surveys do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(
-       page_title: gettext("Surveys"),
-       survey_to_archive: nil,
-       show_archived?: false
-     )
+     |> assign(page_title: gettext("Surveys"), survey_to_delete: nil)
      |> stream(:surveys, [])}
   end
 
   @impl true
   def handle_params(params, _url, socket) do
     search = Map.get(params, "search", "")
-    show_archived? = Map.get(params, "archived") == "1"
-
     flop_params = with_search(params, search)
 
-    case Surveys.list_surveys_for_user(socket.assigns.current_user, flop_params,
-           include_archived: show_archived?
-         ) do
+    case Surveys.list_surveys_for_user(socket.assigns.current_user, flop_params) do
       {:ok, {surveys, meta}} ->
         {:noreply,
          socket
          |> assign(
            meta: meta,
            search: search,
-           show_archived?: show_archived?,
            counts: response_counts(surveys),
            question_counts: question_counts(surveys),
            usage_counts: Content.survey_usage_counts(Enum.map(surveys, & &1.id)),
-           live_action: socket.assigns.live_action,
            form: new_form()
          )
          |> stream(:surveys, surveys, reset: true)}
@@ -85,17 +79,15 @@ defmodule AthenaWeb.StudioLive.Surveys do
   # -- events ---------------------------------------------------------------
 
   @impl true
-  def handle_event("search", %{"search" => search}, socket) do
-    {:noreply, push_patch(socket, to: path_with(socket, %{"search" => search, "page" => 1}))}
+  def handle_event("update_filters", filters, socket) do
+    search = Map.get(filters, "search", socket.assigns.search)
+    params = build_query_params(socket.assigns, %{"search" => search, "page" => 1})
+    {:noreply, push_patch(socket, to: ~p"/studio/surveys?#{params}")}
   end
 
   def handle_event("update_page_size", %{"page_size" => size}, socket) do
-    {:noreply, push_patch(socket, to: path_with(socket, %{"page_size" => size, "page" => 1}))}
-  end
-
-  def handle_event("toggle_archived", _params, socket) do
-    archived = if socket.assigns.show_archived?, do: nil, else: "1"
-    {:noreply, push_patch(socket, to: path_with(socket, %{"archived" => archived, "page" => 1}))}
+    params = build_query_params(socket.assigns, %{"page_size" => size, "page" => 1})
+    {:noreply, push_patch(socket, to: ~p"/studio/surveys?#{params}")}
   end
 
   def handle_event("create", %{"survey" => params}, socket) do
@@ -122,57 +114,52 @@ defmodule AthenaWeb.StudioLive.Surveys do
     {:noreply, assign(socket, form: form)}
   end
 
-  def handle_event("archive_click", %{"id" => id}, socket) do
+  def handle_event("delete_click", %{"id" => id}, socket) do
     case authorized(socket, id, "surveys.delete") do
-      {:ok, survey} -> {:noreply, assign(socket, survey_to_archive: survey)}
+      {:ok, survey} -> {:noreply, assign(socket, survey_to_delete: survey)}
       {:error, message} -> {:noreply, put_flash(socket, :error, message)}
     end
   end
 
-  def handle_event("cancel_archive", _params, socket) do
-    {:noreply, assign(socket, survey_to_archive: nil)}
+  def handle_event("cancel_delete", _params, socket) do
+    {:noreply, assign(socket, survey_to_delete: nil)}
   end
 
-  def handle_event("confirm_archive", _params, socket) do
-    survey = socket.assigns.survey_to_archive
+  def handle_event("confirm_delete", _params, socket) do
+    survey = socket.assigns.survey_to_delete
 
     with %Survey{} <- survey,
-         {:ok, _archived} <- Surveys.archive_survey(survey) do
+         {:ok, _deleted} <- Surveys.delete_survey(survey) do
       {:noreply,
        socket
-       |> assign(survey_to_archive: nil)
-       |> put_flash(:info, gettext("Survey archived. Its responses are kept."))
+       |> assign(survey_to_delete: nil)
+       |> put_flash(:info, gettext("Survey deleted."))
        |> stream_delete(:surveys, survey)}
     else
       nil ->
-        {:noreply, assign(socket, survey_to_archive: nil)}
+        {:noreply, assign(socket, survey_to_delete: nil)}
+
+      # The context refuses to destroy answers, which are usually the only
+      # record of what students said - so say why rather than just failing.
+      {:error, :has_responses} ->
+        {:noreply,
+         socket
+         |> assign(survey_to_delete: nil)
+         |> put_flash(
+           :error,
+           gettext("This survey already has responses, so it cannot be deleted.")
+         )}
 
       {:error, _reason} ->
         {:noreply,
          socket
-         |> assign(survey_to_archive: nil)
-         |> put_flash(:error, gettext("Could not archive that survey."))}
-    end
-  end
-
-  def handle_event("restore", %{"id" => id}, socket) do
-    with {:ok, survey} <- authorized(socket, id, "surveys.update"),
-         {:ok, restored} <- Surveys.update_survey(survey, %{"status" => :draft}) do
-      {:noreply,
-       socket
-       |> put_flash(:info, gettext("Survey restored as a draft."))
-       |> stream_insert(:surveys, restored)}
-    else
-      {:error, message} when is_binary(message) ->
-        {:noreply, put_flash(socket, :error, message)}
-
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, gettext("Could not restore that survey."))}
+         |> assign(survey_to_delete: nil)
+         |> put_flash(:error, gettext("Could not delete that survey."))}
     end
   end
 
   # Permission *and* the record-level `own_only` policy: a role holding
-  # `surveys.update` with that policy must be refused on someone else's
+  # `surveys.delete` with that policy must be refused on someone else's
   # survey, not merely kept off the screen.
   defp authorized(socket, id, permission) do
     user = socket.assigns.current_user
@@ -190,20 +177,30 @@ defmodule AthenaWeb.StudioLive.Surveys do
     end
   end
 
-  defp path_with(socket, overrides),
-    do: build_path(socket.assigns.search, socket.assigns.show_archived?, overrides)
+  @doc false
+  defp build_query_params(assigns, overrides) do
+    meta = assigns.meta
 
-  # Shared by the search/archive toggles and by the paginator, so every way of
-  # changing the list preserves the other filters rather than resetting them.
-  defp build_path(search, show_archived?, overrides) do
-    params =
-      %{"search" => search}
-      |> then(fn base -> if show_archived?, do: Map.put(base, "archived", "1"), else: base end)
-      |> Map.merge(overrides)
-      |> Enum.reject(fn {_key, value} -> value in [nil, "", 1] end)
-      |> Map.new()
+    order_by =
+      meta.flop.order_by
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
 
-    ~p"/studio/surveys?#{params}"
+    order_directions =
+      meta.flop.order_directions
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+
+    %{
+      "search" => assigns.search,
+      "page" => meta.current_page,
+      "page_size" => meta.page_size,
+      "order_by" => order_by,
+      "order_directions" => order_directions
+    }
+    |> Map.merge(overrides)
+    |> Enum.reject(fn {_, v} -> is_nil(v) or v == "" or v == [] end)
+    |> Map.new()
   end
 
   # -- render ---------------------------------------------------------------
@@ -211,166 +208,138 @@ defmodule AthenaWeb.StudioLive.Surveys do
   @impl true
   def render(assigns) do
     ~H"""
-    <div>
-      <.page_container size="standard">
-        <.sticky_header>
-          <div class="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <h1 class="font-display text-2xl font-black">{gettext("Surveys")}</h1>
-              <p class="mt-1 text-sm text-base-content/60">
-                {gettext(
-                  "Collect feedback from students. Answers from a cohort stay grouped by cohort."
-                )}
-              </p>
-            </div>
-            <.button
-              :if={Identity.can?(@current_user, "surveys.create")}
-              variant="primary"
-              size="sm"
-              navigate={~p"/studio/surveys/new"}
-              id="new-survey"
+    <.page_container size="wide" class="space-y-6">
+      <div class="flex justify-between items-center">
+        <div>
+          <h1 class="text-2xl font-display font-bold text-base-content">{gettext("Surveys")}</h1>
+          <p class="text-base-content/60">
+            {gettext("Collect feedback from students. Answers from a cohort stay grouped by cohort.")}
+          </p>
+        </div>
+        <.button
+          :if={Identity.can?(@current_user, "surveys.create")}
+          id="new-survey"
+          patch={~p"/studio/surveys/new?#{build_query_params(assigns, %{})}"}
+          class="btn btn-primary"
+        >
+          <.icon name="hero-plus" class="size-5" />
+          {gettext("New survey")}
+        </.button>
+      </div>
+
+      <.form
+        for={nil}
+        phx-change="update_filters"
+        phx-submit="update_filters"
+        class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+      >
+        <div class="relative">
+          <.icon
+            name="hero-magnifying-glass"
+            class="absolute left-3 top-3.5 size-5 text-base-content/50 z-10"
+          />
+          <.input
+            type="text"
+            name="search"
+            value={@search}
+            placeholder={gettext("Search surveys...")}
+            class="input input-bordered w-full pl-10"
+            phx-debounce="500"
+          />
+        </div>
+      </.form>
+
+      <% path_fn = fn overrides -> ~p"/studio/surveys?#{build_query_params(assigns, overrides)}" end %>
+
+      <.table id="surveys" rows={@streams.surveys} meta={@meta} path_fn={path_fn}>
+        <:col :let={{_id, survey}} label={gettext("Title")} sort="title">
+          <div class="flex flex-wrap items-center gap-2">
+            <.link
+              navigate={~p"/studio/surveys/#{survey.id}/builder"}
+              class="font-bold text-primary"
             >
-              <.icon name="hero-plus" class="size-4" />
-              {gettext("New survey")}
+              {survey.title}
+            </.link>
+            <%!-- A published survey in no course is a survey nobody can
+                  answer, and the symptom is otherwise just silence. --%>
+            <.badge
+              :if={survey.status == :published and Map.get(@usage_counts, survey.id, 0) == 0}
+              tone="warning"
+            >
+              {gettext("not in any course")}
+            </.badge>
+          </div>
+        </:col>
+        <:col :let={{_id, survey}} label={gettext("Questions")}>
+          <span class="text-sm opacity-60">{Map.get(@question_counts, survey.id, 0)}</span>
+        </:col>
+        <:col :let={{_id, survey}} label={gettext("Responses")}>
+          <span class="text-sm opacity-60">{Map.get(@counts, survey.id, 0)}</span>
+        </:col>
+        <:col :let={{_id, survey}} label={gettext("Created")} sort="inserted_at">
+          <span class="text-sm opacity-60">
+            {TimeZones.format(survey.inserted_at, "%d.%m.%Y")}
+          </span>
+        </:col>
+        <:action :let={{_id, survey}}>
+          <div class="flex items-center gap-2 justify-end">
+            <.button variant="ghost" size="xs" navigate={~p"/studio/surveys/#{survey.id}/builder"}>
+              <%!-- Reuses the count already loaded: a per-row
+                    `survey_editable?/1` would be one query per row. --%>
+              {if Map.get(@counts, survey.id, 0) == 0,
+                do: gettext("Edit"),
+                else: gettext("Open")}
             </.button>
-          </div>
-        </.sticky_header>
-
-        <div class="mb-6 flex flex-wrap items-center gap-3">
-          <form phx-change="search" phx-submit="search" class="min-w-0 flex-1">
-            <label class="input input-bordered flex items-center gap-2">
-              <.icon name="hero-magnifying-glass" class="size-4 text-base-content/40" />
-              <input
-                type="text"
-                name="search"
-                value={@search}
-                phx-debounce="300"
-                placeholder={gettext("Search surveys")}
-                class="grow"
-              />
-            </label>
-          </form>
-          <label class="flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={@show_archived?}
-              phx-click="toggle_archived"
-              id="toggle-archived"
-              class="toggle toggle-sm"
-            />
-            {gettext("Show archived")}
-          </label>
-        </div>
-
-        <div id="surveys" phx-update="stream" class="space-y-3">
-          <%!-- Inside phx-update="stream" every child needs an id, and the
-                empty state only shows while it is the stream's only child. --%>
-          <div id="surveys-empty" class="hidden only:block">
-            <.empty_state
-              icon="hero-clipboard-document-list"
-              title={gettext("No surveys yet")}
-              description={gettext("Create a survey to ask students how a course is going.")}
+            <.button
+              :if={Map.get(@counts, survey.id, 0) > 0}
+              id={"results-#{survey.id}"}
+              variant="ghost"
+              size="xs"
+              class="text-primary hover:bg-primary/10"
+              navigate={~p"/studio/surveys/#{survey.id}/results"}
+            >
+              <.icon name="hero-chart-bar" class="size-4" />
+              <span class="hidden sm:inline">{gettext("Results")}</span>
+            </.button>
+            <.icon_button
+              :if={Identity.can?(@current_user, "surveys.delete")}
+              id={"delete-#{survey.id}"}
+              type="button"
+              phx-click="delete_click"
+              phx-value-id={survey.id}
+              icon="hero-trash"
+              label={gettext("Delete")}
+              variant="danger"
             />
           </div>
-          <div
-            :for={{dom_id, survey} <- @streams.surveys}
-            id={dom_id}
-            class="flex flex-wrap items-center gap-4 rounded-xl border border-base-300 bg-base-100 p-5 transition-colors hover:border-base-content/20"
-          >
-            <div class="min-w-0 flex-1">
-              <.link
-                navigate={~p"/studio/surveys/#{survey.id}/builder"}
-                class="font-bold hover:text-primary"
-              >
-                {survey.title}
-              </.link>
-              <div class="mt-1 flex flex-wrap items-center gap-3 text-xs text-base-content/50">
-                <.badge tone={status_tone(survey.status)}>{status_label(survey.status)}</.badge>
-                <span>
-                  {ngettext(
-                    "%{count} question",
-                    "%{count} questions",
-                    Map.get(@question_counts, survey.id, 0),
-                    count: Map.get(@question_counts, survey.id, 0)
-                  )}
-                </span>
-                <span>
-                  {ngettext(
-                    "%{count} response",
-                    "%{count} responses",
-                    Map.get(@counts, survey.id, 0),
-                    count: Map.get(@counts, survey.id, 0)
-                  )}
-                </span>
-                <%!-- A published survey in no course is a survey nobody can
-                      answer, and the symptom is otherwise just silence. --%>
-                <.badge
-                  :if={survey.status == :published and Map.get(@usage_counts, survey.id, 0) == 0}
-                  tone="warning"
-                >
-                  {gettext("not in any course")}
-                </.badge>
-              </div>
-            </div>
+        </:action>
+      </.table>
 
-            <div class="flex shrink-0 items-center gap-1">
-              <.button size="sm" navigate={~p"/studio/surveys/#{survey.id}/builder"}>
-                <%!-- Reuses the count already loaded: a per-row
-                      `survey_editable?/1` would be one query per row. --%>
-                {if Map.get(@counts, survey.id, 0) == 0,
-                  do: gettext("Edit"),
-                  else: gettext("Open")}
-              </.button>
-              <.button
-                :if={Map.get(@counts, survey.id, 0) > 0}
-                size="sm"
-                variant="primary"
-                navigate={~p"/studio/surveys/#{survey.id}/results"}
-                id={"results-#{survey.id}"}
-              >
-                {gettext("Results")}
-              </.button>
-              <button
-                :if={survey.status == :archived && Identity.can?(@current_user, "surveys.update")}
-                type="button"
-                phx-click="restore"
-                phx-value-id={survey.id}
-                class="btn btn-ghost btn-sm btn-square text-base-content/50"
-                aria-label={gettext("Restore")}
-              >
-                <.icon name="hero-arrow-uturn-left" class="size-4" />
-              </button>
-              <button
-                :if={survey.status != :archived && Identity.can?(@current_user, "surveys.delete")}
-                type="button"
-                phx-click="archive_click"
-                phx-value-id={survey.id}
-                id={"archive-#{survey.id}"}
-                class="btn btn-ghost btn-sm btn-square text-base-content/50 hover:text-error"
-                aria-label={gettext("Archive")}
-              >
-                <.icon name="hero-archive-box" class="size-4" />
-              </button>
-            </div>
-          </div>
-        </div>
+      <.empty_state
+        :if={@meta.total_count == 0}
+        icon="hero-clipboard-document-list"
+        title={gettext("No surveys yet")}
+        description={gettext("Create a survey to ask students how a course is going.")}
+      />
 
-        <.pagination
-          meta={@meta}
-          path_fn={&build_path(@search, @show_archived?, &1)}
-        />
-      </.page_container>
+      <div class="flex justify-end">
+        <.pagination meta={@meta} path_fn={path_fn} />
+      </div>
 
       <.modal
         id="new-survey-modal"
         show={@live_action == :new}
         title={gettext("New survey")}
-        on_cancel={JS.navigate(~p"/studio/surveys")}
+        on_cancel={JS.patch(~p"/studio/surveys?#{build_query_params(assigns, %{})}")}
       >
         <.form for={@form} id="survey-form" phx-change="validate" phx-submit="create">
           <.input field={@form[:title]} type="text" label={gettext("Title")} autofocus />
           <div class="modal-action">
-            <.button variant="ghost" size="sm" navigate={~p"/studio/surveys"}>
+            <.button
+              variant="ghost"
+              size="sm"
+              patch={~p"/studio/surveys?#{build_query_params(assigns, %{})}"}
+            >
               {gettext("Cancel")}
             </.button>
             <.button variant="primary" size="sm" type="submit" phx-disable-with={gettext("Creating…")}>
@@ -381,27 +350,20 @@ defmodule AthenaWeb.StudioLive.Surveys do
       </.modal>
 
       <.modal
-        id="archive-survey-modal"
-        show={@survey_to_archive != nil}
-        title={gettext("Archive this survey?")}
+        id="delete-survey-modal"
+        show={@survey_to_delete != nil}
+        title={gettext("Delete this survey?")}
         description={
-          gettext("It disappears from the list but keeps every response. You can restore it later.")
+          gettext(
+            "It is removed along with its questions. A survey that already has responses cannot be deleted."
+          )
         }
-        on_cancel={JS.push("cancel_archive")}
-        on_confirm={JS.push("confirm_archive")}
-        confirm_label={gettext("Archive")}
+        confirm_label={gettext("Delete")}
+        danger={true}
+        on_cancel={JS.push("cancel_delete")}
+        on_confirm={JS.push("confirm_delete")}
       />
-    </div>
+    </.page_container>
     """
   end
-
-  defp status_label(:draft), do: gettext("Draft")
-  defp status_label(:published), do: gettext("Published")
-  defp status_label(:closed), do: gettext("Closed")
-  defp status_label(:archived), do: gettext("Archived")
-
-  defp status_tone(:draft), do: "neutral"
-  defp status_tone(:published), do: "success"
-  defp status_tone(:closed), do: "warning"
-  defp status_tone(:archived), do: "neutral"
 end

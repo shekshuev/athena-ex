@@ -75,7 +75,7 @@ defmodule Athena.Surveys do
   end
 
   # Surveys
-  defdelegate list_surveys_for_user(user, params \\ %{}, opts \\ []),
+  defdelegate list_surveys_for_user(user, params \\ %{}),
     to: Surveys,
     as: :list_for_user
 
@@ -87,7 +87,6 @@ defmodule Athena.Surveys do
   defdelegate publish_survey(survey), to: Surveys, as: :publish
   defdelegate close_survey(survey), to: Surveys, as: :close
   defdelegate reopen_survey(survey), to: Surveys, as: :reopen
-  defdelegate archive_survey(survey), to: Surveys, as: :archive
   defdelegate delete_survey(survey), to: Surveys
   defdelegate duplicate_as_version(survey, user), to: Surveys
   defdelegate survey_editable?(survey), to: Surveys, as: :editable?

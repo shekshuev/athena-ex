@@ -297,7 +297,7 @@ defmodule Athena.Content.CoursesTest do
       insert(:course, title: "Test Course 3")
       insert(:course, title: "Test Course 4")
 
-      results = Courses.search_courses_by_title(admin, "Test", 2)
+      results = Courses.search_courses_by_title(admin, "Test", limit: 2)
 
       assert length(results) == 2
     end

@@ -67,6 +67,7 @@ defmodule AthenaWeb.AccountLive.Profile do
           socket
           |> assign(:target, target)
           |> assign(:own_profile?, own_profile?)
+          |> assign(:instructor, Learning.get_instructor_by_account(target.id))
           |> assign(:profile_form, to_form(Profile.changeset(profile, %{}), as: "profile"))
           |> assign(
             :password_form,
@@ -88,6 +89,15 @@ defmodule AthenaWeb.AccountLive.Profile do
          |> push_navigate(to: ~p"/dashboard")}
     end
   end
+
+  defp post_or_dash(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> "–"
+      trimmed -> trimmed
+    end
+  end
+
+  defp post_or_dash(_value), do: "–"
 
   defp resolve_target(current_user, target_id) when target_id == current_user.id,
     do: {:ok, current_user}
@@ -545,6 +555,25 @@ defmodule AthenaWeb.AccountLive.Profile do
                 </.button>
               </div>
             </.form>
+          </div>
+        </div>
+      </div>
+
+      <%!-- Only accounts with a row in `instructors` have a post/bio to show. --%>
+      <div :if={@tab == "profile" and @instructor} class="space-y-6">
+        <div class="card bg-base-100 border border-base-300 rounded-sm">
+          <div class="card-body">
+            <h2 class="font-display font-black uppercase text-sm text-base-content/70 mb-4">
+              {gettext("Instructor")}
+            </h2>
+            <.list>
+              <:item title={gettext("Post")}>
+                {post_or_dash(@instructor.title)}
+              </:item>
+              <:item title={gettext("Biography")}>
+                <p class="whitespace-pre-line">{post_or_dash(@instructor.bio)}</p>
+              </:item>
+            </.list>
           </div>
         </div>
       </div>

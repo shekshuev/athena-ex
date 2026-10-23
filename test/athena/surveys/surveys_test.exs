@@ -118,21 +118,16 @@ defmodule Athena.Surveys.SurveysTest do
       assert Repo.aggregate(SurveyBranch, :count) == 0
     end
 
-    test "archiving keeps everything and hides it from the default list" do
+    test "refuses to delete a survey that already has responses" do
       user = owner()
       survey = insert(:survey, owner_id: user.id, status: :published)
       insert(:survey_response, survey: survey)
 
-      {:ok, archived} = Surveys.archive_survey(survey)
-      assert archived.status == :archived
+      assert {:error, :has_responses} = Surveys.delete_survey(survey)
+      assert Surveys.get_survey(survey.id)
 
       {:ok, {listed, _meta}} = Surveys.list_surveys_for_user(user)
-      refute Enum.any?(listed, &(&1.id == survey.id))
-
-      {:ok, {with_archived, _meta}} =
-        Surveys.list_surveys_for_user(user, %{}, include_archived: true)
-
-      assert Enum.any?(with_archived, &(&1.id == survey.id))
+      assert Enum.any?(listed, &(&1.id == survey.id))
     end
   end
 

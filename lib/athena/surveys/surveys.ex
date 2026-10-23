@@ -15,19 +15,15 @@ defmodule Athena.Surveys.Surveys do
   @doc """
   Flop-paginated list of the surveys `user` may read, scoped through
   `Acl.scope_query/3` so a role holding `surveys.read` with the `own_only`
-  policy sees only its own. Archived surveys are excluded unless asked for.
+  policy sees only its own.
   """
-  @spec list_for_user(map(), map(), keyword()) ::
+  @spec list_for_user(map(), map()) ::
           {:ok, {[Survey.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
-  def list_for_user(user, params \\ %{}, opts \\ []) do
+  def list_for_user(user, params \\ %{}) do
     from(s in Survey)
     |> Acl.scope_query(user, "surveys.read")
-    |> exclude_archived(Keyword.get(opts, :include_archived, false))
     |> Flop.validate_and_run(params, for: Survey)
   end
-
-  defp exclude_archived(query, true), do: query
-  defp exclude_archived(query, false), do: where(query, [s], s.status != :archived)
 
   @doc "Fetches a survey without its questions. Returns `nil` if missing."
   @spec get_survey(binary()) :: Survey.t() | nil
@@ -128,24 +124,12 @@ defmodule Athena.Surveys.Surveys do
   end
 
   @doc """
-  Archives a survey: hides it from the default list while keeping every
-  response. This is the soft delete, and the one to reach for - see
-  `delete_survey/1`.
-  """
-  @spec archive(Survey.t()) :: {:ok, Survey.t()} | {:error, Ecto.Changeset.t()}
-  def archive(%Survey{} = survey) do
-    survey
-    |> Ecto.Changeset.change(%{status: :archived})
-    |> Repo.update()
-  end
-
-  @doc """
   Hard-deletes a survey, and with it every question, rule, response and
   answer (the schema cascades).
 
   Refuses when any response exists: that data cannot be reconstructed and is
-  usually the only record of what students said. `archive/1` is the right call
-  for "get it out of my list".
+  usually the only record of what students said. Close such a survey instead,
+  or take a fresh copy with `duplicate_as_version/2`.
   """
   @spec delete_survey(Survey.t()) ::
           {:ok, Survey.t()} | {:error, :has_responses | Ecto.Changeset.t()}

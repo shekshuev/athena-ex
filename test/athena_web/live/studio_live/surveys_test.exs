@@ -48,18 +48,19 @@ defmodule AthenaWeb.StudioLive.SurveysTest do
   end
 
   describe "listing" do
-    test "shows each survey with its status and counts", %{conn: conn, user: user} do
+    test "shows each survey with its question and response counts", %{conn: conn, user: user} do
       survey = insert(:survey, owner_id: user.id, title: "Mid-course", status: :published)
       insert(:survey_question, survey: survey)
       insert(:survey_question, survey: survey)
       insert(:survey_response, survey: survey)
 
-      {:ok, _lv, html} = live(conn, ~p"/studio/surveys")
+      {:ok, lv, html} = live(conn, ~p"/studio/surveys")
 
       assert html =~ "Mid-course"
-      assert html =~ "Published"
-      assert html =~ "2 questions"
-      assert html =~ "1 response"
+      # Two counts, in their own columns: 2 questions and 1 response.
+      row = lv |> element("##{dom_id(survey)}") |> render()
+      assert row =~ ">2<"
+      assert row =~ ">1<"
     end
 
     test "an empty list shows an empty state", %{conn: conn} do
@@ -108,12 +109,17 @@ defmodule AthenaWeb.StudioLive.SurveysTest do
 
       html =
         lv
-        |> form("form[phx-change=search]", %{"search" => "workload"})
+        |> form("form[phx-change=update_filters]", %{"search" => "workload"})
         |> render_change()
 
       # The search round-trips through the URL, so the patched render is what
-      # carries the filtered list.
-      assert_patched(lv, ~p"/studio/surveys?search=workload")
+      # carries the filtered list. The patch also carries the paging and sort
+      # params, so match on the search rather than the whole query string.
+      assert_patch(
+        lv,
+        ~p"/studio/surveys?#{[search: "workload", page: 1, page_size: 20, order_by: ["inserted_at"], order_directions: ["desc"]]}"
+      )
+
       assert render(lv) =~ "Pace and workload"
       refute render(lv) =~ "Final impressions"
       assert html
@@ -168,59 +174,59 @@ defmodule AthenaWeb.StudioLive.SurveysTest do
     end
   end
 
-  describe "archiving" do
+  describe "deleting" do
     setup %{conn: conn, user: user} do
+      # No response: one of these tests covers the refusal for a survey that
+      # has them, and it inserts its own.
       survey = insert(:survey, owner_id: user.id, title: "Old feedback")
-      insert(:survey_response, survey: survey)
 
       {:ok, lv, _html} = live(conn, ~p"/studio/surveys")
 
       %{lv: lv, survey: survey}
     end
 
-    test "archiving asks first, then hides the survey but keeps responses", ctx do
-      ctx.lv |> element("#archive-#{ctx.survey.id}") |> render_click()
-      assert has_element?(ctx.lv, "#archive-survey-modal.modal-open")
+    test "deleting asks first, then removes the survey", ctx do
+      ctx.lv |> element("#delete-#{ctx.survey.id}") |> render_click()
+      assert has_element?(ctx.lv, "#delete-survey-modal.modal-open")
 
-      render_click(ctx.lv, "confirm_archive", %{})
+      render_click(ctx.lv, "confirm_delete", %{})
 
-      assert Surveys.get_survey(ctx.survey.id).status == :archived
-      assert length(Surveys.list_responses(ctx.survey.id)) == 1
+      refute Surveys.get_survey(ctx.survey.id)
       refute render(ctx.lv) =~ "Old feedback"
     end
 
     test "cancelling keeps it listed", ctx do
-      ctx.lv |> element("#archive-#{ctx.survey.id}") |> render_click()
-      render_click(ctx.lv, "cancel_archive", %{})
+      ctx.lv |> element("#delete-#{ctx.survey.id}") |> render_click()
+      render_click(ctx.lv, "cancel_delete", %{})
 
-      assert Surveys.get_survey(ctx.survey.id).status == :draft
+      assert Surveys.get_survey(ctx.survey.id)
       assert render(ctx.lv) =~ "Old feedback"
     end
 
-    test "archived surveys are hidden until asked for, then restorable", ctx do
-      {:ok, _} = Surveys.archive_survey(ctx.survey)
+    test "a survey with responses is kept, with the reason shown", %{conn: conn, user: user} do
+      survey = insert(:survey, owner_id: user.id, title: "Answered already")
+      insert(:survey_response, survey: survey)
 
-      {:ok, lv, html} = live(ctx.conn, ~p"/studio/surveys")
-      refute html =~ "Old feedback"
+      {:ok, lv, _html} = live(conn, ~p"/studio/surveys")
 
-      html = lv |> element("#toggle-archived") |> render_click()
-      assert html =~ "Old feedback"
+      lv |> element("#delete-#{survey.id}") |> render_click()
+      html = render_click(lv, "confirm_delete", %{})
 
-      render_click(lv, "restore", %{"id" => ctx.survey.id})
-      assert Surveys.get_survey(ctx.survey.id).status == :draft
+      assert html =~ "already has responses"
+      assert Surveys.get_survey(survey.id)
     end
 
-    test "a non-owner under own_only cannot archive someone else's survey", %{conn: conn} do
+    test "a non-owner under own_only cannot delete someone else's survey", %{conn: conn} do
       {conn, _user} =
         sign_in(conn, ["surveys.read", "surveys.delete"], %{"surveys.delete" => ["own_only"]})
 
       stranger = insert(:survey, owner_id: Ecto.UUID.generate())
       {:ok, lv, _html} = live(conn, ~p"/studio/surveys")
 
-      html = render_click(lv, "archive_click", %{"id" => stranger.id})
+      html = render_click(lv, "delete_click", %{"id" => stranger.id})
 
       assert html =~ "cannot change that survey"
-      assert Surveys.get_survey(stranger.id).status == :draft
+      assert Surveys.get_survey(stranger.id)
     end
   end
 

@@ -37,15 +37,7 @@ defmodule AthenaWeb.StudioLive.Courses do
   @impl true
   def handle_params(params, _url, socket) do
     search = Map.get(params, "search", "")
-
-    flop_params =
-      if search != "" do
-        Map.put(params, "filters", %{
-          "0" => %{"field" => "title", "op" => "ilike_and", "value" => search}
-        })
-      else
-        params
-      end
+    flop_params = Map.put(params, "filters", type_filters(search))
 
     case Content.list_courses(socket.assigns.current_user, flop_params) do
       {:ok, {courses, meta}} ->
@@ -62,6 +54,17 @@ defmodule AthenaWeb.StudioLive.Courses do
       {:error, _meta} ->
         {:noreply, push_patch(socket, to: ~p"/studio/courses")}
     end
+  end
+
+  defp type_filters("") do
+    %{"0" => %{"field" => "type", "op" => "==", "value" => "standard"}}
+  end
+
+  defp type_filters(search) do
+    %{
+      "0" => %{"field" => "type", "op" => "==", "value" => "standard"},
+      "1" => %{"field" => "title", "op" => "ilike_and", "value" => search}
+    }
   end
 
   defp apply_action(socket, :index, _params) do

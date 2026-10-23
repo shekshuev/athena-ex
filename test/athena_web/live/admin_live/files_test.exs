@@ -121,28 +121,33 @@ defmodule AthenaWeb.AdminLive.FilesTest do
     end
   end
 
-  describe "Quota management panel" do
-    test "shows per-role usage and limit", %{conn: conn, admin: admin} do
+  describe "Quota management modal" do
+    test "the quotas are behind a button, not on the page itself", %{conn: conn, admin: admin} do
       insert(:media_quota, role_id: admin.role_id, limit_bytes: 20_000_000)
       insert(:media_file, owner_id: admin.id, context: :personal, size: 5_000_000)
 
-      {:ok, _lv, html} = live(conn, ~p"/admin/files")
+      {:ok, lv, html} = live(conn, ~p"/admin/files")
 
+      assert html =~ "Storage quotas"
+      refute has_element?(lv, "#quotas-modal.modal-open")
+
+      html = lv |> element("button[phx-click='open_quotas']") |> render_click()
+
+      assert has_element?(lv, "#quotas-modal.modal-open")
       assert html =~ admin.role.name
+      # Total used by the role, and the per-user limit.
       assert html =~ "4.8 MB"
-      assert html =~ "19.1 MB"
+      assert html =~ "19"
     end
 
-    test "edits a role's quota", %{conn: conn, admin: admin} do
+    test "edits a role's quota from its own row", %{conn: conn, admin: admin} do
       {:ok, lv, _html} = live(conn, ~p"/admin/files")
 
-      lv
-      |> element("button[phx-click='edit_quota_click'][phx-value-role-id='#{admin.role_id}']")
-      |> render_click()
+      lv |> element("button[phx-click='open_quotas']") |> render_click()
 
       html =
         lv
-        |> form("#quota-edit-modal form", %{"limit_mb" => "42"})
+        |> form("#quota-form-#{admin.role_id}", %{"limit_mb" => "42"})
         |> render_submit()
 
       assert html =~ "Storage quota updated successfully"
@@ -174,18 +179,21 @@ defmodule AthenaWeb.AdminLive.FilesTest do
       assert html =~ "You don&#39;t have permission to delete files."
     end
 
-    test "user without files.update cannot trigger edit_quota_click", %{conn: conn} do
+    test "user without files.update cannot change a quota", %{conn: conn} do
       role = insert(:role, permissions: ["files.read"])
       limited_user = insert(:account, role: role)
       conn = init_test_session(conn, %{"account_id" => limited_user.id})
 
       {:ok, lv, _html} = live(conn, ~p"/admin/files")
 
-      refute has_element?(lv, "button[phx-click='edit_quota_click']")
+      lv |> element("button[phx-click='open_quotas']") |> render_click()
+      refute has_element?(lv, "#quota-form-#{limited_user.role_id} button[type='submit']")
 
-      html = render_click(lv, "edit_quota_click", %{"role-id" => limited_user.role_id})
+      html =
+        render_submit(lv, "save_quota", %{"role_id" => limited_user.role_id, "limit_mb" => "42"})
 
       assert html =~ "You don&#39;t have permission to edit storage quotas."
+      refute Athena.Repo.get(Athena.Media.Quota, limited_user.role_id)
     end
   end
 end

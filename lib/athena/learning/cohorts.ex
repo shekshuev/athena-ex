@@ -24,13 +24,21 @@ defmodule Athena.Learning.Cohorts do
 
   @doc """
   Retrieves a paginated list of cohorts, scoped by user permissions.
+
+  ## Options
+
+    * `:instructor_id` - only cohorts this instructor is assigned to. A
+      `many_to_many` cannot be expressed as a Flop filter, so it is joined in
+      here, before `Flop.validate_and_run/3`, which keeps the page counts
+      consistent with the filter.
   """
-  @spec list_cohorts(map(), map()) ::
+  @spec list_cohorts(map(), map(), keyword()) ::
           {:ok, {[Cohort.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
-  def list_cohorts(user, params \\ %{}) do
+  def list_cohorts(user, params \\ %{}, opts \\ []) do
     base_query =
       from(c in Cohort)
       |> scope_cohort_reads(user)
+      |> filter_by_instructor(Keyword.get(opts, :instructor_id))
 
     case Flop.validate_and_run(base_query, params, for: Cohort) do
       {:ok, {cohorts, meta}} ->
@@ -40,6 +48,16 @@ defmodule Athena.Learning.Cohorts do
       error ->
         error
     end
+  end
+
+  defp filter_by_instructor(query, nil), do: query
+  defp filter_by_instructor(query, ""), do: query
+
+  defp filter_by_instructor(query, instructor_id) do
+    from c in query,
+      join: ci in CohortInstructor,
+      on: ci.cohort_id == c.id,
+      where: ci.instructor_id == ^instructor_id
   end
 
   @doc """

@@ -256,7 +256,14 @@ defmodule AthenaWeb.CoreComponents do
 
   def badge(assigns) do
     ~H"""
-    <span class={["badge badge-sm font-bold", "badge-#{@tone}", "badge-soft", @class]}>
+    <span class={[
+      "badge badge-sm font-bold",
+      if(@tone == "neutral",
+        do: "bg-base-200 text-base-content/80 border-base-300",
+        else: ["badge-#{@tone}", "badge-soft"]
+      ),
+      @class
+    ]}>
       {render_slot(@inner_block)}
     </span>
     """
