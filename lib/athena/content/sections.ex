@@ -9,6 +9,7 @@ defmodule Athena.Content.Sections do
 
   import Ecto.Query
   alias Athena.Repo
+  alias Athena.Audit
   alias Athena.Content.{Course, Section, Blocks}
   alias Athena.Identity.Account
 
@@ -70,8 +71,13 @@ defmodule Athena.Content.Sections do
         %Section{id: section_id}
         |> Section.changeset(merged_attrs)
         |> Repo.insert()
+        |> Audit.on_ok(
+          "section.created",
+          &[section_id: &1.id, course_id: &1.course_id, parent_id: &1.parent_id, by: user.id]
+        )
 
       true ->
+        Audit.warning("section.create_refused", course_id: course_id, by: user.id)
         {:error, :forbidden}
     end
   end
@@ -89,7 +95,12 @@ defmodule Athena.Content.Sections do
 
     with :ok <- check_course_edit_rights(user, section.course_id),
          :ok <- validate_parent_course(section.course_id, new_parent_id) do
-      execute_section_update(section, attrs, new_parent_id)
+      section
+      |> execute_section_update(attrs, new_parent_id)
+      |> Audit.on_ok(
+        "section.updated",
+        &[section_id: &1.id, course_id: &1.course_id, parent_id: &1.parent_id, by: user.id]
+      )
     end
   end
 
@@ -131,8 +142,14 @@ defmodule Athena.Content.Sections do
           {:ok, Section.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def delete_section(user, %Section{} = section) do
     if can_edit_course?(user, section.course_id) do
-      Repo.delete(section)
+      section
+      |> Repo.delete()
+      |> Audit.on_ok(
+        "section.deleted",
+        &[section_id: &1.id, course_id: &1.course_id, by: user.id]
+      )
     else
+      Audit.warning("section.delete_refused", section_id: section.id, by: user.id)
       {:error, :forbidden}
     end
   end

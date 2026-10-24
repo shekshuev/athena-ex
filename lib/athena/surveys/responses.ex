@@ -30,6 +30,7 @@ defmodule Athena.Surveys.Responses do
 
   alias Athena.Learning
   alias Athena.Repo
+  alias Athena.Audit
   alias Athena.Surveys.{QuestionTypes, Survey, SurveyAnswer, SurveyQuestion, SurveyResponse}
 
   @replaceable [
@@ -201,6 +202,10 @@ defmodule Athena.Surveys.Responses do
     response
     |> SurveyResponse.progress_changeset(%{status: :completed})
     |> Repo.update()
+    |> Audit.on_ok(
+      "survey.response_completed",
+      &[response_id: &1.id, survey_id: &1.survey_id, cohort_id: &1.cohort_id]
+    )
   end
 
   @doc """

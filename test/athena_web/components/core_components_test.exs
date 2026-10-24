@@ -84,8 +84,11 @@ defmodule AthenaWeb.CoreComponentsTest do
           inner_block: [%{inner_block: fn _, _ -> "Draft" end}]
         })
 
-      assert html =~ "badge-neutral"
-      assert html =~ "badge-soft"
+      # The neutral tone is styled from the base palette rather than through
+      # daisyUI's soft variant, whose token-as-text-colour is invisible here.
+      assert html =~ "bg-base-200"
+      assert html =~ "text-base-content/80"
+      refute html =~ "badge-soft"
       assert html =~ "Draft"
     end
 

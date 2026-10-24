@@ -27,6 +27,7 @@ defmodule Athena.Learning do
   }
 
   defdelegate list_instructors(user, params \\ %{}), to: Instructors
+  defdelegate list_all_instructors(user), to: Instructors
   defdelegate search_instructors(user, search_query, limit \\ 10), to: Instructors
   defdelegate get_instructor(user, id), to: Instructors
   defdelegate get_instructor_by_account(account_id), to: Instructors
@@ -34,7 +35,7 @@ defmodule Athena.Learning do
   defdelegate update_instructor(user, instructor, attrs), to: Instructors
   defdelegate delete_instructor(user, instructor), to: Instructors
 
-  defdelegate list_cohorts(user, params \\ %{}), to: Cohorts
+  defdelegate list_cohorts(user, params \\ %{}, opts \\ []), to: Cohorts
   defdelegate get_cohort(user, id), to: Cohorts
   defdelegate get_cohorts_map(ids), to: Cohorts
   defdelegate list_cohorts_for_course(user, course_id), to: Cohorts

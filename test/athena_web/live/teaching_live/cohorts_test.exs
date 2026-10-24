@@ -34,7 +34,7 @@ defmodule AthenaWeb.TeachingLive.CohortsTest do
 
       html =
         lv
-        |> form("form[phx-change='search']", %{"search" => "Frontend"})
+        |> form("form[phx-change='update_filters']", %{"search" => "Frontend"})
         |> render_change()
 
       assert html =~ "Frontend Developers"
@@ -149,15 +149,17 @@ defmodule AthenaWeb.TeachingLive.CohortsTest do
     end
 
     test "should redirect from /new if user lacks create permission", %{conn: conn} do
-      {:error, {:live_redirect, %{to: "/teaching/cohorts"}}} =
-        live(conn, ~p"/teaching/cohorts/new")
+      assert {:error, {:live_redirect, %{to: to}}} = live(conn, ~p"/teaching/cohorts/new")
+      assert String.starts_with?(to, "/teaching/cohorts?")
     end
 
     test "should redirect from /edit if user lacks update permission", %{conn: conn} do
       target = insert(:cohort)
 
-      {:error, {:live_redirect, %{to: "/teaching/cohorts"}}} =
-        live(conn, ~p"/teaching/cohorts/#{target.id}/edit")
+      assert {:error, {:live_redirect, %{to: to}}} =
+               live(conn, ~p"/teaching/cohorts/#{target.id}/edit")
+
+      assert String.starts_with?(to, "/teaching/cohorts?")
     end
 
     test "should show error flash on delete_click if user lacks delete permission", %{conn: conn} do
@@ -218,9 +220,10 @@ defmodule AthenaWeb.TeachingLive.CohortsTest do
     } do
       other_cohort = insert(:cohort, owner_id: Ecto.UUID.generate())
 
-      assert {:error, {:live_redirect, %{to: "/teaching/cohorts", flash: flash}}} =
+      assert {:error, {:live_redirect, %{to: to, flash: flash}}} =
                live(conn, ~p"/teaching/cohorts/#{other_cohort.id}/edit")
 
+      assert String.starts_with?(to, "/teaching/cohorts?")
       assert flash["error"] == "Permission denied."
     end
   end

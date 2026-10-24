@@ -20,7 +20,7 @@ defmodule AthenaWeb.AdminLive.Files do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(file_to_delete: nil, role_to_edit_quota: nil)
+     |> assign(file_to_delete: nil, show_quotas: false)
      |> assign_role_quotas()
      |> stream(:files, [])}
   end
@@ -129,31 +129,21 @@ defmodule AthenaWeb.AdminLive.Files do
     end
   end
 
-  def handle_event("edit_quota_click", %{"role-id" => role_id}, socket) do
-    if Identity.can?(socket.assigns.current_user, "files.update") do
-      entry = Enum.find(socket.assigns.role_quotas, &(&1.role.id == role_id))
-      {:noreply, assign(socket, role_to_edit_quota: entry)}
-    else
-      {:noreply,
-       socket
-       |> put_flash(:error, gettext("You don't have permission to edit storage quotas."))}
-    end
+  def handle_event("open_quotas", _params, socket) do
+    {:noreply, socket |> assign(show_quotas: true) |> assign_role_quotas()}
   end
 
-  def handle_event("cancel_quota_edit", _params, socket) do
-    {:noreply, assign(socket, role_to_edit_quota: nil)}
+  def handle_event("close_quotas", _params, socket) do
+    {:noreply, assign(socket, show_quotas: false)}
   end
 
-  def handle_event("save_quota", %{"limit_mb" => limit_mb}, socket) do
+  def handle_event("save_quota", %{"role_id" => role_id, "limit_mb" => limit_mb}, socket) do
     if Identity.can?(socket.assigns.current_user, "files.update") do
-      role = socket.assigns.role_to_edit_quota.role
-
       with {mb, _} <- Float.parse(limit_mb),
-           {:ok, _quota} <- Media.set_quota(role.id, round(mb * 1024 * 1024)) do
+           {:ok, _quota} <- Media.set_quota(role_id, round(mb * 1024 * 1024)) do
         {:noreply,
          socket
          |> put_flash(:info, gettext("Storage quota updated successfully"))
-         |> assign(role_to_edit_quota: nil)
          |> assign_role_quotas()}
       else
         _ ->
@@ -163,7 +153,7 @@ defmodule AthenaWeb.AdminLive.Files do
       {:noreply,
        socket
        |> put_flash(:error, gettext("You don't have permission to edit storage quotas."))
-       |> assign(role_to_edit_quota: nil)}
+       |> assign(show_quotas: false)}
     end
   end
 
@@ -171,43 +161,17 @@ defmodule AthenaWeb.AdminLive.Files do
   def render(assigns) do
     ~H"""
     <.page_container size="wide" class="space-y-6">
-      <div>
-        <h1 class="text-2xl font-display font-bold text-base-content">{gettext("System Files")}</h1>
-        <p class="text-base-content/60">{gettext("Global storage monitoring and quotas.")}</p>
-      </div>
-
-      <div class="bg-base-100 border border-base-300 rounded-lg p-4">
-        <h2 class="font-bold text-lg mb-4">{gettext("Storage Quotas by Role")}</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div
-            :for={%{role: role, used: used, limit: limit} <- @role_quotas}
-            class="border border-base-200 rounded-md p-3"
-          >
-            <div class="flex justify-between items-center mb-1">
-              <span class="font-bold text-sm">{role.name}</span>
-              <span class="text-xs text-base-content/60">
-                {Media.format_bytes(used)} / {Media.format_bytes(limit)}
-              </span>
-            </div>
-            <div class="w-full bg-base-300 rounded-sm h-2 overflow-hidden mb-2">
-              <div
-                class={["h-full", quota_tone(used, limit)]}
-                style={"width: #{quota_pct(used, limit)}%"}
-              >
-              </div>
-            </div>
-            <.button
-              :if={Identity.can?(@current_user, "files.update")}
-              type="button"
-              variant="ghost"
-              size="xs"
-              phx-click="edit_quota_click"
-              phx-value-role-id={role.id}
-            >
-              {gettext("Edit limit")}
-            </.button>
-          </div>
+      <div class="flex justify-between items-center gap-4">
+        <div>
+          <h1 class="text-2xl font-display font-bold text-base-content">
+            {gettext("System Files")}
+          </h1>
+          <p class="text-base-content/60">{gettext("Global storage monitoring.")}</p>
         </div>
+        <.button type="button" phx-click="open_quotas">
+          <.icon name="hero-circle-stack" class="size-5" />
+          {gettext("Storage quotas")}
+        </.button>
       </div>
 
       <div class="flex flex-col sm:flex-row gap-4">
@@ -298,30 +262,65 @@ defmodule AthenaWeb.AdminLive.Files do
         <.pagination meta={@meta} path_fn={path_fn} />
       </div>
 
+      <%!--
+        One row per role, each with its own small form, so there is no
+        "which role am I editing" state and no second modal on top of this
+        one. The limit is per user of that role, while "used" is the total
+        across all of them - the two are not comparable, which is why the
+        old progress bar (always pegged at 100%) is gone.
+      --%>
       <.modal
-        id="quota-edit-modal"
-        show={@role_to_edit_quota != nil}
-        title={gettext("Edit Storage Quota")}
-        on_cancel={JS.push("cancel_quota_edit")}
+        id="quotas-modal"
+        show={@show_quotas}
+        title={gettext("Storage Quotas by Role")}
+        description={gettext("The limit applies to each user of the role individually.")}
+        on_cancel={JS.push("close_quotas")}
+        box_class="max-w-3xl"
       >
-        <.form :if={@role_to_edit_quota} for={nil} phx-submit="save_quota" class="space-y-4">
-          <p class="text-sm text-base-content/70">
-            {gettext("Role")}: <span class="font-bold">{@role_to_edit_quota.role.name}</span>
-          </p>
-          <.input
-            type="number"
-            name="limit_mb"
-            label={gettext("Storage limit (MB)")}
-            value={round(@role_to_edit_quota.limit / 1024 / 1024)}
-            min="0"
-            step="1"
-            required
-          />
-          <div class="flex justify-end gap-3">
-            <.button type="button" phx-click="cancel_quota_edit">{gettext("Cancel")}</.button>
-            <.button type="submit" variant="primary">{gettext("Save")}</.button>
-          </div>
-        </.form>
+        <div class="max-h-[60vh] overflow-y-auto -mx-6 px-6">
+          <.table id="role-quotas" rows={@role_quotas}>
+            <:col :let={%{role: role}} label={gettext("Role")}>
+              <span class="font-bold">{role.name}</span>
+            </:col>
+            <:col :let={%{used: used}} label={gettext("Used in total")}>
+              <span class="text-sm opacity-60">{Media.format_bytes(used)}</span>
+            </:col>
+            <:col :let={%{role: role, limit: limit}} label={gettext("Limit per user")}>
+              <.form
+                for={nil}
+                phx-submit="save_quota"
+                class="flex items-end gap-2"
+                id={"quota-form-#{role.id}"}
+              >
+                <input type="hidden" name="role_id" value={role.id} />
+                <.input
+                  type="number"
+                  name="limit_mb"
+                  value={round(limit / 1024 / 1024)}
+                  min="0"
+                  step="1"
+                  required
+                  disabled={not Identity.can?(@current_user, "files.update")}
+                  class="input input-bordered input-sm w-28"
+                />
+                <span class="text-xs text-base-content/60 pb-2">{gettext("MB")}</span>
+                <.button
+                  :if={Identity.can?(@current_user, "files.update")}
+                  type="submit"
+                  variant="primary"
+                  size="sm"
+                  phx-disable-with={gettext("Saving...")}
+                >
+                  {gettext("Save")}
+                </.button>
+              </.form>
+            </:col>
+          </.table>
+        </div>
+
+        <div class="modal-action">
+          <.button type="button" phx-click="close_quotas">{gettext("Close")}</.button>
+        </div>
       </.modal>
 
       <.modal
@@ -352,17 +351,6 @@ defmodule AthenaWeb.AdminLive.Files do
   defp context_label("course_material"), do: gettext("Course Material")
   defp context_label("submission"), do: gettext("Submission")
   defp context_label(other), do: other
-
-  defp quota_pct(_used, limit) when limit <= 0, do: 100
-  defp quota_pct(used, limit), do: used |> Kernel./(limit) |> Kernel.*(100) |> min(100) |> round()
-
-  defp quota_tone(used, limit) do
-    case quota_pct(used, limit) do
-      pct when pct >= 90 -> "bg-error"
-      pct when pct >= 70 -> "bg-warning"
-      _ -> "bg-primary"
-    end
-  end
 
   @doc false
   def contexts, do: @contexts

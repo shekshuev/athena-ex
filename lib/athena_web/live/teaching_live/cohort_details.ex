@@ -17,6 +17,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
   alias AthenaWeb.TeachingLive.MembershipFormComponent
   alias AthenaWeb.TeachingLive.EnrollmentFormComponent
   import AthenaWeb.TeachingLive.CohortAnalyticsComponents, only: [gradebook_path: 2]
+  import AthenaWeb.TeachingLive.InstructorComponents
 
   on_mount {AthenaWeb.Hooks.Permission, ["cohorts.read", "teams.read"]}
 
@@ -103,7 +104,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
     if Learning.can_manage_cohort_processes?(socket.assigns.current_user, cohort) do
       title =
         if cohort.type == :team,
-          do: gettext("Assign Course to Team"),
+          do: gettext("Assign Competition to Team"),
           else: gettext("Assign Course to Cohort")
 
       assign(socket, page_title: title)
@@ -277,11 +278,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
             <%= if @cohort.instructors == [] do %>
               <span class="italic opacity-50">{gettext("None assigned")}</span>
             <% else %>
-              <%= for inst <- @cohort.instructors do %>
-                <span class="badge badge-primary badge-soft font-bold">
-                  {if inst.account, do: inst.account.login, else: gettext("Unknown")}
-                </span>
-              <% end %>
+              <.instructor_chip :for={inst <- @cohort.instructors} instructor={inst} />
             <% end %>
           </div>
         </:item>
@@ -289,7 +286,11 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
 
       <div class="space-y-4">
         <div class="flex justify-between items-center">
-          <h2 class="text-xl font-display font-bold">{gettext("Assigned Courses")}</h2>
+          <h2 class="text-xl font-display font-bold">
+            {if @cohort.type == :team,
+              do: gettext("Competitions"),
+              else: gettext("Assigned Courses")}
+          </h2>
           <.button
             :if={Learning.can_manage_cohort_processes?(@current_user, @cohort)}
             variant="primary"
@@ -297,12 +298,19 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
             patch={enroll_course_path(@cohort, build_query_params(assigns, %{}))}
           >
             <.icon name="hero-book-open" class="size-4" />
-            {gettext("Assign Course")}
+            {if @cohort.type == :team,
+              do: gettext("Assign Competition"),
+              else: gettext("Assign Course")}
           </.button>
         </div>
 
         <.table id="enrollments" rows={@streams.enrollments}>
-          <:col :let={{_id, enrollment}} label={gettext("Course Title")}>
+          <:col
+            :let={{_id, enrollment}}
+            label={
+              if @cohort.type == :team, do: gettext("Competition"), else: gettext("Course Title")
+            }
+          >
             <span class="font-bold">
               {if enrollment.course, do: enrollment.course.title, else: gettext("Unknown/Deleted")}
             </span>
@@ -369,7 +377,11 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
         <.empty_state
           :if={@enrollments_count == 0}
           icon="hero-book-open"
-          title={gettext("No courses assigned yet")}
+          title={
+            if @cohort.type == :team,
+              do: gettext("No competitions assigned yet"),
+              else: gettext("No courses assigned yet")
+          }
         />
       </div>
 
@@ -438,6 +450,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           module={MembershipFormComponent}
           id="new-membership"
           cohort_id={@cohort.id}
+          course_type={if @cohort.type == :team, do: :competition, else: :standard}
           current_user={@current_user}
           patch={show_path(@cohort, build_query_params(assigns, %{}))}
         />

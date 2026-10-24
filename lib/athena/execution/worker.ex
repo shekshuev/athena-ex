@@ -22,6 +22,7 @@ defmodule Athena.Execution.Worker do
   require Logger
 
   alias Athena.Repo
+  alias Athena.Audit
   alias Athena.Learning
   alias Athena.Learning.Submission
   alias Athena.Content.{Block, CodeChallenge}
@@ -32,8 +33,16 @@ defmodule Athena.Execution.Worker do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"submission_id" => id}}) do
+    Audit.put_trace("sub-#{id}")
+
     submission = Repo.get!(Submission, id)
     block = Repo.get(Block, submission.block_id)
+
+    Audit.event("execution.started",
+      submission_id: id,
+      block_id: submission.block_id,
+      account_id: submission.account_id
+    )
 
     challenge = build_challenge(submission, block)
     code = submission.content["code"] || ""
@@ -130,6 +139,15 @@ defmodule Athena.Execution.Worker do
 
     case Learning.system_update_submission(submission, attrs) do
       {:ok, updated_sub} ->
+        Audit.event("submission.graded",
+          submission_id: updated_sub.id,
+          block_id: updated_sub.block_id,
+          account_id: updated_sub.account_id,
+          status: updated_sub.status,
+          score: updated_sub.score,
+          result: result.status
+        )
+
         # Completing the block is part of storing the result, not something
         # left to whoever is watching. The student's page is told about the
         # result over PubSub, which is fire-and-forget: if their connection
@@ -140,7 +158,11 @@ defmodule Athena.Execution.Worker do
         :ok
 
       {:error, changeset} ->
-        Logger.error("Failed to update submission: #{inspect(changeset.errors)}")
+        Audit.error("submission.grade_failed",
+          submission_id: submission.id,
+          reason: inspect(changeset.errors)
+        )
+
         :error
     end
   end

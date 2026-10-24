@@ -32,6 +32,7 @@ defmodule Athena.Learning.TestRuns do
   import Ecto.Query
 
   alias Athena.{Repo, Content, Identity}
+  alias Athena.Audit
   alias Athena.Content.{Course, Section, Block, CourseLibraryBlock}
   alias Athena.Identity.{Account, Role}
   alias Athena.Learning.{TestRunSession, Enrollment, BlockProgress, Submission, Progress}
@@ -54,10 +55,24 @@ defmodule Athena.Learning.TestRuns do
          linear_sections <- Content.list_linear_lessons(course_id, :all),
          {:ok, target_section_id} <-
            resolve_playable_section(course_id, section_id, linear_sections) do
-      do_start(instructor, course, target_section_id, linear_sections)
+      instructor
+      |> do_start(course, target_section_id, linear_sections)
+      |> Audit.on_ok(
+        "test_run.started",
+        &[
+          session_id: &1.id,
+          course_id: course.id,
+          section_id: target_section_id,
+          by: instructor.id
+        ]
+      )
     else
-      false -> {:error, :forbidden}
-      {:error, reason} -> {:error, reason}
+      false ->
+        Audit.warning("test_run.refused", course_id: course_id, by: instructor.id)
+        {:error, :forbidden}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -349,8 +364,13 @@ defmodule Athena.Learning.TestRuns do
     |> Ecto.Multi.update(:session, TestRunSession.changeset(session, %{status: :cleaned_up}))
     |> Repo.transaction()
     |> case do
-      {:ok, _changes} -> :ok
-      {:error, _step, reason, _changes} -> {:error, reason}
+      {:ok, _changes} ->
+        Audit.event("test_run.cleaned_up", session_id: session.id, course_id: session.course_id)
+        :ok
+
+      {:error, _step, reason, _changes} ->
+        Audit.error("test_run.cleanup_failed", session_id: session.id, reason: inspect(reason))
+        {:error, reason}
     end
   end
 

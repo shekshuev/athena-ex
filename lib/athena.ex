@@ -12,6 +12,9 @@ defmodule Athena do
     exports: [
       Repo,
       TimeZones,
+      # The web layer records domain events too (a logout is one), so the
+      # audit trail is part of the context's public surface.
+      Audit,
       Identity,
       Identity.Account,
       Identity.Accounts,

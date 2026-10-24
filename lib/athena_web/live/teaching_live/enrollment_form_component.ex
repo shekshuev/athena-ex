@@ -20,6 +20,7 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponent do
     {:ok,
      socket
      |> assign(assigns)
+     |> assign_new(:course_type, fn -> :standard end)
      |> assign(:search_query, "")
      |> assign(:search_results, [])
      |> assign(:selected_course, nil)
@@ -35,7 +36,11 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponent do
   @impl true
   def handle_event("search_courses", %{"value" => query}, socket) do
     if String.length(query) >= 2 do
-      courses = Content.search_courses_by_title(socket.assigns.current_user, query)
+      courses =
+        Content.search_courses_by_title(socket.assigns.current_user, query,
+          type: socket.assigns.course_type
+        )
+
       {:noreply, assign(socket, search_query: query, search_results: courses)}
     else
       {:noreply, assign(socket, search_query: query, search_results: [])}
@@ -56,7 +61,12 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponent do
   end
 
   def handle_event("save", _, %{assigns: %{selected_course: nil}} = socket) do
-    {:noreply, assign(socket, error_msg: gettext("Please select a course."))}
+    msg =
+      if socket.assigns.course_type == :competition,
+        do: gettext("Please select a competition."),
+        else: gettext("Please select a course.")
+
+    {:noreply, assign(socket, error_msg: msg)}
   end
 
   def handle_event("save", _, socket) do
@@ -103,7 +113,11 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponent do
       <form id="enrollment-form" phx-submit="save" phx-target={@myself} class="flex flex-col gap-6">
         <div class="form-control w-full relative">
           <label class="label">
-            <span class="label-text font-bold">{gettext("Search Course by Title")}</span>
+            <span class="label-text font-bold">
+              {if @course_type == :competition,
+                do: gettext("Search Competition by Title"),
+                else: gettext("Search Course by Title")}
+            </span>
           </label>
 
           <%= if @selected_course do %>
@@ -170,7 +184,9 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponent do
             {gettext("Cancel")}
           </.button>
           <.button type="submit" variant="primary" disabled={is_nil(@selected_course)}>
-            {gettext("Assign Course")}
+            {if @course_type == :competition,
+              do: gettext("Assign Competition"),
+              else: gettext("Assign Course")}
           </.button>
         </div>
       </form>

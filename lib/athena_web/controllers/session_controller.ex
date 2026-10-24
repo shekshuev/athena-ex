@@ -8,6 +8,7 @@ defmodule AthenaWeb.SessionController do
 
   use AthenaWeb, :controller
   alias Athena.Identity
+  alias Athena.Audit
 
   @doc """
   Creates a new session for the user if credentials are valid.
@@ -41,6 +42,8 @@ defmodule AthenaWeb.SessionController do
   """
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, _params) do
+    Audit.event("auth.logged_out", account_id: get_session(conn, :account_id))
+
     conn
     |> clear_session()
     |> put_flash(:info, gettext("Logged out successfully."))

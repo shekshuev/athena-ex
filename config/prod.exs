@@ -13,7 +13,12 @@ config :swoosh, api_client: Swoosh.ApiClient.Req
 # Disable Swoosh Local Memory Storage
 config :swoosh, local: false
 
-# Do not print debug messages in production
+# No debug in production: the per-callback tracing in AthenaWeb.Hooks.Trace
+# and Ecto's query logs are :debug and stay off. What production records
+# instead are the domain events in `Athena.Audit` ("course created", "answer
+# submitted", "submission graded", ...), which are :info and carry the same
+# `trace=` correlation id. LOG_LEVEL=debug (see config/runtime.exs) turns the
+# step-by-step detail on temporarily when an incident needs it.
 config :logger, level: :info
 
 # Runtime production configuration, including reading

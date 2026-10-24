@@ -116,12 +116,12 @@ defmodule Athena.Content.Tiptap do
     if Map.has_key?(mark, :attrs), do: %{mark | attrs: attrs}, else: Map.put(mark, "attrs", attrs)
   end
 
-  defp fetch(%{} = map, key) when is_atom(key) do
-    case Map.fetch(map, Atom.to_string(key)) do
+  # Marks come out of jsonb string-keyed, but a doc built in Elixir (a seed,
+  # an import) may be atom-keyed, so look for both spellings of the key.
+  defp fetch(%{} = mark, key) when is_atom(key) do
+    case Map.fetch(mark, Atom.to_string(key)) do
       {:ok, value} -> value
-      :error -> Map.get(map, key)
+      :error -> Map.get(mark, key)
     end
   end
-
-  defp fetch(_other, _key), do: nil
 end

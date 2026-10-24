@@ -14,6 +14,7 @@ defmodule AthenaWeb.TeachingLive.Teams do
   alias Athena.Learning.Cohort
   alias Athena.Identity
   alias AthenaWeb.TeachingLive.TeamFormComponent
+  import AthenaWeb.TeachingLive.InstructorComponents
 
   on_mount {AthenaWeb.Hooks.Permission, "teams.read"}
 
@@ -22,19 +23,23 @@ defmodule AthenaWeb.TeachingLive.Teams do
     {:ok,
      socket
      |> assign(cohort_to_delete: nil)
+     |> assign(:instructor_options, instructor_options(socket.assigns.current_user))
      |> stream(:cohorts, [])}
   end
 
   @impl true
   def handle_params(params, _url, socket) do
     search = Map.get(params, "search", "")
+    instructor_id = Map.get(params, "instructor_id", "")
     flop_params = Map.put(params, "filters", type_filters(search))
 
-    case Learning.list_cohorts(socket.assigns.current_user, flop_params) do
+    case Learning.list_cohorts(socket.assigns.current_user, flop_params,
+           instructor_id: instructor_id
+         ) do
       {:ok, {cohorts, meta}} ->
         socket =
           socket
-          |> assign(meta: meta, search: search)
+          |> assign(meta: meta, search: search, instructor_id: instructor_id)
           |> stream(:cohorts, cohorts, reset: true)
           |> apply_action(socket.assigns.live_action, params)
 
@@ -45,13 +50,24 @@ defmodule AthenaWeb.TeachingLive.Teams do
     end
   end
 
-  defp type_filters(""), do: %{"0" => %{"field" => "type", "op" => "==", "value" => "team"}}
+  # This list is scoped to its own cohort type; without it the academic
+  # cohorts and the competition teams show up in each other's list.
+  defp type_filters("") do
+    %{"0" => %{"field" => "type", "op" => "==", "value" => "team"}}
+  end
 
   defp type_filters(search) do
     %{
       "0" => %{"field" => "type", "op" => "==", "value" => "team"},
       "1" => %{"field" => "name", "op" => "ilike_and", "value" => search}
     }
+  end
+
+  defp instructor_options(user) do
+    user
+    |> Learning.list_all_instructors()
+    |> Enum.map(&{short_name(&1), &1.id})
+    |> Enum.sort_by(fn {label, _id} -> label end)
   end
 
   defp apply_action(socket, :index, _params) do
@@ -64,7 +80,7 @@ defmodule AthenaWeb.TeachingLive.Teams do
     else
       socket
       |> put_flash(:error, gettext("You don't have permission to create teams."))
-      |> push_patch(to: ~p"/teaching/teams")
+      |> push_patch(to: ~p"/teaching/teams?#{build_query_params(socket.assigns, %{})}")
     end
   end
 
@@ -76,19 +92,26 @@ defmodule AthenaWeb.TeachingLive.Teams do
         else
           socket
           |> put_flash(:error, gettext("Permission denied."))
-          |> push_patch(to: ~p"/teaching/teams")
+          |> push_patch(to: ~p"/teaching/teams?#{build_query_params(socket.assigns, %{})}")
         end
 
       {:error, _} ->
         socket
         |> put_flash(:error, gettext("Not found."))
-        |> push_patch(to: ~p"/teaching/teams")
+        |> push_patch(to: ~p"/teaching/teams?#{build_query_params(socket.assigns, %{})}")
     end
   end
 
   @impl true
-  def handle_event("search", %{"search" => search}, socket) do
-    params = build_query_params(socket.assigns, %{"search" => search, "page" => 1})
+  def handle_event("update_filters", filters, socket) do
+    overrides =
+      %{
+        "search" => Map.get(filters, "search", socket.assigns.search),
+        "instructor_id" => Map.get(filters, "instructor_id", socket.assigns.instructor_id),
+        "page" => 1
+      }
+
+    params = build_query_params(socket.assigns, overrides)
     {:noreply, push_patch(socket, to: ~p"/teaching/teams?#{params}")}
   end
 
@@ -106,7 +129,7 @@ defmodule AthenaWeb.TeachingLive.Teams do
           {:noreply,
            socket
            |> put_flash(:error, gettext("Permission denied."))
-           |> push_patch(to: ~p"/teaching/teams")}
+           |> push_patch(to: ~p"/teaching/teams?#{build_query_params(socket.assigns, %{})}")}
         end
 
       {:error, _} ->
@@ -159,24 +182,36 @@ defmodule AthenaWeb.TeachingLive.Teams do
         </.button>
       </div>
 
-      <div class="flex gap-4">
-        <.form for={nil} phx-change="search" phx-submit="search" class="w-full max-w-sm">
-          <div class="relative">
-            <.icon
-              name="hero-magnifying-glass"
-              class="absolute left-3 top-3.5 size-5 text-base-content/50 z-10"
-            />
-            <.input
-              type="text"
-              name="search"
-              value={@search}
-              placeholder={gettext("Search by name...")}
-              class="input input-bordered w-full pl-10"
-              phx-debounce="500"
-            />
-          </div>
-        </.form>
-      </div>
+      <.form
+        for={nil}
+        phx-change="update_filters"
+        phx-submit="update_filters"
+        class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+      >
+        <div class="relative">
+          <.icon
+            name="hero-magnifying-glass"
+            class="absolute left-3 top-3.5 size-5 text-base-content/50 z-10"
+          />
+          <.input
+            type="text"
+            name="search"
+            value={@search}
+            placeholder={gettext("Search by name...")}
+            class="input input-bordered w-full pl-10"
+            phx-debounce="500"
+          />
+        </div>
+
+        <.input
+          :if={@instructor_options != []}
+          type="select"
+          name="instructor_id"
+          value={@instructor_id}
+          options={[{gettext("Any coach"), ""} | @instructor_options]}
+          class="select select-bordered w-full"
+        />
+      </.form>
 
       <% path_fn = fn overrides -> ~p"/teaching/teams?#{build_query_params(assigns, overrides)}" end %>
 
@@ -189,11 +224,7 @@ defmodule AthenaWeb.TeachingLive.Teams do
             <%= if cohort.instructors == [] do %>
               <span class="text-sm opacity-50 italic">{gettext("No coaches")}</span>
             <% else %>
-              <%= for instructor <- cohort.instructors do %>
-                <span class="badge badge-sm badge-neutral badge-soft">
-                  {instructor.account.login}
-                </span>
-              <% end %>
+              <.instructor_chip :for={instructor <- cohort.instructors} instructor={instructor} />
             <% end %>
           </div>
         </:col>
@@ -292,6 +323,7 @@ defmodule AthenaWeb.TeachingLive.Teams do
 
     %{
       "search" => assigns.search,
+      "instructor_id" => assigns.instructor_id,
       "page" => meta.current_page,
       "page_size" => meta.page_size,
       "order_by" => order_by,

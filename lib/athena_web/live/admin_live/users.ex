@@ -312,7 +312,9 @@ defmodule AthenaWeb.AdminLive.Users do
           <span class="font-mono text-xs opacity-50">{String.slice(acc.id, 0..7)}</span>
         </:col>
         <:col :let={{_id, acc}} label={gettext("Login")} sort="login">
-          <span class="font-bold">{acc.login}</span>
+          <.link navigate={~p"/profile/#{acc.id}"} class="font-bold text-primary">
+            {acc.login}
+          </.link>
         </:col>
         <:col :let={{_id, acc}} label={gettext("Full Name")}>
           {if acc.profile, do: Profile.full_name(acc.profile), else: "–"}

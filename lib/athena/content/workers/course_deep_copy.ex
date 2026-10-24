@@ -20,6 +20,7 @@ defmodule Athena.Content.Workers.CourseDeepCopy do
   import Ecto.Query
 
   alias Athena.Repo
+  alias Athena.Audit
   alias Athena.Content.{Course, Section, Block, Blocks, CourseLibraryBlock}
   alias Athena.Media
   alias Athena.Media.File, as: MediaFile
@@ -28,6 +29,8 @@ defmodule Athena.Content.Workers.CourseDeepCopy do
   def perform(%Oban.Job{
         args: %{"new_course_id" => new_course_id, "source_course_id" => source_course_id}
       }) do
+    Audit.put_trace("copy-#{new_course_id}")
+
     case Repo.get(Course, new_course_id) do
       nil ->
         Logger.warning("[Content.CourseDeepCopy] Course #{new_course_id} no longer exists")
@@ -38,10 +41,21 @@ defmodule Athena.Content.Workers.CourseDeepCopy do
 
         case copy_course(source_course_id, new_course_id) do
           :ok ->
+            Audit.event("course.copy_finished",
+              course_id: new_course_id,
+              source_course_id: source_course_id
+            )
+
             finish(new_course, :ready)
             :ok
 
           {:error, reason} ->
+            Audit.error("course.copy_failed",
+              course_id: new_course_id,
+              source_course_id: source_course_id,
+              reason: inspect(reason)
+            )
+
             Logger.error(
               "[Content.CourseDeepCopy] Copy #{source_course_id} -> #{new_course_id} failed: #{inspect(reason)}"
             )

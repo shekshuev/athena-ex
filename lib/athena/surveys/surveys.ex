@@ -10,24 +10,21 @@ defmodule Athena.Surveys.Surveys do
   alias Athena.Identity
   alias Athena.Identity.Acl
   alias Athena.Repo
+  alias Athena.Audit
   alias Athena.Surveys.{Survey, SurveyBranch, SurveyQuestion, SurveyResponse}
 
   @doc """
   Flop-paginated list of the surveys `user` may read, scoped through
   `Acl.scope_query/3` so a role holding `surveys.read` with the `own_only`
-  policy sees only its own. Archived surveys are excluded unless asked for.
+  policy sees only its own.
   """
-  @spec list_for_user(map(), map(), keyword()) ::
+  @spec list_for_user(map(), map()) ::
           {:ok, {[Survey.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
-  def list_for_user(user, params \\ %{}, opts \\ []) do
+  def list_for_user(user, params \\ %{}) do
     from(s in Survey)
     |> Acl.scope_query(user, "surveys.read")
-    |> exclude_archived(Keyword.get(opts, :include_archived, false))
     |> Flop.validate_and_run(params, for: Survey)
   end
-
-  defp exclude_archived(query, true), do: query
-  defp exclude_archived(query, false), do: where(query, [s], s.status != :archived)
 
   @doc "Fetches a survey without its questions. Returns `nil` if missing."
   @spec get_survey(binary()) :: Survey.t() | nil
@@ -54,6 +51,7 @@ defmodule Athena.Surveys.Surveys do
     %Survey{}
     |> Survey.changeset(Map.put(normalize(attrs), "owner_id", user.id))
     |> Repo.insert()
+    |> Audit.on_ok("survey.created", &[survey_id: &1.id, title: &1.title, by: user.id])
   end
 
   @doc """
@@ -103,11 +101,16 @@ defmodule Athena.Surveys.Surveys do
   @spec publish(Survey.t()) :: {:ok, Survey.t()} | {:error, Ecto.Changeset.t() | atom()}
   def publish(%Survey{} = survey) do
     if question_count(survey) == 0 do
+      Audit.warning("survey.publish_refused", survey_id: survey.id, reason: :no_questions)
       {:error, :no_questions}
     else
       survey
       |> Ecto.Changeset.change(%{status: :published, published_at: now()})
       |> Repo.update()
+      |> Audit.on_ok(
+        "survey.published",
+        &[survey_id: &1.id, title: &1.title, questions: question_count(&1)]
+      )
     end
   end
 
@@ -117,6 +120,7 @@ defmodule Athena.Surveys.Surveys do
     survey
     |> Ecto.Changeset.change(%{status: :closed, closed_at: now()})
     |> Repo.update()
+    |> Audit.on_ok("survey.closed", &[survey_id: &1.id, title: &1.title])
   end
 
   @doc "Reopens a closed survey."
@@ -125,18 +129,7 @@ defmodule Athena.Surveys.Surveys do
     survey
     |> Ecto.Changeset.change(%{status: :published, closed_at: nil})
     |> Repo.update()
-  end
-
-  @doc """
-  Archives a survey: hides it from the default list while keeping every
-  response. This is the soft delete, and the one to reach for - see
-  `delete_survey/1`.
-  """
-  @spec archive(Survey.t()) :: {:ok, Survey.t()} | {:error, Ecto.Changeset.t()}
-  def archive(%Survey{} = survey) do
-    survey
-    |> Ecto.Changeset.change(%{status: :archived})
-    |> Repo.update()
+    |> Audit.on_ok("survey.reopened", &[survey_id: &1.id, title: &1.title])
   end
 
   @doc """
@@ -144,16 +137,19 @@ defmodule Athena.Surveys.Surveys do
   answer (the schema cascades).
 
   Refuses when any response exists: that data cannot be reconstructed and is
-  usually the only record of what students said. `archive/1` is the right call
-  for "get it out of my list".
+  usually the only record of what students said. Close such a survey instead,
+  or take a fresh copy with `duplicate_as_version/2`.
   """
   @spec delete_survey(Survey.t()) ::
           {:ok, Survey.t()} | {:error, :has_responses | Ecto.Changeset.t()}
   def delete_survey(%Survey{} = survey) do
     if has_responses?(survey) do
+      Audit.warning("survey.delete_refused", survey_id: survey.id, reason: :has_responses)
       {:error, :has_responses}
     else
-      Repo.delete(survey)
+      survey
+      |> Repo.delete()
+      |> Audit.on_ok("survey.deleted", &[survey_id: &1.id, title: &1.title])
     end
   end
 

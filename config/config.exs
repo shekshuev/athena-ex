@@ -51,7 +51,25 @@ config :esbuild,
 # Configure Elixir's Logger
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id]
+  # `trace`/`user`/`lv`/`route` are set by AthenaWeb.Hooks.Trace and
+  # AthenaWeb.Plugs.Trace, and are what makes one request's lines greppable.
+  metadata: [:request_id, :trace, :user, :lv, :route]
+
+# Keys whose values are replaced with "[FILTERED]" wherever parameters are
+# logged - by Phoenix for HTTP requests, and by AthenaWeb.Hooks.Trace for
+# LiveView events, which both go through `Phoenix.Logger.filter_values/1`.
+# Matching is by substring on the key, so "password" also covers
+# "password_confirmation" and "current_password". Phoenix's own default is
+# just ["password"], which is not enough once tracing runs in production.
+config :phoenix, :filter_parameters, [
+  "password",
+  "token",
+  "secret",
+  "api_key",
+  "authorization",
+  "cookie",
+  "code_verifier"
+]
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason

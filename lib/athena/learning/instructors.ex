@@ -30,6 +30,20 @@ defmodule Athena.Learning.Instructors do
   end
 
   @doc """
+  Every instructor the user may read, accounts attached - for the instructor
+  filter on the cohort and team lists, which needs the whole set rather than
+  a page of it. There are far fewer instructors than students, so this is
+  deliberately unpaginated.
+  """
+  @spec list_all_instructors(map()) :: [Instructor.t()]
+  def list_all_instructors(user) do
+    from(i in Instructor)
+    |> Identity.scope_query(user, "instructors.read")
+    |> Repo.all()
+    |> enrich_with_accounts()
+  end
+
+  @doc """
   Searches for instructors by their title or their associated account login.
 
   Deliberately does **not** gate on `"instructors.read"` (nor, for the
