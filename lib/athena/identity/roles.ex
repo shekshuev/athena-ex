@@ -7,6 +7,7 @@ defmodule Athena.Identity.Roles do
   """
 
   alias Athena.Repo
+  alias Athena.Audit
   alias Athena.Identity.{Role, Account, Acl}
   import Ecto.Query
 
@@ -72,8 +73,11 @@ defmodule Athena.Identity.Roles do
   @spec create_role(map(), map()) :: {:ok, Role.t()} | {:error, Ecto.Changeset.t()}
   def create_role(user, attrs) do
     if Acl.can?(user, "roles.create") do
-      system_create_role(attrs)
+      attrs
+      |> system_create_role()
+      |> Audit.on_ok("role.created", &[role_id: &1.id, name: &1.name, by: user.id])
     else
+      Audit.warning("role.create_refused", by: user.id)
       {:error, :forbidden}
     end
   end
@@ -100,6 +104,13 @@ defmodule Athena.Identity.Roles do
       |> case do
         {:ok, updated_role} ->
           clear_accounts_cache_for_role(updated_role.id)
+
+          Audit.event("role.updated",
+            role_id: updated_role.id,
+            name: updated_role.name,
+            permissions: length(updated_role.permissions || []),
+            by: user.id
+          )
 
           Phoenix.PubSub.broadcast(
             Athena.PubSub,
@@ -130,7 +141,9 @@ defmodule Athena.Identity.Roles do
       |> Ecto.Multi.delete(:role, role_delete_changeset(role))
       |> Repo.transaction()
       |> finalize_delete()
+      |> Audit.on_ok("role.deleted", fn _ -> [role_id: role.id, name: role.name, by: user.id] end)
     else
+      Audit.warning("role.delete_refused", role_id: role.id, by: user.id)
       {:error, :forbidden}
     end
   end

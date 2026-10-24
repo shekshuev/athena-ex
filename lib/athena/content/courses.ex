@@ -5,6 +5,7 @@ defmodule Athena.Content.Courses do
 
   import Ecto.Query
   alias Athena.Repo
+  alias Athena.Audit
   alias Athena.Content.{Course, CourseShare, CourseLibraryBlock, LibraryBlock}
   alias Athena.Content.Workers.CourseDeepCopy
   alias Athena.Identity
@@ -88,7 +89,12 @@ defmodule Athena.Content.Courses do
       %Course{}
       |> Course.changeset(attrs)
       |> Repo.insert()
+      |> Audit.on_ok(
+        "course.created",
+        &[course_id: &1.id, type: &1.type, title: &1.title, by: user.id]
+      )
     else
+      Audit.warning("course.create_refused", by: user.id)
       {:error, :forbidden}
     end
   end
@@ -103,7 +109,12 @@ defmodule Athena.Content.Courses do
       course
       |> Course.changeset(attrs)
       |> Repo.update()
+      |> Audit.on_ok(
+        "course.updated",
+        &[course_id: &1.id, type: &1.type, status: &1.status, by: user.id]
+      )
     else
+      Audit.warning("course.update_refused", course_id: course.id, by: user.id)
       {:error, :forbidden}
     end
   end
@@ -118,7 +129,9 @@ defmodule Athena.Content.Courses do
       course
       |> Ecto.Changeset.change(%{deleted_at: DateTime.utc_now(:second)})
       |> Repo.update()
+      |> Audit.on_ok("course.deleted", &[course_id: &1.id, type: &1.type, by: user.id])
     else
+      Audit.warning("course.delete_refused", course_id: course.id, by: user.id)
       {:error, :forbidden}
     end
   end
@@ -256,6 +269,10 @@ defmodule Athena.Content.Courses do
       {:error, :course, changeset, _changes} -> {:error, changeset}
       {:error, :job, reason, _changes} -> {:error, reason}
     end
+    |> Audit.on_ok(
+      "course.copy_started",
+      &[course_id: &1.id, source_course_id: source_course.id, by: user.id]
+    )
   end
 
   @doc """

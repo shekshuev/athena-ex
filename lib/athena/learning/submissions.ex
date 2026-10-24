@@ -8,6 +8,7 @@ defmodule Athena.Learning.Submissions do
 
   import Ecto.Query
   alias Athena.{Repo, Content}
+  alias Athena.Audit
 
   alias Athena.Learning.{
     Submission,
@@ -252,6 +253,17 @@ defmodule Athena.Learning.Submissions do
       {:ok, %{submission: submission}} -> {:ok, submission}
       {:error, _failed_op, changeset, _changes} -> {:error, changeset}
     end
+    |> Audit.on_ok(
+      "submission.submitted",
+      &[
+        submission_id: &1.id,
+        block_id: &1.block_id,
+        cohort_id: &1.cohort_id,
+        account_id: &1.account_id,
+        status: &1.status,
+        resubmit: not is_nil(existing_draft)
+      ]
+    )
   end
 
   @doc """
@@ -325,8 +337,21 @@ defmodule Athena.Learning.Submissions do
       |> Repo.exists?()
 
     if has_access? do
-      system_update_submission(submission, attrs)
+      submission
+      |> system_update_submission(attrs)
+      |> Audit.on_ok(
+        "submission.graded_by_instructor",
+        &[
+          submission_id: &1.id,
+          block_id: &1.block_id,
+          account_id: &1.account_id,
+          status: &1.status,
+          score: &1.score,
+          by: user.id
+        ]
+      )
     else
+      Audit.warning("submission.grade_refused", submission_id: submission.id, by: user.id)
       {:error, :forbidden}
     end
   end
@@ -785,6 +810,16 @@ defmodule Athena.Learning.Submissions do
       content: %{"started_at" => DateTime.utc_now() |> DateTime.to_iso8601()}
     })
     |> Repo.insert()
+    |> Audit.on_ok(
+      "exam.started",
+      &[
+        submission_id: &1.id,
+        block_id: &1.block_id,
+        cohort_id: &1.cohort_id,
+        account_id: &1.account_id,
+        expires_at: &1.expires_at
+      ]
+    )
   end
 
   @doc """
@@ -809,6 +844,13 @@ defmodule Athena.Learning.Submissions do
       end
 
     if limit_check == :gt do
+      Audit.warning("exam.answer_rejected",
+        submission_id: parent_submission.id,
+        block_id: question_block_id,
+        account_id: account_id,
+        reason: :time_limit_exceeded
+      )
+
       {:error, :time_limit_exceeded}
     else
       system_save_question_submission(

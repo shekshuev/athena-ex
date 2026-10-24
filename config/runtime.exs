@@ -54,6 +54,20 @@ if config_env() != :test do
   config :athena, :app_timezone, app_timezone
 end
 
+# The per-environment default is in config/{dev,prod,test}.exs; prod runs at
+# :info, which keeps the `Athena.Audit` domain events and drops the :debug
+# step-by-step tracing. This is the override for a deployed release -
+# LOG_LEVEL=debug to turn that detail on while chasing an incident - without a
+# rebuild. Anything outside the known levels is ignored in favour of the
+# environment's own default.
+case System.get_env("LOG_LEVEL") do
+  level when level in ~w(emergency alert critical error warning notice info debug) ->
+    config :logger, level: String.to_existing_atom(level)
+
+  _unset_or_invalid ->
+    :ok
+end
+
 if server_role == "runner" do
   config :athena, ecto_repos: []
 end

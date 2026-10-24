@@ -5,6 +5,7 @@ defmodule Athena.Announcements do
 
   import Ecto.Query
   alias Athena.Repo
+  alias Athena.Audit
   alias Athena.Announcements.Announcement
   alias Athena.{Identity, Learning}
 
@@ -117,7 +118,18 @@ defmodule Athena.Announcements do
       %Announcement{}
       |> Announcement.changeset(attrs |> decode_body() |> Map.put("author_id", user.id))
       |> Repo.insert()
+      |> Audit.on_ok(
+        "announcement.created",
+        &[
+          announcement_id: &1.id,
+          scope: &1.scope,
+          cohort_id: &1.cohort_id,
+          important: &1.important,
+          by: user.id
+        ]
+      )
     else
+      Audit.warning("announcement.create_refused", scope: scope, by: user.id)
       {:error, :forbidden}
     end
   end
@@ -147,7 +159,16 @@ defmodule Athena.Announcements do
       announcement
       |> Announcement.changeset(decode_body(attrs))
       |> Repo.update()
+      |> Audit.on_ok(
+        "announcement.updated",
+        &[announcement_id: &1.id, scope: &1.scope, cohort_id: &1.cohort_id, by: user.id]
+      )
     else
+      Audit.warning("announcement.update_refused",
+        announcement_id: announcement.id,
+        by: user.id
+      )
+
       {:error, :forbidden}
     end
   end
@@ -157,8 +178,18 @@ defmodule Athena.Announcements do
           {:ok, Announcement.t()} | {:error, Ecto.Changeset.t()} | {:error, :forbidden}
   def delete_announcement(user, %Announcement{} = announcement) do
     if Identity.can?(user, "announcements.delete") and can_manage?(user, announcement) do
-      Repo.delete(announcement)
+      announcement
+      |> Repo.delete()
+      |> Audit.on_ok(
+        "announcement.deleted",
+        &[announcement_id: &1.id, scope: &1.scope, by: user.id]
+      )
     else
+      Audit.warning("announcement.delete_refused",
+        announcement_id: announcement.id,
+        by: user.id
+      )
+
       {:error, :forbidden}
     end
   end

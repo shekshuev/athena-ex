@@ -8,6 +8,7 @@ defmodule Athena.Learning.Enrollments do
 
   import Ecto.Query
   alias Athena.Repo
+  alias Athena.Audit
 
   alias Athena.Learning.{
     Enrollment,
@@ -84,8 +85,25 @@ defmodule Athena.Learning.Enrollments do
          {:ok, course} <- Content.get_course(course_id) do
       if Cohorts.can_manage_cohort_processes?(user, cohort) and
            Content.can_edit_course?(user, course) do
-        insert_if_types_match(cohort, course, status)
+        cohort
+        |> insert_if_types_match(course, status)
+        |> Audit.on_ok(
+          "enrollment.cohort_enrolled",
+          &[
+            enrollment_id: &1.id,
+            cohort_id: &1.cohort_id,
+            course_id: &1.course_id,
+            status: &1.status,
+            by: user.id
+          ]
+        )
       else
+        Audit.warning("enrollment.refused",
+          cohort_id: cohort_id,
+          course_id: course_id,
+          by: user.id
+        )
+
         {:error, :forbidden}
       end
     else
@@ -209,8 +227,25 @@ defmodule Athena.Learning.Enrollments do
     case Content.get_course(user, course_id) do
       {:ok, course} ->
         if Content.can_edit_course?(user, course) do
-          insert_account_if_type_matches(account_id, course, status)
+          account_id
+          |> insert_account_if_type_matches(course, status)
+          |> Audit.on_ok(
+            "enrollment.account_enrolled",
+            &[
+              enrollment_id: &1.id,
+              account_id: &1.account_id,
+              course_id: &1.course_id,
+              status: &1.status,
+              by: user.id
+            ]
+          )
         else
+          Audit.warning("enrollment.refused",
+            account_id: account_id,
+            course_id: course_id,
+            by: user.id
+          )
+
           {:error, :forbidden}
         end
 
@@ -270,7 +305,12 @@ defmodule Athena.Learning.Enrollments do
       enrollment
       |> Enrollment.changeset(attrs)
       |> Repo.update()
+      |> Audit.on_ok(
+        "enrollment.updated",
+        &[enrollment_id: &1.id, course_id: &1.course_id, status: &1.status, by: user.id]
+      )
     else
+      Audit.warning("enrollment.update_refused", enrollment_id: enrollment.id, by: user.id)
       {:error, :forbidden}
     end
   end
@@ -280,8 +320,20 @@ defmodule Athena.Learning.Enrollments do
   """
   def delete_enrollment(user, %Enrollment{} = enrollment) do
     if can_manage_enrollment?(user, enrollment) do
-      Repo.delete(enrollment)
+      enrollment
+      |> Repo.delete()
+      |> Audit.on_ok(
+        "enrollment.deleted",
+        &[
+          enrollment_id: &1.id,
+          cohort_id: &1.cohort_id,
+          account_id: &1.account_id,
+          course_id: &1.course_id,
+          by: user.id
+        ]
+      )
     else
+      Audit.warning("enrollment.delete_refused", enrollment_id: enrollment.id, by: user.id)
       {:error, :forbidden}
     end
   end

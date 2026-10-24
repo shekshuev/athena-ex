@@ -5,6 +5,7 @@ defmodule Athena.Media do
 
   import Ecto.Query
   alias Athena.Repo
+  alias Athena.Audit
   alias Athena.Media.{File, FileShare, Quota}
   alias Athena.Identity.{Acl, Account, Role}
 
@@ -208,6 +209,7 @@ defmodule Athena.Media do
       on_conflict: {:replace, [:limit_bytes, :updated_at]},
       conflict_target: :role_id
     )
+    |> Audit.on_ok("media.quota_set", &[role_id: &1.role_id, limit_bytes: &1.limit_bytes])
   end
 
   @doc """
@@ -392,6 +394,10 @@ defmodule Athena.Media do
     %File{}
     |> File.changeset(attrs)
     |> Repo.insert()
+    |> Audit.on_ok(
+      "media.file_uploaded",
+      &[file_id: &1.id, context: &1.context, size: &1.size, owner_id: &1.owner_id]
+    )
   end
 
   @doc """
@@ -401,9 +407,15 @@ defmodule Athena.Media do
   def delete_file(%File{} = file) do
     case ExAws.S3.delete_object(file.bucket, file.key) |> ExAws.request() do
       {:ok, _} ->
-        Repo.delete(file)
+        file
+        |> Repo.delete()
+        |> Audit.on_ok(
+          "media.file_deleted",
+          &[file_id: &1.id, context: &1.context, owner_id: &1.owner_id]
+        )
 
       error ->
+        Audit.error("media.file_delete_failed", file_id: file.id, reason: inspect(error))
         error
     end
   end

@@ -10,6 +10,7 @@ defmodule Athena.Surveys.Surveys do
   alias Athena.Identity
   alias Athena.Identity.Acl
   alias Athena.Repo
+  alias Athena.Audit
   alias Athena.Surveys.{Survey, SurveyBranch, SurveyQuestion, SurveyResponse}
 
   @doc """
@@ -50,6 +51,7 @@ defmodule Athena.Surveys.Surveys do
     %Survey{}
     |> Survey.changeset(Map.put(normalize(attrs), "owner_id", user.id))
     |> Repo.insert()
+    |> Audit.on_ok("survey.created", &[survey_id: &1.id, title: &1.title, by: user.id])
   end
 
   @doc """
@@ -99,11 +101,16 @@ defmodule Athena.Surveys.Surveys do
   @spec publish(Survey.t()) :: {:ok, Survey.t()} | {:error, Ecto.Changeset.t() | atom()}
   def publish(%Survey{} = survey) do
     if question_count(survey) == 0 do
+      Audit.warning("survey.publish_refused", survey_id: survey.id, reason: :no_questions)
       {:error, :no_questions}
     else
       survey
       |> Ecto.Changeset.change(%{status: :published, published_at: now()})
       |> Repo.update()
+      |> Audit.on_ok(
+        "survey.published",
+        &[survey_id: &1.id, title: &1.title, questions: question_count(&1)]
+      )
     end
   end
 
@@ -113,6 +120,7 @@ defmodule Athena.Surveys.Surveys do
     survey
     |> Ecto.Changeset.change(%{status: :closed, closed_at: now()})
     |> Repo.update()
+    |> Audit.on_ok("survey.closed", &[survey_id: &1.id, title: &1.title])
   end
 
   @doc "Reopens a closed survey."
@@ -121,6 +129,7 @@ defmodule Athena.Surveys.Surveys do
     survey
     |> Ecto.Changeset.change(%{status: :published, closed_at: nil})
     |> Repo.update()
+    |> Audit.on_ok("survey.reopened", &[survey_id: &1.id, title: &1.title])
   end
 
   @doc """
@@ -135,9 +144,12 @@ defmodule Athena.Surveys.Surveys do
           {:ok, Survey.t()} | {:error, :has_responses | Ecto.Changeset.t()}
   def delete_survey(%Survey{} = survey) do
     if has_responses?(survey) do
+      Audit.warning("survey.delete_refused", survey_id: survey.id, reason: :has_responses)
       {:error, :has_responses}
     else
-      Repo.delete(survey)
+      survey
+      |> Repo.delete()
+      |> Audit.on_ok("survey.deleted", &[survey_id: &1.id, title: &1.title])
     end
   end
 

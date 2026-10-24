@@ -54,6 +54,10 @@ defmodule AthenaWeb do
     quote do
       use Phoenix.LiveView
 
+      # Request tracing for every LiveView, attached here rather than per
+      # module so a new LiveView cannot forget it. See AthenaWeb.Hooks.Trace.
+      on_mount AthenaWeb.Hooks.Trace
+
       unquote(html_helpers())
     end
   end

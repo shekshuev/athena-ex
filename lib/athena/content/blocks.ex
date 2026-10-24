@@ -8,6 +8,7 @@ defmodule Athena.Content.Blocks do
 
   import Ecto.Query
   alias Athena.{Repo, Media, Identity}
+  alias Athena.Audit
   alias Athena.Content.{Block, Course, Section, Policy}
   alias Athena.Identity.Account
 
@@ -200,7 +201,12 @@ defmodule Athena.Content.Blocks do
       %Block{}
       |> Block.changeset(merged_attrs)
       |> Repo.insert()
+      |> Audit.on_ok(
+        "block.created",
+        &[block_id: &1.id, section_id: &1.section_id, type: &1.type, by: user.id]
+      )
     else
+      Audit.warning("block.create_refused", section_id: section_id, by: user.id)
       {:error, :forbidden}
     end
   end
@@ -227,7 +233,12 @@ defmodule Athena.Content.Blocks do
       "after_id" => block.id
     }
 
-    create_block(user, attrs)
+    attrs
+    |> then(&create_block(user, &1))
+    |> Audit.on_ok(
+      "block.duplicated",
+      &[block_id: &1.id, source_block_id: block.id, section_id: &1.section_id, by: user.id]
+    )
   end
 
   @doc false
@@ -250,7 +261,12 @@ defmodule Athena.Content.Blocks do
       block
       |> Block.changeset(attrs)
       |> Repo.update()
+      |> Audit.on_ok(
+        "block.updated",
+        &[block_id: &1.id, section_id: &1.section_id, type: &1.type, by: user.id]
+      )
     else
+      Audit.warning("block.update_refused", block_id: block.id, by: user.id)
       {:error, :forbidden}
     end
   end
@@ -279,8 +295,24 @@ defmodule Athena.Content.Blocks do
         order: calculate_next_order(new_section_id)
       })
       |> Repo.update()
+      |> Audit.on_ok(
+        "block.moved",
+        &[
+          block_id: &1.id,
+          from_section_id: block.section_id,
+          to_section_id: &1.section_id,
+          by: user.id
+        ]
+      )
     else
-      _ -> {:error, :forbidden}
+      _ ->
+        Audit.warning("block.move_refused",
+          block_id: block.id,
+          to_section_id: new_section_id,
+          by: user.id
+        )
+
+        {:error, :forbidden}
     end
   end
 
@@ -314,7 +346,12 @@ defmodule Athena.Content.Blocks do
       block
       |> Ecto.Changeset.change(%{order: new_order})
       |> Repo.update()
+      |> Audit.on_ok(
+        "block.reordered",
+        &[block_id: &1.id, section_id: &1.section_id, index: new_index, by: user.id]
+      )
     else
+      Audit.warning("block.reorder_refused", block_id: block.id, by: user.id)
       {:error, :forbidden}
     end
   end
@@ -333,8 +370,14 @@ defmodule Athena.Content.Blocks do
           {:ok, Block.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def delete_block(user, %Block{} = block) do
     if can_edit_section?(user, block.section_id) do
-      Repo.delete(block)
+      block
+      |> Repo.delete()
+      |> Audit.on_ok(
+        "block.deleted",
+        &[block_id: &1.id, section_id: &1.section_id, type: &1.type, by: user.id]
+      )
     else
+      Audit.warning("block.delete_refused", block_id: block.id, by: user.id)
       {:error, :forbidden}
     end
   end

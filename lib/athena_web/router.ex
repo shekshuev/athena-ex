@@ -11,6 +11,7 @@ defmodule AthenaWeb.Router do
     plug :put_locale
     plug AthenaWeb.Plugs.PutTimezone
     plug AthenaWeb.Plugs.FetchCurrentUser
+    plug AthenaWeb.Plugs.Trace
   end
 
   pipeline :app_layout do
@@ -19,6 +20,7 @@ defmodule AthenaWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug AthenaWeb.Plugs.Trace
   end
 
   scope "/", AthenaWeb do

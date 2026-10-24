@@ -21,6 +21,7 @@ defmodule Athena.Learning.Cohorts do
   }
 
   alias Athena.{Identity, Content, Messaging}
+  alias Athena.Audit
 
   @doc """
   Retrieves a paginated list of cohorts, scoped by user permissions.
@@ -110,8 +111,14 @@ defmodule Athena.Learning.Cohorts do
           {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()} | {:error, :forbidden}
   def create_cohort(user, attrs) do
     if Identity.can?(user, "cohorts.create") do
-      do_create_cohort(user, attrs)
+      user
+      |> do_create_cohort(attrs)
+      |> Audit.on_ok(
+        "cohort.created",
+        &[cohort_id: &1.id, type: &1.type, name: &1.name, by: user.id]
+      )
     else
+      Audit.warning("cohort.create_refused", by: user.id)
       {:error, :forbidden}
     end
   end
@@ -152,8 +159,14 @@ defmodule Athena.Learning.Cohorts do
           {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()} | {:error, :forbidden}
   def update_cohort(user, %Cohort{} = cohort, attrs) do
     if Identity.can?(user, "cohorts.update", cohort) do
-      do_update_cohort(cohort, attrs)
+      cohort
+      |> do_update_cohort(attrs)
+      |> Audit.on_ok(
+        "cohort.updated",
+        &[cohort_id: &1.id, type: &1.type, name: &1.name, by: user.id]
+      )
     else
+      Audit.warning("cohort.update_refused", cohort_id: cohort.id, by: user.id)
       {:error, :forbidden}
     end
   end
@@ -212,8 +225,11 @@ defmodule Athena.Learning.Cohorts do
   @spec delete_cohort(map(), Cohort.t()) :: {:ok, Cohort.t()} | {:error, Ecto.Changeset.t()}
   def delete_cohort(user, %Cohort{} = cohort) do
     if Identity.can?(user, "cohorts.delete", cohort) do
-      Repo.delete(cohort)
+      cohort
+      |> Repo.delete()
+      |> Audit.on_ok("cohort.deleted", &[cohort_id: &1.id, type: &1.type, by: user.id])
     else
+      Audit.warning("cohort.delete_refused", cohort_id: cohort.id, by: user.id)
       {:error, :forbidden}
     end
   end
@@ -382,7 +398,12 @@ defmodule Athena.Learning.Cohorts do
 
     with :ok <- check_cohort_manage_rights(user, cohort),
          :ok <- validate_no_student_overlap(cohort_id, account_id) do
-      finish_add_student(cohort_id, account_id)
+      cohort_id
+      |> finish_add_student(account_id)
+      |> Audit.on_ok(
+        "cohort.student_added",
+        &[cohort_id: &1.cohort_id, account_id: &1.account_id, by: user.id]
+      )
     end
   end
 
@@ -489,12 +510,23 @@ defmodule Athena.Learning.Cohorts do
             Messaging.remove_cohort_participant(deleted.cohort_id, deleted.account_id)
           end)
 
+          Audit.event("cohort.student_removed",
+            cohort_id: deleted.cohort_id,
+            account_id: deleted.account_id,
+            by: user.id
+          )
+
           result
 
         error ->
           error
       end
     else
+      Audit.warning("cohort.student_remove_refused",
+        cohort_id: membership.cohort_id,
+        by: user.id
+      )
+
       {:error, :forbidden}
     end
   end

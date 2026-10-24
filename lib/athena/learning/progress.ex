@@ -4,6 +4,7 @@ defmodule Athena.Learning.Progress do
   """
   import Ecto.Query
   alias Athena.{Repo, Content}
+  alias Athena.Audit
   alias Athena.Learning.{BlockProgress, CohortMembership, CourseProgressCache, Submission}
   alias Athena.Content.{Block, Section}
 
@@ -38,7 +39,17 @@ defmodule Athena.Learning.Progress do
     case result do
       {:ok, progress} ->
         broadcast_block_completed(account_id, cohort_id, block_id)
-        unless already_completed?, do: bump_course_progress_cache(account_id, cohort_id, block_id)
+
+        unless already_completed? do
+          bump_course_progress_cache(account_id, cohort_id, block_id)
+
+          Audit.event("block.completed",
+            block_id: block_id,
+            account_id: account_id,
+            cohort_id: cohort_id
+          )
+        end
+
         {:ok, progress}
 
       error ->

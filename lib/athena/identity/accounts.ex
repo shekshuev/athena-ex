@@ -12,6 +12,7 @@ defmodule Athena.Identity.Accounts do
 
   import Ecto.Query
   alias Athena.{Repo, Identity, Media}
+  alias Athena.Audit
   alias Athena.Identity.{Account, Acl, Profile}
   alias Athena.Learning.CohortMembership
 
@@ -84,6 +85,14 @@ defmodule Athena.Identity.Accounts do
       |> case do
         {:ok, %{account: updated_account, profile: updated_profile}} ->
           Cachex.del(:account_cache, updated_account.id)
+
+          Audit.event("account.updated_by_admin",
+            account_id: updated_account.id,
+            login: updated_account.login,
+            role_id: updated_account.role_id,
+            status: updated_account.status,
+            by: current_user.id
+          )
 
           Phoenix.PubSub.broadcast(
             Athena.PubSub,
@@ -204,6 +213,10 @@ defmodule Athena.Identity.Accounts do
     %Account{}
     |> Account.changeset(attrs)
     |> Repo.insert()
+    |> Audit.on_ok(
+      "account.created",
+      &[account_id: &1.id, login: &1.login, role_id: &1.role_id, status: &1.status]
+    )
   end
 
   @doc """
@@ -219,6 +232,16 @@ defmodule Athena.Identity.Accounts do
     |> case do
       {:ok, updated_account} ->
         Cachex.del(:account_cache, updated_account.id)
+
+        if updated_account.status != account.status do
+          Audit.event("account.status_changed",
+            account_id: updated_account.id,
+            login: updated_account.login,
+            from: account.status,
+            to: updated_account.status
+          )
+        end
+
         {:ok, updated_account}
 
       error ->
@@ -237,6 +260,12 @@ defmodule Athena.Identity.Accounts do
     |> case do
       {:ok, deleted_account} ->
         Cachex.del(:account_cache, deleted_account.id)
+
+        Audit.event("account.deleted",
+          account_id: deleted_account.id,
+          login: deleted_account.login
+        )
+
         {:ok, deleted_account}
 
       error ->
@@ -276,18 +305,33 @@ defmodule Athena.Identity.Accounts do
 
       cond do
         account.status in [:blocked, :temporary_blocked] ->
+          Audit.warning("auth.login_blocked",
+            account_id: account.id,
+            login: account.login,
+            status: account.status
+          )
+
           {:error, :account_blocked}
 
         valid_pass? ->
           reset_failed_attempts(account)
+          Audit.event("auth.login_succeeded", account_id: account.id, login: account.login)
           {:ok, account}
 
         true ->
           handle_failed_attempt(account)
+
+          Audit.warning("auth.login_failed",
+            account_id: account.id,
+            login: account.login,
+            reason: :invalid_password
+          )
+
           {:error, :invalid_credentials}
       end
     else
       Argon2.no_user_verify()
+      Audit.warning("auth.login_failed", login: login, reason: :unknown_login)
       {:error, :invalid_credentials}
     end
   end
@@ -363,6 +407,12 @@ defmodule Athena.Identity.Accounts do
     new_attempts = account.failed_login_attempts + 1
 
     if new_attempts >= 3 do
+      Audit.warning("account.temporarily_blocked",
+        account_id: account.id,
+        login: account.login,
+        failed_attempts: new_attempts
+      )
+
       update_account(account, %{
         status: :temporary_blocked,
         failed_login_attempts: new_attempts,
@@ -433,8 +483,15 @@ defmodule Athena.Identity.Accounts do
           | {:error, Ecto.Changeset.t()}
   def change_password(%Account{} = account, old_password, new_password) do
     if Argon2.verify_pass(old_password, account.password_hash) do
-      update_account(account, %{password: new_password})
+      account
+      |> update_account(%{password: new_password})
+      |> Audit.on_ok("account.password_changed", &[account_id: &1.id, login: &1.login])
     else
+      Audit.warning("account.password_change_failed",
+        account_id: account.id,
+        reason: :invalid_old_password
+      )
+
       {:error, :invalid_old_password}
     end
   end
@@ -582,6 +639,12 @@ defmodule Athena.Identity.Accounts do
     |> case do
       {:ok, updated_account} ->
         Cachex.del(:account_cache, updated_account.id)
+
+        Audit.event("account.password_force_changed",
+          account_id: updated_account.id,
+          login: updated_account.login
+        )
+
         {:ok, updated_account}
 
       error ->
