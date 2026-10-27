@@ -615,7 +615,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
   end
 
   describe "Instructor Feedback (all block types)" do
-    test "shows feedback on a rejected retry even when an older attempt scored higher", %{
+    test "the comment shown belongs to the attempt whose score is shown", %{
       conn: conn,
       course: course,
       user: user
@@ -632,15 +632,16 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         block_id: block.id,
         status: :graded,
         score: 60,
+        feedback: "Partly right - see the second step.",
         updated_at: DateTime.add(now, -1, :day)
       )
 
       insert(:submission,
         account_id: user.id,
         block_id: block.id,
-        status: :rejected,
-        score: 0,
-        feedback: "Answer copied from a classmate.",
+        status: :graded,
+        score: 20,
+        feedback: "This retry went backwards.",
         updated_at: now
       )
 
@@ -649,8 +650,57 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       assert has_element?(
                lv,
                "#instructor-feedback-#{block.id}",
-               "Answer copied from a classmate."
+               "Partly right - see the second step."
              )
+
+      refute has_element?(
+               lv,
+               "#instructor-feedback-#{block.id}",
+               "This retry went backwards."
+             )
+    end
+
+    test "a question the instructor only rescored still shows up", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+      q1 = Ecto.UUID.generate()
+      q2 = Ecto.UUID.generate()
+
+      block = insert(:block, section: s1, type: :quiz_exam, content: %{"count" => 2})
+
+      parent =
+        insert(:submission,
+          account_id: user.id,
+          block_id: block.id,
+          status: :graded,
+          score: 75,
+          content: %{"type" => "quiz_exam", "questions" => [%{"id" => q1}, %{"id" => q2}]}
+        )
+
+      # No comment on either child - only a corrected score on the second.
+      insert(:submission,
+        account_id: user.id,
+        block_id: q1,
+        parent_submission_id: parent.id,
+        status: :graded,
+        score: 100
+      )
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: q2,
+        parent_submission_id: parent.id,
+        status: :graded,
+        score: 50
+      )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert has_element?(lv, "#instructor-feedback-#{block.id}", "Question 2")
+      assert has_element?(lv, "#instructor-feedback-#{block.id}", "50 / 100")
     end
 
     test "shows overall and per-question feedback on a quiz exam", %{

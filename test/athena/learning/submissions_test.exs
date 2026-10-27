@@ -172,32 +172,63 @@ defmodule Athena.Learning.SubmissionsTest do
   end
 
   describe "get_feedback_map/3" do
-    test "surfaces feedback from a rejected attempt the best-score lookup would skip" do
+    test "describes the same attempt whose score the player shows" do
       account_id = Ecto.UUID.generate()
       block_id = Ecto.UUID.generate()
       now = DateTime.utc_now() |> DateTime.truncate(:second)
 
+      # The attempt the player shows: `get_latest_submissions/3` prefers
+      # the highest score, and the comment has to come from that same row -
+      # otherwise a regrade leaves a new comment sitting above an old,
+      # higher number that describes different work.
       insert(:submission,
         account_id: account_id,
         block_id: block_id,
         score: 80,
         status: :graded,
+        feedback: "Good, but check your units",
         updated_at: DateTime.add(now, -1, :day)
       )
 
       insert(:submission,
         account_id: account_id,
         block_id: block_id,
-        score: 0,
-        status: :rejected,
-        feedback: "Redo the second part",
+        score: 40,
+        status: :graded,
+        feedback: "This retry is weaker",
         updated_at: now
       )
 
       result = Submissions.get_feedback_map(account_id, [block_id])
 
-      assert %{feedback: "Redo the second part", status: :rejected, questions: []} =
+      assert %{feedback: "Good, but check your units", status: :graded, questions: []} =
                result[block_id]
+    end
+
+    test "a regrade that lowers the score shows the new comment with the new score" do
+      account_id = Ecto.UUID.generate()
+      block_id = Ecto.UUID.generate()
+
+      submission =
+        insert(:submission,
+          account_id: account_id,
+          block_id: block_id,
+          score: 90,
+          status: :graded
+        )
+
+      {:ok, _} =
+        Submissions.system_update_submission(submission, %{
+          score: 40,
+          feedback: "On a second read this misses the point"
+        })
+
+      result = Submissions.get_feedback_map(account_id, [block_id])
+
+      assert %{feedback: "On a second read this misses the point"} = result[block_id]
+
+      assert %{^block_id => %{score: 40}} =
+               Submissions.get_latest_submissions(account_id, [block_id])
     end
 
     test "collects per-question exam feedback ordered by question position" do
@@ -231,10 +262,41 @@ defmodule Athena.Learning.SubmissionsTest do
 
       result = Submissions.get_feedback_map(account_id, [exam_id])
 
-      assert %{feedback: nil, questions: [%{number: 2, feedback: "Half right", score: 50}]} =
-               result[exam_id]
+      # Every question of a finished attempt, in the order the student saw
+      # them - a question the instructor only rescored carries no comment
+      # of its own, and used to be invisible because of it.
+      assert %{
+               feedback: nil,
+               questions: [
+                 %{number: 1, feedback: nil, score: 100},
+                 %{number: 2, feedback: "Half right", score: 50}
+               ]
+             } = result[exam_id]
 
       refute Map.has_key?(result, q1)
+    end
+
+    test "an exam still in progress reports no breakdown" do
+      account_id = Ecto.UUID.generate()
+      exam_id = Ecto.UUID.generate()
+      q1 = Ecto.UUID.generate()
+
+      parent =
+        insert(:submission,
+          account_id: account_id,
+          block_id: exam_id,
+          status: :pending,
+          content: %{"questions" => [%{"id" => q1}]}
+        )
+
+      insert(:submission,
+        account_id: account_id,
+        block_id: q1,
+        parent_submission_id: parent.id,
+        status: :pending
+      )
+
+      assert Submissions.get_feedback_map(account_id, [exam_id]) == %{}
     end
 
     test "omits blocks without feedback and other students' feedback" do

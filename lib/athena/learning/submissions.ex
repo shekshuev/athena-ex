@@ -427,14 +427,22 @@ defmodule Athena.Learning.Submissions do
   @doc """
   Collects instructor feedback per block for the student-facing player.
 
-  Picked independently of `get_latest_submissions/3`: that one prefers the
-  highest score, so a rejected (score 0) or re-graded older attempt carrying
-  the instructor's comment would never surface. Here, per block, the most
-  recently updated attempt that has feedback – its own, or on any of its
-  exam question children – wins.
+  Picks the **same** attempt `get_latest_submissions/3` does - highest
+  score, latest on a tie - because that is the attempt whose score the
+  player shows. Choosing independently (this used to take the most
+  recently updated attempt carrying a comment) meant a regrade that
+  lowered a score left the student reading the new comment above the old,
+  higher number, with no way to tell they described different attempts.
+
+  An exam's per-question breakdown comes with the attempt once it is
+  finished, whether or not the instructor wrote anything: correcting a
+  single question's score is a grading act the student has to be able to
+  see, and it carries no comment of its own.
 
   Returns `%{block_id => %{feedback: String.t() | nil, status: atom(),
-  questions: [%{number: pos_integer(), feedback: String.t(), score: integer()}]}}`.
+  questions: [%{number: pos_integer() | nil, feedback: String.t() | nil,
+  score: integer() | nil}]}}`, with only the blocks that have something to
+  show - so `Map.has_key?/2` is the test for "render the feedback card".
   """
   @spec get_feedback_map(String.t(), [String.t()], String.t() | nil) :: %{String.t() => map()}
   def get_feedback_map(account_id, block_ids, cohort_id \\ nil)
@@ -442,37 +450,23 @@ defmodule Athena.Learning.Submissions do
   def get_feedback_map(_account_id, [], _cohort_id), do: %{}
 
   def get_feedback_map(account_id, block_ids, cohort_id) do
-    children_with_feedback =
-      from c in Submission,
-        where:
-          c.parent_submission_id == parent_as(:sub).id and not is_nil(c.feedback) and
-            c.feedback != "",
-        select: 1
-
     parents =
-      from(s in Submission, as: :sub)
+      from(s in Submission)
       |> where([s], s.block_id in ^block_ids and s.status != :draft)
       |> where([s], is_nil(s.parent_submission_id))
       |> where([s], fragment("?->>'is_test_run' IS NULL", s.content))
       |> where_owner(account_id, cohort_id)
-      |> where(
-        [s],
-        (not is_nil(s.feedback) and s.feedback != "") or exists(subquery(children_with_feedback))
-      )
       |> distinct([s], s.block_id)
-      |> order_by([s], [s.block_id, desc: s.updated_at, desc: s.inserted_at])
+      |> order_by([s], [s.block_id, desc_nulls_last: s.score, desc: s.inserted_at])
       |> Repo.all()
 
     children_by_parent =
-      from(c in Submission,
-        where:
-          c.parent_submission_id in ^Enum.map(parents, & &1.id) and not is_nil(c.feedback) and
-            c.feedback != ""
-      )
+      from(c in Submission, where: c.parent_submission_id in ^Enum.map(parents, & &1.id))
       |> Repo.all()
       |> Enum.group_by(& &1.parent_submission_id)
 
-    Map.new(parents, fn parent ->
+    parents
+    |> Enum.map(fn parent ->
       children = Map.get(children_by_parent, parent.id, [])
 
       {parent.block_id,
@@ -482,6 +476,10 @@ defmodule Athena.Learning.Submissions do
          questions: question_feedback(parent, children)
        }}
     end)
+    |> Enum.reject(fn {_block_id, entry} ->
+      is_nil(entry.feedback) and entry.questions == []
+    end)
+    |> Map.new()
   end
 
   defp where_owner(query, _account_id, cohort_id) when not is_nil(cohort_id),
@@ -492,7 +490,18 @@ defmodule Athena.Learning.Submissions do
 
   # Orders child feedback by the question's position in the attempt, so the
   # student can match "Question 3" to what they saw in the exam.
+  #
+  # An unfinished attempt reports nothing: mid-exam, every unanswered
+  # question still sits at the schema's default score of 0, and a column of
+  # zeroes is not a result. Once it is finished the breakdown is complete -
+  # every question, scored, commented or not - which is what makes a
+  # score-only correction by the instructor visible at all.
+  @finished_statuses [:graded, :needs_review, :rejected, :time_limit_exceeded]
+
   defp question_feedback(_parent, []), do: []
+
+  defp question_feedback(%{status: status}, _children) when status not in @finished_statuses,
+    do: []
 
   defp question_feedback(parent, children) do
     order =
@@ -503,7 +512,11 @@ defmodule Athena.Learning.Submissions do
 
     children
     |> Enum.map(fn c ->
-      %{number: Map.get(order, c.block_id), feedback: c.feedback, score: c.score}
+      %{
+        number: Map.get(order, c.block_id),
+        feedback: if(c.feedback in [nil, ""], do: nil, else: c.feedback),
+        score: c.score
+      }
     end)
     |> Enum.sort_by(&(&1.number || 999_999))
   end

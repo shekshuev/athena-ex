@@ -457,6 +457,46 @@ defmodule AthenaWeb.LearnLive.PlayerTeamRealtimeTest do
     end
   end
 
+  describe "4. an instructor's grade and comment reach the whole team" do
+    test "Bob sees the grade and comment left on Alice's work, live", ctx do
+      s1 = insert(:section, course: ctx.course)
+
+      block =
+        insert(:block,
+          section: nil,
+          section_id: s1.id,
+          type: :quiz_question,
+          content: %{"question_type" => "open", "body" => %{"text" => "Explain"}}
+        )
+
+      {:ok, alice_lv, _} = live(ctx.alice_conn, play_path(ctx.course, s1))
+
+      alice_lv
+      |> form("#quiz-form-#{block.id}", %{"answer" => "our team's essay"})
+      |> render_submit()
+
+      {:ok, bob_lv, bob_html} = live(ctx.bob_conn, play_path(ctx.course, s1))
+      refute bob_html =~ "Nicely argued, 80 for this"
+
+      teacher = insert(:account, role: insert(:role, permissions: ["grading.update"]))
+      sub = Athena.Repo.one!(Athena.Learning.Submission)
+
+      {:ok, _graded} =
+        Athena.Learning.update_submission(teacher, sub, %{
+          status: :graded,
+          score: 80,
+          feedback: "Nicely argued, 80 for this"
+        })
+
+      bob_html = render(bob_lv)
+
+      assert bob_html =~ "Nicely argued, 80 for this",
+             "the instructor's comment did not reach the rest of the team"
+
+      assert bob_html =~ "80"
+    end
+  end
+
   defp play_path(course, section), do: ~p"/learn/courses/#{course.id}/play/#{section.id}"
 
   defp passing_result do

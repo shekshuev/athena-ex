@@ -2579,8 +2579,20 @@ defmodule AthenaWeb.LearnLive.Player do
         @entry.status == :rejected && "text-error",
         @entry.status != :rejected && "text-info"
       ]}>
-        <.icon name="hero-chat-bubble-bottom-center-text" class="size-4" />
-        {gettext("Instructor Feedback")}
+        <%!-- An exam's breakdown arrives whether or not the instructor
+              wrote anything, so the heading says which of the two this
+              card actually is. --%>
+        <.icon
+          name={
+            if @entry.feedback,
+              do: "hero-chat-bubble-bottom-center-text",
+              else: "hero-clipboard-document-list"
+          }
+          class="size-4"
+        />
+        {if @entry.feedback,
+          do: gettext("Instructor Feedback"),
+          else: gettext("Result Breakdown")}
       </div>
 
       <p :if={@entry.feedback} class="whitespace-pre-wrap leading-relaxed text-base-content/80">
@@ -2600,7 +2612,12 @@ defmodule AthenaWeb.LearnLive.Player do
             </span>
             <span>{q.score || 0} / 100</span>
           </div>
-          <p class="whitespace-pre-wrap leading-relaxed text-base-content/80">{q.feedback}</p>
+          <p
+            :if={q.feedback}
+            class="whitespace-pre-wrap leading-relaxed text-base-content/80"
+          >
+            {q.feedback}
+          </p>
         </li>
       </ul>
     </div>
