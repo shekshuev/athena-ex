@@ -14,6 +14,7 @@ defmodule AthenaWeb.DashboardLive.Index do
   use AthenaWeb, :live_view
 
   alias Athena.{Learning, Content, Identity, Gamification, Announcements}
+  alias Athena.TimeZones
   alias Athena.Learning.Instructor
 
   @max_dashboard_competitions 5
@@ -46,8 +47,11 @@ defmodule AthenaWeb.DashboardLive.Index do
       |> Enum.map(&resolve_deadline/1)
       |> Enum.reject(&is_nil/1)
 
-    public_competitions = load_public_competitions()
-    if connected?(socket), do: subscribe_to_leaderboards(public_competitions)
+    competitions = load_competitions()
+
+    if connected?(socket) do
+      Enum.each(competitions, fn {_phase, entries} -> subscribe_to_leaderboards(entries) end)
+    end
 
     {:ok, {announcements, _meta}} = Announcements.list_for_viewer(account, %{"page_size" => 5})
 
@@ -62,27 +66,54 @@ defmodule AthenaWeb.DashboardLive.Index do
      |> assign(:total_xp, total_xp)
      |> assign(:level, Gamification.level_for_xp(total_xp))
      |> assign(:streak, streak)
-     |> assign(:public_competitions, public_competitions)}
+     |> assign(:competitions, competitions)}
   end
 
   @impl true
   def handle_info(:update_leaderboard, socket) do
-    {:noreply, assign(socket, :public_competitions, load_public_competitions())}
+    {:noreply, assign(socket, :competitions, load_competitions())}
   end
 
-  # The 5 most recently active published competitions - a competition
-  # nobody has enrolled a team in yet has nothing to show, so it's dropped
-  # rather than padding the list out. `last_activity: nil` on every row
-  # (teams enrolled, nobody has submitted anything yet) sorts last.
-  defp load_public_competitions do
-    Content.list_public_competitions()
+  # Published competitions that are running (or about to / just finished),
+  # bucketed by `Content.list_competitions_by_phase/0` into
+  # `%{upcoming: _, current: _, past: _}` - each phase gets at most
+  # `@max_dashboard_competitions` entries and its own board.
+  #
+  # A current or past competition nobody has enrolled a team in has nothing
+  # to show, so it's dropped rather than padding the list out; an upcoming
+  # one is kept regardless, since an empty board is the normal state before
+  # a competition opens. `last_activity: nil` on every row (teams enrolled,
+  # nobody has submitted anything yet) sorts last.
+  defp load_competitions do
+    Content.list_competitions_by_phase()
+    |> Map.new(fn {phase, courses} -> {phase, load_phase(phase, courses)} end)
+  end
+
+  defp load_phase(phase, courses) do
+    courses
     |> Enum.map(fn course ->
       %{course: course, board: Learning.get_team_leaderboard(course.id)}
     end)
-    |> Enum.reject(&(&1.board == []))
-    |> Enum.sort_by(&latest_activity_unix(&1.board), :desc)
+    |> then(fn entries ->
+      if phase == :upcoming, do: entries, else: Enum.reject(entries, &(&1.board == []))
+    end)
+    |> sort_phase(phase)
     |> Enum.take(@max_dashboard_competitions)
   end
+
+  # Upcoming competitions read best by how soon they start; past ones by how
+  # recently they ended; a running one by where the action is.
+  defp sort_phase(entries, :upcoming),
+    do: Enum.sort_by(entries, &schedule_unix(&1.course.starts_at))
+
+  defp sort_phase(entries, :past),
+    do: Enum.sort_by(entries, &schedule_unix(&1.course.ends_at), :desc)
+
+  defp sort_phase(entries, :current),
+    do: Enum.sort_by(entries, &latest_activity_unix(&1.board), :desc)
+
+  defp schedule_unix(nil), do: 0
+  defp schedule_unix(%DateTime{} = dt), do: DateTime.to_unix(dt)
 
   # The single leading (non-disqualified) team, for the dashboard's
   # one-line teaser under each competition - `board` is already ranked by
@@ -103,8 +134,8 @@ defmodule AthenaWeb.DashboardLive.Index do
     end
   end
 
-  defp subscribe_to_leaderboards(public_competitions) do
-    Enum.each(public_competitions, fn %{course: course} ->
+  defp subscribe_to_leaderboards(entries) do
+    Enum.each(entries, fn %{course: course} ->
       Phoenix.PubSub.subscribe(Athena.PubSub, "leaderboard:#{course.id}")
     end)
   end
@@ -189,6 +220,73 @@ defmodule AthenaWeb.DashboardLive.Index do
       {:ok, {_subs, meta}} -> meta.total_count
       _ -> 0
     end
+  end
+
+  # One dashboard block of competition cards. `:upcoming` and `:past` are
+  # dimmed and carry their date instead of a leaderboard teaser, since there
+  # is nothing to cheer on yet (or any more).
+  attr :phase, :atom, required: true
+  attr :heading, :string, required: true
+  attr :entries, :list, required: true
+
+  defp competition_phase(assigns) do
+    ~H"""
+    <div :if={@entries != []} class="space-y-4">
+      <h2 class="font-display font-black uppercase text-sm text-base-content/70">
+        {@heading}
+      </h2>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <.link
+          :for={%{course: course, board: board} <- @entries}
+          id={"competition-#{@phase}-#{course.id}"}
+          navigate={~p"/learn/courses/#{course.id}/leaderboard"}
+          class={[
+            "card bg-base-100 border border-base-300 hover:border-primary/40 transition-colors rounded-sm block",
+            @phase != :current && "opacity-70 hover:opacity-100"
+          ]}
+        >
+          <div class="card-body py-4 gap-2">
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-bold truncate">{course.title}</div>
+              <.icon
+                name={if @phase == :upcoming, do: "hero-calendar", else: "hero-trophy"}
+                class={[
+                  "size-5 shrink-0",
+                  if(@phase == :current, do: "text-primary", else: "text-base-content/40")
+                ]}
+              />
+            </div>
+
+            <div class="text-xs text-base-content/50">
+              <%= cond do %>
+                <% @phase == :upcoming and course.starts_at -> %>
+                  {gettext("Starts %{date}",
+                    date: TimeZones.format(course.starts_at, "%d.%m.%Y %H:%M")
+                  )}
+                <% @phase == :past and course.ends_at -> %>
+                  {gettext("Ended %{date}", date: TimeZones.format(course.ends_at, "%d.%m.%Y %H:%M"))}
+                <% true -> %>
+                  {ngettext("%{count} team", "%{count} teams", teams_count(board),
+                    count: teams_count(board)
+                  )}
+              <% end %>
+            </div>
+
+            <div
+              :if={@phase != :upcoming and leading_team(board)}
+              class="flex items-center justify-between gap-2 text-sm"
+            >
+              <span class="truncate">🏆 {leading_team(board).team_name}</span>
+              <span class="font-mono font-bold text-primary shrink-0">
+                {leading_team(board).total_score}
+              </span>
+            </div>
+          </div>
+        </.link>
+      </div>
+    </div>
+    """
   end
 
   @impl true
@@ -397,39 +495,18 @@ defmodule AthenaWeb.DashboardLive.Index do
         </div>
       </div>
 
-      <div :if={@public_competitions != []} class="space-y-4">
-        <h2 class="font-display font-black uppercase text-sm text-base-content/70">
-          {gettext("Competitions")}
-        </h2>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <.link
-            :for={%{course: course, board: board} <- @public_competitions}
-            navigate={~p"/learn/courses/#{course.id}/leaderboard"}
-            class="card bg-base-100 border border-base-300 hover:border-primary/40 transition-colors rounded-sm block"
-          >
-            <div class="card-body py-4 gap-2">
-              <div class="flex items-center justify-between gap-2">
-                <div class="font-bold truncate">{course.title}</div>
-                <.icon name="hero-trophy" class="size-5 text-primary shrink-0" />
-              </div>
-
-              <div class="text-xs text-base-content/50">
-                {ngettext("%{count} team", "%{count} teams", teams_count(board),
-                  count: teams_count(board)
-                )}
-              </div>
-
-              <div :if={leading_team(board)} class="flex items-center justify-between gap-2 text-sm">
-                <span class="truncate">🏆 {leading_team(board).team_name}</span>
-                <span class="font-mono font-bold text-primary shrink-0">
-                  {leading_team(board).total_score}
-                </span>
-              </div>
-            </div>
-          </.link>
-        </div>
-      </div>
+      <.competition_phase
+        :for={
+          {phase, heading} <- [
+            {:current, gettext("Competitions")},
+            {:upcoming, gettext("Upcoming Competitions")},
+            {:past, gettext("Past Competitions")}
+          ]
+        }
+        phase={phase}
+        heading={heading}
+        entries={Map.get(@competitions, phase, [])}
+      />
 
       <div :if={@teaching} class="space-y-4 border-t border-base-300 pt-8">
         <h2 class="font-display font-black uppercase text-sm text-base-content/70">

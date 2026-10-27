@@ -466,6 +466,7 @@ defmodule AthenaWeb.TeachingLive.CohortDetails do
           module={EnrollmentFormComponent}
           id="new-enrollment"
           cohort_id={@cohort.id}
+          course_type={if @cohort.type == :team, do: :competition, else: :standard}
           current_user={@current_user}
           patch={show_path(@cohort, build_query_params(assigns, %{}))}
         />

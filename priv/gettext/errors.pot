@@ -220,7 +220,7 @@ msgstr ""
 msgid "please provide an answer or select a choice"
 msgstr ""
 
-#: lib/athena/learning/enrollments.ex:119
+#: lib/athena/learning/enrollments.ex:137
 #, elixir-autogen, elixir-format
 msgid "Cannot enroll: the following students already have access to this course: %{logins}"
 msgstr ""
@@ -231,7 +231,7 @@ msgstr ""
 msgid "is pinned to a course and cannot be deleted"
 msgstr ""
 
-#: lib/athena/learning/enrollments.ex:235
+#: lib/athena/learning/enrollments.ex:270
 #, elixir-autogen, elixir-format
 msgid "Cannot enroll: the student already has access to this course via the group \"%{name}\"."
 msgstr ""
@@ -239,4 +239,9 @@ msgstr ""
 #: lib/athena_web/live/admin_live/user_form.ex:148
 #, elixir-autogen, elixir-format
 msgid "is already taken"
+msgstr ""
+
+#: lib/athena/content/course.ex:101
+#, elixir-autogen, elixir-format
+msgid "must be after the start date"
 msgstr ""

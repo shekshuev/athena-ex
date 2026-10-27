@@ -10,6 +10,10 @@ defmodule Athena.Content.Courses do
   alias Athena.Content.Workers.CourseDeepCopy
   alias Athena.Identity
 
+  # How far either side of a competition's window it still shows on the
+  # dashboard: a month before `starts_at`, a month after `ends_at`.
+  @competition_dashboard_window_days 30
+
   @doc """
   Retrieves a paginated list of active (non-deleted) courses, scoped by user permissions.
   """
@@ -23,16 +27,50 @@ defmodule Athena.Content.Courses do
   end
 
   @doc """
-  Every published competition course - deliberately unscoped by user
-  permissions, since a competition's leaderboard is public to any signed-in
-  student (see `AthenaWeb.LearnLive.Leaderboard`), and this is what feeds
-  the "cheer for any team" ticker on the student dashboard.
+  Published competitions grouped by where "now" falls in their
+  `starts_at`/`ends_at` window, as `%{upcoming: _, current: _, past: _}`.
+
+  A competition only stays on the dashboard around the time it actually
+  runs: it appears in `:upcoming` a month before `starts_at`, in `:current`
+  while the window is open, and in `:past` for a month after `ends_at` -
+  then it drops out of all three (the course and its leaderboard stay
+  reachable by link, this only controls dashboard visibility). A
+  competition with no dates set is always `:current`, which is how every
+  competition behaved before the window existed.
+
+  Deliberately unscoped by user permissions, since a competition's
+  leaderboard is public to any signed-in student (see
+  `AthenaWeb.LearnLive.Leaderboard`) - this is what feeds the "cheer for
+  any team" cards on the student dashboard.
   """
-  @spec list_public_competitions() :: [Course.t()]
-  def list_public_competitions do
+  @spec list_competitions_by_phase() :: %{
+          upcoming: [Course.t()],
+          current: [Course.t()],
+          past: [Course.t()]
+        }
+  def list_competitions_by_phase do
+    now = DateTime.utc_now(:second)
+    window_open = DateTime.add(now, @competition_dashboard_window_days, :day)
+    window_close = DateTime.add(now, -@competition_dashboard_window_days, :day)
+
     Course
     |> where([c], c.type == :competition and c.status == :published and is_nil(c.deleted_at))
+    |> where(
+      [c],
+      (is_nil(c.starts_at) or c.starts_at <= ^window_open) and
+        (is_nil(c.ends_at) or c.ends_at >= ^window_close)
+    )
     |> Repo.all()
+    |> Enum.group_by(&competition_phase(&1, now))
+    |> then(&Map.merge(%{upcoming: [], current: [], past: []}, &1))
+  end
+
+  defp competition_phase(%Course{starts_at: starts_at, ends_at: ends_at}, now) do
+    cond do
+      ends_at && DateTime.compare(ends_at, now) == :lt -> :past
+      starts_at && DateTime.compare(starts_at, now) == :gt -> :upcoming
+      true -> :current
+    end
   end
 
   @doc """

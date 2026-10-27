@@ -174,6 +174,64 @@ defmodule AthenaWeb.LearnLive.LeaderboardTest do
       assert has_element?(lv, ~s{a[href="/profile/#{member.id}"]})
     end
 
+    test "shows the academic cohorts a member also belongs to", %{conn: conn, course: course} do
+      member = insert(:account, login: "member_one")
+      insert(:profile, owner: member, first_name: "Ada", last_name: "Lovelace")
+
+      team = insert(:cohort, name: "The Hackers", type: :team)
+      insert(:enrollment, course_id: course.id, cohort_id: team.id)
+      insert(:cohort_membership, account_id: member.id, cohort_id: team.id)
+
+      math = insert(:cohort, name: "Math 101", type: :academic)
+      physics = insert(:cohort, name: "Physics 202", type: :academic)
+      insert(:cohort_membership, account_id: member.id, cohort_id: math.id)
+      insert(:cohort_membership, account_id: member.id, cohort_id: physics.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/leaderboard")
+
+      html = lv |> element("tr[phx-value-team_id='#{team.id}']") |> render_click()
+
+      assert html =~ "Math 101"
+      assert html =~ "Physics 202"
+    end
+
+    test "leaves the cohort line empty for a member in no academic cohort", %{
+      conn: conn,
+      course: course
+    } do
+      member = insert(:account, login: "loner")
+      insert(:profile, owner: member, first_name: "Solo", last_name: "Han")
+
+      team = insert(:cohort, name: "The Hackers", type: :team)
+      insert(:enrollment, course_id: course.id, cohort_id: team.id)
+      insert(:cohort_membership, account_id: member.id, cohort_id: team.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/leaderboard")
+
+      html = lv |> element("tr[phx-value-team_id='#{team.id}']") |> render_click()
+
+      assert html =~ "Han Solo"
+      refute has_element?(lv, "#team-roster-modal .badge")
+    end
+
+    test "does not show the team itself as one of a member's cohorts", %{
+      conn: conn,
+      course: course
+    } do
+      member = insert(:account, login: "member_one")
+      insert(:profile, owner: member, first_name: "Ada", last_name: "Lovelace")
+
+      team = insert(:cohort, name: "The Hackers", type: :team)
+      insert(:enrollment, course_id: course.id, cohort_id: team.id)
+      insert(:cohort_membership, account_id: member.id, cohort_id: team.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/leaderboard")
+
+      lv |> element("tr[phx-value-team_id='#{team.id}']") |> render_click()
+
+      refute has_element?(lv, "#team-roster-modal .badge", "The Hackers")
+    end
+
     test "closes the team roster modal", %{conn: conn, course: course} do
       team = insert(:cohort, name: "Closers", type: :team)
       insert(:enrollment, course_id: course.id, cohort_id: team.id)

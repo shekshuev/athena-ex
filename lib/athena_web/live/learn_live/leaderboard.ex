@@ -31,7 +31,8 @@ defmodule AthenaWeb.LearnLive.Leaderboard do
        |> assign(:course, course)
        |> assign(:board, board)
        |> assign(:selected_team, nil)
-       |> assign(:team_members, [])}
+       |> assign(:team_members, [])
+       |> assign(:member_cohorts, %{})}
     else
       _ ->
         {:ok,
@@ -51,10 +52,16 @@ defmodule AthenaWeb.LearnLive.Leaderboard do
 
     case Learning.list_cohort_memberships(team_id, %{"page_size" => 500}) do
       {:ok, {memberships, _meta}} ->
+        member_cohorts =
+          memberships
+          |> Enum.map(& &1.account_id)
+          |> Learning.academic_cohort_names_by_account()
+
         {:noreply,
          socket
          |> assign(:selected_team, team)
-         |> assign(:team_members, memberships)}
+         |> assign(:team_members, memberships)
+         |> assign(:member_cohorts, member_cohorts)}
 
       {:error, _meta} ->
         {:noreply, socket}
@@ -170,6 +177,17 @@ defmodule AthenaWeb.LearnLive.Leaderboard do
                 </div>
                 <div class="text-xs text-base-content/50 truncate">
                   @{membership.account && membership.account.login}
+                </div>
+                <div
+                  :if={Map.get(@member_cohorts, membership.account_id, []) != []}
+                  class="flex flex-wrap gap-1 mt-1"
+                >
+                  <span
+                    :for={name <- Map.get(@member_cohorts, membership.account_id, [])}
+                    class="badge badge-ghost badge-sm font-medium"
+                  >
+                    {name}
+                  </span>
                 </div>
               </div>
             </.link>

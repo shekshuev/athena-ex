@@ -276,13 +276,132 @@ defmodule AthenaWeb.DashboardLive.IndexTest do
       conn = init_test_session(conn, %{"account_id" => account.id})
       {:ok, lv, html} = live(conn, ~p"/dashboard")
 
+      card = "#competition-current-#{competition.id}"
+
       assert html =~ "Latecomers"
-      refute html =~ "777"
+      refute lv |> element(card) |> render() =~ "777"
 
       insert(:submission, block_id: block.id, cohort_id: team.id, score: 777, status: :graded)
       send(lv.pid, :update_leaderboard)
 
-      assert render(lv) =~ "777"
+      assert lv |> element(card) |> render() =~ "777"
+    end
+  end
+
+  describe "Dashboard competition phases" do
+    defp days(n), do: DateTime.add(DateTime.utc_now(:second), n, :day)
+
+    defp competition_with_team(attrs, team_name) do
+      competition =
+        insert(:course, Keyword.merge([type: :competition, status: :published], attrs))
+
+      team = insert(:cohort, name: team_name, type: :team)
+      insert(:enrollment, course_id: competition.id, cohort_id: team.id)
+      competition
+    end
+
+    test "a running competition lands in the Competitions block", %{conn: conn} do
+      account = insert(:account)
+
+      competition =
+        competition_with_team([starts_at: days(-1), ends_at: days(1)], "Current Crew")
+
+      conn = init_test_session(conn, %{"account_id" => account.id})
+      {:ok, _lv, html} = live(conn, ~p"/dashboard")
+
+      assert html =~ competition.title
+      assert html =~ "Current Crew"
+      refute html =~ "Upcoming Competitions"
+      refute html =~ "Past Competitions"
+    end
+
+    test "a competition starting within a month lands in Upcoming, with its start date", %{
+      conn: conn
+    } do
+      account = insert(:account)
+      starts_at = days(10)
+      competition = insert(:course, type: :competition, status: :published, starts_at: starts_at)
+
+      conn = init_test_session(conn, %{"account_id" => account.id})
+      {:ok, _lv, html} = live(conn, ~p"/dashboard")
+
+      assert html =~ "Upcoming Competitions"
+      assert html =~ competition.title
+      assert html =~ Athena.TimeZones.format(starts_at, "%d.%m.%Y")
+    end
+
+    test "an upcoming competition shows even with no teams enrolled yet", %{conn: conn} do
+      account = insert(:account)
+      competition = insert(:course, type: :competition, status: :published, starts_at: days(5))
+
+      conn = init_test_session(conn, %{"account_id" => account.id})
+      {:ok, _lv, html} = live(conn, ~p"/dashboard")
+
+      assert html =~ "Upcoming Competitions"
+      assert html =~ competition.title
+    end
+
+    test "a competition that just ended lands in Past, with its end date", %{conn: conn} do
+      account = insert(:account)
+      ends_at = days(-3)
+
+      competition =
+        competition_with_team([starts_at: days(-10), ends_at: ends_at], "Old Guard")
+
+      conn = init_test_session(conn, %{"account_id" => account.id})
+      {:ok, _lv, html} = live(conn, ~p"/dashboard")
+
+      assert html =~ "Past Competitions"
+      assert html =~ competition.title
+      assert html =~ Athena.TimeZones.format(ends_at, "%d.%m.%Y")
+    end
+
+    test "a competition that ended over a month ago is off the dashboard entirely", %{conn: conn} do
+      account = insert(:account)
+
+      competition =
+        competition_with_team([starts_at: days(-60), ends_at: days(-45)], "Ancient History")
+
+      conn = init_test_session(conn, %{"account_id" => account.id})
+      {:ok, _lv, html} = live(conn, ~p"/dashboard")
+
+      refute html =~ competition.title
+      refute html =~ "Ancient History"
+      refute html =~ "Competitions"
+    end
+
+    test "a competition starting over a month out is off the dashboard entirely", %{conn: conn} do
+      account = insert(:account)
+
+      competition =
+        competition_with_team([starts_at: days(45), ends_at: days(46)], "Far Future")
+
+      conn = init_test_session(conn, %{"account_id" => account.id})
+      {:ok, _lv, html} = live(conn, ~p"/dashboard")
+
+      refute html =~ competition.title
+      refute html =~ "Competitions"
+    end
+
+    test "a competition with no dates still shows, as before", %{conn: conn} do
+      account = insert(:account)
+      competition = competition_with_team([starts_at: nil, ends_at: nil], "Evergreen")
+
+      conn = init_test_session(conn, %{"account_id" => account.id})
+      {:ok, _lv, html} = live(conn, ~p"/dashboard")
+
+      assert html =~ competition.title
+      assert html =~ "Evergreen"
+    end
+
+    test "an upcoming competition links to its leaderboard like any other", %{conn: conn} do
+      account = insert(:account)
+      competition = insert(:course, type: :competition, status: :published, starts_at: days(5))
+
+      conn = init_test_session(conn, %{"account_id" => account.id})
+      {:ok, lv, _html} = live(conn, ~p"/dashboard")
+
+      assert has_element?(lv, ~s{a[href="/learn/courses/#{competition.id}/leaderboard"]})
     end
   end
 end

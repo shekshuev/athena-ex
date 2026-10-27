@@ -188,4 +188,76 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponentTest do
       assert flash["error"] == "Permission denied."
     end
   end
+
+  describe "Course type scoping (cohorts search courses, teams search competitions)" do
+    test "a cohort's search finds standard courses and not competitions", %{
+      conn: conn,
+      admin: admin
+    } do
+      cohort = insert(:cohort, owner_id: admin.id, type: :academic)
+      insert(:course, title: "Olympiad Searchable", type: :standard, owner_id: admin.id)
+      insert(:course, title: "Olympiad Hidden", type: :competition, owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/cohorts/#{cohort.id}/enroll_course")
+
+      lv
+      |> element("input[phx-keyup='search_courses']")
+      |> render_keyup(%{"value" => "Olympiad"})
+
+      assert has_element?(lv, "li", "Olympiad Searchable")
+      refute has_element?(lv, "li", "Olympiad Hidden")
+    end
+
+    test "a team's search finds competitions and not standard courses", %{
+      conn: conn,
+      admin: admin
+    } do
+      team = insert(:cohort, owner_id: admin.id, type: :team)
+      insert(:course, title: "Olympiad Searchable", type: :competition, owner_id: admin.id)
+      insert(:course, title: "Olympiad Hidden", type: :standard, owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/teams/#{team.id}/enroll_course")
+
+      lv
+      |> element("input[phx-keyup='search_courses']")
+      |> render_keyup(%{"value" => "Olympiad"})
+
+      assert has_element?(lv, "li", "Olympiad Searchable")
+      refute has_element?(lv, "li", "Olympiad Hidden")
+    end
+
+    test "a team can be enrolled into the competition it found", %{conn: conn, admin: admin} do
+      team = insert(:cohort, owner_id: admin.id, type: :team)
+
+      competition =
+        insert(:course, title: "Regional Finals", type: :competition, owner_id: admin.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/teams/#{team.id}/enroll_course")
+
+      lv
+      |> element("input[phx-keyup='search_courses']")
+      |> render_keyup(%{"value" => "Regional Finals"})
+
+      lv
+      |> element("li", "Regional Finals")
+      |> render_click()
+
+      lv |> form("#enrollment-form") |> render_submit()
+
+      {:ok, {enrollments, _meta}} = Learning.list_cohort_enrollments(admin, team.id, %{})
+      assert [enrollment] = enrollments
+      assert enrollment.course_id == competition.id
+    end
+
+    test "a team's form asks for a competition when nothing is selected", %{
+      conn: conn,
+      admin: admin
+    } do
+      team = insert(:cohort, owner_id: admin.id, type: :team)
+
+      {:ok, lv, _html} = live(conn, ~p"/teaching/teams/#{team.id}/enroll_course")
+
+      assert lv |> form("#enrollment-form") |> render_submit() =~ "Please select a competition."
+    end
+  end
 end

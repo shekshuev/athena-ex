@@ -728,4 +728,51 @@ defmodule Athena.Learning.CohortsTest do
       assert length(Cohorts.search_postable_cohorts(admin, "matching")) == 10
     end
   end
+
+  describe "academic_cohort_names_by_account/1" do
+    test "returns the academic cohort names each account belongs to" do
+      alice = insert(:account)
+      bob = insert(:account)
+      math = insert(:cohort, name: "Math 101", type: :academic)
+      physics = insert(:cohort, name: "Physics 202", type: :academic)
+
+      insert(:cohort_membership, cohort_id: math.id, account_id: alice.id)
+      insert(:cohort_membership, cohort_id: physics.id, account_id: alice.id)
+      insert(:cohort_membership, cohort_id: math.id, account_id: bob.id)
+
+      result = Cohorts.academic_cohort_names_by_account([alice.id, bob.id])
+
+      assert result[alice.id] == ["Math 101", "Physics 202"]
+      assert result[bob.id] == ["Math 101"]
+    end
+
+    test "omits accounts with no academic cohort" do
+      alice = insert(:account)
+
+      assert Cohorts.academic_cohort_names_by_account([alice.id]) == %{}
+    end
+
+    test "ignores team memberships" do
+      alice = insert(:account)
+      team = insert(:cohort, name: "Team Rocket", type: :team)
+      insert(:cohort_membership, cohort_id: team.id, account_id: alice.id)
+
+      assert Cohorts.academic_cohort_names_by_account([alice.id]) == %{}
+    end
+
+    test "ignores accounts that were not asked about" do
+      alice = insert(:account)
+      bob = insert(:account)
+      math = insert(:cohort, name: "Math 101", type: :academic)
+
+      insert(:cohort_membership, cohort_id: math.id, account_id: alice.id)
+      insert(:cohort_membership, cohort_id: math.id, account_id: bob.id)
+
+      assert Map.keys(Cohorts.academic_cohort_names_by_account([alice.id])) == [alice.id]
+    end
+
+    test "returns an empty map for an empty list" do
+      assert Cohorts.academic_cohort_names_by_account([]) == %{}
+    end
+  end
 end

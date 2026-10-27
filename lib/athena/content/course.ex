@@ -7,6 +7,8 @@ defmodule Athena.Content.Course do
   """
 
   use Ecto.Schema
+  use Gettext, backend: AthenaWeb.Gettext
+
   import Ecto.Changeset
   alias Athena.Content.Section
 
@@ -43,6 +45,12 @@ defmodule Athena.Content.Course do
     field :is_public, :boolean, default: false
     field :code, :string
 
+    # When the course/competition actually runs. Both are optional: a course
+    # with no window behaves exactly as before (always current). The dashboard
+    # uses them to bucket competitions into upcoming/current/past.
+    field :starts_at, :utc_datetime
+    field :ends_at, :utc_datetime
+
     field :copy_status, Ecto.Enum, values: [:ready, :copying, :failed], default: :ready
     belongs_to :source_course, __MODULE__
 
@@ -69,12 +77,32 @@ defmodule Athena.Content.Course do
       :owner_id,
       :deleted_at,
       :is_public,
-      :code
+      :code,
+      :starts_at,
+      :ends_at
     ])
     |> validate_required([:title, :status, :type, :owner_id])
     |> validate_length(:title, min: 3, max: 255)
     |> unique_constraint(:title, name: :courses_title_index)
     |> validate_code()
+    |> validate_schedule()
+  end
+
+  # `ends_at` may only be left open-ended or set after `starts_at`; a window
+  # that ends before it begins would never match any dashboard bucket.
+  defp validate_schedule(changeset) do
+    starts_at = get_field(changeset, :starts_at)
+    ends_at = get_field(changeset, :ends_at)
+
+    if starts_at && ends_at && DateTime.compare(ends_at, starts_at) != :gt do
+      add_error(
+        changeset,
+        :ends_at,
+        dgettext_noop("errors", "must be after the start date")
+      )
+    else
+      changeset
+    end
   end
 
   defp validate_code(changeset) do
