@@ -39,6 +39,7 @@ defmodule Athena.Learning.Progress do
     case result do
       {:ok, progress} ->
         broadcast_block_completed(account_id, cohort_id, block_id)
+        broadcast_progress_changed(account_id, cohort_id)
 
         unless already_completed? do
           bump_course_progress_cache(account_id, cohort_id, block_id)
@@ -93,8 +94,12 @@ defmodule Athena.Learning.Progress do
 
   defp gate_passed?(%{type: :submit}, _submission), do: true
 
+  # `is_integer/1` is load-bearing: an attempt awaiting manual review has
+  # `score: nil`, and `nil >= 100` is `true` under Elixir's term ordering -
+  # which let every ungraded open answer walk straight through a min-score
+  # gate.
   defp gate_passed?(%{type: :pass_auto_grade, min_score: min_score}, submission) do
-    submission.score >= (min_score || 0)
+    is_integer(submission.score) and submission.score >= (min_score || 0)
   end
 
   defp gate_passed?(_rule, _submission), do: false
@@ -131,6 +136,27 @@ defmodule Athena.Learning.Progress do
   end
 
   def maybe_complete_from_submission(_submission), do: :ok
+
+  # Tells every open player whose progress this is to re-read it. A team's
+  # completions are shared, so this is what unlocks content for the rest of
+  # the team - including when the completion came from somewhere no player
+  # is watching (the execution worker, an instructor's grade).
+  @doc false
+  defp broadcast_progress_changed(_account_id, cohort_id) when is_binary(cohort_id) do
+    Phoenix.PubSub.broadcast(
+      Athena.PubSub,
+      "team_progress:#{cohort_id}",
+      :team_progress_updated
+    )
+  end
+
+  defp broadcast_progress_changed(account_id, nil) do
+    Phoenix.PubSub.broadcast(
+      Athena.PubSub,
+      "user_progress:#{account_id}",
+      :user_progress_updated
+    )
+  end
 
   @doc false
   defp broadcast_block_completed(account_id, cohort_id, block_id) do
@@ -451,7 +477,14 @@ defmodule Athena.Learning.Progress do
     :ok
   end
 
-  defp course_id_for_block(block_id) do
+  @doc """
+  The id of the course a block belongs to, or `{:error, :not_found}`.
+
+  Public because the broadcast side of `Athena.Learning` needs it too: a
+  submission knows its block, and the leaderboard is keyed by course.
+  """
+  @spec course_id_for_block(String.t()) :: {:ok, String.t()} | {:error, :not_found}
+  def course_id_for_block(block_id) do
     from(b in Block,
       join: s in Section,
       on: s.id == b.section_id,

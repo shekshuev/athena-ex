@@ -1494,9 +1494,12 @@ defmodule Athena.Learning.SubmissionsTest do
       assert submission.content["type"] == "ticket_exam"
       assert length(submission.content["questions"]) == 2
 
+      # The stored attempt is a JSON snapshot, so its questions are plain
+      # maps - the form every reader of `content["questions"]` expects,
+      # including `Athena.Learning.Evaluator`.
       original_ids_in_questions =
         submission.content["questions"]
-        |> Enum.map(fn q -> q.content["original_block_id"] end)
+        |> Enum.map(fn q -> q["content"]["original_block_id"] end)
 
       assert lb1.id in original_ids_in_questions
       assert lb2.id in original_ids_in_questions
@@ -1537,7 +1540,7 @@ defmodule Athena.Learning.SubmissionsTest do
 
       refute Enum.any?(
                submission.content["questions"],
-               &Map.has_key?(&1.content, "original_block_id")
+               &Map.has_key?(&1["content"], "original_block_id")
              )
     end
   end

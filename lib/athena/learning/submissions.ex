@@ -415,7 +415,11 @@ defmodule Athena.Learning.Submissions do
 
     query
     |> distinct([s], s.block_id)
-    |> order_by([s], [s.block_id, desc: s.score, desc: s.inserted_at])
+    # `desc_nulls_last` for the same reason as in `get_team_leaderboard/1`:
+    # a plain `desc` is NULLS FIRST, so an attempt still awaiting a grade
+    # used to hide an already-graded one - a teammate's blank exam masking
+    # the team's 90.
+    |> order_by([s], [s.block_id, desc_nulls_last: s.score, desc: s.inserted_at])
     |> Repo.all()
     |> Map.new(&{&1.block_id, &1})
   end
@@ -521,7 +525,11 @@ defmodule Athena.Learning.Submissions do
           not is_nil(s.cohort_id) and sec.course_id == ^course_id and
             s.status in [:graded, :needs_review],
         distinct: [s.cohort_id, s.block_id],
-        order_by: [s.cohort_id, s.block_id, desc: s.score, asc: s.inserted_at],
+        # `desc_nulls_last`: a plain `desc` is NULLS FIRST in Postgres, so a
+        # `:needs_review` attempt awaiting a grade (`score IS NULL`) used to
+        # win its group and collapse the team's `sum()` to NULL - wiping a
+        # score a teammate had already earned on the same block.
+        order_by: [s.cohort_id, s.block_id, desc_nulls_last: s.score, asc: s.inserted_at],
         select: %{
           cohort_id: s.cohort_id,
           score: s.score,
@@ -1043,6 +1051,7 @@ defmodule Athena.Learning.Submissions do
           content: content
         })
         |> Repo.insert()
+        |> reload_attempt()
         |> tag_ok(:created)
 
       %{status: status} = submission when status in [:pending, :draft] ->
@@ -1058,6 +1067,16 @@ defmodule Athena.Learning.Submissions do
         {:already_completed, finished_submission}
     end
   end
+
+  # The generated questions are `%Block{}` structs, and `Repo.insert/1`
+  # hands back the value it was given rather than what the database now
+  # holds - so without this the attempt's `content["questions"]` stays a
+  # list of structs in memory while every later reader (and the evaluator,
+  # which does `q["id"]`) expects the plain maps JSON round-tripping
+  # produces. Normally the exam page is reached through the player, which
+  # re-reads the row and hid this; opening the exam URL directly did not.
+  defp reload_attempt({:ok, submission}), do: {:ok, Repo.reload!(submission)}
+  defp reload_attempt(error), do: error
 
   defp tag_ok({:ok, submission}, tag), do: {tag, submission}
   defp tag_ok(error, _tag), do: error

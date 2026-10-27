@@ -66,7 +66,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
     with true <- test_run? || Learning.has_access?(user.id, course_id),
          {:ok, course} <- Content.get_course(course_id) do
-      {cohort, cohort_id, team_id} = resolve_cohort_info(user.id, course_id)
+      {cohort, cohort_id, team_id} = Learning.resolve_course_cohort(user.id, course_id)
 
       if connected?(socket), do: subscribe_to_topics(course_id, team_id, user.id)
 
@@ -122,15 +122,6 @@ defmodule AthenaWeb.LearnLive.Player do
         {:ok,
          push_navigate(socket |> put_flash(:error, gettext("Access denied.")), to: ~p"/learn")}
     end
-  end
-
-  @doc false
-  defp resolve_cohort_info(user_id, course_id) do
-    cohort = Learning.get_user_cohort_for_course(user_id, course_id)
-    cohort_id = cohort && cohort.id
-    team_id = if cohort && cohort.type == :team, do: cohort.id
-
-    {cohort, cohort_id, team_id}
   end
 
   @doc false
@@ -654,8 +645,6 @@ defmodule AthenaWeb.LearnLive.Player do
     team_id = socket.assigns.team_id
 
     {:ok, _} = Learning.mark_completed(user.id, block_id, team_id)
-
-    broadcast_team_progress(team_id, socket.assigns.course.id)
 
     new_completed_ids = [block_id | socket.assigns.completed_ids]
     linear_lessons = socket.assigns.linear_lessons
@@ -1329,8 +1318,6 @@ defmodule AthenaWeb.LearnLive.Player do
 
   @doc false
   defp handle_successful_file_submission(socket, block_id, submission) do
-    broadcast_team_progress(socket.assigns.team_id, socket.assigns.course.id)
-
     new_submissions = Map.put(socket.assigns.submissions || %{}, block_id, submission)
     new_pending = Map.update!(socket.assigns.pending_file_urls, block_id, fn _ -> [] end)
 
@@ -1387,7 +1374,6 @@ defmodule AthenaWeb.LearnLive.Player do
            block.content
          ) do
       {:ok, _submission} ->
-        broadcast_team_progress(socket.assigns.team_id, socket.assigns.course.id)
         enter_exam(socket, block.id, block.type)
 
       # Stale client state (e.g. a second tab) clicking "Start" on an attempt
@@ -1458,22 +1444,6 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp broadcast_team_progress(nil, _course_id), do: :ok
-
-  # `broadcast_from`: this player already applied its own change, a full
-  # refresh of itself on top of that would only repeat the work.
-  defp broadcast_team_progress(team_id, course_id) do
-    Phoenix.PubSub.broadcast_from(
-      Athena.PubSub,
-      self(),
-      "team_progress:#{team_id}",
-      :team_progress_updated
-    )
-
-    Learning.broadcast_leaderboard_update(course_id)
-  end
-
-  @doc false
   defp handle_quiz_submission(socket, block, answer) do
     answer = resolve_quiz_answer(socket, block, answer)
 
@@ -1489,8 +1459,6 @@ defmodule AthenaWeb.LearnLive.Player do
       {:ok, submission} ->
         eval_result = Learning.evaluate_sync(submission)
         {:ok, final_sub} = Learning.system_update_submission(submission, eval_result)
-
-        broadcast_team_progress(socket.assigns.team_id, socket.assigns.course.id)
 
         submissions = Map.put(socket.assigns.submissions || %{}, block.id, final_sub)
         new_drafts = Map.delete(socket.assigns.drafts || %{}, block.id)
@@ -1752,8 +1720,6 @@ defmodule AthenaWeb.LearnLive.Player do
     team_id = socket.assigns.team_id
 
     {:ok, _} = Learning.mark_completed(user.id, block_id, team_id)
-
-    broadcast_team_progress(team_id, socket.assigns.course.id)
 
     new_completed_ids = [block_id | socket.assigns.completed_ids]
     linear_lessons = socket.assigns.linear_lessons
