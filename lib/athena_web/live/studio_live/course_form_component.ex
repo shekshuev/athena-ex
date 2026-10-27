@@ -10,6 +10,7 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
 
   alias Athena.Content
   alias Athena.Content.Course
+  alias Athena.TimeZones
 
   @doc """
   Initializes the component state.
@@ -44,14 +45,14 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
   def handle_event("validate", %{"course" => course_params}, socket) do
     changeset =
       socket.assigns.course
-      |> Course.changeset(Map.put(course_params, "type", "standard"))
+      |> Course.changeset(schedule_params(course_params))
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, form: to_form(changeset))}
   end
 
   def handle_event("save", %{"course" => course_params}, socket) do
-    course_params = Map.put(course_params, "type", "standard")
+    course_params = schedule_params(course_params)
 
     course_params =
       if socket.assigns.action == :new do
@@ -91,6 +92,14 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
+  end
+
+  # Pins the type and turns the two wall-clock `datetime-local` values into
+  # UTC before they reach the changeset.
+  defp schedule_params(course_params) do
+    course_params
+    |> Map.put("type", "standard")
+    |> TimeZones.localize_params(~w(starts_at ends_at))
   end
 
   defp notify_parent(msg), do: send(self(), {__MODULE__, msg})
@@ -146,6 +155,23 @@ defmodule AthenaWeb.StudioLive.CourseFormComponent do
             options={@status_options}
             required
           />
+
+          <div class="divider text-xs font-bold uppercase text-base-content/50">
+            {gettext("Course Schedule")}
+          </div>
+
+          <p class="text-xs text-base-content/60 -mt-2">
+            {gettext("Optional. Leave both empty for a course with no fixed run dates.")}
+          </p>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <.input
+              field={@form[:starts_at]}
+              type="datetime-local"
+              label={gettext("Course Start")}
+            />
+            <.input field={@form[:ends_at]} type="datetime-local" label={gettext("Course End")} />
+          </div>
         </div>
 
         <div class="shrink-0 p-6 border-t border-base-200 bg-base-100 flex justify-end gap-3">

@@ -222,7 +222,7 @@ msgstr "для кода необходимо указать язык"
 msgid "please provide an answer or select a choice"
 msgstr "пожалуйста, введите ответ или выберите вариант"
 
-#: lib/athena/learning/enrollments.ex:119
+#: lib/athena/learning/enrollments.ex:137
 #, elixir-autogen, elixir-format
 msgid "Cannot enroll: the following students already have access to this course: %{logins}"
 msgstr "Невозможно зачислить: следующие пользователи уже имеют доступ к этому курсу: %{logins}"
@@ -233,7 +233,7 @@ msgstr "Невозможно зачислить: следующие пользо
 msgid "is pinned to a course and cannot be deleted"
 msgstr "прикреплен к курсу и не может быть удален"
 
-#: lib/athena/learning/enrollments.ex:235
+#: lib/athena/learning/enrollments.ex:270
 #, elixir-autogen, elixir-format
 msgid "Cannot enroll: the student already has access to this course via the group \"%{name}\"."
 msgstr "Зачисление невозможно - данный пользователь имеет право доступа через группу \"%{name}\"."
@@ -242,3 +242,8 @@ msgstr "Зачисление невозможно - данный пользов�
 #, elixir-autogen, elixir-format
 msgid "is already taken"
 msgstr "уже занят"
+
+#: lib/athena/content/course.ex:101
+#, elixir-autogen, elixir-format
+msgid "must be after the start date"
+msgstr "должна быть позже даты начала"

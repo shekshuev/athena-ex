@@ -13,7 +13,7 @@ defmodule Athena.Content do
   defdelegate resolve_section_permalink(user, section_id), to: Permalinks, as: :resolve_section
 
   defdelegate list_courses(user, params \\ %{}), to: Courses
-  defdelegate list_public_competitions(), to: Courses
+  defdelegate list_competitions_by_phase(), to: Courses
   defdelegate get_course(id), to: Courses
   defdelegate get_course(user, id), to: Courses
   defdelegate get_courses_map(ids), to: Courses

@@ -593,6 +593,30 @@ defmodule Athena.Learning.Cohorts do
   end
 
   @doc """
+  Academic cohorts (never teams) that each of `account_ids` is a member
+  of, as `%{account_id => [cohort_name]}`. Accounts in no academic cohort
+  are simply absent from the map, so callers render nothing for them.
+
+  Unscoped by ACL for the same reason as `list_member_cohort_ids/1`: it
+  only exposes cohort *names* alongside a roster the caller already sees
+  (the public competition leaderboard).
+  """
+  @spec academic_cohort_names_by_account([String.t()]) :: %{String.t() => [String.t()]}
+  def academic_cohort_names_by_account([]), do: %{}
+
+  def academic_cohort_names_by_account(account_ids) when is_list(account_ids) do
+    from(cm in CohortMembership,
+      join: c in Cohort,
+      on: c.id == cm.cohort_id,
+      where: cm.account_id in ^account_ids and c.type == :academic,
+      order_by: [asc: c.name],
+      select: {cm.account_id, c.name}
+    )
+    |> Repo.all()
+    |> Enum.group_by(fn {account_id, _name} -> account_id end, fn {_id, name} -> name end)
+  end
+
+  @doc """
   Cohorts matching `query` (by name, case-insensitive substring) that
   `user` may post an announcement to: every cohort if `user` holds the
   "admin" bypass, else only cohorts they instruct. Capped at 10 results
