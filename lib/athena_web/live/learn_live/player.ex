@@ -20,6 +20,8 @@ defmodule AthenaWeb.LearnLive.Player do
   alias Athena.Execution
   alias Athena.Identity
   alias Athena.Learning
+
+  import AthenaWeb.LeaderboardComponents
   alias Athena.Surveys
   alias Athena.Surveys.Flow
   alias AthenaWeb.LearnLive.EngagementSignals
@@ -69,7 +71,7 @@ defmodule AthenaWeb.LearnLive.Player do
          {:ok, course} <- Content.get_course(course_id) do
       {cohort, cohort_id, team_id} = Learning.resolve_course_cohort(user.id, course_id)
 
-      if connected?(socket), do: subscribe_to_topics(course_id, team_id, user.id)
+      if connected?(socket), do: subscribe_to_topics(course, team_id, user.id)
 
       overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
       outline = Content.course_outline(course_id, user, overrides, opts)
@@ -126,8 +128,8 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp subscribe_to_topics(course_id, cohort_id, user_id) do
-    Phoenix.PubSub.subscribe(Athena.PubSub, "course_content:#{course_id}")
+  defp subscribe_to_topics(course, cohort_id, user_id) do
+    Phoenix.PubSub.subscribe(Athena.PubSub, "course_content:#{course.id}")
 
     Phoenix.PubSub.subscribe(Athena.PubSub, "media_upload:#{user_id}")
 
@@ -135,6 +137,12 @@ defmodule AthenaWeb.LearnLive.Player do
       Phoenix.PubSub.subscribe(Athena.PubSub, "team_progress:#{cohort_id}")
     else
       Phoenix.PubSub.subscribe(Athena.PubSub, "user_progress:#{user_id}")
+    end
+
+    # Only a competition has a board, and only then does the player carry
+    # one - a standard course subscribes to nothing and holds no rows.
+    if course.type == :competition do
+      Phoenix.PubSub.subscribe(Athena.PubSub, "leaderboard:#{course.id}")
     end
   end
 
@@ -195,6 +203,8 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:prev_section_id, if(prev_section, do: prev_section.id, else: nil))
       |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
       |> assign(:course_map_open, false)
+      |> assign(:leaderboard_open, false)
+      |> assign(:leaderboard, load_leaderboard(course))
       |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
       |> assign(:submissions, submissions)
       |> assign(
@@ -634,6 +644,14 @@ defmodule AthenaWeb.LearnLive.Player do
     end
   end
 
+  # Reads through `Athena.Learning.LeaderboardCache`, so every player open
+  # on the same competition shares one computation of the board.
+  @doc false
+  defp load_leaderboard(%{type: :competition} = course),
+    do: Learning.get_team_leaderboard(course.id)
+
+  defp load_leaderboard(_course), do: []
+
   @doc false
   defp load_drafts(user_id, block_ids, team_id),
     do: Learning.get_drafts(user_id, block_ids, team_id)
@@ -748,6 +766,12 @@ defmodule AthenaWeb.LearnLive.Player do
 
   def handle_event("close_course_map", _, socket),
     do: {:noreply, assign(socket, course_map_open: false)}
+
+  def handle_event("open_leaderboard", _, socket),
+    do: {:noreply, assign(socket, leaderboard_open: true)}
+
+  def handle_event("close_leaderboard", _, socket),
+    do: {:noreply, assign(socket, leaderboard_open: false)}
 
   @impl true
   def handle_event("start_exam", %{"block_id" => block_id}, socket) do
@@ -1962,6 +1986,13 @@ defmodule AthenaWeb.LearnLive.Player do
   @impl true
   def handle_info(:refresh_content, socket), do: {:noreply, request_refresh(socket, :content)}
 
+  # Any team's scoring submission drops the cached board, so this fires for
+  # the whole competition - a rival pulling ahead moves the standings on
+  # every open player without anyone leaving their task.
+  @impl true
+  def handle_info(:update_leaderboard, socket),
+    do: {:noreply, assign(socket, :leaderboard, load_leaderboard(socket.assigns.course))}
+
   @impl true
   def handle_info(:scheduled_refresh, socket) do
     {:noreply, socket |> assign(:unlock_timer, nil) |> refresh(:schedule)}
@@ -2250,6 +2281,16 @@ defmodule AthenaWeb.LearnLive.Player do
               <span class="hidden sm:inline">{gettext("Course Map")}</span>
             </button>
 
+            <button
+              :if={!@test_run && @course.type == :competition}
+              id="open-leaderboard"
+              phx-click="open_leaderboard"
+              class="btn btn-ghost btn-sm text-base-content/70 hover:text-primary"
+            >
+              <.icon name="hero-trophy" class="size-4" />
+              <span class="hidden sm:inline">{gettext("Leaderboard")}</span>
+            </button>
+
             <%= if !@test_run && @next_section_id && all_blocks_completed?(@visible_blocks, @completed_ids) do %>
               <.link
                 navigate={~p"/learn/courses/#{@course.id}/play/#{@next_section_id}"}
@@ -2475,6 +2516,18 @@ defmodule AthenaWeb.LearnLive.Player do
               course_id={@course.id}
               block_counts={@block_counts}
             />
+          </div>
+        </.modal>
+
+        <.modal
+          :if={@leaderboard_open}
+          id="leaderboard-modal"
+          show={true}
+          title={gettext("Leaderboard")}
+          on_cancel={JS.push("close_leaderboard")}
+        >
+          <div class="max-h-[60vh] overflow-y-auto -mx-6 px-6 py-2">
+            <.board_table id="player-leaderboard-table" board={@leaderboard} />
           </div>
         </.modal>
 

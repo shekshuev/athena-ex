@@ -497,6 +497,63 @@ defmodule AthenaWeb.LearnLive.PlayerTeamRealtimeTest do
     end
   end
 
+  describe "5. the leaderboard is reachable from inside a task" do
+    test "the button is there in a competition and opens the board", ctx do
+      s1 = insert(:section, course: ctx.course)
+      insert(:block, section: nil, section_id: s1.id, content: %{"text" => "Task"})
+
+      {:ok, lv, _html} = live(ctx.alice_conn, play_path(ctx.course, s1))
+
+      assert has_element?(lv, "#open-leaderboard")
+      refute has_element?(lv, "#leaderboard-modal")
+
+      render_click(lv, "open_leaderboard", %{})
+
+      assert has_element?(lv, "#leaderboard-modal")
+      assert has_element?(lv, "#player-leaderboard-table", ctx.team.name)
+    end
+
+    test "a standard course carries no leaderboard at all", ctx do
+      course = insert(:course, type: :standard)
+      insert(:enrollment, account_id: ctx.alice.id, course_id: course.id)
+      s1 = insert(:section, course: course)
+      insert(:block, section: nil, section_id: s1.id, content: %{"text" => "Task"})
+
+      {:ok, lv, _html} = live(ctx.alice_conn, play_path(course, s1))
+
+      refute has_element?(lv, "#open-leaderboard")
+    end
+
+    test "a rival team scoring moves the board in an open player", ctx do
+      s1 = insert(:section, course: ctx.course)
+      block = insert(:block, section: nil, section_id: s1.id, content: %{"text" => "Task"})
+
+      rivals = insert(:cohort, type: :team, name: "Rival Crew")
+      insert(:enrollment, course_id: ctx.course.id, cohort_id: rivals.id)
+
+      {:ok, lv, _html} = live(ctx.alice_conn, play_path(ctx.course, s1))
+      render_click(lv, "open_leaderboard", %{})
+
+      assert has_element?(lv, "#player-leaderboard-table", "Rival Crew")
+
+      rival = insert(:account)
+      insert(:cohort_membership, account_id: rival.id, cohort_id: rivals.id)
+
+      {:ok, sub} =
+        Athena.Learning.create_submission(rival, %{
+          "block_id" => block.id,
+          "cohort_id" => rivals.id,
+          "status" => :pending,
+          "content" => %{"type" => :text, "text_answer" => "done"}
+        })
+
+      {:ok, _} = Athena.Learning.system_update_submission(sub, %{status: :graded, score: 100})
+
+      assert has_element?(lv, "#player-leaderboard-table td", "100"),
+             "the rival team's score did not reach the open player's board"
+    end
+  end
+
   defp play_path(course, section), do: ~p"/learn/courses/#{course.id}/play/#{section.id}"
 
   defp passing_result do
