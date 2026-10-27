@@ -39,6 +39,12 @@ defmodule Athena.Learning.Submission do
 
     field :expires_at, :utc_datetime
 
+    # When the member sitting a team's exam attempt was last seen. Only an
+    # exam attempt uses it, and only `Athena.Learning.Submissions` writes
+    # it (never through `cast/3`): it is what lets a teammate take over an
+    # attempt whose holder has gone away. See `exam_lock_held?/2`.
+    field :heartbeat_at, :utc_datetime
+
     field :account_id, :binary_id
     field :block_id, :binary_id
     field :cohort_id, :binary_id

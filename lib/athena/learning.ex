@@ -200,11 +200,19 @@ defmodule Athena.Learning do
   defdelegate get_active_exam_submission(account_id, exam_block_id), to: Submissions
   defdelegate get_child_submissions(parent_submission_id), to: Submissions
 
+  defdelegate touch_exam_heartbeat(submission_id), to: Submissions
+  defdelegate release_exam_attempt(submission_id), to: Submissions
+  defdelegate exam_lock_held?(submission, now), to: Submissions
+
   @doc """
   Gets an active exam attempt or creates a new one. A new or just-finalized
   attempt is broadcast so the Grading dashboard updates in real time;
   reopening an attempt in progress (every exam page load) changes nothing
   and broadcasts nothing.
+
+  `{:taken_by_teammate, sub}` passes straight through unbroadcast - a
+  competition team shares one attempt, and being told it is someone
+  else's turn changed nothing in the database.
   """
   def get_or_create_exam_attempt(
         course_id,

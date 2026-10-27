@@ -18,6 +18,7 @@ defmodule AthenaWeb.LearnLive.Player do
   alias Athena.Content.Policy
   alias Athena.Engagement
   alias Athena.Execution
+  alias Athena.Identity
   alias Athena.Learning
   alias Athena.Surveys
   alias Athena.Surveys.Flow
@@ -196,6 +197,10 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:course_map_open, false)
       |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
       |> assign(:submissions, submissions)
+      |> assign(
+        :exam_holders,
+        load_exam_holders(blocks, submissions, ctx.user.id, ctx.team_id)
+      )
       |> assign(:feedback_map, feedback_map)
       |> assign(:drafts, drafts)
       |> assign(:overrides, ctx.overrides)
@@ -633,6 +638,69 @@ defmodule AthenaWeb.LearnLive.Player do
   defp load_drafts(user_id, block_ids, team_id),
     do: Learning.get_drafts(user_id, block_ids, team_id)
 
+  @doc false
+  defp refresh_exam_holders(socket) do
+    assign(
+      socket,
+      :exam_holders,
+      load_exam_holders(
+        socket.assigns.blocks,
+        socket.assigns.submissions,
+        socket.assigns.current_user.id,
+        socket.assigns.team_id
+      )
+    )
+  end
+
+  # Which exam blocks a *teammate* is currently sitting, by display name.
+  # A competition team shares one attempt, so the rest of the team get a
+  # locked card naming the holder instead of a button that would hand them
+  # a paper of their own.
+  #
+  # Derived entirely from submissions already in memory, and short-circuits
+  # for everyone outside a team - the individual path costs no extra query
+  # and sees an empty map, so nothing about it renders differently.
+  @doc false
+  defp load_exam_holders(_blocks, _submissions, _user_id, nil), do: %{}
+
+  defp load_exam_holders(blocks, submissions, user_id, _team_id) do
+    now = DateTime.utc_now()
+
+    held =
+      blocks
+      |> Enum.filter(&(&1.type in [:quiz_exam, :ticket_exam]))
+      |> Enum.flat_map(fn block ->
+        case Map.get(submissions, block.id) do
+          %{status: status, account_id: holder_id} = submission
+          when status in [:pending, :draft, :processing] ->
+            if holder_id != user_id and Learning.exam_lock_held?(submission, now),
+              do: [{block.id, holder_id}],
+              else: []
+
+          _ ->
+            []
+        end
+      end)
+
+    case held do
+      [] ->
+        %{}
+
+      held ->
+        accounts = Identity.get_accounts_map(Enum.map(held, &elem(&1, 1)) |> Enum.uniq())
+
+        Map.new(held, fn {block_id, holder_id} ->
+          name =
+            case Map.fetch(accounts, holder_id) do
+              {:ok, account} -> Identity.display_name(account)
+              :error -> gettext("A teammate")
+            end
+
+          {block_id, name}
+        end)
+    end
+  end
+
   @doc """
   Handles progression gates. When a student completes a mandatory block,
   this records the progress and dynamically unlocks the rest of the content.
@@ -694,8 +762,14 @@ defmodule AthenaWeb.LearnLive.Player do
 
   @impl true
   def handle_event("continue_exam", %{"block_id" => block_id}, socket) do
-    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
-    enter_exam(socket, block_id, block && block.type)
+    # The button is not rendered while a teammate holds the attempt, but a
+    # crafted event must not reach the exam LiveView just to be bounced.
+    if Map.has_key?(socket.assigns.exam_holders || %{}, block_id) do
+      {:noreply, socket}
+    else
+      block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+      enter_exam(socket, block_id, block && block.type)
+    end
   end
 
   @impl true
@@ -1386,6 +1460,16 @@ defmodule AthenaWeb.LearnLive.Player do
            Map.put(socket.assigns.submissions, block.id, updated_sub)
          )}
 
+      # A teammate got there first and this page had not heard yet. Show
+      # the locked card straight away rather than leaving a button that
+      # keeps failing.
+      {:taken_by_teammate, held_sub} ->
+        {:noreply,
+         socket
+         |> assign(:submissions, Map.put(socket.assigns.submissions, block.id, held_sub))
+         |> refresh_exam_holders()
+         |> put_flash(:info, gettext("A teammate is already taking this for your team."))}
+
       {:error, _} ->
         {:noreply,
          put_flash(
@@ -1842,6 +1926,7 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:blocks, blocks)
       |> assign(:completed_ids, completed_ids)
       |> assign(:submissions, submissions)
+      |> assign(:exam_holders, load_exam_holders(blocks, submissions, user.id, team_id))
       |> assign(:feedback_map, feedback_map)
       |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
       |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
@@ -2271,6 +2356,7 @@ defmodule AthenaWeb.LearnLive.Player do
                       block={block}
                       mode={mode}
                       submission={submission}
+                      exam_holder={Map.get(@exam_holders || %{}, block.id)}
                     />
                   </div>
                 <% :code -> %>

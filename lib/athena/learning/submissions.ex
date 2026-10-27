@@ -964,7 +964,11 @@ defmodule Athena.Learning.Submissions do
           String.t() | nil,
           integer(),
           map()
-        ) :: {:ok, Submission.t()} | {:already_completed, Submission.t()} | {:error, any()}
+        ) ::
+          {:ok, Submission.t()}
+          | {:already_completed, Submission.t()}
+          | {:taken_by_teammate, Submission.t()}
+          | {:error, any()}
   def get_or_create_exam_attempt(
         course_id,
         account_id,
@@ -991,8 +995,13 @@ defmodule Athena.Learning.Submissions do
   @doc """
   Like `get_or_create_exam_attempt/7`, but says what happened to the
   attempt: `{:created, sub}` (new attempt), `{:existing, sub}` (an attempt
-  in progress, unchanged) or `{:finalized, sub}` (an expired attempt just
-  scored). Lets the caller announce only real changes.
+  in progress, now this member's to continue) or `{:finalized, sub}` (an
+  expired attempt just scored). Lets the caller announce only real
+  changes.
+
+  `{:taken_by_teammate, sub}` is the team case: a competition team sits
+  one attempt between them, so while the member who started it is still
+  there, the rest get this instead of a paper of their own.
   """
   @spec fetch_or_create_exam_attempt(
           String.t(),
@@ -1003,7 +1012,8 @@ defmodule Athena.Learning.Submissions do
           integer(),
           map()
         ) ::
-          {:created | :existing | :finalized | :already_completed, Submission.t()}
+          {:created | :existing | :finalized | :already_completed | :taken_by_teammate,
+           Submission.t()}
           | {:error, any()}
   def fetch_or_create_exam_attempt(
         course_id,
@@ -1013,8 +1023,58 @@ defmodule Athena.Learning.Submissions do
         cohort_id,
         time_limit_sec,
         exam_config
+      )
+
+  # Individual attempts cannot collide with anyone, so they stay on the
+  # plain path. A team's single attempt can: two members pressing Start in
+  # the same instant would each find nothing and each create one. An
+  # advisory lock on (team, block) serializes exactly that pair; a partial
+  # unique index could not be used instead, because several top-level rows
+  # per (cohort_id, block_id) is the normal, required shape for every
+  # other block type - that is what resubmits are.
+  def fetch_or_create_exam_attempt(course_id, account_id, block_id, type, nil, limit, config),
+    do: do_fetch_or_create_exam_attempt(course_id, account_id, block_id, type, nil, limit, config)
+
+  def fetch_or_create_exam_attempt(
+        course_id,
+        account_id,
+        block_id,
+        type,
+        cohort_id,
+        limit,
+        config
       ) do
-    case get_last_exam_submission(account_id, exam_block_id) do
+    Repo.transaction(fn ->
+      Repo.query!("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        "exam_attempt:#{cohort_id}:#{block_id}"
+      ])
+
+      do_fetch_or_create_exam_attempt(
+        course_id,
+        account_id,
+        block_id,
+        type,
+        cohort_id,
+        limit,
+        config
+      )
+    end)
+    |> case do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp do_fetch_or_create_exam_attempt(
+         course_id,
+         account_id,
+         exam_block_id,
+         block_type,
+         cohort_id,
+         time_limit_sec,
+         exam_config
+       ) do
+    case get_last_exam_submission(account_id, exam_block_id, cohort_id) do
       nil ->
         is_ticket = block_type == :ticket_exam
 
@@ -1052,21 +1112,79 @@ defmodule Athena.Learning.Submissions do
         })
         |> Repo.insert()
         |> reload_attempt()
+        |> heartbeat_attempt()
         |> tag_ok(:created)
 
       %{status: status} = submission when status in [:pending, :draft] ->
-        now = DateTime.utc_now()
-
-        if submission.expires_at && DateTime.compare(now, submission.expires_at) == :gt do
-          submission |> finalize_expired_exam() |> tag_ok(:finalized)
-        else
-          {:existing, submission}
-        end
+        resume_exam_attempt(submission, account_id, cohort_id)
 
       finished_submission ->
         {:already_completed, finished_submission}
     end
   end
+
+  # Reopening an attempt in progress. For a team that is the moment the
+  # exam is either someone else's to finish or free to take over: one
+  # paper, one timer, one result for everyone.
+  defp resume_exam_attempt(submission, account_id, cohort_id) do
+    now = DateTime.utc_now()
+
+    cond do
+      submission.expires_at && DateTime.compare(now, submission.expires_at) == :gt ->
+        # An expired attempt is closed by whoever turns up - including a
+        # teammate, so a holder who vanished mid-exam cannot leave the
+        # team with a result nobody can collect.
+        submission |> finalize_expired_exam() |> tag_ok(:finalized)
+
+      is_nil(cohort_id) or submission.account_id == account_id ->
+        touch_exam_heartbeat(submission.id)
+        {:existing, submission}
+
+      exam_lock_held?(submission, now) ->
+        {:taken_by_teammate, submission}
+
+      true ->
+        hand_over_exam_attempt(submission, account_id)
+    end
+  end
+
+  # The holder went away (their page closed, or their heartbeat went
+  # stale) and a teammate picked the exam up. The row stays the team's;
+  # `account_id` only ever meant "who is driving", so moving it keeps the
+  # lock label, the grading screen and the audit trail honest about who
+  # actually sat the rest of it.
+  defp hand_over_exam_attempt(submission, account_id) do
+    previous_holder = submission.account_id
+
+    submission
+    |> Ecto.Changeset.change(%{
+      account_id: account_id,
+      heartbeat_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    })
+    |> Repo.update()
+    |> case do
+      {:ok, updated} ->
+        Audit.event("exam_attempt.handover",
+          submission_id: updated.id,
+          block_id: updated.block_id,
+          cohort_id: updated.cohort_id,
+          from: previous_holder,
+          to: account_id
+        )
+
+        {:existing, updated}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  defp heartbeat_attempt({:ok, submission}) do
+    touch_exam_heartbeat(submission.id)
+    {:ok, %{submission | heartbeat_at: DateTime.utc_now() |> DateTime.truncate(:second)}}
+  end
+
+  defp heartbeat_attempt(error), do: error
 
   # The generated questions are `%Block{}` structs, and `Repo.insert/1`
   # hands back the value it was given rather than what the database now
@@ -1081,16 +1199,106 @@ defmodule Athena.Learning.Submissions do
   defp tag_ok({:ok, submission}, tag), do: {tag, submission}
   defp tag_ok(error, _tag), do: error
 
+  # A team's exam attempt belongs to the team, not to whoever started it,
+  # so with a `cohort_id` the author is deliberately not part of the
+  # lookup - the same rule as `where_owner/3` and `Progress`.
+  #
+  # The ordering matters because teams created before the one-attempt rule
+  # may still have several parallel attempts on one block: most advanced
+  # first, then highest score, then earliest. That elects the attempt the
+  # leaderboard already credits the team with, so nothing moves downward,
+  # and among unfinished ones the earliest - the one the lock would have
+  # granted.
   @doc false
-  defp get_last_exam_submission(account_id, exam_block_id) do
+  defp get_last_exam_submission(account_id, exam_block_id, cohort_id) do
     from(s in Submission,
-      where: s.account_id == ^account_id,
       where: s.block_id == ^exam_block_id,
-      where: is_nil(s.parent_submission_id),
-      order_by: [desc: s.inserted_at],
-      limit: 1
+      where: is_nil(s.parent_submission_id)
     )
+    |> exam_attempt_owner(account_id, cohort_id)
+    |> order_by([s],
+      desc:
+        fragment(
+          "? IN ('graded','needs_review','rejected','time_limit_exceeded')",
+          s.status
+        ),
+      desc_nulls_last: s.score,
+      asc: s.inserted_at
+    )
+    |> limit(1)
     |> Repo.one()
+  end
+
+  # Not `where_owner/3`: an academic-cohort student's row carries a
+  # `cohort_id` while the callers pass `team_id` (nil for them), so
+  # demanding `cohort_id IS NULL` would hand them a brand new attempt on
+  # every page load.
+  defp exam_attempt_owner(query, _account_id, cohort_id) when is_binary(cohort_id),
+    do: where(query, [s], s.cohort_id == ^cohort_id)
+
+  defp exam_attempt_owner(query, account_id, nil),
+    do: where(query, [s], s.account_id == ^account_id)
+
+  @default_exam_lock_idle_ms 120_000
+
+  @doc """
+  How long a team's exam attempt stays locked to the member sitting it
+  after their last heartbeat, in ms.
+
+  The holder's page normally releases the lock the moment it closes; this
+  is the fallback for the cases that never get to run that - a crashed
+  browser, a dead node, a connection that simply stopped. Read at runtime
+  so it can differ per environment.
+  """
+  @spec exam_lock_idle_ms() :: non_neg_integer()
+  def exam_lock_idle_ms do
+    :athena
+    |> Application.get_env(__MODULE__, [])
+    |> Keyword.get(:exam_lock_idle_ms, @default_exam_lock_idle_ms)
+  end
+
+  @doc """
+  Whether `submission`'s exam lock is still held by the member sitting it.
+
+  A released (`heartbeat_at: nil`) or stale attempt is free for any
+  teammate to take over.
+  """
+  @spec exam_lock_held?(Submission.t(), DateTime.t()) :: boolean()
+  def exam_lock_held?(%Submission{heartbeat_at: nil}, _now), do: false
+
+  def exam_lock_held?(%Submission{heartbeat_at: beat}, now),
+    do: DateTime.diff(now, beat, :millisecond) < exam_lock_idle_ms()
+
+  @doc """
+  Records that the member sitting `submission_id` is still there.
+
+  Deliberately an `update_all`: no changeset, no `updated_at` bump and no
+  broadcast, so an exam page can call it on a timer without waking every
+  teammate's player.
+  """
+  @spec touch_exam_heartbeat(String.t()) :: :ok
+  def touch_exam_heartbeat(submission_id) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    Submission
+    |> where([s], s.id == ^submission_id)
+    |> Repo.update_all(set: [heartbeat_at: now])
+
+    :ok
+  end
+
+  @doc """
+  Releases the exam lock on `submission_id` so a teammate can take the
+  attempt over - what the holder's page does when it closes without
+  finishing.
+  """
+  @spec release_exam_attempt(String.t()) :: :ok
+  def release_exam_attempt(submission_id) do
+    Submission
+    |> where([s], s.id == ^submission_id)
+    |> Repo.update_all(set: [heartbeat_at: nil])
+
+    :ok
   end
 
   @doc false

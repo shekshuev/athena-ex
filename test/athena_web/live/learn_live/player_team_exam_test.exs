@@ -38,8 +38,8 @@ defmodule AthenaWeb.LearnLive.PlayerTeamExamTest do
     }
   end
 
-  describe "one attempt per team, or one per member?" do
-    test "each member starting the exam gets a separate attempt with its own questions", ctx do
+  describe "one attempt per team, with a visible lock" do
+    test "a teammate's start leaves the rest of the team without a way in", ctx do
       block = exam_block(ctx.section)
       seed_question_pool(ctx.course, 6)
 
@@ -48,12 +48,15 @@ defmodule AthenaWeb.LearnLive.PlayerTeamExamTest do
 
       {:ok, bob_lv, bob_html} = live(ctx.bob_conn, play_path(ctx.course, ctx.section))
 
-      # Bob is told the team's assessment is already under way...
-      assert bob_html =~ "Continue Assessment"
+      # Bob is told who has it, and is given nothing to click.
+      assert bob_html =~ "Assessment in progress"
+      assert bob_html =~ Athena.Identity.display_name(ctx.alice)
+      refute bob_html =~ "Continue Assessment"
+      refute bob_html =~ "Start Assessment"
 
-      # ...and "continuing" it is what actually starts a second one.
+      # Even a crafted event must not hand him a paper of his own.
       render_click(bob_lv, "continue_exam", %{"block_id" => block.id})
-      {:ok, _bob_exam, _} = live(ctx.bob_conn, exam_path(ctx.course, block))
+      assert {:error, {:live_redirect, _}} = live(ctx.bob_conn, exam_path(ctx.course, block))
 
       attempts = team_attempts(block.id)
 
@@ -61,36 +64,107 @@ defmodule AthenaWeb.LearnLive.PlayerTeamExamTest do
              "the team ended up with #{length(attempts)} parallel attempts at one exam block"
     end
 
-    test "the two attempts are not even the same exam paper", ctx do
+    test "the lock appears in a teammate's open player, live", ctx do
+      block = exam_block(ctx.section)
+      seed_question_pool(ctx.course, 6)
+
+      {:ok, alice_lv, _} = live(ctx.alice_conn, play_path(ctx.course, ctx.section))
+      {:ok, bob_lv, bob_html} = live(ctx.bob_conn, play_path(ctx.course, ctx.section))
+
+      assert bob_html =~ "Start Assessment"
+
+      render_click(alice_lv, "start_exam", %{"block_id" => block.id})
+
+      bob_html = render(bob_lv)
+      assert bob_html =~ "Assessment in progress"
+      refute bob_html =~ "Start Assessment"
+    end
+
+    test "opening the exam URL as a teammate bounces back without creating an attempt", ctx do
       block = exam_block(ctx.section)
       seed_question_pool(ctx.course, 6)
 
       {:ok, _alice_exam, _} = live(ctx.alice_conn, exam_path(ctx.course, block))
-      {:ok, _bob_exam, _} = live(ctx.bob_conn, exam_path(ctx.course, block))
 
-      [alice_paper, bob_paper] = Enum.map(team_attempts(block.id), &question_texts/1)
+      result = live(ctx.bob_conn, exam_path(ctx.course, block))
 
-      assert alice_paper == bob_paper,
-             "team members sat different papers for the same exam block"
+      assert {:error, {:live_redirect, %{to: to}}} = result
+      assert to =~ "/play/"
+
+      {:ok, _player, html} = follow_redirect(result, ctx.bob_conn)
+      assert html =~ Athena.Identity.display_name(ctx.alice)
+
+      assert length(team_attempts(block.id)) == 1
     end
 
-    test "answers one member types are not visible to the other", ctx do
+    test "the member holding it can carry on", ctx do
+      block = exam_block(ctx.section)
+      seed_question_pool(ctx.course, 6)
+
+      {:ok, _alice_exam, _} = live(ctx.alice_conn, exam_path(ctx.course, block))
+      {:ok, _again, html} = live(ctx.alice_conn, exam_path(ctx.course, block))
+
+      assert html =~ "Assessment Session"
+      assert length(team_attempts(block.id)) == 1
+    end
+
+    test "a teammate takes over once the holder's lock goes stale", ctx do
+      block = exam_block(ctx.section)
+      seed_question_pool(ctx.course, 6)
+
+      {:ok, _alice_exam, _} = live(ctx.alice_conn, exam_path(ctx.course, block))
+      [attempt] = team_attempts(block.id)
+      assert attempt.account_id == ctx.alice.id
+
+      go_stale(attempt)
+
+      {:ok, _bob_exam, html} = live(ctx.bob_conn, exam_path(ctx.course, block))
+      assert html =~ "Assessment Session"
+
+      [attempt] = team_attempts(block.id)
+
+      assert attempt.account_id == ctx.bob.id,
+             "the stale attempt was not handed over to the teammate who picked it up"
+    end
+
+    test "the holder leaving releases the lock for the team", ctx do
       block = exam_block(ctx.section)
       seed_question_pool(ctx.course, 6)
 
       {:ok, alice_exam, _} = live(ctx.alice_conn, exam_path(ctx.course, block))
 
       [attempt] = team_attempts(block.id)
-      first_question_id = attempt.content["questions"] |> hd() |> Map.fetch!("id")
+      assert attempt.heartbeat_at
 
-      alice_exam
-      |> form("#exam-quiz-#{first_question_id}", %{"answer" => "alice's exam answer"})
-      |> render_change()
+      ref = Process.monitor(alice_exam.pid)
+      GenServer.stop(alice_exam.pid)
+      assert_receive {:DOWN, ^ref, :process, _pid, _reason}
 
-      {:ok, _bob_exam, bob_html} = live(ctx.bob_conn, exam_path(ctx.course, block))
+      [attempt] = team_attempts(block.id)
+      refute attempt.heartbeat_at
 
-      assert bob_html =~ "alice's exam answer",
-             "the team's exam answers are not shared the way every other block's are"
+      {:ok, _bob_exam, html} = live(ctx.bob_conn, exam_path(ctx.course, block))
+      assert html =~ "Assessment Session"
+      assert length(team_attempts(block.id)) == 1
+    end
+
+    test "an individual student is unaffected by any of this", _ctx do
+      solo = insert(:account)
+      solo_conn = init_test_session(Phoenix.ConnTest.build_conn(), %{"account_id" => solo.id})
+
+      course = insert(:course)
+      insert(:enrollment, account_id: solo.id, course_id: course.id)
+      section = insert(:section, course: course)
+
+      block = exam_block(section)
+      seed_question_pool(course, 6)
+
+      {:ok, _exam, html} = live(solo_conn, exam_path(course, block))
+      assert html =~ "Assessment Session"
+
+      [attempt] = team_attempts(block.id)
+      assert attempt.account_id == solo.id
+      assert is_nil(attempt.cohort_id)
     end
   end
 
@@ -234,9 +308,15 @@ defmodule AthenaWeb.LearnLive.PlayerTeamExamTest do
     submission
   end
 
-  defp question_texts(%Submission{content: content}) do
-    (content["questions"] || [])
-    |> Enum.map(&get_in(&1, ["content", "body", "text"]))
-    |> Enum.sort()
+  # Backdates the holder's heartbeat past the idle timeout, the way a
+  # closed laptop or a dead node leaves it.
+  defp go_stale(%Submission{id: id}) do
+    stale =
+      DateTime.utc_now()
+      |> DateTime.add(-Athena.Learning.Submissions.exam_lock_idle_ms() - 1_000, :millisecond)
+      |> DateTime.truncate(:second)
+
+    {1, _} = Submission |> where([s], s.id == ^id) |> Repo.update_all(set: [heartbeat_at: stale])
+    :ok
   end
 end
