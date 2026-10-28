@@ -252,6 +252,7 @@ defmodule Athena.Content.Library do
         id: Ecto.UUID.generate(),
         type: lib_block.type,
         content: lib_block.content,
+        points: lib_block.points,
         inserted_at: DateTime.utc_now(),
         updated_at: DateTime.utc_now()
       }
@@ -497,6 +498,7 @@ defmodule Athena.Content.Library do
         id: Ecto.UUID.generate(),
         type: lib_block.type,
         content: Map.put(lib_block.content || %{}, "original_block_id", lib_block.id),
+        points: lib_block.points,
         inserted_at: DateTime.utc_now(),
         updated_at: DateTime.utc_now()
       }

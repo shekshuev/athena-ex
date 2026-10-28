@@ -1,8 +1,10 @@
 defmodule Athena.Learning.SubmissionsTest do
   use Athena.DataCase, async: true
 
+  alias Athena.Content.ScoringRules
   alias Athena.Learning.{Submissions, Submission, DraftCache}
   import Athena.Factory
+  import Ecto.Query
 
   describe "list_submissions/2" do
     setup do
@@ -537,6 +539,195 @@ defmodule Athena.Learning.SubmissionsTest do
 
       assert {:error, :forbidden} =
                Submissions.update_submission(instructor, submission, %{"score" => 100})
+    end
+  end
+
+  describe "get_team_leaderboard/2 with configured scoring" do
+    setup do
+      course = insert(:course, type: :competition)
+      section = insert(:section, course: course)
+
+      teams =
+        for name <- ~w(Alpha Beta Gamma) do
+          team = insert(:cohort, name: name, type: :team)
+          insert(:enrollment, course_id: course.id, cohort_id: team.id)
+          team
+        end
+
+      %{course: course, section: section, teams: teams}
+    end
+
+    defp solve(block, team, opts \\ []) do
+      insert(
+        :submission,
+        Keyword.merge(
+          [
+            block_id: block.id,
+            cohort_id: team.id,
+            score: 100,
+            status: :graded,
+            inserted_at: ~U[2026-01-01 10:00:00Z]
+          ],
+          opts
+        )
+      )
+    end
+
+    defp score_for(board, team), do: Enum.find(board, &(&1.team_id == team.id)).total_score
+
+    test "nil scoring is byte-for-byte the static default", ctx do
+      [alpha | _] = ctx.teams
+      block = insert(:block, section: ctx.section)
+      solve(block, alpha, score: 73)
+
+      assert Submissions.get_team_leaderboard(ctx.course.id, nil) ==
+               Submissions.get_team_leaderboard(ctx.course.id, %ScoringRules{})
+    end
+
+    test "a task gets cheaper the more teams solve it", ctx do
+      [alpha, beta, gamma] = ctx.teams
+      block = insert(:block, section: ctx.section)
+
+      rules = %ScoringRules{mode: :dynamic, initial: 500, minimum: 100, decay: 20}
+
+      solve(block, alpha)
+      assert score_for(Submissions.get_team_leaderboard(ctx.course.id, rules), alpha) == 500
+
+      solve(block, beta)
+      board = Submissions.get_team_leaderboard(ctx.course.id, rules)
+
+      # Everyone's share falls together - including the team that got
+      # there first.
+      assert score_for(board, alpha) == 480
+      assert score_for(board, beta) == 480
+
+      solve(block, gamma)
+      assert score_for(Submissions.get_team_leaderboard(ctx.course.id, rules), alpha) == 460
+    end
+
+    test "a block's own weight is what it decays from", ctx do
+      [alpha, beta, _] = ctx.teams
+      block = insert(:block, section: ctx.section, points: 300)
+
+      rules = %ScoringRules{mode: :dynamic, initial: 500, minimum: 100, decay: 20}
+
+      solve(block, alpha)
+      solve(block, beta)
+
+      assert score_for(Submissions.get_team_leaderboard(ctx.course.id, rules), alpha) == 280
+    end
+
+    test "static mode respects a block's weight too", ctx do
+      [alpha | _] = ctx.teams
+      block = insert(:block, section: ctx.section, points: 300)
+
+      solve(block, alpha, score: 60)
+
+      assert score_for(Submissions.get_team_leaderboard(ctx.course.id, %ScoringRules{}), alpha) ==
+               180
+    end
+
+    test "an incomplete attempt does not make the task cheaper for anyone", ctx do
+      [alpha, beta, _] = ctx.teams
+      block = insert(:block, section: ctx.section)
+
+      rules = %ScoringRules{mode: :dynamic, initial: 500, minimum: 100, decay: 20}
+
+      solve(block, alpha)
+      solve(block, beta, score: 99)
+
+      board = Submissions.get_team_leaderboard(ctx.course.id, rules)
+
+      assert score_for(board, alpha) == 500
+      assert score_for(board, beta) == 495
+    end
+
+    test "tiebreakers are applied in the author's order", ctx do
+      [alpha, beta, _] = ctx.teams
+      block = insert(:block, section: ctx.section)
+
+      # Alpha solved later but in one attempt; Beta solved earlier after
+      # three.
+      solve(block, alpha, inserted_at: ~U[2026-01-02 10:00:00Z])
+
+      solve(block, beta, inserted_at: ~U[2026-01-01 10:00:00Z])
+      solve(block, beta, score: 0, inserted_at: ~U[2026-01-01 09:00:00Z])
+      solve(block, beta, score: 0, inserted_at: ~U[2026-01-01 08:00:00Z])
+
+      by_time = %ScoringRules{tiebreakers: [:time, :attempts]}
+      by_attempts = %ScoringRules{tiebreakers: [:attempts, :time]}
+
+      assert [%{team_name: "Beta"}, %{team_name: "Alpha"} | _] =
+               Submissions.get_team_leaderboard(ctx.course.id, by_time)
+
+      assert [%{team_name: "Alpha"}, %{team_name: "Beta"} | _] =
+               Submissions.get_team_leaderboard(ctx.course.id, by_attempts)
+    end
+
+    test "first blood ranks a team above an equal total", ctx do
+      [alpha, beta, _] = ctx.teams
+      block1 = insert(:block, section: ctx.section)
+      block2 = insert(:block, section: ctx.section)
+
+      solve(block1, alpha, inserted_at: ~U[2026-01-01 08:00:00Z])
+      solve(block2, alpha, inserted_at: ~U[2026-01-03 10:00:00Z])
+
+      solve(block1, beta, inserted_at: ~U[2026-01-02 10:00:00Z])
+      solve(block2, beta, inserted_at: ~U[2026-01-02 11:00:00Z])
+
+      rules = %ScoringRules{tiebreakers: [:first_blood]}
+
+      assert [%{team_name: "Alpha", first_bloods: 1}, %{team_name: "Beta"} | _] =
+               Submissions.get_team_leaderboard(ctx.course.id, rules)
+    end
+
+    test "disqualification can be turned off", ctx do
+      [alpha, beta, _] = ctx.teams
+      block = insert(:block, section: ctx.section)
+
+      solve(block, alpha, score: 50)
+      solve(block, beta, score: 0, status: :rejected)
+      solve(block, beta, score: 90)
+
+      strict = Submissions.get_team_leaderboard(ctx.course.id, %ScoringRules{})
+
+      lenient =
+        Submissions.get_team_leaderboard(
+          ctx.course.id,
+          %ScoringRules{disqualify_on_rejected: false}
+        )
+
+      assert [%{team_name: "Alpha"} | _] = strict
+      assert Enum.find(strict, &(&1.team_name == "Beta")).is_disqualified
+
+      assert [%{team_name: "Beta", is_disqualified: false} | _] = lenient
+    end
+
+    test "a team that has never submitted sorts last, not first", ctx do
+      [alpha, _beta, _gamma] = ctx.teams
+      block = insert(:block, section: ctx.section)
+
+      solve(block, alpha, score: 0)
+
+      board = Submissions.get_team_leaderboard(ctx.course.id, %ScoringRules{})
+
+      assert [%{team_name: "Alpha"} | rest] = board
+      assert Enum.all?(rest, &is_nil(&1.last_activity))
+    end
+
+    test "an unscored attempt does not mask a graded one on the same block", ctx do
+      [alpha | _] = ctx.teams
+      block = insert(:block, section: ctx.section)
+
+      solve(block, alpha, score: 90)
+
+      unscored = solve(block, alpha, status: :needs_review)
+
+      {1, _} =
+        Submission |> where([s], s.id == ^unscored.id) |> Repo.update_all(set: [score: nil])
+
+      assert score_for(Submissions.get_team_leaderboard(ctx.course.id, %ScoringRules{}), alpha) ==
+               90
     end
   end
 

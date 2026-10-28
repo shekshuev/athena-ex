@@ -9,6 +9,7 @@ defmodule Athena.Learning.Submissions do
   import Ecto.Query
   alias Athena.{Repo, Content}
   alias Athena.Audit
+  alias Athena.Content.ScoringRules
 
   alias Athena.Learning.{
     Submission,
@@ -522,82 +523,182 @@ defmodule Athena.Learning.Submissions do
   end
 
   @doc """
-  Generates a leaderboard for a specific competition course.
-  Calculates the sum of the max scores per block for each team.
-  Ties are broken by the timestamp of the latest submission.
-  Teams with any rejected submission are disqualified and moved to the bottom.
+  Ranks a competition's teams.
+
+  Each team's score is the sum of what their best attempt at every block
+  earned them; `Athena.Content.ScoringRules` decides what a block is worth
+  and how equal totals are settled, with the course's `scoring` (or `nil`,
+  meaning the defaults) as the rulebook. Teams with any rejected
+  submission are disqualified and sink to the bottom, unless the rules say
+  otherwise.
+
+  The rows are shaped for direct rendering - see
+  `AthenaWeb.LeaderboardComponents.board_table/1`.
   """
+  @spec get_team_leaderboard(String.t()) :: [map()]
   def get_team_leaderboard(course_id) do
-    best_per_block =
-      from s in Submission,
-        join: b in Block,
-        on: s.block_id == b.id,
-        join: sec in Section,
-        on: b.section_id == sec.id,
-        where:
-          not is_nil(s.cohort_id) and sec.course_id == ^course_id and
-            s.status in [:graded, :needs_review],
-        distinct: [s.cohort_id, s.block_id],
-        # `desc_nulls_last`: a plain `desc` is NULLS FIRST in Postgres, so a
-        # `:needs_review` attempt awaiting a grade (`score IS NULL`) used to
-        # win its group and collapse the team's `sum()` to NULL - wiping a
-        # score a teammate had already earned on the same block.
-        order_by: [s.cohort_id, s.block_id, desc_nulls_last: s.score, asc: s.inserted_at],
-        select: %{
-          cohort_id: s.cohort_id,
-          score: s.score,
-          inserted_at: s.inserted_at
-        }
+    scoring =
+      from(c in Athena.Content.Course, where: c.id == ^course_id, select: c.scoring)
+      |> Repo.one()
 
-    team_scores =
-      from bpb in subquery(best_per_block),
-        group_by: bpb.cohort_id,
-        select: %{
-          cohort_id: bpb.cohort_id,
-          total_score: sum(bpb.score),
-          last_activity: max(bpb.inserted_at)
-        }
-
-    team_attempts =
-      from s in Submission,
-        join: b in Block,
-        on: s.block_id == b.id,
-        join: sec in Section,
-        on: b.section_id == sec.id,
-        where: not is_nil(s.cohort_id) and sec.course_id == ^course_id,
-        group_by: s.cohort_id,
-        select: %{
-          cohort_id: s.cohort_id,
-          attempts_count: count(s.id),
-          is_disqualified: fragment("count(case when ? = 'rejected' then 1 end) > 0", s.status)
-        }
-
-    query =
-      from e in Enrollment,
-        join: c in Cohort,
-        on: e.cohort_id == c.id,
-        left_join: ts in subquery(team_scores),
-        on: ts.cohort_id == c.id,
-        left_join: ta in subquery(team_attempts),
-        on: ta.cohort_id == c.id,
-        where: e.course_id == ^course_id and c.type == :team,
-        select: %{
-          team_id: c.id,
-          team_name: c.name,
-          total_score: type(coalesce(ts.total_score, 0), :integer),
-          last_activity: ts.last_activity,
-          attempts: type(coalesce(ta.attempts_count, 0), :integer),
-          is_disqualified: type(coalesce(ta.is_disqualified, false), :boolean)
-        },
-        order_by: [
-          asc: coalesce(ta.is_disqualified, false),
-          desc: coalesce(ts.total_score, 0),
-          asc: ts.last_activity,
-          asc: coalesce(ta.attempts_count, 0)
-        ]
-
-    Repo.all(query)
+    get_team_leaderboard(course_id, scoring)
   end
+
+  @doc """
+  `get_team_leaderboard/1` against an explicit rulebook.
+
+  The arithmetic and the ordering happen here rather than in SQL. A
+  dynamic block value is a course-wide aggregate that then multiplies
+  every team's row, which in SQL means writing the decay formula a second
+  time (and a configurable ORDER BY over a computed sum); in Elixir it is
+  `ScoringRules.points/4`, testable on its own. The cost is already
+  settled by `Athena.Learning.LeaderboardCache` - the board is computed at
+  most once per cache window per course, over at most `teams × blocks`
+  rows.
+  """
+  @spec get_team_leaderboard(String.t(), ScoringRules.t() | nil) :: [map()]
+  def get_team_leaderboard(course_id, scoring) do
+    rules = ScoringRules.resolve(scoring)
+
+    best_rows = best_attempt_per_block(course_id)
+    solves = solves_per_block(best_rows, rules)
+    first_bloods = first_bloods_per_team(best_rows, rules)
+    attempts = team_attempt_counts(course_id)
+
+    course_id
+    |> competing_teams()
+    |> Enum.map(&build_team_row(&1, best_rows, solves, first_bloods, attempts, rules))
+    |> order_teams(rules)
+  end
+
+  # One row per (team, block): the attempt that counts. `desc_nulls_last`
+  # because a plain `desc` is NULLS FIRST in Postgres, so an attempt still
+  # awaiting a grade used to win its group and wipe a score a teammate had
+  # already earned on the same block.
+  defp best_attempt_per_block(course_id) do
+    from(s in Submission,
+      join: b in Block,
+      on: s.block_id == b.id,
+      join: sec in Section,
+      on: b.section_id == sec.id,
+      where:
+        not is_nil(s.cohort_id) and sec.course_id == ^course_id and
+          s.status in [:graded, :needs_review],
+      distinct: [s.cohort_id, s.block_id],
+      order_by: [s.cohort_id, s.block_id, desc_nulls_last: s.score, asc: s.inserted_at],
+      select: %{
+        cohort_id: s.cohort_id,
+        block_id: s.block_id,
+        block_points: b.points,
+        score: s.score,
+        inserted_at: s.inserted_at
+      }
+    )
+    |> Repo.all()
+  end
+
+  # How many teams have solved each block, from the same rows the points
+  # are computed from - so the threshold lives in one place and the two can
+  # never disagree.
+  defp solves_per_block(best_rows, rules) do
+    best_rows
+    |> Enum.filter(&ScoringRules.solve?(rules, &1.score))
+    |> Enum.frequencies_by(& &1.block_id)
+  end
+
+  # Who solved each block first, counted per team. Note this is the time of
+  # the team's *best* attempt, which is what "solved it first" means here -
+  # not the first time they touched the block.
+  defp first_bloods_per_team(best_rows, rules) do
+    best_rows
+    |> Enum.filter(&ScoringRules.solve?(rules, &1.score))
+    |> Enum.group_by(& &1.block_id)
+    |> Enum.map(fn {_block_id, rows} ->
+      rows
+      |> Enum.min_by(&{DateTime.to_unix(&1.inserted_at), &1.cohort_id})
+      |> Map.fetch!(:cohort_id)
+    end)
+    |> Enum.frequencies()
+  end
+
+  defp team_attempt_counts(course_id) do
+    from(s in Submission,
+      join: b in Block,
+      on: s.block_id == b.id,
+      join: sec in Section,
+      on: b.section_id == sec.id,
+      where: not is_nil(s.cohort_id) and sec.course_id == ^course_id,
+      group_by: s.cohort_id,
+      select:
+        {s.cohort_id,
+         %{
+           attempts: count(s.id),
+           rejected?: fragment("count(case when ? = 'rejected' then 1 end) > 0", s.status)
+         }}
+    )
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  defp competing_teams(course_id) do
+    from(e in Enrollment,
+      join: c in Cohort,
+      on: e.cohort_id == c.id,
+      where: e.course_id == ^course_id and c.type == :team,
+      select: %{team_id: c.id, team_name: c.name}
+    )
+    |> Repo.all()
+  end
+
+  defp build_team_row(team, best_rows, solves, first_bloods, attempts, rules) do
+    rows = Enum.filter(best_rows, &(&1.cohort_id == team.team_id))
+
+    block_points =
+      Map.new(rows, fn row ->
+        {row.block_id,
+         ScoringRules.points(
+           rules,
+           row.block_points,
+           Map.get(solves, row.block_id, 0),
+           row.score
+         )}
+      end)
+
+    counts = Map.get(attempts, team.team_id, %{attempts: 0, rejected?: false})
+
+    %{
+      team_id: team.team_id,
+      team_name: team.team_name,
+      total_score: block_points |> Map.values() |> Enum.sum(),
+      block_points: block_points,
+      last_activity: rows |> Enum.map(& &1.inserted_at) |> latest(),
+      attempts: counts.attempts,
+      first_bloods: Map.get(first_bloods, team.team_id, 0),
+      is_disqualified: rules.disqualify_on_rejected and counts.rejected?
+    }
+  end
+
+  defp latest([]), do: nil
+  defp latest(timestamps), do: Enum.max_by(timestamps, &DateTime.to_unix/1)
+
+  # Disqualified last, then by score, then by the author's chosen
+  # tiebreakers in their chosen order. With the default `[:time,
+  # :attempts]` the key is term-for-term the ORDER BY this replaced.
+  defp order_teams(rows, rules) do
+    Enum.sort_by(rows, fn row ->
+      List.to_tuple([
+        if(row.is_disqualified, do: 1, else: 0),
+        -row.total_score | Enum.map(rules.tiebreakers, &tiebreaker_key(&1, row))
+      ])
+    end)
+  end
+
+  # `{1, 0}` for a missing timestamp keeps teams who have never submitted
+  # at the back, the way Postgres' `ASC NULLS LAST` did.
+  defp tiebreaker_key(:time, %{last_activity: nil}), do: {1, 0}
+  defp tiebreaker_key(:time, row), do: {0, DateTime.to_unix(row.last_activity)}
+  defp tiebreaker_key(:attempts, row), do: row.attempts
+  defp tiebreaker_key(:first_blood, row), do: -row.first_bloods
 
   @doc """
   For every member of an academic cohort, returns their most recent

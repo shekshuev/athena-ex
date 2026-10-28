@@ -40,13 +40,19 @@ defmodule Athena.Content.Block do
     }
   }
 
-  @derive {Jason.Encoder, only: [:id, :type, :content]}
+  @derive {Jason.Encoder, only: [:id, :type, :content, :points]}
 
   schema "blocks" do
     field :type, Ecto.Enum, values: BlockTypes.all()
 
     field :content, :map, default: %{}
     field :order, :integer, default: 0
+
+    # What this task is worth. `nil` means unweighted, and each reader
+    # supplies its own default: a question inside an exam counts as 100,
+    # and a competition leaderboard falls back to the course's `initial`
+    # value. See `Athena.Content.ScoringRules`.
+    field :points, :integer
 
     field :visibility, Ecto.Enum,
       values: ~w(enrolled restricted hidden inherit)a,
@@ -78,12 +84,13 @@ defmodule Athena.Content.Block do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(block, attrs) do
     block
-    |> cast(attrs, [:type, :content, :order, :section_id, :visibility])
+    |> cast(attrs, [:type, :content, :order, :points, :section_id, :visibility])
     |> update_change(:content, &Tiptap.strip_colors/1)
     |> cast_embed(:access_rules, with: &AccessRules.changeset/2)
     |> cast_embed(:completion_rule, with: &CompletionRule.changeset/2)
     |> cast_embed(:engagement_rule, with: &EngagementRule.changeset/2)
     |> validate_required([:type, :content, :section_id, :visibility])
+    |> validate_number(:points, greater_than: 0)
     |> foreign_key_constraint(:section_id)
     |> validate_content_by_type()
   end

@@ -74,6 +74,118 @@ defmodule AthenaWeb.LearnLive.ExamTest do
     end
   end
 
+  describe "Question weights" do
+    test "a heavier question counts for more of the final score", %{
+      conn: conn,
+      course: course,
+      section: section,
+      user: user
+    } do
+      block = insert(:block, section: section, type: :quiz_exam, content: %{"count" => 2})
+
+      # 300 + 100 points: getting only the expensive one right is 75%, not
+      # the 50% an unweighted average would give.
+      questions = [
+        %{
+          "id" => Ecto.UUID.generate(),
+          "type" => "quiz_question",
+          "points" => 300,
+          "content" => %{
+            "question_type" => "exact_match",
+            "body" => %{"text" => "Hard one"},
+            "correct_answer" => "right"
+          }
+        },
+        %{
+          "id" => Ecto.UUID.generate(),
+          "type" => "quiz_question",
+          "points" => 100,
+          "content" => %{
+            "question_type" => "exact_match",
+            "body" => %{"text" => "Easy one"},
+            "correct_answer" => "right"
+          }
+        }
+      ]
+
+      [hard_id, easy_id] = Enum.map(questions, & &1["id"])
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :pending,
+        expires_at:
+          DateTime.utc_now() |> DateTime.add(3600, :second) |> DateTime.truncate(:second),
+        content: %{
+          "type" => "quiz_exam",
+          "started_at" => DateTime.utc_now(),
+          "questions" => questions
+        }
+      )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/exam/#{block.id}")
+
+      lv |> form("#exam-quiz-#{hard_id}", %{"answer" => "right"}) |> render_submit()
+      lv |> form("#exam-quiz-#{easy_id}", %{"answer" => "wrong"}) |> render_submit()
+      lv |> render_click("finish_exam", %{})
+
+      assert %{score: 75} =
+               Athena.Repo.get_by(Athena.Learning.Submission,
+                 account_id: user.id,
+                 block_id: block.id
+               )
+    end
+
+    test "unweighted questions stay a plain average", %{
+      conn: conn,
+      course: course,
+      section: section,
+      user: user
+    } do
+      block = insert(:block, section: section, type: :quiz_exam, content: %{"count" => 2})
+
+      questions =
+        for text <- ["One", "Two"] do
+          %{
+            "id" => Ecto.UUID.generate(),
+            "type" => "quiz_question",
+            "content" => %{
+              "question_type" => "exact_match",
+              "body" => %{"text" => text},
+              "correct_answer" => "right"
+            }
+          }
+        end
+
+      [first_id, second_id] = Enum.map(questions, & &1["id"])
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :pending,
+        expires_at:
+          DateTime.utc_now() |> DateTime.add(3600, :second) |> DateTime.truncate(:second),
+        content: %{
+          "type" => "quiz_exam",
+          "started_at" => DateTime.utc_now(),
+          "questions" => questions
+        }
+      )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/exam/#{block.id}")
+
+      lv |> form("#exam-quiz-#{first_id}", %{"answer" => "right"}) |> render_submit()
+      lv |> form("#exam-quiz-#{second_id}", %{"answer" => "wrong"}) |> render_submit()
+      lv |> render_click("finish_exam", %{})
+
+      assert %{score: 50} =
+               Athena.Repo.get_by(Athena.Learning.Submission,
+                 account_id: user.id,
+                 block_id: block.id
+               )
+    end
+  end
+
   describe "A competition team's shared attempt" do
     test "a teammate holding it is turned away instead of getting a paper of their own", %{
       conn: conn,

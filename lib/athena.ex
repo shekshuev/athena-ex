@@ -30,6 +30,7 @@ defmodule Athena do
       Content.Section,
       Content.Course,
       Content.CodeChallenge,
+      Content.ScoringRules,
       Content.SurveyRef,
       Content.Policy,
       Media,

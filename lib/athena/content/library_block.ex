@@ -40,6 +40,10 @@ defmodule Athena.Content.LibraryBlock do
 
     field :content, :map, default: %{}
     field :tags, {:array, :string}, default: []
+
+    # What this task is worth; carried into an exam's question snapshot by
+    # `Athena.Content.Library.build_exam_blocks/1`. `nil` is unweighted.
+    field :points, :integer
     field :owner_id, :binary_id
     field :is_public, :boolean, default: false
     has_many :course_library_blocks, CourseLibraryBlock
@@ -53,10 +57,11 @@ defmodule Athena.Content.LibraryBlock do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(library_block, attrs) do
     library_block
-    |> cast(attrs, [:title, :type, :content, :tags, :owner_id, :is_public])
+    |> cast(attrs, [:title, :type, :content, :tags, :points, :owner_id, :is_public])
     |> update_change(:content, &Tiptap.strip_colors/1)
     |> validate_required([:title, :type, :content, :owner_id])
     |> validate_length(:title, min: 3, max: 255)
+    |> validate_number(:points, greater_than: 0)
     |> validate_content_by_type()
     |> foreign_key_constraint(:course_library_blocks,
       name: :course_library_blocks_library_block_id_fkey,

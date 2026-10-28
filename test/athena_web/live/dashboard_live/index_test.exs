@@ -279,12 +279,12 @@ defmodule AthenaWeb.DashboardLive.IndexTest do
       card = "#competition-current-#{competition.id}"
 
       assert html =~ "Latecomers"
-      refute lv |> element(card) |> render() =~ "777"
+      refute lv |> element(card) |> render() =~ "77"
 
-      insert(:submission, block_id: block.id, cohort_id: team.id, score: 777, status: :graded)
+      insert(:submission, block_id: block.id, cohort_id: team.id, score: 77, status: :graded)
       send(lv.pid, :update_leaderboard)
 
-      assert lv |> element(card) |> render() =~ "777"
+      assert lv |> element(card) |> render() =~ "77"
     end
   end
 

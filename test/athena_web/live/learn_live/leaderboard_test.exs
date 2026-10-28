@@ -257,15 +257,15 @@ defmodule AthenaWeb.LearnLive.LeaderboardTest do
       {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/leaderboard")
 
       assert has_element?(lv, "#leaderboard-table", "Late Bloomers")
-      refute has_element?(lv, "#leaderboard-table", "1337")
+      refute has_element?(lv, "#leaderboard-table", "73")
 
-      insert(:submission, block_id: block.id, cohort_id: team.id, score: 1337, status: :graded)
+      insert(:submission, block_id: block.id, cohort_id: team.id, score: 73, status: :graded)
 
       send(lv.pid, :update_leaderboard)
       _ = render(lv)
 
       assert has_element?(lv, "#leaderboard-table", "Late Bloomers")
-      assert has_element?(lv, "#leaderboard-table", "1337")
+      assert has_element?(lv, "#leaderboard-table", "73")
     end
   end
 end
