@@ -260,7 +260,8 @@ defmodule AthenaWeb.DashboardLive.IndexTest do
       assert html =~ "Competitions"
       assert html =~ competition.title
       assert html =~ "The Outsiders"
-      assert html =~ "42"
+
+      assert has_element?(lv, "#competition-score-current-#{competition.id}", "42")
       assert has_element?(lv, ~s{a[href="/learn/courses/#{competition.id}/leaderboard"]})
     end
 
@@ -276,15 +277,18 @@ defmodule AthenaWeb.DashboardLive.IndexTest do
       conn = init_test_session(conn, %{"account_id" => account.id})
       {:ok, lv, html} = live(conn, ~p"/dashboard")
 
-      card = "#competition-current-#{competition.id}"
+      # Scoped to the score element, not the whole card: the card embeds the
+      # course's UUID in its href, and a short number matches those digits
+      # often enough to make a card-wide assertion flaky.
+      score = "#competition-score-current-#{competition.id}"
 
       assert html =~ "Latecomers"
-      refute lv |> element(card) |> render() =~ "777"
+      assert lv |> element(score) |> render() =~ "0"
 
-      insert(:submission, block_id: block.id, cohort_id: team.id, score: 777, status: :graded)
+      insert(:submission, block_id: block.id, cohort_id: team.id, score: 77, status: :graded)
       send(lv.pid, :update_leaderboard)
 
-      assert lv |> element(card) |> render() =~ "777"
+      assert lv |> element(score) |> render() =~ "77"
     end
   end
 

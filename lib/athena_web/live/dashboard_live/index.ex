@@ -278,7 +278,10 @@ defmodule AthenaWeb.DashboardLive.Index do
               class="flex items-center justify-between gap-2 text-sm"
             >
               <span class="truncate">🏆 {leading_team(board).team_name}</span>
-              <span class="font-mono font-bold text-primary shrink-0">
+              <span
+                id={"competition-score-#{@phase}-#{course.id}"}
+                class="font-mono font-bold text-primary shrink-0"
+              >
                 {leading_team(board).total_score}
               </span>
             </div>

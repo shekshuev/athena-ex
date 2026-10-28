@@ -821,6 +821,28 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
               <% end %>
             </.inputs_for>
           </div>
+
+          <div :if={Block.gradable?(@block)} class="space-y-4 mb-6">
+            <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
+              {gettext("Task Value")}
+            </div>
+
+            <.input
+              type="number"
+              field={@form[:points]}
+              label={gettext("Points")}
+              placeholder="100"
+              min="1"
+              phx-debounce="500"
+            />
+
+            <p class="text-xs text-base-content/50 leading-relaxed -mt-2">
+              {gettext(
+                "What this task is worth: its weight among an exam's questions, and its value on a competition leaderboard. Leave empty for the default."
+              )}
+            </p>
+          </div>
+
           <div class="divider my-4"></div>
 
           <div :if={Identity.can?(@current_user, "engagement.update")} class="space-y-4 mb-6">

@@ -9,6 +9,7 @@ defmodule Athena.Learning.Submissions do
   import Ecto.Query
   alias Athena.{Repo, Content}
   alias Athena.Audit
+  alias Athena.Content.ScoringRules
 
   alias Athena.Learning.{
     Submission,
@@ -391,9 +392,16 @@ defmodule Athena.Learning.Submissions do
   def finalize_expired_exam(%Submission{} = submission), do: {:ok, submission}
 
   @doc """
-  Gets the best/latest submissions for a list of block ids, scoped by cohort or user.
-  Prioritizes the highest score. If scores are equal, takes the latest attempt.
-  Excludes draft submissions.
+  Gets the attempt that counts for each of `block_ids`, scoped by cohort or
+  user. Excludes draft submissions.
+
+  A rejected attempt wins outright; otherwise the highest score, latest
+  first on a tie. Rejection is a verdict on the work rather than a score
+  to be beaten - it is what disqualifies a team from a competition
+  (`get_team_leaderboard/2`) - so letting an earlier, higher-scoring
+  attempt mask it would punish a team for work they were never told about.
+  Showing it also locks the block for review, which is the point: the
+  instructor removes the rejected attempt when they want it reopened.
   """
   @spec get_latest_submissions(String.t(), [String.t()], String.t() | nil) :: %{
           String.t() => Submission.t()
@@ -415,22 +423,46 @@ defmodule Athena.Learning.Submissions do
 
     query
     |> distinct([s], s.block_id)
-    |> order_by([s], [s.block_id, desc: s.score, desc: s.inserted_at])
+    |> order_by([s], ^attempt_precedence())
     |> Repo.all()
     |> Map.new(&{&1.block_id, &1})
+  end
+
+  # Which of a block's attempts is *the* attempt, shared by
+  # `get_latest_submissions/3` and `get_feedback_map/3` so the score and
+  # the comment a student reads can never come from different work.
+  #
+  # `desc_nulls_last` on the score because a plain `desc` is NULLS FIRST in
+  # Postgres: an attempt still awaiting a grade would otherwise hide an
+  # already-graded one - a teammate's blank exam masking the team's 90.
+  defp attempt_precedence do
+    [
+      asc: dynamic([s], s.block_id),
+      desc: dynamic([s], fragment("? = 'rejected'", s.status)),
+      desc_nulls_last: dynamic([s], s.score),
+      desc: dynamic([s], s.inserted_at)
+    ]
   end
 
   @doc """
   Collects instructor feedback per block for the student-facing player.
 
-  Picked independently of `get_latest_submissions/3`: that one prefers the
-  highest score, so a rejected (score 0) or re-graded older attempt carrying
-  the instructor's comment would never surface. Here, per block, the most
-  recently updated attempt that has feedback – its own, or on any of its
-  exam question children – wins.
+  Picks the **same** attempt `get_latest_submissions/3` does (see
+  `attempt_precedence/0`), because that is the attempt whose score the
+  player shows. Choosing independently - this used to take the most
+  recently updated attempt carrying a comment - meant a regrade that
+  lowered a score left the student reading the new comment above the old,
+  higher number, with no way to tell they described different attempts.
+
+  An exam's per-question breakdown comes with the attempt once it is
+  finished, whether or not the instructor wrote anything: correcting a
+  single question's score is a grading act the student has to be able to
+  see, and it carries no comment of its own.
 
   Returns `%{block_id => %{feedback: String.t() | nil, status: atom(),
-  questions: [%{number: pos_integer(), feedback: String.t(), score: integer()}]}}`.
+  questions: [%{number: pos_integer() | nil, feedback: String.t() | nil,
+  score: integer() | nil}]}}`, with only the blocks that have something to
+  show - so `Map.has_key?/2` is the test for "render the feedback card".
   """
   @spec get_feedback_map(String.t(), [String.t()], String.t() | nil) :: %{String.t() => map()}
   def get_feedback_map(account_id, block_ids, cohort_id \\ nil)
@@ -438,37 +470,23 @@ defmodule Athena.Learning.Submissions do
   def get_feedback_map(_account_id, [], _cohort_id), do: %{}
 
   def get_feedback_map(account_id, block_ids, cohort_id) do
-    children_with_feedback =
-      from c in Submission,
-        where:
-          c.parent_submission_id == parent_as(:sub).id and not is_nil(c.feedback) and
-            c.feedback != "",
-        select: 1
-
     parents =
-      from(s in Submission, as: :sub)
+      from(s in Submission)
       |> where([s], s.block_id in ^block_ids and s.status != :draft)
       |> where([s], is_nil(s.parent_submission_id))
       |> where([s], fragment("?->>'is_test_run' IS NULL", s.content))
       |> where_owner(account_id, cohort_id)
-      |> where(
-        [s],
-        (not is_nil(s.feedback) and s.feedback != "") or exists(subquery(children_with_feedback))
-      )
       |> distinct([s], s.block_id)
-      |> order_by([s], [s.block_id, desc: s.updated_at, desc: s.inserted_at])
+      |> order_by([s], ^attempt_precedence())
       |> Repo.all()
 
     children_by_parent =
-      from(c in Submission,
-        where:
-          c.parent_submission_id in ^Enum.map(parents, & &1.id) and not is_nil(c.feedback) and
-            c.feedback != ""
-      )
+      from(c in Submission, where: c.parent_submission_id in ^Enum.map(parents, & &1.id))
       |> Repo.all()
       |> Enum.group_by(& &1.parent_submission_id)
 
-    Map.new(parents, fn parent ->
+    parents
+    |> Enum.map(fn parent ->
       children = Map.get(children_by_parent, parent.id, [])
 
       {parent.block_id,
@@ -478,6 +496,10 @@ defmodule Athena.Learning.Submissions do
          questions: question_feedback(parent, children)
        }}
     end)
+    |> Enum.reject(fn {_block_id, entry} ->
+      is_nil(entry.feedback) and entry.questions == []
+    end)
+    |> Map.new()
   end
 
   defp where_owner(query, _account_id, cohort_id) when not is_nil(cohort_id),
@@ -488,7 +510,18 @@ defmodule Athena.Learning.Submissions do
 
   # Orders child feedback by the question's position in the attempt, so the
   # student can match "Question 3" to what they saw in the exam.
+  #
+  # An unfinished attempt reports nothing: mid-exam, every unanswered
+  # question still sits at the schema's default score of 0, and a column of
+  # zeroes is not a result. Once it is finished the breakdown is complete -
+  # every question, scored, commented or not - which is what makes a
+  # score-only correction by the instructor visible at all.
+  @finished_statuses [:graded, :needs_review, :rejected, :time_limit_exceeded]
+
   defp question_feedback(_parent, []), do: []
+
+  defp question_feedback(%{status: status}, _children) when status not in @finished_statuses,
+    do: []
 
   defp question_feedback(parent, children) do
     order =
@@ -499,84 +532,192 @@ defmodule Athena.Learning.Submissions do
 
     children
     |> Enum.map(fn c ->
-      %{number: Map.get(order, c.block_id), feedback: c.feedback, score: c.score}
+      %{
+        number: Map.get(order, c.block_id),
+        feedback: if(c.feedback in [nil, ""], do: nil, else: c.feedback),
+        score: c.score
+      }
     end)
     |> Enum.sort_by(&(&1.number || 999_999))
   end
 
   @doc """
-  Generates a leaderboard for a specific competition course.
-  Calculates the sum of the max scores per block for each team.
-  Ties are broken by the timestamp of the latest submission.
-  Teams with any rejected submission are disqualified and moved to the bottom.
+  Ranks a competition's teams.
+
+  Each team's score is the sum of what their best attempt at every block
+  earned them; `Athena.Content.ScoringRules` decides what a block is worth
+  and how equal totals are settled, with the course's `scoring` (or `nil`,
+  meaning the defaults) as the rulebook. Teams with any rejected
+  submission are disqualified and sink to the bottom, unless the rules say
+  otherwise.
+
+  The rows are shaped for direct rendering - see
+  `AthenaWeb.LeaderboardComponents.board_table/1`.
   """
+  @spec get_team_leaderboard(String.t()) :: [map()]
   def get_team_leaderboard(course_id) do
-    best_per_block =
-      from s in Submission,
-        join: b in Block,
-        on: s.block_id == b.id,
-        join: sec in Section,
-        on: b.section_id == sec.id,
-        where:
-          not is_nil(s.cohort_id) and sec.course_id == ^course_id and
-            s.status in [:graded, :needs_review],
-        distinct: [s.cohort_id, s.block_id],
-        order_by: [s.cohort_id, s.block_id, desc: s.score, asc: s.inserted_at],
-        select: %{
-          cohort_id: s.cohort_id,
-          score: s.score,
-          inserted_at: s.inserted_at
-        }
+    scoring =
+      from(c in Athena.Content.Course, where: c.id == ^course_id, select: c.scoring)
+      |> Repo.one()
 
-    team_scores =
-      from bpb in subquery(best_per_block),
-        group_by: bpb.cohort_id,
-        select: %{
-          cohort_id: bpb.cohort_id,
-          total_score: sum(bpb.score),
-          last_activity: max(bpb.inserted_at)
-        }
-
-    team_attempts =
-      from s in Submission,
-        join: b in Block,
-        on: s.block_id == b.id,
-        join: sec in Section,
-        on: b.section_id == sec.id,
-        where: not is_nil(s.cohort_id) and sec.course_id == ^course_id,
-        group_by: s.cohort_id,
-        select: %{
-          cohort_id: s.cohort_id,
-          attempts_count: count(s.id),
-          is_disqualified: fragment("count(case when ? = 'rejected' then 1 end) > 0", s.status)
-        }
-
-    query =
-      from e in Enrollment,
-        join: c in Cohort,
-        on: e.cohort_id == c.id,
-        left_join: ts in subquery(team_scores),
-        on: ts.cohort_id == c.id,
-        left_join: ta in subquery(team_attempts),
-        on: ta.cohort_id == c.id,
-        where: e.course_id == ^course_id and c.type == :team,
-        select: %{
-          team_id: c.id,
-          team_name: c.name,
-          total_score: type(coalesce(ts.total_score, 0), :integer),
-          last_activity: ts.last_activity,
-          attempts: type(coalesce(ta.attempts_count, 0), :integer),
-          is_disqualified: type(coalesce(ta.is_disqualified, false), :boolean)
-        },
-        order_by: [
-          asc: coalesce(ta.is_disqualified, false),
-          desc: coalesce(ts.total_score, 0),
-          asc: ts.last_activity,
-          asc: coalesce(ta.attempts_count, 0)
-        ]
-
-    Repo.all(query)
+    get_team_leaderboard(course_id, scoring)
   end
+
+  @doc """
+  `get_team_leaderboard/1` against an explicit rulebook.
+
+  The arithmetic and the ordering happen here rather than in SQL. A
+  dynamic block value is a course-wide aggregate that then multiplies
+  every team's row, which in SQL means writing the decay formula a second
+  time (and a configurable ORDER BY over a computed sum); in Elixir it is
+  `ScoringRules.points/4`, testable on its own. The cost is already
+  settled by `Athena.Learning.LeaderboardCache` - the board is computed at
+  most once per cache window per course, over at most `teams × blocks`
+  rows.
+  """
+  @spec get_team_leaderboard(String.t(), ScoringRules.t() | nil) :: [map()]
+  def get_team_leaderboard(course_id, scoring) do
+    rules = ScoringRules.resolve(scoring)
+
+    best_rows = best_attempt_per_block(course_id)
+    solves = solves_per_block(best_rows, rules)
+    first_bloods = first_bloods_per_team(best_rows, rules)
+    attempts = team_attempt_counts(course_id)
+
+    course_id
+    |> competing_teams()
+    |> Enum.map(&build_team_row(&1, best_rows, solves, first_bloods, attempts, rules))
+    |> order_teams(rules)
+  end
+
+  # One row per (team, block): the attempt that counts. `desc_nulls_last`
+  # because a plain `desc` is NULLS FIRST in Postgres, so an attempt still
+  # awaiting a grade used to win its group and wipe a score a teammate had
+  # already earned on the same block.
+  defp best_attempt_per_block(course_id) do
+    from(s in Submission,
+      join: b in Block,
+      on: s.block_id == b.id,
+      join: sec in Section,
+      on: b.section_id == sec.id,
+      where:
+        not is_nil(s.cohort_id) and sec.course_id == ^course_id and
+          s.status in [:graded, :needs_review],
+      distinct: [s.cohort_id, s.block_id],
+      order_by: [s.cohort_id, s.block_id, desc_nulls_last: s.score, asc: s.inserted_at],
+      select: %{
+        cohort_id: s.cohort_id,
+        block_id: s.block_id,
+        block_points: b.points,
+        score: s.score,
+        inserted_at: s.inserted_at
+      }
+    )
+    |> Repo.all()
+  end
+
+  # How many teams have solved each block, from the same rows the points
+  # are computed from - so the threshold lives in one place and the two can
+  # never disagree.
+  defp solves_per_block(best_rows, rules) do
+    best_rows
+    |> Enum.filter(&ScoringRules.solve?(rules, &1.score))
+    |> Enum.frequencies_by(& &1.block_id)
+  end
+
+  # Who solved each block first, counted per team. Note this is the time of
+  # the team's *best* attempt, which is what "solved it first" means here -
+  # not the first time they touched the block.
+  defp first_bloods_per_team(best_rows, rules) do
+    best_rows
+    |> Enum.filter(&ScoringRules.solve?(rules, &1.score))
+    |> Enum.group_by(& &1.block_id)
+    |> Enum.map(fn {_block_id, rows} ->
+      rows
+      |> Enum.min_by(&{DateTime.to_unix(&1.inserted_at), &1.cohort_id})
+      |> Map.fetch!(:cohort_id)
+    end)
+    |> Enum.frequencies()
+  end
+
+  defp team_attempt_counts(course_id) do
+    from(s in Submission,
+      join: b in Block,
+      on: s.block_id == b.id,
+      join: sec in Section,
+      on: b.section_id == sec.id,
+      where: not is_nil(s.cohort_id) and sec.course_id == ^course_id,
+      group_by: s.cohort_id,
+      select:
+        {s.cohort_id,
+         %{
+           attempts: count(s.id),
+           rejected?: fragment("count(case when ? = 'rejected' then 1 end) > 0", s.status)
+         }}
+    )
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  defp competing_teams(course_id) do
+    from(e in Enrollment,
+      join: c in Cohort,
+      on: e.cohort_id == c.id,
+      where: e.course_id == ^course_id and c.type == :team,
+      select: %{team_id: c.id, team_name: c.name}
+    )
+    |> Repo.all()
+  end
+
+  defp build_team_row(team, best_rows, solves, first_bloods, attempts, rules) do
+    rows = Enum.filter(best_rows, &(&1.cohort_id == team.team_id))
+
+    block_points =
+      Map.new(rows, fn row ->
+        {row.block_id,
+         ScoringRules.points(
+           rules,
+           row.block_points,
+           Map.get(solves, row.block_id, 0),
+           row.score
+         )}
+      end)
+
+    counts = Map.get(attempts, team.team_id, %{attempts: 0, rejected?: false})
+
+    %{
+      team_id: team.team_id,
+      team_name: team.team_name,
+      total_score: block_points |> Map.values() |> Enum.sum(),
+      block_points: block_points,
+      last_activity: rows |> Enum.map(& &1.inserted_at) |> latest(),
+      attempts: counts.attempts,
+      first_bloods: Map.get(first_bloods, team.team_id, 0),
+      is_disqualified: rules.disqualify_on_rejected and counts.rejected?
+    }
+  end
+
+  defp latest([]), do: nil
+  defp latest(timestamps), do: Enum.max_by(timestamps, &DateTime.to_unix/1)
+
+  # Disqualified last, then by score, then by the author's chosen
+  # tiebreakers in their chosen order. With the default `[:time,
+  # :attempts]` the key is term-for-term the ORDER BY this replaced.
+  defp order_teams(rows, rules) do
+    Enum.sort_by(rows, fn row ->
+      List.to_tuple([
+        if(row.is_disqualified, do: 1, else: 0),
+        -row.total_score | Enum.map(rules.tiebreakers, &tiebreaker_key(&1, row))
+      ])
+    end)
+  end
+
+  # `{1, 0}` for a missing timestamp keeps teams who have never submitted
+  # at the back, the way Postgres' `ASC NULLS LAST` did.
+  defp tiebreaker_key(:time, %{last_activity: nil}), do: {1, 0}
+  defp tiebreaker_key(:time, row), do: {0, DateTime.to_unix(row.last_activity)}
+  defp tiebreaker_key(:attempts, row), do: row.attempts
+  defp tiebreaker_key(:first_blood, row), do: -row.first_bloods
 
   @doc """
   For every member of an academic cohort, returns their most recent
@@ -956,7 +1097,11 @@ defmodule Athena.Learning.Submissions do
           String.t() | nil,
           integer(),
           map()
-        ) :: {:ok, Submission.t()} | {:already_completed, Submission.t()} | {:error, any()}
+        ) ::
+          {:ok, Submission.t()}
+          | {:already_completed, Submission.t()}
+          | {:taken_by_teammate, Submission.t()}
+          | {:error, any()}
   def get_or_create_exam_attempt(
         course_id,
         account_id,
@@ -983,8 +1128,13 @@ defmodule Athena.Learning.Submissions do
   @doc """
   Like `get_or_create_exam_attempt/7`, but says what happened to the
   attempt: `{:created, sub}` (new attempt), `{:existing, sub}` (an attempt
-  in progress, unchanged) or `{:finalized, sub}` (an expired attempt just
-  scored). Lets the caller announce only real changes.
+  in progress, now this member's to continue) or `{:finalized, sub}` (an
+  expired attempt just scored). Lets the caller announce only real
+  changes.
+
+  `{:taken_by_teammate, sub}` is the team case: a competition team sits
+  one attempt between them, so while the member who started it is still
+  there, the rest get this instead of a paper of their own.
   """
   @spec fetch_or_create_exam_attempt(
           String.t(),
@@ -995,7 +1145,8 @@ defmodule Athena.Learning.Submissions do
           integer(),
           map()
         ) ::
-          {:created | :existing | :finalized | :already_completed, Submission.t()}
+          {:created | :existing | :finalized | :already_completed | :taken_by_teammate,
+           Submission.t()}
           | {:error, any()}
   def fetch_or_create_exam_attempt(
         course_id,
@@ -1005,8 +1156,58 @@ defmodule Athena.Learning.Submissions do
         cohort_id,
         time_limit_sec,
         exam_config
+      )
+
+  # Individual attempts cannot collide with anyone, so they stay on the
+  # plain path. A team's single attempt can: two members pressing Start in
+  # the same instant would each find nothing and each create one. An
+  # advisory lock on (team, block) serializes exactly that pair; a partial
+  # unique index could not be used instead, because several top-level rows
+  # per (cohort_id, block_id) is the normal, required shape for every
+  # other block type - that is what resubmits are.
+  def fetch_or_create_exam_attempt(course_id, account_id, block_id, type, nil, limit, config),
+    do: do_fetch_or_create_exam_attempt(course_id, account_id, block_id, type, nil, limit, config)
+
+  def fetch_or_create_exam_attempt(
+        course_id,
+        account_id,
+        block_id,
+        type,
+        cohort_id,
+        limit,
+        config
       ) do
-    case get_last_exam_submission(account_id, exam_block_id) do
+    Repo.transaction(fn ->
+      Repo.query!("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        "exam_attempt:#{cohort_id}:#{block_id}"
+      ])
+
+      do_fetch_or_create_exam_attempt(
+        course_id,
+        account_id,
+        block_id,
+        type,
+        cohort_id,
+        limit,
+        config
+      )
+    end)
+    |> case do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp do_fetch_or_create_exam_attempt(
+         course_id,
+         account_id,
+         exam_block_id,
+         block_type,
+         cohort_id,
+         time_limit_sec,
+         exam_config
+       ) do
+    case get_last_exam_submission(account_id, exam_block_id, cohort_id) do
       nil ->
         is_ticket = block_type == :ticket_exam
 
@@ -1043,35 +1244,194 @@ defmodule Athena.Learning.Submissions do
           content: content
         })
         |> Repo.insert()
+        |> reload_attempt()
+        |> heartbeat_attempt()
         |> tag_ok(:created)
 
       %{status: status} = submission when status in [:pending, :draft] ->
-        now = DateTime.utc_now()
-
-        if submission.expires_at && DateTime.compare(now, submission.expires_at) == :gt do
-          submission |> finalize_expired_exam() |> tag_ok(:finalized)
-        else
-          {:existing, submission}
-        end
+        resume_exam_attempt(submission, account_id, cohort_id)
 
       finished_submission ->
         {:already_completed, finished_submission}
     end
   end
 
+  # Reopening an attempt in progress. For a team that is the moment the
+  # exam is either someone else's to finish or free to take over: one
+  # paper, one timer, one result for everyone.
+  defp resume_exam_attempt(submission, account_id, cohort_id) do
+    now = DateTime.utc_now()
+
+    cond do
+      submission.expires_at && DateTime.compare(now, submission.expires_at) == :gt ->
+        # An expired attempt is closed by whoever turns up - including a
+        # teammate, so a holder who vanished mid-exam cannot leave the
+        # team with a result nobody can collect.
+        submission |> finalize_expired_exam() |> tag_ok(:finalized)
+
+      is_nil(cohort_id) or submission.account_id == account_id ->
+        touch_exam_heartbeat(submission.id)
+        {:existing, submission}
+
+      exam_lock_held?(submission, now) ->
+        {:taken_by_teammate, submission}
+
+      true ->
+        hand_over_exam_attempt(submission, account_id)
+    end
+  end
+
+  # The holder went away (their page closed, or their heartbeat went
+  # stale) and a teammate picked the exam up. The row stays the team's;
+  # `account_id` only ever meant "who is driving", so moving it keeps the
+  # lock label, the grading screen and the audit trail honest about who
+  # actually sat the rest of it.
+  defp hand_over_exam_attempt(submission, account_id) do
+    previous_holder = submission.account_id
+
+    submission
+    |> Ecto.Changeset.change(%{
+      account_id: account_id,
+      heartbeat_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    })
+    |> Repo.update()
+    |> case do
+      {:ok, updated} ->
+        Audit.event("exam_attempt.handover",
+          submission_id: updated.id,
+          block_id: updated.block_id,
+          cohort_id: updated.cohort_id,
+          from: previous_holder,
+          to: account_id
+        )
+
+        {:existing, updated}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  defp heartbeat_attempt({:ok, submission}) do
+    touch_exam_heartbeat(submission.id)
+    {:ok, %{submission | heartbeat_at: DateTime.utc_now() |> DateTime.truncate(:second)}}
+  end
+
+  defp heartbeat_attempt(error), do: error
+
+  # The generated questions are `%Block{}` structs, and `Repo.insert/1`
+  # hands back the value it was given rather than what the database now
+  # holds - so without this the attempt's `content["questions"]` stays a
+  # list of structs in memory while every later reader (and the evaluator,
+  # which does `q["id"]`) expects the plain maps JSON round-tripping
+  # produces. Normally the exam page is reached through the player, which
+  # re-reads the row and hid this; opening the exam URL directly did not.
+  defp reload_attempt({:ok, submission}), do: {:ok, Repo.reload!(submission)}
+  defp reload_attempt(error), do: error
+
   defp tag_ok({:ok, submission}, tag), do: {tag, submission}
   defp tag_ok(error, _tag), do: error
 
+  # A team's exam attempt belongs to the team, not to whoever started it,
+  # so with a `cohort_id` the author is deliberately not part of the
+  # lookup - the same rule as `where_owner/3` and `Progress`.
+  #
+  # The ordering matters because teams created before the one-attempt rule
+  # may still have several parallel attempts on one block: most advanced
+  # first, then highest score, then earliest. That elects the attempt the
+  # leaderboard already credits the team with, so nothing moves downward,
+  # and among unfinished ones the earliest - the one the lock would have
+  # granted.
   @doc false
-  defp get_last_exam_submission(account_id, exam_block_id) do
+  defp get_last_exam_submission(account_id, exam_block_id, cohort_id) do
     from(s in Submission,
-      where: s.account_id == ^account_id,
       where: s.block_id == ^exam_block_id,
-      where: is_nil(s.parent_submission_id),
-      order_by: [desc: s.inserted_at],
-      limit: 1
+      where: is_nil(s.parent_submission_id)
     )
+    |> exam_attempt_owner(account_id, cohort_id)
+    |> order_by([s],
+      desc:
+        fragment(
+          "? IN ('graded','needs_review','rejected','time_limit_exceeded')",
+          s.status
+        ),
+      desc_nulls_last: s.score,
+      asc: s.inserted_at
+    )
+    |> limit(1)
     |> Repo.one()
+  end
+
+  # Not `where_owner/3`: an academic-cohort student's row carries a
+  # `cohort_id` while the callers pass `team_id` (nil for them), so
+  # demanding `cohort_id IS NULL` would hand them a brand new attempt on
+  # every page load.
+  defp exam_attempt_owner(query, _account_id, cohort_id) when is_binary(cohort_id),
+    do: where(query, [s], s.cohort_id == ^cohort_id)
+
+  defp exam_attempt_owner(query, account_id, nil),
+    do: where(query, [s], s.account_id == ^account_id)
+
+  @default_exam_lock_idle_ms 120_000
+
+  @doc """
+  How long a team's exam attempt stays locked to the member sitting it
+  after their last heartbeat, in ms.
+
+  The holder's page normally releases the lock the moment it closes; this
+  is the fallback for the cases that never get to run that - a crashed
+  browser, a dead node, a connection that simply stopped. Read at runtime
+  so it can differ per environment.
+  """
+  @spec exam_lock_idle_ms() :: non_neg_integer()
+  def exam_lock_idle_ms do
+    :athena
+    |> Application.get_env(__MODULE__, [])
+    |> Keyword.get(:exam_lock_idle_ms, @default_exam_lock_idle_ms)
+  end
+
+  @doc """
+  Whether `submission`'s exam lock is still held by the member sitting it.
+
+  A released (`heartbeat_at: nil`) or stale attempt is free for any
+  teammate to take over.
+  """
+  @spec exam_lock_held?(Submission.t(), DateTime.t()) :: boolean()
+  def exam_lock_held?(%Submission{heartbeat_at: nil}, _now), do: false
+
+  def exam_lock_held?(%Submission{heartbeat_at: beat}, now),
+    do: DateTime.diff(now, beat, :millisecond) < exam_lock_idle_ms()
+
+  @doc """
+  Records that the member sitting `submission_id` is still there.
+
+  Deliberately an `update_all`: no changeset, no `updated_at` bump and no
+  broadcast, so an exam page can call it on a timer without waking every
+  teammate's player.
+  """
+  @spec touch_exam_heartbeat(String.t()) :: :ok
+  def touch_exam_heartbeat(submission_id) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    Submission
+    |> where([s], s.id == ^submission_id)
+    |> Repo.update_all(set: [heartbeat_at: now])
+
+    :ok
+  end
+
+  @doc """
+  Releases the exam lock on `submission_id` so a teammate can take the
+  attempt over - what the holder's page does when it closes without
+  finishing.
+  """
+  @spec release_exam_attempt(String.t()) :: :ok
+  def release_exam_attempt(submission_id) do
+    Submission
+    |> where([s], s.id == ^submission_id)
+    |> Repo.update_all(set: [heartbeat_at: nil])
+
+    :ok
   end
 
   @doc false

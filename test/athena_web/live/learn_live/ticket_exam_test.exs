@@ -2,6 +2,7 @@ defmodule AthenaWeb.LearnLive.TicketExamTest do
   use AthenaWeb.ConnCase, async: true
   import Phoenix.LiveViewTest
   import Athena.Factory
+  import Ecto.Query
 
   setup %{conn: conn} do
     user = insert(:account)
@@ -88,6 +89,50 @@ defmodule AthenaWeb.LearnLive.TicketExamTest do
       assert html =~ "What is 2+2?"
       assert html =~ "Type your answer..."
       assert html =~ "Next"
+    end
+  end
+
+  describe "A competition team's shared attempt" do
+    test "a teammate holding it is turned away instead of getting a paper of their own", %{
+      conn: conn,
+      course: course,
+      section: section,
+      user: user
+    } do
+      team = insert(:cohort, type: :team)
+      insert(:enrollment, course_id: course.id, cohort_id: team.id)
+      insert(:cohort_membership, account_id: user.id, cohort_id: team.id)
+
+      holder = insert(:account)
+      insert(:cohort_membership, account_id: holder.id, cohort_id: team.id)
+
+      block = insert(:block, section: section, type: :ticket_exam, content: %{"count" => 3})
+
+      insert(:submission,
+        account_id: holder.id,
+        cohort_id: team.id,
+        block_id: block.id,
+        status: :pending,
+        heartbeat_at: DateTime.utc_now() |> DateTime.truncate(:second),
+        expires_at:
+          DateTime.utc_now() |> DateTime.add(3600, :second) |> DateTime.truncate(:second),
+        content: %{"type" => "ticket_exam", "questions" => []}
+      )
+
+      result = live(conn, ~p"/learn/courses/#{course.id}/ticket/#{block.id}")
+      assert {:error, {:live_redirect, %{to: to}}} = result
+      assert to == "/learn/courses/#{course.id}/play/#{section.id}"
+
+      {:ok, _lv, html} = follow_redirect(result, conn)
+      assert html =~ Athena.Identity.display_name(holder)
+
+      # Still exactly one attempt: the team's.
+      assert Athena.Repo.aggregate(
+               from(s in Athena.Learning.Submission,
+                 where: s.block_id == ^block.id and is_nil(s.parent_submission_id)
+               ),
+               :count
+             ) == 1
     end
   end
 

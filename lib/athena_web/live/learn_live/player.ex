@@ -18,7 +18,10 @@ defmodule AthenaWeb.LearnLive.Player do
   alias Athena.Content.Policy
   alias Athena.Engagement
   alias Athena.Execution
+  alias Athena.Identity
   alias Athena.Learning
+
+  import AthenaWeb.LeaderboardComponents
   alias Athena.Surveys
   alias Athena.Surveys.Flow
   alias AthenaWeb.LearnLive.EngagementSignals
@@ -66,9 +69,9 @@ defmodule AthenaWeb.LearnLive.Player do
 
     with true <- test_run? || Learning.has_access?(user.id, course_id),
          {:ok, course} <- Content.get_course(course_id) do
-      {cohort, cohort_id, team_id} = resolve_cohort_info(user.id, course_id)
+      {cohort, cohort_id, team_id} = Learning.resolve_course_cohort(user.id, course_id)
 
-      if connected?(socket), do: subscribe_to_topics(course_id, team_id, user.id)
+      if connected?(socket), do: subscribe_to_topics(course, team_id, user.id)
 
       overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
       outline = Content.course_outline(course_id, user, overrides, opts)
@@ -125,17 +128,8 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp resolve_cohort_info(user_id, course_id) do
-    cohort = Learning.get_user_cohort_for_course(user_id, course_id)
-    cohort_id = cohort && cohort.id
-    team_id = if cohort && cohort.type == :team, do: cohort.id
-
-    {cohort, cohort_id, team_id}
-  end
-
-  @doc false
-  defp subscribe_to_topics(course_id, cohort_id, user_id) do
-    Phoenix.PubSub.subscribe(Athena.PubSub, "course_content:#{course_id}")
+  defp subscribe_to_topics(course, cohort_id, user_id) do
+    Phoenix.PubSub.subscribe(Athena.PubSub, "course_content:#{course.id}")
 
     Phoenix.PubSub.subscribe(Athena.PubSub, "media_upload:#{user_id}")
 
@@ -143,6 +137,12 @@ defmodule AthenaWeb.LearnLive.Player do
       Phoenix.PubSub.subscribe(Athena.PubSub, "team_progress:#{cohort_id}")
     else
       Phoenix.PubSub.subscribe(Athena.PubSub, "user_progress:#{user_id}")
+    end
+
+    # Only a competition has a board, and only then does the player carry
+    # one - a standard course subscribes to nothing and holds no rows.
+    if course.type == :competition do
+      Phoenix.PubSub.subscribe(Athena.PubSub, "leaderboard:#{course.id}")
     end
   end
 
@@ -203,8 +203,14 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:prev_section_id, if(prev_section, do: prev_section.id, else: nil))
       |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
       |> assign(:course_map_open, false)
+      |> assign(:leaderboard_open, false)
+      |> assign(:leaderboard, load_leaderboard(course))
       |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
       |> assign(:submissions, submissions)
+      |> assign(
+        :exam_holders,
+        load_exam_holders(blocks, submissions, ctx.user.id, ctx.team_id)
+      )
       |> assign(:feedback_map, feedback_map)
       |> assign(:drafts, drafts)
       |> assign(:overrides, ctx.overrides)
@@ -638,9 +644,85 @@ defmodule AthenaWeb.LearnLive.Player do
     end
   end
 
+  # Reads through `Athena.Learning.LeaderboardCache`, so every player open
+  # on the same competition shares one computation of the board.
+  @doc false
+  defp load_leaderboard(%{type: :competition} = course),
+    do: Learning.get_team_leaderboard(course.id)
+
+  defp load_leaderboard(_course), do: []
+
   @doc false
   defp load_drafts(user_id, block_ids, team_id),
     do: Learning.get_drafts(user_id, block_ids, team_id)
+
+  @doc false
+  defp refresh_exam_holders(socket) do
+    assign(
+      socket,
+      :exam_holders,
+      load_exam_holders(
+        socket.assigns.blocks,
+        socket.assigns.submissions,
+        socket.assigns.current_user.id,
+        socket.assigns.team_id
+      )
+    )
+  end
+
+  # Which exam blocks a *teammate* is currently sitting, by display name.
+  # A competition team shares one attempt, so the rest of the team get a
+  # locked card naming the holder instead of a button that would hand them
+  # a paper of their own.
+  #
+  # Derived entirely from submissions already in memory, and short-circuits
+  # for everyone outside a team - the individual path costs no extra query
+  # and sees an empty map, so nothing about it renders differently.
+  @doc false
+  defp load_exam_holders(_blocks, _submissions, _user_id, nil), do: %{}
+
+  defp load_exam_holders(blocks, submissions, user_id, _team_id) do
+    now = DateTime.utc_now()
+
+    blocks
+    |> Enum.filter(&(&1.type in [:quiz_exam, :ticket_exam]))
+    |> Enum.flat_map(&held_by_teammate(&1, submissions, user_id, now))
+    |> name_exam_holders()
+  end
+
+  defp held_by_teammate(block, submissions, user_id, now) do
+    submission = Map.get(submissions, block.id)
+
+    if taken_by_teammate?(submission, user_id, now),
+      do: [{block.id, submission.account_id}],
+      else: []
+  end
+
+  # Unfinished, someone else's, and their claim on it has not gone stale.
+  defp taken_by_teammate?(%{status: status, account_id: holder} = submission, user_id, now)
+       when status in [:pending, :draft, :processing],
+       do: holder != user_id and Learning.exam_lock_held?(submission, now)
+
+  defp taken_by_teammate?(_submission, _user_id, _now), do: false
+
+  defp name_exam_holders([]), do: %{}
+
+  defp name_exam_holders(held) do
+    accounts =
+      held
+      |> Enum.map(&elem(&1, 1))
+      |> Enum.uniq()
+      |> Identity.get_accounts_map()
+
+    Map.new(held, fn {block_id, holder_id} -> {block_id, holder_name(accounts, holder_id)} end)
+  end
+
+  defp holder_name(accounts, holder_id) do
+    case Map.fetch(accounts, holder_id) do
+      {:ok, account} -> Identity.display_name(account)
+      :error -> gettext("A teammate")
+    end
+  end
 
   @doc """
   Handles progression gates. When a student completes a mandatory block,
@@ -654,8 +736,6 @@ defmodule AthenaWeb.LearnLive.Player do
     team_id = socket.assigns.team_id
 
     {:ok, _} = Learning.mark_completed(user.id, block_id, team_id)
-
-    broadcast_team_progress(team_id, socket.assigns.course.id)
 
     new_completed_ids = [block_id | socket.assigns.completed_ids]
     linear_lessons = socket.assigns.linear_lessons
@@ -692,6 +772,12 @@ defmodule AthenaWeb.LearnLive.Player do
   def handle_event("close_course_map", _, socket),
     do: {:noreply, assign(socket, course_map_open: false)}
 
+  def handle_event("open_leaderboard", _, socket),
+    do: {:noreply, assign(socket, leaderboard_open: true)}
+
+  def handle_event("close_leaderboard", _, socket),
+    do: {:noreply, assign(socket, leaderboard_open: false)}
+
   @impl true
   def handle_event("start_exam", %{"block_id" => block_id}, socket) do
     case Enum.find(socket.assigns.blocks, &(&1.id == block_id)) do
@@ -705,8 +791,14 @@ defmodule AthenaWeb.LearnLive.Player do
 
   @impl true
   def handle_event("continue_exam", %{"block_id" => block_id}, socket) do
-    block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
-    enter_exam(socket, block_id, block && block.type)
+    # The button is not rendered while a teammate holds the attempt, but a
+    # crafted event must not reach the exam LiveView just to be bounced.
+    if Map.has_key?(socket.assigns.exam_holders || %{}, block_id) do
+      {:noreply, socket}
+    else
+      block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
+      enter_exam(socket, block_id, block && block.type)
+    end
   end
 
   @impl true
@@ -1329,8 +1421,6 @@ defmodule AthenaWeb.LearnLive.Player do
 
   @doc false
   defp handle_successful_file_submission(socket, block_id, submission) do
-    broadcast_team_progress(socket.assigns.team_id, socket.assigns.course.id)
-
     new_submissions = Map.put(socket.assigns.submissions || %{}, block_id, submission)
     new_pending = Map.update!(socket.assigns.pending_file_urls, block_id, fn _ -> [] end)
 
@@ -1387,7 +1477,6 @@ defmodule AthenaWeb.LearnLive.Player do
            block.content
          ) do
       {:ok, _submission} ->
-        broadcast_team_progress(socket.assigns.team_id, socket.assigns.course.id)
         enter_exam(socket, block.id, block.type)
 
       # Stale client state (e.g. a second tab) clicking "Start" on an attempt
@@ -1399,6 +1488,16 @@ defmodule AthenaWeb.LearnLive.Player do
            :submissions,
            Map.put(socket.assigns.submissions, block.id, updated_sub)
          )}
+
+      # A teammate got there first and this page had not heard yet. Show
+      # the locked card straight away rather than leaving a button that
+      # keeps failing.
+      {:taken_by_teammate, held_sub} ->
+        {:noreply,
+         socket
+         |> assign(:submissions, Map.put(socket.assigns.submissions, block.id, held_sub))
+         |> refresh_exam_holders()
+         |> put_flash(:info, gettext("A teammate is already taking this for your team."))}
 
       {:error, _} ->
         {:noreply,
@@ -1458,22 +1557,6 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp broadcast_team_progress(nil, _course_id), do: :ok
-
-  # `broadcast_from`: this player already applied its own change, a full
-  # refresh of itself on top of that would only repeat the work.
-  defp broadcast_team_progress(team_id, course_id) do
-    Phoenix.PubSub.broadcast_from(
-      Athena.PubSub,
-      self(),
-      "team_progress:#{team_id}",
-      :team_progress_updated
-    )
-
-    Learning.broadcast_leaderboard_update(course_id)
-  end
-
-  @doc false
   defp handle_quiz_submission(socket, block, answer) do
     answer = resolve_quiz_answer(socket, block, answer)
 
@@ -1489,8 +1572,6 @@ defmodule AthenaWeb.LearnLive.Player do
       {:ok, submission} ->
         eval_result = Learning.evaluate_sync(submission)
         {:ok, final_sub} = Learning.system_update_submission(submission, eval_result)
-
-        broadcast_team_progress(socket.assigns.team_id, socket.assigns.course.id)
 
         submissions = Map.put(socket.assigns.submissions || %{}, block.id, final_sub)
         new_drafts = Map.delete(socket.assigns.drafts || %{}, block.id)
@@ -1753,8 +1834,6 @@ defmodule AthenaWeb.LearnLive.Player do
 
     {:ok, _} = Learning.mark_completed(user.id, block_id, team_id)
 
-    broadcast_team_progress(team_id, socket.assigns.course.id)
-
     new_completed_ids = [block_id | socket.assigns.completed_ids]
     linear_lessons = socket.assigns.linear_lessons
 
@@ -1876,6 +1955,7 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:blocks, blocks)
       |> assign(:completed_ids, completed_ids)
       |> assign(:submissions, submissions)
+      |> assign(:exam_holders, load_exam_holders(blocks, submissions, user.id, team_id))
       |> assign(:feedback_map, feedback_map)
       |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
       |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
@@ -1910,6 +1990,13 @@ defmodule AthenaWeb.LearnLive.Player do
 
   @impl true
   def handle_info(:refresh_content, socket), do: {:noreply, request_refresh(socket, :content)}
+
+  # Any team's scoring submission drops the cached board, so this fires for
+  # the whole competition - a rival pulling ahead moves the standings on
+  # every open player without anyone leaving their task.
+  @impl true
+  def handle_info(:update_leaderboard, socket),
+    do: {:noreply, assign(socket, :leaderboard, load_leaderboard(socket.assigns.course))}
 
   @impl true
   def handle_info(:scheduled_refresh, socket) do
@@ -2199,6 +2286,16 @@ defmodule AthenaWeb.LearnLive.Player do
               <span class="hidden sm:inline">{gettext("Course Map")}</span>
             </button>
 
+            <button
+              :if={!@test_run && @course.type == :competition}
+              id="open-leaderboard"
+              phx-click="open_leaderboard"
+              class="btn btn-ghost btn-sm text-base-content/70 hover:text-primary"
+            >
+              <.icon name="hero-trophy" class="size-4" />
+              <span class="hidden sm:inline">{gettext("Leaderboard")}</span>
+            </button>
+
             <%= if !@test_run && @next_section_id && all_blocks_completed?(@visible_blocks, @completed_ids) do %>
               <.link
                 navigate={~p"/learn/courses/#{@course.id}/play/#{@next_section_id}"}
@@ -2286,7 +2383,8 @@ defmodule AthenaWeb.LearnLive.Player do
                         disabled={is_locked}
                       >
                         {cond do
-                          is_locked -> gettext("Locked")
+                          is_review_needed -> gettext("With the instructor")
+                          is_passed -> gettext("Passed")
                           submission != nil -> gettext("Retry Answer")
                           true -> gettext("Submit Answer")
                         end}
@@ -2305,6 +2403,7 @@ defmodule AthenaWeb.LearnLive.Player do
                       block={block}
                       mode={mode}
                       submission={submission}
+                      exam_holder={Map.get(@exam_holders || %{}, block.id)}
                     />
                   </div>
                 <% :code -> %>
@@ -2371,6 +2470,12 @@ defmodule AthenaWeb.LearnLive.Player do
                   <.content_block block={block} mode={:play} />
               <% end %>
 
+              <.review_notice
+                :if={is_review_needed}
+                id={"review-notice-#{block.id}"}
+                status={submission.status}
+              />
+
               <.instructor_feedback
                 :if={Map.has_key?(@feedback_map || %{}, block.id)}
                 id={"instructor-feedback-#{block.id}"}
@@ -2423,6 +2528,18 @@ defmodule AthenaWeb.LearnLive.Player do
               course_id={@course.id}
               block_counts={@block_counts}
             />
+          </div>
+        </.modal>
+
+        <.modal
+          :if={@leaderboard_open}
+          id="leaderboard-modal"
+          show={true}
+          title={gettext("Leaderboard")}
+          on_cancel={JS.push("close_leaderboard")}
+        >
+          <div class="max-h-[60vh] overflow-y-auto -mx-6 px-6 py-2">
+            <.board_table id="player-leaderboard-table" board={@leaderboard} />
           </div>
         </.modal>
 
@@ -2510,6 +2627,41 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   attr :id, :string, required: true
+  attr :status, :atom, required: true
+
+  # Why a block the student cannot touch is closed. Rendered from the
+  # submission's own status rather than from `@feedback_map`, because an
+  # instructor may reject work without writing anything - and a bare
+  # disabled button with no explanation is how a student ends up quietly
+  # stuck, with no idea the next move is not theirs.
+  defp review_notice(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class={[
+        "mt-6 rounded-sm border-l-2 px-4 py-3 text-sm flex items-start gap-2",
+        @status == :rejected && "border-error bg-error/5 text-error",
+        @status != :rejected && "border-warning bg-warning/5 text-warning"
+      ]}
+    >
+      <.icon
+        name={if @status == :rejected, do: "hero-x-circle-solid", else: "hero-clock-solid"}
+        class="size-5 shrink-0"
+      />
+      <span class="font-bold">
+        <%= if @status == :rejected do %>
+          {gettext(
+            "The instructor rejected this work. The block stays closed until they reopen it - message them if you think this is a mistake."
+          )}
+        <% else %>
+          {gettext("Submitted. The instructor still has to grade this one.")}
+        <% end %>
+      </span>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
   attr :entry, :map, required: true
 
   defp instructor_feedback(assigns) do
@@ -2527,8 +2679,20 @@ defmodule AthenaWeb.LearnLive.Player do
         @entry.status == :rejected && "text-error",
         @entry.status != :rejected && "text-info"
       ]}>
-        <.icon name="hero-chat-bubble-bottom-center-text" class="size-4" />
-        {gettext("Instructor Feedback")}
+        <%!-- An exam's breakdown arrives whether or not the instructor
+              wrote anything, so the heading says which of the two this
+              card actually is. --%>
+        <.icon
+          name={
+            if @entry.feedback,
+              do: "hero-chat-bubble-bottom-center-text",
+              else: "hero-clipboard-document-list"
+          }
+          class="size-4"
+        />
+        {if @entry.feedback,
+          do: gettext("Instructor Feedback"),
+          else: gettext("Result Breakdown")}
       </div>
 
       <p :if={@entry.feedback} class="whitespace-pre-wrap leading-relaxed text-base-content/80">
@@ -2548,7 +2712,12 @@ defmodule AthenaWeb.LearnLive.Player do
             </span>
             <span>{q.score || 0} / 100</span>
           </div>
-          <p class="whitespace-pre-wrap leading-relaxed text-base-content/80">{q.feedback}</p>
+          <p
+            :if={q.feedback}
+            class="whitespace-pre-wrap leading-relaxed text-base-content/80"
+          >
+            {q.feedback}
+          </p>
         </li>
       </ul>
     </div>

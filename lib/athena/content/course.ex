@@ -10,7 +10,7 @@ defmodule Athena.Content.Course do
   use Gettext, backend: AthenaWeb.Gettext
 
   import Ecto.Changeset
-  alias Athena.Content.Section
+  alias Athena.Content.{ScoringRules, Section}
 
   @type t :: %__MODULE__{}
 
@@ -51,6 +51,11 @@ defmodule Athena.Content.Course do
     field :starts_at, :utc_datetime
     field :ends_at, :utc_datetime
 
+    # How this competition ranks its teams. `nil` means the defaults, which
+    # are what the leaderboard did before this field existed; a standard
+    # course has no ranking and leaves it alone.
+    embeds_one :scoring, ScoringRules, on_replace: :update
+
     field :copy_status, Ecto.Enum, values: [:ready, :copying, :failed], default: :ready
     belongs_to :source_course, __MODULE__
 
@@ -81,6 +86,7 @@ defmodule Athena.Content.Course do
       :starts_at,
       :ends_at
     ])
+    |> cast_embed(:scoring, with: &ScoringRules.changeset/2)
     |> validate_required([:title, :status, :type, :owner_id])
     |> validate_length(:title, min: 3, max: 255)
     |> unique_constraint(:title, name: :courses_title_index)

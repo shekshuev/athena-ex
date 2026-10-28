@@ -47,11 +47,28 @@ defmodule Athena.Learning.Evaluator do
   defp evaluate_exam(parent_submission, _exam_block) do
     child_subs = Submissions.get_child_submissions(parent_submission.id)
     questions = parent_submission.content["questions"] || []
-    total_questions = length(questions)
 
-    results = Enum.map(questions, &evaluate_exam_question(&1, parent_submission, child_subs))
+    results =
+      Enum.map(questions, fn q ->
+        {score, status} = evaluate_exam_question(q, parent_submission, child_subs)
+        {score, status, question_weight(q)}
+      end)
 
-    calculate_exam_totals(results, total_questions)
+    calculate_exam_totals(results)
+  end
+
+  # What a question is worth inside its exam. Snapshotted with the
+  # question, so changing a library block's weight later cannot rescore an
+  # attempt already sat. `nil` - every question before weights existed -
+  # means 100, which makes the weighted total below identical to the plain
+  # average it replaces.
+  @default_question_weight 100
+
+  defp question_weight(q) do
+    case q["points"] || q[:points] do
+      weight when is_integer(weight) and weight > 0 -> weight
+      _ -> @default_question_weight
+    end
   end
 
   @doc false
@@ -123,20 +140,26 @@ defmodule Athena.Learning.Evaluator do
     end
   end
 
-  defp calculate_exam_totals([], _), do: %{status: :graded, score: 0, feedback: nil}
+  defp calculate_exam_totals([]), do: %{status: :graded, score: 0, feedback: nil}
 
-  defp calculate_exam_totals(results, total_questions) do
-    total_earned =
+  # The parent's score stays a 0-100 percentage of what the paper was
+  # worth, so everything downstream - gates, the gradebook, the
+  # leaderboard - reads it exactly as before; only the share each question
+  # contributes changes.
+  defp calculate_exam_totals(results) do
+    total_weight = results |> Enum.map(fn {_score, _status, weight} -> weight end) |> Enum.sum()
+
+    earned =
       results
-      |> Enum.map(fn {score, _status} -> score || 0 end)
+      |> Enum.map(fn {score, _status, weight} -> (score || 0) / 100 * weight end)
       |> Enum.sum()
 
-    avg_score = if total_questions > 0, do: round(total_earned / total_questions), else: 0
+    score = if total_weight > 0, do: round(earned / total_weight * 100), else: 0
 
-    has_needs_review? = Enum.any?(results, fn {_, status} -> status == :needs_review end)
+    has_needs_review? = Enum.any?(results, fn {_, status, _} -> status == :needs_review end)
     final_status = if has_needs_review?, do: :needs_review, else: :graded
 
-    %{status: final_status, score: avg_score, feedback: nil}
+    %{status: final_status, score: score, feedback: nil}
   end
 
   defp calculate_score(%QuizQuestion{question_type: :exact_match} = q, a) do

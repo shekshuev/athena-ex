@@ -376,7 +376,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> render_submit()
 
       assert html =~ "Hidden in plain sight."
-      assert html =~ "Locked"
+      assert has_element?(lv, "#quiz-form-#{block.id} button[disabled]")
       refute html =~ "Submit Answer"
     end
 
@@ -426,7 +426,8 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> form("#quiz-form-#{block.id}", %{"answer" => "This is my essay."})
         |> render_submit()
 
-      assert html =~ "Locked"
+      assert has_element?(lv, "#quiz-form-#{block.id} button[disabled]")
+      assert has_element?(lv, "#review-notice-#{block.id}")
       refute html =~ "Submit Answer"
     end
 
@@ -467,7 +468,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> form("#quiz-form-#{block.id}", %{})
         |> render_submit()
 
-      assert html =~ "Locked"
+      assert has_element?(lv, "#quiz-form-#{block.id} button[disabled]")
       refute html =~ "Submit Answer"
     end
 
@@ -528,7 +529,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> form("#quiz-form-#{quiz_block.id}", %{"answer" => "42"})
         |> render_submit()
 
-      assert html =~ "Locked"
+      assert has_element?(lv, "#quiz-form-#{quiz_block.id} button[disabled]")
       assert html =~ "Secret Content"
     end
 
@@ -605,17 +606,18 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         feedback: "Copied from ChatGPT. Disqualified."
       )
 
-      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
       assert html =~ "Instructor Feedback"
       assert html =~ "Copied from ChatGPT. Disqualified."
-      assert html =~ "Locked"
+      assert has_element?(lv, "#quiz-form-#{block.id} button[disabled]")
+      assert has_element?(lv, "#review-notice-#{block.id}")
       refute html =~ "Submit Answer"
     end
   end
 
   describe "Instructor Feedback (all block types)" do
-    test "shows feedback on a rejected retry even when an older attempt scored higher", %{
+    test "the comment shown belongs to the attempt whose score is shown", %{
       conn: conn,
       course: course,
       user: user
@@ -632,7 +634,52 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         block_id: block.id,
         status: :graded,
         score: 60,
+        feedback: "Partly right - see the second step.",
         updated_at: DateTime.add(now, -1, :day)
+      )
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :graded,
+        score: 20,
+        feedback: "This retry went backwards.",
+        updated_at: now
+      )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert has_element?(
+               lv,
+               "#instructor-feedback-#{block.id}",
+               "Partly right - see the second step."
+             )
+
+      refute has_element?(
+               lv,
+               "#instructor-feedback-#{block.id}",
+               "This retry went backwards."
+             )
+    end
+
+    test "a rejected retry is shown and locks the block, whatever scored higher before", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block, section: s1, type: :quiz_question, content: %{"question_type" => "open"})
+
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :graded,
+        score: 60,
+        inserted_at: DateTime.add(now, -1, :day)
       )
 
       insert(:submission,
@@ -641,7 +688,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         status: :rejected,
         score: 0,
         feedback: "Answer copied from a classmate.",
-        updated_at: now
+        inserted_at: now
       )
 
       {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
@@ -651,6 +698,55 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
                "#instructor-feedback-#{block.id}",
                "Answer copied from a classmate."
              )
+
+      # Rejection means disqualification here, not "try again": reopening
+      # the block is the instructor's call, and the student is told so
+      # rather than left staring at a dead button.
+      assert has_element?(lv, "#quiz-form-#{block.id} button[disabled]")
+      assert has_element?(lv, "#review-notice-#{block.id}")
+    end
+
+    test "a question the instructor only rescored still shows up", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+      q1 = Ecto.UUID.generate()
+      q2 = Ecto.UUID.generate()
+
+      block = insert(:block, section: s1, type: :quiz_exam, content: %{"count" => 2})
+
+      parent =
+        insert(:submission,
+          account_id: user.id,
+          block_id: block.id,
+          status: :graded,
+          score: 75,
+          content: %{"type" => "quiz_exam", "questions" => [%{"id" => q1}, %{"id" => q2}]}
+        )
+
+      # No comment on either child - only a corrected score on the second.
+      insert(:submission,
+        account_id: user.id,
+        block_id: q1,
+        parent_submission_id: parent.id,
+        status: :graded,
+        score: 100
+      )
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: q2,
+        parent_submission_id: parent.id,
+        status: :graded,
+        score: 50
+      )
+
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert has_element?(lv, "#instructor-feedback-#{block.id}", "Question 2")
+      assert has_element?(lv, "#instructor-feedback-#{block.id}", "50 / 100")
     end
 
     test "shows overall and per-question feedback on a quiz exam", %{

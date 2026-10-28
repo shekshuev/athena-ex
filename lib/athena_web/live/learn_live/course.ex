@@ -21,22 +21,24 @@ defmodule AthenaWeb.LearnLive.Course do
   def mount(%{"id" => course_id} = params, _session, socket) do
     user = socket.assigns.current_user
 
+    {_cohort, resolved_cohort_id, team_id} = Learning.resolve_course_cohort(user.id, course_id)
+
+    # The URL's `cohort_id` is unverified and only ever steers schedule
+    # overrides and the drill-down links. Progress is read with `team_id`
+    # from the resolved membership instead: it decides whose completions
+    # count, and taking that from a query parameter would let anyone read
+    # another group's waterline.
     cohort_id =
       case params["cohort_id"] do
-        v when v not in [nil, ""] ->
-          v
-
-        _ ->
-          case Learning.get_user_cohort_for_course(user.id, course_id) do
-            nil -> nil
-            cohort -> cohort.id
-          end
+        v when v not in [nil, ""] -> v
+        _ -> resolved_cohort_id
       end
 
     with true <- Learning.has_access?(user.id, course_id),
          {:ok, course} <- Content.get_course(course_id) do
       if connected?(socket) do
         Phoenix.PubSub.subscribe(Athena.PubSub, "course_content:#{course_id}")
+        subscribe_to_progress(team_id, user.id)
       end
 
       overrides = Learning.get_student_overrides(user.id, course_id, cohort_id)
@@ -45,7 +47,13 @@ defmodule AthenaWeb.LearnLive.Course do
       block_counts = outline.block_counts
 
       accessible_ids =
-        Learning.accessible_section_ids(user, course_id, outline.linear_lessons, overrides)
+        Learning.accessible_section_ids(
+          user,
+          course_id,
+          outline.linear_lessons,
+          overrides,
+          team_id
+        )
 
       waterline_id = List.last(accessible_ids)
 
@@ -54,6 +62,7 @@ defmodule AthenaWeb.LearnLive.Course do
        |> assign(:page_title, course.title)
        |> assign(:course, course)
        |> assign(:cohort_id, cohort_id)
+       |> assign(:team_id, team_id)
        |> assign(:full_tree, full_tree)
        |> assign(:accessible_ids, accessible_ids)
        |> assign(:waterline_id, waterline_id)
@@ -109,8 +118,22 @@ defmodule AthenaWeb.LearnLive.Course do
     end
   end
 
+  # A teammate completing a gate moves the waterline for the whole team, so
+  # this page has to hear about it too - it used to show locks the player
+  # had already opened. Same debounce as a content edit.
+  def handle_info(progress, socket)
+      when progress in [:team_progress_updated, :user_progress_updated],
+      do: handle_info(:refresh_content, socket)
+
   def handle_info(:do_refresh, socket),
     do: {:noreply, socket |> assign(:refresh_pending, false) |> refresh()}
+
+  @doc false
+  defp subscribe_to_progress(nil, user_id),
+    do: Phoenix.PubSub.subscribe(Athena.PubSub, "user_progress:#{user_id}")
+
+  defp subscribe_to_progress(team_id, _user_id),
+    do: Phoenix.PubSub.subscribe(Athena.PubSub, "team_progress:#{team_id}")
 
   defp refresh(socket) do
     user = socket.assigns.current_user
@@ -122,7 +145,13 @@ defmodule AthenaWeb.LearnLive.Course do
     block_counts = outline.block_counts
 
     accessible_ids =
-      Learning.accessible_section_ids(user, course_id, outline.linear_lessons, overrides)
+      Learning.accessible_section_ids(
+        user,
+        course_id,
+        outline.linear_lessons,
+        overrides,
+        socket.assigns.team_id
+      )
 
     waterline_id = List.last(accessible_ids)
 

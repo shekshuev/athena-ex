@@ -14,6 +14,7 @@ defmodule Athena.Learning do
 
   alias Athena.Learning.{
     Instructors,
+    Cohort,
     Cohorts,
     Enrollments,
     Submissions,
@@ -69,6 +70,30 @@ defmodule Athena.Learning do
   defdelegate has_access?(account_id, course_id), to: Enrollments
   defdelegate get_user_cohort_for_course(account_id, course_id), to: Enrollments
   defdelegate get_academic_cohort_for_course(account_id, course_id), to: Enrollments
+
+  @doc """
+  The cohort a student takes `course_id` in, as the triple every
+  course-facing LiveView needs: `{cohort, cohort_id, team_id}`.
+
+  `cohort_id` identifies the group for schedule overrides and engagement,
+  and is set for any cohort. `team_id` is the same id but **only** for a
+  `:team` cohort - the competition case, where progress and submissions
+  belong to the team rather than the member - and `nil` otherwise, so it
+  can be passed straight to the `cohort_id` argument of
+  `accessible_section_ids/6`, `completed_block_ids/3`,
+  `get_latest_submissions/3` and friends. Keeping the two apart in one
+  place is what stops an academic group from accidentally sharing one
+  student's progress with the rest of the class.
+  """
+  @spec resolve_course_cohort(String.t(), String.t()) ::
+          {Cohort.t() | nil, String.t() | nil, String.t() | nil}
+  def resolve_course_cohort(account_id, course_id) do
+    case get_user_cohort_for_course(account_id, course_id) do
+      nil -> {nil, nil, nil}
+      %Cohort{type: :team} = cohort -> {cohort, cohort.id, cohort.id}
+      cohort -> {cohort, cohort.id, nil}
+    end
+  end
 
   defdelegate list_submissions(user, params \\ %{}), to: Submissions
   defdelegate get_submission(account_id, block_id, cohort_id \\ nil), to: Submissions
@@ -175,11 +200,19 @@ defmodule Athena.Learning do
   defdelegate get_active_exam_submission(account_id, exam_block_id), to: Submissions
   defdelegate get_child_submissions(parent_submission_id), to: Submissions
 
+  defdelegate touch_exam_heartbeat(submission_id), to: Submissions
+  defdelegate release_exam_attempt(submission_id), to: Submissions
+  defdelegate exam_lock_held?(submission, now), to: Submissions
+
   @doc """
   Gets an active exam attempt or creates a new one. A new or just-finalized
   attempt is broadcast so the Grading dashboard updates in real time;
   reopening an attempt in progress (every exam page load) changes nothing
   and broadcasts nothing.
+
+  `{:taken_by_teammate, sub}` passes straight through unbroadcast - a
+  competition team shares one attempt, and being told it is someone
+  else's turn changed nothing in the database.
   """
   def get_or_create_exam_attempt(
         course_id,
@@ -269,10 +302,37 @@ defmodule Athena.Learning do
       )
     end
 
+    notify_team_of_submission(submission)
+
     result
   end
 
   defp notify_submission_subscribers(result), do: result
+
+  # A team's work is one shared row, so every member's player has to hear
+  # about it - not only whoever happened to press the button. Broadcasting
+  # here rather than from the LiveViews is what makes that true for the
+  # paths no LiveView drives: the code execution worker, an instructor
+  # grading from the grading screen, an exam auto-scored on timeout.
+  defp notify_team_of_submission(%{cohort_id: nil}), do: :ok
+
+  defp notify_team_of_submission(%{cohort_id: cohort_id} = submission) do
+    Phoenix.PubSub.broadcast(
+      Athena.PubSub,
+      "team_progress:#{cohort_id}",
+      :team_progress_updated
+    )
+
+    # Only a finished attempt can move a team's rank; the :pending and
+    # :processing steps would just drop the cached board for nothing.
+    if grading_relevant?(submission) do
+      with {:ok, course_id} <- Progress.course_id_for_block(submission.block_id) do
+        broadcast_leaderboard_update(course_id)
+      end
+    end
+
+    :ok
+  end
 
   defp grading_relevant?(%{status: status}) when status in [:draft, :processing], do: false
   defp grading_relevant?(%{content: %{"is_test_run" => true}}), do: false

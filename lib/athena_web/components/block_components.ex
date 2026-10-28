@@ -23,6 +23,12 @@ defmodule AthenaWeb.BlockComponents do
   attr :pending_file_urls, :map, default: %{}
   attr :draft, :map, default: nil
   attr :hide_submit, :boolean, default: false
+
+  # Set only for a `:quiz_exam`/`:ticket_exam` block whose single team
+  # attempt a *teammate* is currently sitting: the display name to show in
+  # place of any way in. `nil` everywhere else, including every individual
+  # student, so the default keeps that path untouched.
+  attr :exam_holder, :string, default: nil
   attr :user_id, :string, default: nil
   attr :characters, :list, default: []
   attr :proctoring, :boolean, default: false
@@ -74,6 +80,7 @@ defmodule AthenaWeb.BlockComponents do
             mode={@mode}
             submission={@submission}
             hide_submit={@hide_submit}
+            exam_holder={@exam_holder}
           />
         <% :file_assignment -> %>
           <.render_file_assignment
@@ -1173,6 +1180,7 @@ defmodule AthenaWeb.BlockComponents do
       |> assign(:exam_title, title)
       |> assign(:exam_icon, icon)
       |> assign_new(:hide_submit, fn -> false end)
+      |> assign_new(:exam_holder, fn -> nil end)
 
     ~H"""
     <div class="p-8 bg-base-100 rounded-sm border border-base-300 text-center">
@@ -1225,6 +1233,19 @@ defmodule AthenaWeb.BlockComponents do
                     {gettext("Time Expired - Auto-Submitted")}
                   </span>
                 <% end %>
+              </div>
+              <%!-- A competition team sits one attempt between them: while a
+                  teammate holds it, the rest get no way in, only who has
+                  it. They see the shared result the moment it is done. --%>
+            <% @submission.status in [:pending, :draft, :processing] and @exam_holder -> %>
+              <div class="inline-flex flex-col items-center gap-2 text-warning">
+                <div class="inline-flex items-center gap-3 font-black px-4 py-2 rounded-sm">
+                  <.icon name="hero-lock-closed-solid" class="size-5" />
+                  {gettext("Assessment in progress")}
+                </div>
+                <span class="text-xs font-bold uppercase tracking-widest text-base-content/60">
+                  {gettext("%{name} is taking it for your team.", name: @exam_holder)}
+                </span>
               </div>
             <% @submission.status in [:pending, :draft, :processing] and @mode == :play and not @hide_submit -> %>
               <button

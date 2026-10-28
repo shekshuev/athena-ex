@@ -12,7 +12,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
 
   on_mount {AthenaWeb.Hooks.Auth, :test_run}
 
-  alias Athena.{Content, Engagement, Learning}
+  alias Athena.{Content, Engagement, Identity, Learning}
   alias AthenaWeb.LearnLive.EngagementSignals
   import AthenaWeb.BlockComponents
 
@@ -52,9 +52,8 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     socket = assign(socket, :test_run, test_run?)
 
     # The ephemeral test-run account has no real enrollment/cohort of its own.
-    cohort = unless test_run?, do: Learning.get_user_cohort_for_course(user.id, course_id)
-    team_id = if cohort && cohort.type == :team, do: cohort.id, else: nil
-    cohort_id = cohort && cohort.id
+    {_cohort, cohort_id, team_id} =
+      if test_run?, do: {nil, nil, nil}, else: Learning.resolve_course_cohort(user.id, course_id)
 
     resolve_exam_mount(socket, course_id, block_id, user.id, team_id, cohort_id, return_to)
   end
@@ -97,6 +96,13 @@ defmodule AthenaWeb.LearnLive.TicketExam do
         # would otherwise silently start a brand new attempt (see
         # `Submissions.get_or_create_exam_attempt/7`). A real retake goes
         # through an instructor deleting the old submission instead.
+        # A competition team sits one attempt between them, so while a
+        # teammate is still on it the rest are turned away rather than
+        # handed a paper of their own. They see the shared result as soon
+        # as it is finished.
+        {:taken_by_teammate, submission} ->
+          {:ok, exit_bail(socket, return_to, :info, teammate_busy_message(submission))}
+
         {:already_completed, _submission} ->
           {:ok,
            exit_bail(
@@ -131,6 +137,21 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   # `@block` to `nil` so the `render/1` guard clause below shows nothing
   # while the "swap back to Player" message to the parent is in flight.
   @doc false
+  defp teammate_busy_message(submission) do
+    holder_id = submission.account_id
+
+    case Identity.get_accounts_map([holder_id]) do
+      %{^holder_id => account} ->
+        gettext("%{name} is already taking this ticket assessment for your team.",
+          name: Identity.display_name(account)
+        )
+
+      _ ->
+        gettext("A teammate is already taking this ticket assessment for your team.")
+    end
+  end
+
+  @doc false
   defp exit_bail(socket, return_to, flash_type, msg) do
     socket |> assign(:block, nil) |> exit_exam(return_to, flash_type, msg)
   end
@@ -161,14 +182,14 @@ defmodule AthenaWeb.LearnLive.TicketExam do
        ) do
     if DateTime.compare(DateTime.utc_now(), submission.expires_at) == :gt do
       # `submit_and_exit` reads `socket.assigns.team_id`/`:return_to` (for
-      # `broadcast_team_progress/2` and the post-submit redirect) and
-      # `:cohort_id`/`:block` (for `Engagement.finalize_proctoring/4`);
+      # the post-submit redirect) and `:cohort_id`/`:block` (for
+      # `Engagement.finalize_proctoring/4`);
       # normally set by `setup_exam_state`, but this bail-out path skips
       # straight past it, so assign them here too.
       socket =
         assign(socket, team_id: team_id, cohort_id: cohort_id, block: block, return_to: return_to)
 
-      {:ok, submit_and_exit(socket, submission, course_id, :time_limit_exceeded)}
+      {:ok, submit_and_exit(socket, submission, :time_limit_exceeded)}
     else
       setup_exam_state(
         socket,
@@ -513,7 +534,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
 
       {:ok, socket} ->
         socket =
-          submit_and_exit(socket, socket.assigns.submission, socket.assigns.course_id, :finished)
+          submit_and_exit(socket, socket.assigns.submission, :finished)
 
         {:noreply, socket}
     end
@@ -685,15 +706,9 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     time_left = DateTime.diff(socket.assigns.submission.expires_at, DateTime.utc_now())
 
     if time_left <= 0 do
-      {:noreply,
-       submit_and_exit(
-         socket,
-         socket.assigns.submission,
-         socket.assigns.course_id,
-         :time_limit_exceeded
-       )}
+      {:noreply, submit_and_exit(socket, socket.assigns.submission, :time_limit_exceeded)}
     else
-      socket = assign(socket, :time_left, time_left)
+      socket = socket |> assign(:time_left, time_left) |> maybe_beat_exam_lock()
 
       Process.send_after(self(), :tick, 1000)
 
@@ -745,6 +760,41 @@ defmodule AthenaWeb.LearnLive.TicketExam do
 
   def handle_info(_msg, socket) do
     {:noreply, socket}
+  end
+
+  # Holds this member's claim on the team's one attempt. Riding the clock
+  # that already ticks once a second instead of adding a timer; every
+  # @heartbeat_every_sec'th tick is a single `update_all` by id.
+  @heartbeat_every_sec 30
+
+  defp maybe_beat_exam_lock(%{assigns: %{team_id: nil}} = socket), do: socket
+
+  defp maybe_beat_exam_lock(socket) do
+    if rem(socket.assigns.time_left, @heartbeat_every_sec) == 0 do
+      Learning.touch_exam_heartbeat(socket.assigns.submission.id)
+    end
+
+    socket
+  end
+
+  # Leaving without finishing hands the team's attempt back at once, so a
+  # closed tab does not keep the rest of the team out until the idle
+  # timeout (let alone the time limit) runs down. A finished attempt has
+  # nothing left to hold.
+  @impl true
+  def terminate(_reason, socket) do
+    with %{team_id: team_id, submission: submission} when not is_nil(team_id) <- socket.assigns,
+         true <- submission.status in [:pending, :draft] do
+      Learning.release_exam_attempt(submission.id)
+
+      Phoenix.PubSub.broadcast(
+        Athena.PubSub,
+        "team_progress:#{team_id}",
+        :team_progress_updated
+      )
+    end
+
+    :ok
   end
 
   # Mount bailed out (block missing, attempt already finished, ...) while
@@ -1010,13 +1060,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     expires_at = socket.assigns.submission.expires_at
 
     if DateTime.compare(DateTime.utc_now(), expires_at) == :gt do
-      {:halt,
-       submit_and_exit(
-         socket,
-         socket.assigns.submission,
-         socket.assigns.course_id,
-         :time_limit_exceeded
-       )}
+      {:halt, submit_and_exit(socket, socket.assigns.submission, :time_limit_exceeded)}
     else
       {:ok, socket}
     end
@@ -1050,13 +1094,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
             {:noreply, socket}
 
           {:error, :time_limit_exceeded} ->
-            {:noreply,
-             submit_and_exit(
-               socket,
-               socket.assigns.submission,
-               socket.assigns.course_id,
-               :time_limit_exceeded
-             )}
+            {:noreply, submit_and_exit(socket, socket.assigns.submission, :time_limit_exceeded)}
         end
     end
   end
@@ -1178,7 +1216,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     |> assign(:current_question, Enum.at(socket.assigns.questions, index))
   end
 
-  defp submit_and_exit(socket, submission, course_id, reason) do
+  defp submit_and_exit(socket, submission, reason) do
     block = Map.get(socket.assigns, :block)
 
     proctoring_fields =
@@ -1216,8 +1254,6 @@ defmodule AthenaWeb.LearnLive.TicketExam do
 
     Learning.maybe_complete_from_submission(final_sub)
 
-    broadcast_team_progress(socket.assigns.team_id, course_id)
-
     msg =
       if reason == :time_limit_exceeded,
         do: gettext("Time is up! Your ticket assessment has been automatically submitted."),
@@ -1239,13 +1275,6 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     if connected?(socket) and not is_nil(socket.assigns.time_limit_sec) do
       Process.send_after(self(), :tick, 1000)
     end
-  end
-
-  defp broadcast_team_progress(nil, _course_id), do: :ok
-
-  defp broadcast_team_progress(team_id, course_id) do
-    Phoenix.PubSub.broadcast(Athena.PubSub, "team_progress:#{team_id}", :team_progress_updated)
-    Learning.broadcast_leaderboard_update(course_id)
   end
 
   defp require_fullscreen?(block), do: (block.content || %{})["require_fullscreen"] == true

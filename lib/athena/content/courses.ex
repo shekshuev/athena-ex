@@ -294,8 +294,13 @@ defmodule Athena.Content.Courses do
       copy_status: :copying
     }
 
+    # Carried as a struct rather than through `cast/3`: duplicating a
+    # competition that was tuned away from the defaults must not quietly
+    # reset its ranking rules.
+    scoring = source_course.scoring
+
     Ecto.Multi.new()
-    |> Ecto.Multi.insert(:course, duplicate_changeset(attrs))
+    |> Ecto.Multi.insert(:course, duplicate_changeset(attrs, scoring))
     |> Ecto.Multi.run(:job, fn _repo, %{course: new_course} ->
       %{new_course_id: new_course.id, source_course_id: source_course.id}
       |> CourseDeepCopy.new()
@@ -343,8 +348,8 @@ defmodule Athena.Content.Courses do
   def retry_course_copy(_user, %Course{}), do: {:error, :not_failed}
 
   @doc false
-  defp duplicate_changeset(attrs) do
-    %Course{}
+  defp duplicate_changeset(attrs, scoring) do
+    %Course{scoring: scoring}
     |> Ecto.Changeset.cast(attrs, [
       :title,
       :description,

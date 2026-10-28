@@ -1,8 +1,10 @@
 defmodule Athena.Learning.SubmissionsTest do
   use Athena.DataCase, async: true
 
+  alias Athena.Content.ScoringRules
   alias Athena.Learning.{Submissions, Submission, DraftCache}
   import Athena.Factory
+  import Ecto.Query
 
   describe "list_submissions/2" do
     setup do
@@ -172,7 +174,40 @@ defmodule Athena.Learning.SubmissionsTest do
   end
 
   describe "get_feedback_map/3" do
-    test "surfaces feedback from a rejected attempt the best-score lookup would skip" do
+    test "describes the same attempt whose score the player shows" do
+      account_id = Ecto.UUID.generate()
+      block_id = Ecto.UUID.generate()
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      # The attempt the player shows: `get_latest_submissions/3` prefers
+      # the highest score, and the comment has to come from that same row -
+      # otherwise a regrade leaves a new comment sitting above an old,
+      # higher number that describes different work.
+      insert(:submission,
+        account_id: account_id,
+        block_id: block_id,
+        score: 80,
+        status: :graded,
+        feedback: "Good, but check your units",
+        updated_at: DateTime.add(now, -1, :day)
+      )
+
+      insert(:submission,
+        account_id: account_id,
+        block_id: block_id,
+        score: 40,
+        status: :graded,
+        feedback: "This retry is weaker",
+        updated_at: now
+      )
+
+      result = Submissions.get_feedback_map(account_id, [block_id])
+
+      assert %{feedback: "Good, but check your units", status: :graded, questions: []} =
+               result[block_id]
+    end
+
+    test "a rejection is not masked by an earlier, higher-scoring attempt" do
       account_id = Ecto.UUID.generate()
       block_id = Ecto.UUID.generate()
       now = DateTime.utc_now() |> DateTime.truncate(:second)
@@ -180,9 +215,9 @@ defmodule Athena.Learning.SubmissionsTest do
       insert(:submission,
         account_id: account_id,
         block_id: block_id,
-        score: 80,
+        score: 90,
         status: :graded,
-        updated_at: DateTime.add(now, -1, :day)
+        inserted_at: DateTime.add(now, -1, :day)
       )
 
       insert(:submission,
@@ -190,14 +225,44 @@ defmodule Athena.Learning.SubmissionsTest do
         block_id: block_id,
         score: 0,
         status: :rejected,
-        feedback: "Redo the second part",
-        updated_at: now
+        feedback: "Answer copied from a classmate.",
+        inserted_at: now
       )
+
+      # The verdict is what the student reads, and the score that goes
+      # with it - a competition already disqualifies the team over it, so
+      # hiding it would be punishing work nobody was told about.
+      assert %{^block_id => %{status: :rejected, score: 0}} =
+               Submissions.get_latest_submissions(account_id, [block_id])
+
+      assert %{feedback: "Answer copied from a classmate.", status: :rejected} =
+               Submissions.get_feedback_map(account_id, [block_id])[block_id]
+    end
+
+    test "a regrade that lowers the score shows the new comment with the new score" do
+      account_id = Ecto.UUID.generate()
+      block_id = Ecto.UUID.generate()
+
+      submission =
+        insert(:submission,
+          account_id: account_id,
+          block_id: block_id,
+          score: 90,
+          status: :graded
+        )
+
+      {:ok, _} =
+        Submissions.system_update_submission(submission, %{
+          score: 40,
+          feedback: "On a second read this misses the point"
+        })
 
       result = Submissions.get_feedback_map(account_id, [block_id])
 
-      assert %{feedback: "Redo the second part", status: :rejected, questions: []} =
-               result[block_id]
+      assert %{feedback: "On a second read this misses the point"} = result[block_id]
+
+      assert %{^block_id => %{score: 40}} =
+               Submissions.get_latest_submissions(account_id, [block_id])
     end
 
     test "collects per-question exam feedback ordered by question position" do
@@ -231,10 +296,41 @@ defmodule Athena.Learning.SubmissionsTest do
 
       result = Submissions.get_feedback_map(account_id, [exam_id])
 
-      assert %{feedback: nil, questions: [%{number: 2, feedback: "Half right", score: 50}]} =
-               result[exam_id]
+      # Every question of a finished attempt, in the order the student saw
+      # them - a question the instructor only rescored carries no comment
+      # of its own, and used to be invisible because of it.
+      assert %{
+               feedback: nil,
+               questions: [
+                 %{number: 1, feedback: nil, score: 100},
+                 %{number: 2, feedback: "Half right", score: 50}
+               ]
+             } = result[exam_id]
 
       refute Map.has_key?(result, q1)
+    end
+
+    test "an exam still in progress reports no breakdown" do
+      account_id = Ecto.UUID.generate()
+      exam_id = Ecto.UUID.generate()
+      q1 = Ecto.UUID.generate()
+
+      parent =
+        insert(:submission,
+          account_id: account_id,
+          block_id: exam_id,
+          status: :pending,
+          content: %{"questions" => [%{"id" => q1}]}
+        )
+
+      insert(:submission,
+        account_id: account_id,
+        block_id: q1,
+        parent_submission_id: parent.id,
+        status: :pending
+      )
+
+      assert Submissions.get_feedback_map(account_id, [exam_id]) == %{}
     end
 
     test "omits blocks without feedback and other students' feedback" do
@@ -475,6 +571,195 @@ defmodule Athena.Learning.SubmissionsTest do
 
       assert {:error, :forbidden} =
                Submissions.update_submission(instructor, submission, %{"score" => 100})
+    end
+  end
+
+  describe "get_team_leaderboard/2 with configured scoring" do
+    setup do
+      course = insert(:course, type: :competition)
+      section = insert(:section, course: course)
+
+      teams =
+        for name <- ~w(Alpha Beta Gamma) do
+          team = insert(:cohort, name: name, type: :team)
+          insert(:enrollment, course_id: course.id, cohort_id: team.id)
+          team
+        end
+
+      %{course: course, section: section, teams: teams}
+    end
+
+    defp solve(block, team, opts \\ []) do
+      insert(
+        :submission,
+        Keyword.merge(
+          [
+            block_id: block.id,
+            cohort_id: team.id,
+            score: 100,
+            status: :graded,
+            inserted_at: ~U[2026-01-01 10:00:00Z]
+          ],
+          opts
+        )
+      )
+    end
+
+    defp score_for(board, team), do: Enum.find(board, &(&1.team_id == team.id)).total_score
+
+    test "nil scoring is byte-for-byte the static default", ctx do
+      [alpha | _] = ctx.teams
+      block = insert(:block, section: ctx.section)
+      solve(block, alpha, score: 73)
+
+      assert Submissions.get_team_leaderboard(ctx.course.id, nil) ==
+               Submissions.get_team_leaderboard(ctx.course.id, %ScoringRules{})
+    end
+
+    test "a task gets cheaper the more teams solve it", ctx do
+      [alpha, beta, gamma] = ctx.teams
+      block = insert(:block, section: ctx.section)
+
+      rules = %ScoringRules{mode: :dynamic, initial: 500, minimum: 100, decay: 20}
+
+      solve(block, alpha)
+      assert score_for(Submissions.get_team_leaderboard(ctx.course.id, rules), alpha) == 500
+
+      solve(block, beta)
+      board = Submissions.get_team_leaderboard(ctx.course.id, rules)
+
+      # Everyone's share falls together - including the team that got
+      # there first.
+      assert score_for(board, alpha) == 480
+      assert score_for(board, beta) == 480
+
+      solve(block, gamma)
+      assert score_for(Submissions.get_team_leaderboard(ctx.course.id, rules), alpha) == 460
+    end
+
+    test "a block's own weight is what it decays from", ctx do
+      [alpha, beta, _] = ctx.teams
+      block = insert(:block, section: ctx.section, points: 300)
+
+      rules = %ScoringRules{mode: :dynamic, initial: 500, minimum: 100, decay: 20}
+
+      solve(block, alpha)
+      solve(block, beta)
+
+      assert score_for(Submissions.get_team_leaderboard(ctx.course.id, rules), alpha) == 280
+    end
+
+    test "static mode respects a block's weight too", ctx do
+      [alpha | _] = ctx.teams
+      block = insert(:block, section: ctx.section, points: 300)
+
+      solve(block, alpha, score: 60)
+
+      assert score_for(Submissions.get_team_leaderboard(ctx.course.id, %ScoringRules{}), alpha) ==
+               180
+    end
+
+    test "an incomplete attempt does not make the task cheaper for anyone", ctx do
+      [alpha, beta, _] = ctx.teams
+      block = insert(:block, section: ctx.section)
+
+      rules = %ScoringRules{mode: :dynamic, initial: 500, minimum: 100, decay: 20}
+
+      solve(block, alpha)
+      solve(block, beta, score: 99)
+
+      board = Submissions.get_team_leaderboard(ctx.course.id, rules)
+
+      assert score_for(board, alpha) == 500
+      assert score_for(board, beta) == 495
+    end
+
+    test "tiebreakers are applied in the author's order", ctx do
+      [alpha, beta, _] = ctx.teams
+      block = insert(:block, section: ctx.section)
+
+      # Alpha solved later but in one attempt; Beta solved earlier after
+      # three.
+      solve(block, alpha, inserted_at: ~U[2026-01-02 10:00:00Z])
+
+      solve(block, beta, inserted_at: ~U[2026-01-01 10:00:00Z])
+      solve(block, beta, score: 0, inserted_at: ~U[2026-01-01 09:00:00Z])
+      solve(block, beta, score: 0, inserted_at: ~U[2026-01-01 08:00:00Z])
+
+      by_time = %ScoringRules{tiebreakers: [:time, :attempts]}
+      by_attempts = %ScoringRules{tiebreakers: [:attempts, :time]}
+
+      assert [%{team_name: "Beta"}, %{team_name: "Alpha"} | _] =
+               Submissions.get_team_leaderboard(ctx.course.id, by_time)
+
+      assert [%{team_name: "Alpha"}, %{team_name: "Beta"} | _] =
+               Submissions.get_team_leaderboard(ctx.course.id, by_attempts)
+    end
+
+    test "first blood ranks a team above an equal total", ctx do
+      [alpha, beta, _] = ctx.teams
+      block1 = insert(:block, section: ctx.section)
+      block2 = insert(:block, section: ctx.section)
+
+      solve(block1, alpha, inserted_at: ~U[2026-01-01 08:00:00Z])
+      solve(block2, alpha, inserted_at: ~U[2026-01-03 10:00:00Z])
+
+      solve(block1, beta, inserted_at: ~U[2026-01-02 10:00:00Z])
+      solve(block2, beta, inserted_at: ~U[2026-01-02 11:00:00Z])
+
+      rules = %ScoringRules{tiebreakers: [:first_blood]}
+
+      assert [%{team_name: "Alpha", first_bloods: 1}, %{team_name: "Beta"} | _] =
+               Submissions.get_team_leaderboard(ctx.course.id, rules)
+    end
+
+    test "disqualification can be turned off", ctx do
+      [alpha, beta, _] = ctx.teams
+      block = insert(:block, section: ctx.section)
+
+      solve(block, alpha, score: 50)
+      solve(block, beta, score: 0, status: :rejected)
+      solve(block, beta, score: 90)
+
+      strict = Submissions.get_team_leaderboard(ctx.course.id, %ScoringRules{})
+
+      lenient =
+        Submissions.get_team_leaderboard(
+          ctx.course.id,
+          %ScoringRules{disqualify_on_rejected: false}
+        )
+
+      assert [%{team_name: "Alpha"} | _] = strict
+      assert Enum.find(strict, &(&1.team_name == "Beta")).is_disqualified
+
+      assert [%{team_name: "Beta", is_disqualified: false} | _] = lenient
+    end
+
+    test "a team that has never submitted sorts last, not first", ctx do
+      [alpha, _beta, _gamma] = ctx.teams
+      block = insert(:block, section: ctx.section)
+
+      solve(block, alpha, score: 0)
+
+      board = Submissions.get_team_leaderboard(ctx.course.id, %ScoringRules{})
+
+      assert [%{team_name: "Alpha"} | rest] = board
+      assert Enum.all?(rest, &is_nil(&1.last_activity))
+    end
+
+    test "an unscored attempt does not mask a graded one on the same block", ctx do
+      [alpha | _] = ctx.teams
+      block = insert(:block, section: ctx.section)
+
+      solve(block, alpha, score: 90)
+
+      unscored = solve(block, alpha, status: :needs_review)
+
+      {1, _} =
+        Submission |> where([s], s.id == ^unscored.id) |> Repo.update_all(set: [score: nil])
+
+      assert score_for(Submissions.get_team_leaderboard(ctx.course.id, %ScoringRules{}), alpha) ==
+               90
     end
   end
 
@@ -1494,9 +1779,12 @@ defmodule Athena.Learning.SubmissionsTest do
       assert submission.content["type"] == "ticket_exam"
       assert length(submission.content["questions"]) == 2
 
+      # The stored attempt is a JSON snapshot, so its questions are plain
+      # maps - the form every reader of `content["questions"]` expects,
+      # including `Athena.Learning.Evaluator`.
       original_ids_in_questions =
         submission.content["questions"]
-        |> Enum.map(fn q -> q.content["original_block_id"] end)
+        |> Enum.map(fn q -> q["content"]["original_block_id"] end)
 
       assert lb1.id in original_ids_in_questions
       assert lb2.id in original_ids_in_questions
@@ -1537,7 +1825,7 @@ defmodule Athena.Learning.SubmissionsTest do
 
       refute Enum.any?(
                submission.content["questions"],
-               &Map.has_key?(&1.content, "original_block_id")
+               &Map.has_key?(&1["content"], "original_block_id")
              )
     end
   end
