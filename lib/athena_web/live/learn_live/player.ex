@@ -684,38 +684,43 @@ defmodule AthenaWeb.LearnLive.Player do
   defp load_exam_holders(blocks, submissions, user_id, _team_id) do
     now = DateTime.utc_now()
 
-    held =
-      blocks
-      |> Enum.filter(&(&1.type in [:quiz_exam, :ticket_exam]))
-      |> Enum.flat_map(fn block ->
-        case Map.get(submissions, block.id) do
-          %{status: status, account_id: holder_id} = submission
-          when status in [:pending, :draft, :processing] ->
-            if holder_id != user_id and Learning.exam_lock_held?(submission, now),
-              do: [{block.id, holder_id}],
-              else: []
+    blocks
+    |> Enum.filter(&(&1.type in [:quiz_exam, :ticket_exam]))
+    |> Enum.flat_map(&held_by_teammate(&1, submissions, user_id, now))
+    |> name_exam_holders()
+  end
 
-          _ ->
-            []
-        end
-      end)
+  defp held_by_teammate(block, submissions, user_id, now) do
+    submission = Map.get(submissions, block.id)
 
-    case held do
-      [] ->
-        %{}
+    if taken_by_teammate?(submission, user_id, now),
+      do: [{block.id, submission.account_id}],
+      else: []
+  end
 
-      held ->
-        accounts = Identity.get_accounts_map(Enum.map(held, &elem(&1, 1)) |> Enum.uniq())
+  # Unfinished, someone else's, and their claim on it has not gone stale.
+  defp taken_by_teammate?(%{status: status, account_id: holder} = submission, user_id, now)
+       when status in [:pending, :draft, :processing],
+       do: holder != user_id and Learning.exam_lock_held?(submission, now)
 
-        Map.new(held, fn {block_id, holder_id} ->
-          name =
-            case Map.fetch(accounts, holder_id) do
-              {:ok, account} -> Identity.display_name(account)
-              :error -> gettext("A teammate")
-            end
+  defp taken_by_teammate?(_submission, _user_id, _now), do: false
 
-          {block_id, name}
-        end)
+  defp name_exam_holders([]), do: %{}
+
+  defp name_exam_holders(held) do
+    accounts =
+      held
+      |> Enum.map(&elem(&1, 1))
+      |> Enum.uniq()
+      |> Identity.get_accounts_map()
+
+    Map.new(held, fn {block_id, holder_id} -> {block_id, holder_name(accounts, holder_id)} end)
+  end
+
+  defp holder_name(accounts, holder_id) do
+    case Map.fetch(accounts, holder_id) do
+      {:ok, account} -> Identity.display_name(account)
+      :error -> gettext("A teammate")
     end
   end
 
@@ -2378,7 +2383,8 @@ defmodule AthenaWeb.LearnLive.Player do
                         disabled={is_locked}
                       >
                         {cond do
-                          is_locked -> gettext("Locked")
+                          is_review_needed -> gettext("With the instructor")
+                          is_passed -> gettext("Passed")
                           submission != nil -> gettext("Retry Answer")
                           true -> gettext("Submit Answer")
                         end}
@@ -2463,6 +2469,12 @@ defmodule AthenaWeb.LearnLive.Player do
                 <% _ -> %>
                   <.content_block block={block} mode={:play} />
               <% end %>
+
+              <.review_notice
+                :if={is_review_needed}
+                id={"review-notice-#{block.id}"}
+                status={submission.status}
+              />
 
               <.instructor_feedback
                 :if={Map.has_key?(@feedback_map || %{}, block.id)}
@@ -2610,6 +2622,41 @@ defmodule AthenaWeb.LearnLive.Player do
           level={@level + 1}
         />
       </div>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :status, :atom, required: true
+
+  # Why a block the student cannot touch is closed. Rendered from the
+  # submission's own status rather than from `@feedback_map`, because an
+  # instructor may reject work without writing anything - and a bare
+  # disabled button with no explanation is how a student ends up quietly
+  # stuck, with no idea the next move is not theirs.
+  defp review_notice(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class={[
+        "mt-6 rounded-sm border-l-2 px-4 py-3 text-sm flex items-start gap-2",
+        @status == :rejected && "border-error bg-error/5 text-error",
+        @status != :rejected && "border-warning bg-warning/5 text-warning"
+      ]}
+    >
+      <.icon
+        name={if @status == :rejected, do: "hero-x-circle-solid", else: "hero-clock-solid"}
+        class="size-5 shrink-0"
+      />
+      <span class="font-bold">
+        <%= if @status == :rejected do %>
+          {gettext(
+            "The instructor rejected this work. The block stays closed until they reopen it - message them if you think this is a mistake."
+          )}
+        <% else %>
+          {gettext("Submitted. The instructor still has to grade this one.")}
+        <% end %>
+      </span>
     </div>
     """
   end

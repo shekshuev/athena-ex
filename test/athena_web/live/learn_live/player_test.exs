@@ -376,7 +376,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> render_submit()
 
       assert html =~ "Hidden in plain sight."
-      assert html =~ "Locked"
+      assert has_element?(lv, "#quiz-form-#{block.id} button[disabled]")
       refute html =~ "Submit Answer"
     end
 
@@ -426,7 +426,8 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> form("#quiz-form-#{block.id}", %{"answer" => "This is my essay."})
         |> render_submit()
 
-      assert html =~ "Locked"
+      assert has_element?(lv, "#quiz-form-#{block.id} button[disabled]")
+      assert has_element?(lv, "#review-notice-#{block.id}")
       refute html =~ "Submit Answer"
     end
 
@@ -467,7 +468,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> form("#quiz-form-#{block.id}", %{})
         |> render_submit()
 
-      assert html =~ "Locked"
+      assert has_element?(lv, "#quiz-form-#{block.id} button[disabled]")
       refute html =~ "Submit Answer"
     end
 
@@ -528,7 +529,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         |> form("#quiz-form-#{quiz_block.id}", %{"answer" => "42"})
         |> render_submit()
 
-      assert html =~ "Locked"
+      assert has_element?(lv, "#quiz-form-#{quiz_block.id} button[disabled]")
       assert html =~ "Secret Content"
     end
 
@@ -605,11 +606,12 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         feedback: "Copied from ChatGPT. Disqualified."
       )
 
-      {:ok, _lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
       assert html =~ "Instructor Feedback"
       assert html =~ "Copied from ChatGPT. Disqualified."
-      assert html =~ "Locked"
+      assert has_element?(lv, "#quiz-form-#{block.id} button[disabled]")
+      assert has_element?(lv, "#review-notice-#{block.id}")
       refute html =~ "Submit Answer"
     end
   end
@@ -689,7 +691,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         inserted_at: now
       )
 
-      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+      {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
       assert has_element?(
                lv,
@@ -698,8 +700,10 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
              )
 
       # Rejection means disqualification here, not "try again": reopening
-      # the block is the instructor's call, made by deleting the attempt.
-      assert html =~ "Locked"
+      # the block is the instructor's call, and the student is told so
+      # rather than left staring at a dead button.
+      assert has_element?(lv, "#quiz-form-#{block.id} button[disabled]")
+      assert has_element?(lv, "#review-notice-#{block.id}")
     end
 
     test "a question the instructor only rescored still shows up", %{
