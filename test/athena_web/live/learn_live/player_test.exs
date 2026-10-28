@@ -660,6 +660,48 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
              )
     end
 
+    test "a rejected retry is shown and locks the block, whatever scored higher before", %{
+      conn: conn,
+      course: course,
+      user: user
+    } do
+      s1 = insert(:section, course: course)
+
+      block =
+        insert(:block, section: s1, type: :quiz_question, content: %{"question_type" => "open"})
+
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :graded,
+        score: 60,
+        inserted_at: DateTime.add(now, -1, :day)
+      )
+
+      insert(:submission,
+        account_id: user.id,
+        block_id: block.id,
+        status: :rejected,
+        score: 0,
+        feedback: "Answer copied from a classmate.",
+        inserted_at: now
+      )
+
+      {:ok, lv, html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
+
+      assert has_element?(
+               lv,
+               "#instructor-feedback-#{block.id}",
+               "Answer copied from a classmate."
+             )
+
+      # Rejection means disqualification here, not "try again": reopening
+      # the block is the instructor's call, made by deleting the attempt.
+      assert html =~ "Locked"
+    end
+
     test "a question the instructor only rescored still shows up", %{
       conn: conn,
       course: course,

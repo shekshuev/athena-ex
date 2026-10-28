@@ -392,9 +392,16 @@ defmodule Athena.Learning.Submissions do
   def finalize_expired_exam(%Submission{} = submission), do: {:ok, submission}
 
   @doc """
-  Gets the best/latest submissions for a list of block ids, scoped by cohort or user.
-  Prioritizes the highest score. If scores are equal, takes the latest attempt.
-  Excludes draft submissions.
+  Gets the attempt that counts for each of `block_ids`, scoped by cohort or
+  user. Excludes draft submissions.
+
+  A rejected attempt wins outright; otherwise the highest score, latest
+  first on a tie. Rejection is a verdict on the work rather than a score
+  to be beaten - it is what disqualifies a team from a competition
+  (`get_team_leaderboard/2`) - so letting an earlier, higher-scoring
+  attempt mask it would punish a team for work they were never told about.
+  Showing it also locks the block for review, which is the point: the
+  instructor removes the rejected attempt when they want it reopened.
   """
   @spec get_latest_submissions(String.t(), [String.t()], String.t() | nil) :: %{
           String.t() => Submission.t()
@@ -416,22 +423,34 @@ defmodule Athena.Learning.Submissions do
 
     query
     |> distinct([s], s.block_id)
-    # `desc_nulls_last` for the same reason as in `get_team_leaderboard/1`:
-    # a plain `desc` is NULLS FIRST, so an attempt still awaiting a grade
-    # used to hide an already-graded one - a teammate's blank exam masking
-    # the team's 90.
-    |> order_by([s], [s.block_id, desc_nulls_last: s.score, desc: s.inserted_at])
+    |> order_by([s], ^attempt_precedence())
     |> Repo.all()
     |> Map.new(&{&1.block_id, &1})
+  end
+
+  # Which of a block's attempts is *the* attempt, shared by
+  # `get_latest_submissions/3` and `get_feedback_map/3` so the score and
+  # the comment a student reads can never come from different work.
+  #
+  # `desc_nulls_last` on the score because a plain `desc` is NULLS FIRST in
+  # Postgres: an attempt still awaiting a grade would otherwise hide an
+  # already-graded one - a teammate's blank exam masking the team's 90.
+  defp attempt_precedence do
+    [
+      asc: dynamic([s], s.block_id),
+      desc: dynamic([s], fragment("? = 'rejected'", s.status)),
+      desc_nulls_last: dynamic([s], s.score),
+      desc: dynamic([s], s.inserted_at)
+    ]
   end
 
   @doc """
   Collects instructor feedback per block for the student-facing player.
 
-  Picks the **same** attempt `get_latest_submissions/3` does - highest
-  score, latest on a tie - because that is the attempt whose score the
-  player shows. Choosing independently (this used to take the most
-  recently updated attempt carrying a comment) meant a regrade that
+  Picks the **same** attempt `get_latest_submissions/3` does (see
+  `attempt_precedence/0`), because that is the attempt whose score the
+  player shows. Choosing independently - this used to take the most
+  recently updated attempt carrying a comment - meant a regrade that
   lowered a score left the student reading the new comment above the old,
   higher number, with no way to tell they described different attempts.
 
@@ -458,7 +477,7 @@ defmodule Athena.Learning.Submissions do
       |> where([s], fragment("?->>'is_test_run' IS NULL", s.content))
       |> where_owner(account_id, cohort_id)
       |> distinct([s], s.block_id)
-      |> order_by([s], [s.block_id, desc_nulls_last: s.score, desc: s.inserted_at])
+      |> order_by([s], ^attempt_precedence())
       |> Repo.all()
 
     children_by_parent =

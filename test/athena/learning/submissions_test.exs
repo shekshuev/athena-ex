@@ -207,6 +207,38 @@ defmodule Athena.Learning.SubmissionsTest do
                result[block_id]
     end
 
+    test "a rejection is not masked by an earlier, higher-scoring attempt" do
+      account_id = Ecto.UUID.generate()
+      block_id = Ecto.UUID.generate()
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      insert(:submission,
+        account_id: account_id,
+        block_id: block_id,
+        score: 90,
+        status: :graded,
+        inserted_at: DateTime.add(now, -1, :day)
+      )
+
+      insert(:submission,
+        account_id: account_id,
+        block_id: block_id,
+        score: 0,
+        status: :rejected,
+        feedback: "Answer copied from a classmate.",
+        inserted_at: now
+      )
+
+      # The verdict is what the student reads, and the score that goes
+      # with it - a competition already disqualifies the team over it, so
+      # hiding it would be punishing work nobody was told about.
+      assert %{^block_id => %{status: :rejected, score: 0}} =
+               Submissions.get_latest_submissions(account_id, [block_id])
+
+      assert %{feedback: "Answer copied from a classmate.", status: :rejected} =
+               Submissions.get_feedback_map(account_id, [block_id])[block_id]
+    end
+
     test "a regrade that lowers the score shows the new comment with the new score" do
       account_id = Ecto.UUID.generate()
       block_id = Ecto.UUID.generate()
