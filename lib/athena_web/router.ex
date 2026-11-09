@@ -202,6 +202,7 @@ defmodule AthenaWeb.Router do
         live "/announcements", Announcements, :index
         live "/announcements/new", AnnouncementForm, :new
         live "/announcements/:id/edit", AnnouncementForm, :edit
+        live "/announcements/:id", AnnouncementShow, :show
         live "/settings", Settings, :index
 
         live "/gamification", Gamification, :index

@@ -34,7 +34,7 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
      |> assign(
        cohort_search_query: "",
        cohort_search_results: [],
-       selected_cohort: nil,
+       selected_cohorts: [],
        show_link_modal: false,
        link_modal_block_id: nil,
        link_modal_href: nil,
@@ -61,7 +61,7 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
         if Identity.can?(current_user, "announcements.update") and
              Announcements.can_manage?(current_user, announcement) do
           socket
-          |> assign(:selected_cohort, preload_selected_cohort(announcement))
+          |> assign(:selected_cohorts, preload_selected_cohorts(announcement))
           |> assign_form(announcement, gettext("Edit Announcement"))
         else
           redirect_forbidden(
@@ -75,15 +75,16 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
     end
   end
 
-  defp preload_selected_cohort(%Announcement{scope: :cohort, cohort_id: cohort_id})
-       when not is_nil(cohort_id) do
-    case Learning.get_cohorts_map([cohort_id]) do
-      %{^cohort_id => cohort} -> %{id: cohort.id, name: cohort.name, type: cohort.type}
-      _ -> nil
-    end
-  end
+  defp preload_selected_cohorts(announcement) do
+    cohorts = Learning.get_cohorts_map(announcement.cohort_ids)
 
-  defp preload_selected_cohort(_announcement), do: nil
+    Enum.flat_map(announcement.cohort_ids, fn id ->
+      case Map.get(cohorts, id) do
+        nil -> []
+        cohort -> [%{id: cohort.id, name: cohort.name, type: cohort.type}]
+      end
+    end)
+  end
 
   defp assign_form(socket, %Announcement{} = announcement, page_title) do
     current_user = socket.assigns.current_user
@@ -142,6 +143,7 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
   def handle_event("validate", %{"announcement" => params}, socket) do
     params =
       params
+      |> Map.put("cohort_ids", Enum.map(socket.assigns.selected_cohorts, & &1.id))
       |> decode_body()
       |> TimeZones.localize_params(~w(starts_at ends_at))
 
@@ -162,25 +164,38 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
     end
   end
 
-  def handle_event("select_cohort", %{"id" => id, "name" => name, "type" => type}, socket) do
+  def handle_event("select_cohort", %{"id" => id}, socket) do
+    cohort = Enum.find(socket.assigns.cohort_search_results, &(&1.id == id))
+    selected = socket.assigns.selected_cohorts
+
+    selected =
+      if cohort && not Enum.any?(selected, &(&1.id == id)),
+        do: selected ++ [%{id: cohort.id, name: cohort.name, type: cohort.type}],
+        else: selected
+
     {:noreply,
-     socket
-     |> assign(:selected_cohort, %{id: id, name: name, type: String.to_existing_atom(type)})
-     |> assign(cohort_search_query: "", cohort_search_results: [])}
+     assign(socket,
+       selected_cohorts: selected,
+       cohort_search_query: "",
+       cohort_search_results: []
+     )}
   end
 
-  def handle_event("clear_cohort", _params, socket) do
-    {:noreply, assign(socket, :selected_cohort, nil)}
+  def handle_event("clear_cohort", %{"id" => id}, socket) do
+    {:noreply,
+     assign(
+       socket,
+       :selected_cohorts,
+       Enum.reject(socket.assigns.selected_cohorts, &(&1.id == id))
+     )}
   end
 
   def handle_event("save", %{"announcement" => params}, socket) do
     params =
       params
+      |> Map.put("cohort_ids", Enum.map(socket.assigns.selected_cohorts, & &1.id))
       |> decode_body()
       |> TimeZones.localize_params(~w(starts_at ends_at))
-
-    cohort_id = socket.assigns.selected_cohort && socket.assigns.selected_cohort.id
-    params = Map.put(params, "cohort_id", cohort_id)
 
     save_announcement(socket, socket.assigns.live_action, params)
   end
@@ -377,41 +392,44 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
               prompt={gettext("Select audience")}
             />
 
-            <div :if={to_string(@form[:scope].value) == "cohort"} class="form-control relative">
+            <fieldset
+              :if={to_string(@form[:scope].value) == "cohort"}
+              class="fieldset mb-2 w-full relative"
+            >
               <label class="label">
                 <span class="label-text font-bold">{gettext("Cohort or team")}</span>
               </label>
 
+              <input type="hidden" name="announcement[cohort_ids][]" value="" />
               <input
+                :for={cohort <- @selected_cohorts}
                 type="hidden"
-                name="announcement[cohort_id]"
-                value={@selected_cohort && @selected_cohort.id}
+                name="announcement[cohort_ids][]"
+                value={cohort.id}
               />
-
-              <%!-- Hidden input again, so the same reasoning as for the body
-                    applies: without this, "pick a cohort" never appeared. --%>
-              <.error :for={msg <- translate_errors(@form.errors, :cohort_id)}>{msg}</.error>
-
-              <div
-                :if={@selected_cohort}
-                class="flex items-center justify-between p-3 border border-success/30 bg-success/10 rounded-sm"
-              >
-                <div class="flex items-center gap-2">
-                  <.icon name="hero-check-circle" class="size-5 text-success" />
-                  <span class="font-bold">{@selected_cohort.name}</span>
-                  <.badge tone="neutral">{cohort_type_label(@selected_cohort.type)}</.badge>
+              <div :if={@selected_cohorts != []} class="flex flex-wrap gap-2 mb-3">
+                <div
+                  :for={cohort <- @selected_cohorts}
+                  id={"selected-cohort-#{cohort.id}"}
+                  class="badge badge-primary badge-lg gap-2 pl-3 pr-1 py-4"
+                >
+                  <span class="font-bold text-sm">{cohort.name}</span>
+                  <button
+                    type="button"
+                    phx-click="clear_cohort"
+                    phx-value-id={cohort.id}
+                    class="btn btn-ghost btn-xs btn-circle hover:bg-primary-focus/20 text-primary-content"
+                    title={gettext("Remove")}
+                    aria-label={gettext("Remove")}
+                  >
+                    <.icon name="hero-x-mark" class="size-4" />
+                  </button>
                 </div>
-                <.icon_button
-                  type="button"
-                  phx-click="clear_cohort"
-                  icon="hero-x-mark"
-                  label={gettext("Clear")}
-                  variant="danger"
-                />
               </div>
 
-              <div :if={!@selected_cohort} class="relative">
+              <div class="relative">
                 <input
+                  id="announcement-cohort-search"
                   type="text"
                   value={@cohort_search_query}
                   phx-keyup="search_cohorts"
@@ -442,7 +460,8 @@ defmodule AthenaWeb.AdminLive.AnnouncementForm do
                   </li>
                 </ul>
               </div>
-            </div>
+              <.error :for={msg <- translate_errors(@form.errors, :cohort_ids)}>{msg}</.error>
+            </fieldset>
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -43,6 +43,65 @@ defmodule Athena.AnnouncementsTest do
     }
   end
 
+  test "multiple recipients share one announcement and overlapping memberships do not duplicate it",
+       ctx do
+    student = insert(:account)
+
+    for cohort <- [ctx.my_cohort, ctx.other_cohort] do
+      insert(:cohort_membership, account_id: student.id, cohort_id: cohort.id)
+    end
+
+    ids = [ctx.my_cohort.id, ctx.other_cohort.id]
+
+    assert {:ok, announcement} =
+             Announcements.create_announcement(ctx.admin, %{
+               "title" => "Shared news",
+               "body" => tiptap_doc("Hello"),
+               "scope" => "cohort",
+               "cohort_ids" => ids ++ ids
+             })
+
+    assert announcement.cohort_ids == ids
+    assert {:ok, {[visible], _}} = Announcements.list_for_viewer(student)
+    assert visible.id == announcement.id
+
+    assert {:error, :forbidden} =
+             Announcements.update_announcement(
+               ctx.instructor_account,
+               announcement,
+               %{"cohort_ids" => [ctx.my_cohort.id]}
+             )
+
+    assert {:ok, updated} =
+             Announcements.update_announcement(
+               ctx.admin,
+               announcement,
+               %{"cohort_ids" => [ctx.other_cohort.id]}
+             )
+
+    assert updated.cohort_ids == [ctx.other_cohort.id]
+  end
+
+  test "instructor must manage every recipient", ctx do
+    assert {:error, :forbidden} =
+             Announcements.create_announcement(ctx.instructor_account, %{
+               "title" => "Shared news",
+               "body" => tiptap_doc("Hello"),
+               "scope" => "cohort",
+               "cohort_ids" => [ctx.my_cohort.id, ctx.other_cohort.id]
+             })
+
+    assert {:error, changeset} =
+             Announcements.create_announcement(ctx.admin, %{
+               "title" => "No audience",
+               "body" => tiptap_doc("Hello"),
+               "scope" => "cohort",
+               "cohort_ids" => [""]
+             })
+
+    assert errors_on(changeset).cohort_ids
+  end
+
   describe "create_announcement/2" do
     test "admin can create a global announcement", %{admin: admin} do
       assert {:ok, %Announcement{scope: :global}} =

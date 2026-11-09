@@ -138,6 +138,8 @@ defmodule AthenaWeb.AdminLive.AnnouncementsTest do
 
       {:ok, lv, _html} = live(conn, ~p"/admin/announcements/new")
 
+      {:ok, team} = Cohorts.create_cohort(admin, %{"name" => "Bootcamp Team", "type" => "team"})
+
       # scope must be set first so the conditional cohort search box renders
       lv
       |> form("#announcement-form")
@@ -157,6 +159,11 @@ defmodule AthenaWeb.AdminLive.AnnouncementsTest do
       |> element("li[phx-value-id='#{cohort.id}']")
       |> render_click()
 
+      assert has_element?(lv, "#selected-cohort-#{cohort.id}")
+      lv |> element("#announcement-cohort-search") |> render_keyup(%{"value" => "Boot"})
+      lv |> element("li[phx-value-id='#{team.id}']") |> render_click()
+      assert has_element?(lv, "#selected-cohort-#{team.id}")
+
       lv
       |> form("#announcement-form")
       |> render_submit(%{
@@ -171,6 +178,13 @@ defmodule AthenaWeb.AdminLive.AnnouncementsTest do
 
       saved = Athena.Repo.get_by(Athena.Announcements.Announcement, title: "Cohort News")
       assert saved.cohort_id == cohort.id
+      assert saved.cohort_ids == [cohort.id, team.id]
+
+      {:ok, edit, _} = live(conn, ~p"/admin/announcements/#{saved.id}/edit")
+      assert has_element?(edit, "#selected-cohort-#{cohort.id}")
+      assert has_element?(edit, "#selected-cohort-#{team.id}")
+      edit |> element("#selected-cohort-#{cohort.id} button") |> render_click()
+      refute has_element?(edit, "#selected-cohort-#{cohort.id}")
     end
 
     test "edits an existing announcement, including marking it important", %{
