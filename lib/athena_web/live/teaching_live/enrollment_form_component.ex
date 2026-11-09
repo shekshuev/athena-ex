@@ -111,7 +111,7 @@ defmodule AthenaWeb.TeachingLive.EnrollmentFormComponent do
     ~H"""
     <div>
       <form id="enrollment-form" phx-submit="save" phx-target={@myself} class="flex flex-col gap-6">
-        <div class="form-control w-full relative">
+        <div class="fieldset mb-2 w-full relative">
           <label class="label">
             <span class="label-text font-bold">
               {if @course_type == :competition,

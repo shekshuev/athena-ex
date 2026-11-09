@@ -216,7 +216,7 @@ defmodule AthenaWeb.TeachingLive.CohortFormComponent do
           phx-debounce="500"
         />
 
-        <div class="form-control w-full relative">
+        <div class="fieldset mb-2 w-full relative">
           <label class="label">
             <span class="label-text font-bold">{gettext("Assign Instructors")}</span>
           </label>

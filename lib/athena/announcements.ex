@@ -27,7 +27,11 @@ defmodule Athena.Announcements do
     now = DateTime.utc_now()
 
     Announcement
-    |> where([a], a.scope == :global or a.cohort_id in ^member_cohort_ids)
+    |> where(
+      [a],
+      a.scope == :global or
+        fragment("? && ?::uuid[]", a.cohort_ids, type(^member_cohort_ids, {:array, :binary_id}))
+    )
     |> where([a], is_nil(a.starts_at) or a.starts_at <= ^now)
     |> where([a], is_nil(a.ends_at) or a.ends_at >= ^now)
     |> Flop.validate_and_run(params, for: Announcement)
@@ -47,6 +51,12 @@ defmodule Athena.Announcements do
     |> Flop.validate_and_run(params, for: Announcement)
   end
 
+  @doc "Gets an announcement visible in the administrative list, regardless of its visibility window."
+  @spec get_for_admin(map(), String.t()) :: Announcement.t() | nil
+  def get_for_admin(user, id) do
+    Announcement |> scope_admin_query(user) |> Repo.get(id)
+  end
+
   defp scope_admin_query(query, user) do
     cond do
       Identity.can?(user, "admin") ->
@@ -58,7 +68,13 @@ defmodule Athena.Announcements do
         where(
           query,
           [a],
-          a.scope == :global or (a.scope == :cohort and a.cohort_id in ^instructed_ids)
+          a.scope == :global or
+            (a.scope == :cohort and
+               fragment(
+                 "? && ?::uuid[]",
+                 a.cohort_ids,
+                 type(^instructed_ids, {:array, :binary_id})
+               ))
         )
 
       true ->
@@ -84,6 +100,11 @@ defmodule Athena.Announcements do
   @spec can_manage?(map(), :global | :cohort, String.t() | nil) :: boolean()
   def can_manage?(user, :global, _cohort_id), do: Identity.can?(user, "admin")
 
+  def can_manage?(user, :cohort, cohort_ids) when is_list(cohort_ids) do
+    Identity.can?(user, "admin") or
+      (cohort_ids != [] and Enum.all?(cohort_ids, &can_manage?(user, :cohort, &1)))
+  end
+
   def can_manage?(user, :cohort, cohort_id) do
     Identity.can?(user, "admin") or
       (not is_nil(cohort_id) and Learning.instructor_of_cohort?(user.id, cohort_id))
@@ -93,8 +114,8 @@ defmodule Athena.Announcements do
 
   @doc "Can `user` manage this already-persisted announcement (edit/delete)?"
   @spec can_manage?(map(), Announcement.t()) :: boolean()
-  def can_manage?(user, %Announcement{scope: scope, cohort_id: cohort_id}),
-    do: can_manage?(user, scope, cohort_id)
+  def can_manage?(user, %Announcement{scope: scope, cohort_ids: cohort_ids}),
+    do: can_manage?(user, scope, cohort_ids)
 
   @doc """
   Creates an announcement authored by `user`. Enforces `announcements.create`
@@ -111,8 +132,9 @@ defmodule Athena.Announcements do
   @spec create_announcement(map(), map()) ::
           {:ok, Announcement.t()} | {:error, Ecto.Changeset.t()} | {:error, :forbidden}
   def create_announcement(user, attrs) do
+    attrs = Announcement.normalize_audience(attrs)
     scope = normalize_scope(attrs)
-    cohort_id = attrs["cohort_id"] || attrs[:cohort_id]
+    cohort_id = attrs["cohort_ids"] || []
 
     if Identity.can?(user, "announcements.create") and can_manage?(user, scope, cohort_id) do
       %Announcement{}
@@ -123,7 +145,7 @@ defmodule Athena.Announcements do
         &[
           announcement_id: &1.id,
           scope: &1.scope,
-          cohort_id: &1.cohort_id,
+          cohort_ids: &1.cohort_ids,
           important: &1.important,
           by: user.id
         ]
@@ -144,11 +166,12 @@ defmodule Athena.Announcements do
   @spec update_announcement(map(), Announcement.t(), map()) ::
           {:ok, Announcement.t()} | {:error, Ecto.Changeset.t()} | {:error, :forbidden}
   def update_announcement(user, %Announcement{} = announcement, attrs) do
+    attrs = Announcement.normalize_audience(attrs)
     new_scope = normalize_scope(attrs) || announcement.scope
 
     new_cohort_id =
-      attrs["cohort_id"] || attrs[:cohort_id] ||
-        (new_scope == announcement.scope && announcement.cohort_id)
+      attrs["cohort_ids"] ||
+        (new_scope == announcement.scope && announcement.cohort_ids)
 
     authorized? =
       Identity.can?(user, "announcements.update") and
@@ -161,7 +184,7 @@ defmodule Athena.Announcements do
       |> Repo.update()
       |> Audit.on_ok(
         "announcement.updated",
-        &[announcement_id: &1.id, scope: &1.scope, cohort_id: &1.cohort_id, by: user.id]
+        &[announcement_id: &1.id, scope: &1.scope, cohort_ids: &1.cohort_ids, by: user.id]
       )
     else
       Audit.warning("announcement.update_refused",

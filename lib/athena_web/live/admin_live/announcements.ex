@@ -44,7 +44,7 @@ defmodule AthenaWeb.AdminLive.Announcements do
 
         cohorts =
           announcements
-          |> Enum.map(& &1.cohort_id)
+          |> Enum.flat_map(& &1.cohort_ids)
           |> Enum.reject(&is_nil/1)
           |> Enum.uniq()
           |> Learning.get_cohorts_map()
@@ -178,9 +178,12 @@ defmodule AthenaWeb.AdminLive.Announcements do
           </div>
         </:col>
         <:col :let={{_id, a}} label={gettext("Audience")}>
-          <.badge tone={if a.scope == :global, do: "primary", else: "info"}>
-            {audience_label(a, @cohorts)}
-          </.badge>
+          <div id={"announcement-audience-#{a.id}"} class="flex flex-wrap gap-1.5">
+            <.badge :if={a.scope == :global} tone="primary">{gettext("Global")}</.badge>
+            <.badge :for={id <- a.cohort_ids} tone="info">
+              {cohort_label(id, @cohorts)}
+            </.badge>
+          </div>
         </:col>
         <:col :let={{_id, a}} label={gettext("Author")}>
           {owner_name(@owners, a.author_id)}
@@ -190,6 +193,12 @@ defmodule AthenaWeb.AdminLive.Announcements do
         </:col>
         <:action :let={{_id, a}}>
           <div class="flex justify-end gap-2">
+            <.icon_button
+              id={"view-announcement-#{a.id}"}
+              navigate={~p"/admin/announcements/#{a.id}"}
+              icon="hero-eye"
+              label={gettext("View")}
+            />
             <.icon_button
               :if={Identity.can?(@current_user, "announcements.update")}
               navigate={~p"/admin/announcements/#{a.id}/edit"}
@@ -243,13 +252,10 @@ defmodule AthenaWeb.AdminLive.Announcements do
     end
   end
 
-  defp audience_label(%{scope: :global}, _cohorts), do: gettext("Global")
-
-  defp audience_label(%{scope: :cohort, cohort_id: cohort_id}, cohorts) do
+  defp cohort_label(cohort_id, cohorts) do
     case Map.get(cohorts, cohort_id) do
       nil -> "–"
-      %{name: name, type: :team} -> "#{gettext("Team")}: #{name}"
-      %{name: name} -> "#{gettext("Cohort")}: #{name}"
+      %{name: name} -> name
     end
   end
 

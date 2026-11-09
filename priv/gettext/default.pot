@@ -10629,3 +10629,15 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Upcoming Competitions"
 msgstr ""
+
+msgid "Updated at"
+msgstr ""
+
+msgid "Visible from"
+msgstr ""
+
+msgid "Visible until"
+msgstr ""
+
+msgid "Important"
+msgstr ""

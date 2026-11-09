@@ -10647,3 +10647,15 @@ msgstr "Дата начала"
 #, elixir-autogen, elixir-format
 msgid "Upcoming Competitions"
 msgstr "Будущие соревнования"
+
+msgid "Updated at"
+msgstr "Изменено"
+
+msgid "Visible from"
+msgstr "Начало показа"
+
+msgid "Visible until"
+msgstr "Окончание показа"
+
+msgid "Important"
+msgstr "Важное"

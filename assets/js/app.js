@@ -504,7 +504,9 @@ Hooks.Sortable = {
     // the one place that reliably fires after every reorder, so it's on
     // this hook to nudge the active editor to refocus itself.
     const active = this.el.querySelector('[data-active="true"]');
-    if (active && !active.contains(document.activeElement)) {
+    // An update also runs when settings or a CodeMirror field autosave.
+    // Restore lost focus only; never take it from another control.
+    if (active && document.activeElement === document.body) {
       active.dispatchEvent(new CustomEvent("tiptap:refocus-active"));
     }
   },
@@ -1323,7 +1325,13 @@ Hooks.TiptapEditor = {
     // this, "selecting" block A while focus is still inside block B leaves
     // B's toolbar the one actually visible/interactive, so an action like
     // inserting a dialogue line lands on B even though A looks selected.
-    if (this.el.dataset.active === "true" && !isReadOnly) {
+    this.wasActive = this.el.dataset.active === "true";
+    if (
+      this.wasActive &&
+      !isReadOnly &&
+      (document.activeElement === document.body ||
+        document.activeElement?.closest('[phx-hook="TiptapEditor"]'))
+    ) {
       this.editor.commands.focus("end");
     }
 
@@ -1336,7 +1344,11 @@ Hooks.TiptapEditor = {
     // fires an update, and it dispatches this event at the active block
     // to ask it to restore its own focus.
     this.handleRefocusActive = () => {
-      if (this.editor && this.editor.isEditable) {
+      if (
+        this.editor &&
+        this.editor.isEditable &&
+        document.activeElement === document.body
+      ) {
         this.editor.commands.focus("end");
       }
     };
@@ -1345,11 +1357,19 @@ Hooks.TiptapEditor = {
 
   updated() {
     const isActive = this.el.dataset.active === "true";
+    const becameActive = isActive && !this.wasActive;
+    this.wasActive = isActive;
+
+    // Only selecting a different block should move focus to its text.
+    // Autosaving an inspector input or a code field keeps its current focus.
+    const focusedElement = document.activeElement;
     if (
-      isActive &&
+      becameActive &&
       this.editor &&
       this.editor.isEditable &&
-      !this.el.contains(document.activeElement)
+      !this.el.contains(focusedElement) &&
+      (focusedElement === document.body ||
+        focusedElement?.closest('[phx-hook="TiptapEditor"]'))
     ) {
       this.editor.commands.focus("end");
     }

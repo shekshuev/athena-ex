@@ -1,7 +1,7 @@
 defmodule Athena.Announcements.Announcement do
   @moduledoc """
   An admin/instructor-authored announcement, visible either to everyone
-  (`:global`) or to the members of one specific cohort (`:cohort`).
+  (`:global`) or to the members of selected cohorts (`:cohort`).
 
   `body` stores a TipTap/ProseMirror JSON document (jsonb), not plain
   text – rendered client-side by the same `TiptapEditor` hook used for
@@ -42,6 +42,7 @@ defmodule Athena.Announcements.Announcement do
     field :body, :map
     field :scope, Ecto.Enum, values: [:global, :cohort]
     field :cohort_id, :binary_id
+    field :cohort_ids, {:array, :binary_id}, default: []
     field :author_id, :binary_id
     field :important, :boolean, default: false
     field :starts_at, :utc_datetime
@@ -53,12 +54,15 @@ defmodule Athena.Announcements.Announcement do
   @doc false
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(announcement, attrs) do
+    attrs = normalize_audience(attrs)
+
     announcement
     |> cast(attrs, [
       :title,
       :body,
       :scope,
       :cohort_id,
+      :cohort_ids,
       :author_id,
       :important,
       :starts_at,
@@ -73,11 +77,41 @@ defmodule Athena.Announcements.Announcement do
 
   defp validate_cohort_id_for_scope(changeset) do
     case get_field(changeset, :scope) do
-      :cohort -> validate_required(changeset, [:cohort_id])
-      :global -> put_change(changeset, :cohort_id, nil)
-      _ -> changeset
+      :cohort ->
+        changeset = update_change(changeset, :cohort_ids, &Enum.uniq/1)
+        ids = get_field(changeset, :cohort_ids) || []
+        changeset = put_change(changeset, :cohort_id, List.first(ids))
+
+        if ids == [], do: add_error(changeset, :cohort_ids, "can't be blank"), else: changeset
+
+      :global ->
+        changeset |> put_change(:cohort_id, nil) |> put_change(:cohort_ids, [])
+
+      _ ->
+        changeset
     end
   end
+
+  # Accept the former single-recipient API while storing the full audience.
+  def normalize_audience(attrs) do
+    attrs = Map.new(attrs, fn {key, value} -> {to_string(key), value} end)
+
+    cond do
+      Map.has_key?(attrs, "cohort_ids") ->
+        Map.update!(attrs, "cohort_ids", &normalize_cohort_ids/1)
+
+      Map.has_key?(attrs, "cohort_id") ->
+        Map.put(attrs, "cohort_ids", List.wrap(attrs["cohort_id"]))
+
+      true ->
+        attrs
+    end
+  end
+
+  defp normalize_cohort_ids(ids) when is_list(ids),
+    do: Enum.reject(ids, &(&1 in [nil, ""]))
+
+  defp normalize_cohort_ids(ids), do: ids
 
   defp validate_visibility_window(changeset) do
     starts_at = get_field(changeset, :starts_at)
