@@ -234,6 +234,15 @@ defmodule AthenaWeb.LearnLive.Exam do
           "submission:#{socket.assigns.current_user.id}:#{q.id}"
         )
       end)
+
+      # Tell the proctoring monitor this exam tab is actually connected, so a
+      # later telemetry silence can be told apart from a plain network drop
+      # (see `Athena.Engagement.Proctoring`). Real, in-progress attempts only
+      # - never a builder test run, never a finished/expired attempt (which
+      # would otherwise spin up a fresh, empty monitor).
+      if not socket.assigns[:test_run] and submission.status in [:pending, :draft] do
+        Engagement.report_proctoring_connection(submission.id, cohort_id, block.id, true)
+      end
     end
 
     socket =
@@ -259,7 +268,11 @@ defmodule AthenaWeb.LearnLive.Exam do
         active_upload_block_id: nil,
         upload_type: nil,
         max_files_for_upload: 1,
-        current_file_count_for_upload: 0
+        current_file_count_for_upload: 0,
+        # Server-side liveness clock for integrity telemetry (see
+        # `check_telemetry_live/1`). Seeded fresh on every (re)mount, so a
+        # LiveView reconnect always begins with a full grace window.
+        last_telemetry_at: DateTime.utc_now()
       )
 
     maybe_start_timer(socket)
@@ -528,33 +541,27 @@ defmodule AthenaWeb.LearnLive.Exam do
   end
 
   def handle_event("finish_exam", _, socket) do
-    case check_time_limit(socket) do
-      {:halt, socket} ->
-        {:noreply, socket}
-
-      {:ok, socket} ->
-        socket =
-          submit_and_exit(socket, socket.assigns.submission, :finished)
-
-        {:noreply, socket}
+    with {:ok, socket} <- check_time_limit(socket),
+         {:ok, socket} <- check_telemetry_live(socket) do
+      {:noreply, submit_and_exit(socket, socket.assigns.submission, :finished)}
+    else
+      {:halt, socket} -> {:noreply, socket}
     end
   end
 
   @impl true
   def handle_event("run_code", %{"block_id" => block_id}, socket) do
-    case check_time_limit(socket) do
+    with {:ok, socket} <- check_time_limit(socket),
+         {:ok, socket} <- check_telemetry_live(socket) do
+      execute_run_code(socket, block_id)
+    else
       {:halt, socket} -> {:noreply, socket}
-      {:ok, socket} -> execute_run_code(socket, block_id)
     end
   end
 
   def handle_event("engagement_batch", %{"events" => events}, socket) do
-    section_id = socket.assigns.block.section_id
-
-    normalized =
-      events
-      |> Enum.map(&Engagement.normalize_event(&1, section_id))
-      |> Enum.reject(&is_nil/1)
+    {normalized, socket} =
+      AthenaWeb.LearnLive.ExamTelemetry.normalize_batch(events, socket)
 
     {buffered, socket} = EngagementSignals.take_buffered_events(socket)
 
@@ -575,6 +582,11 @@ defmodule AthenaWeb.LearnLive.Exam do
       normalized
     )
 
+    socket =
+      if normalized == [],
+        do: socket,
+        else: assign(socket, :last_telemetry_at, DateTime.utc_now())
+
     {:noreply, socket}
   end
 
@@ -585,7 +597,9 @@ defmodule AthenaWeb.LearnLive.Exam do
       socket.assigns.block.id
     )
 
-    {:noreply, socket}
+    # This proves delivery of a ping, not integrity of browser listeners.
+    # A modified client can keep sending heartbeats while suppressing events.
+    {:noreply, assign(socket, :last_telemetry_at, DateTime.utc_now())}
   end
 
   defp execute_run_code(socket, block_id) do
@@ -783,6 +797,8 @@ defmodule AthenaWeb.LearnLive.Exam do
   # nothing left to hold.
   @impl true
   def terminate(_reason, socket) do
+    report_proctoring_disconnect(socket)
+
     with %{team_id: team_id, submission: submission} when not is_nil(team_id) <- socket.assigns,
          true <- submission.status in [:pending, :draft] do
       Learning.release_exam_attempt(submission.id)
@@ -1066,36 +1082,100 @@ defmodule AthenaWeb.LearnLive.Exam do
     end
   end
 
+  # How long the integrity telemetry may stay silent before commits are
+  # refused. Well above the client's ~10s heartbeat interval so a single
+  # dropped tick or a brief LiveView reconnect never trips it; low enough
+  # that an attempt can't make real progress while "dark". Tune per policy.
+  # Pause commits when telemetry is stale. This catches total silence;
+  # heartbeats themselves are client-controlled and cannot prove honesty.
+  defp check_telemetry_live(socket) do
+    cond do
+      # Builder test runs carry no heartbeat (data-heartbeat="false") -
+      # nothing to enforce there, same carve-out as the tracker itself.
+      socket.assigns[:test_run] ->
+        {:ok, socket}
+
+      telemetry_live?(socket) ->
+        {:ok, socket}
+
+      true ->
+        {:halt,
+         put_flash(
+           socket,
+           :error,
+           gettext(
+             "Exam monitoring isn't reporting right now. Keep this tab focused and check your connection - it resumes by itself within a few seconds. Your progress is safe."
+           )
+         )}
+    end
+  end
+
+  defp telemetry_live?(socket) do
+    case socket.assigns[:last_telemetry_at] do
+      %DateTime{} = at ->
+        DateTime.diff(DateTime.utc_now(), at, :second) <=
+          Keyword.get(
+            Application.get_env(:athena, Athena.Engagement, []),
+            :exam_telemetry_grace_seconds,
+            45
+          )
+
+      _ ->
+        false
+    end
+  end
+
+  # On socket teardown (tab closed, navigation, lost network) tell the
+  # proctoring monitor the exam tab is no longer connected, so any silence
+  # from here on reads as a network drop rather than suppressed telemetry.
+  # Real attempts only; best-effort - `connection/4` with `false` never
+  # starts a monitor, so a teardown at finalize can't resurrect one.
+  defp report_proctoring_disconnect(socket) do
+    assigns = socket.assigns
+
+    if Map.get(assigns, :test_run, true) == false do
+      case assigns do
+        %{submission: %{id: sid}, cohort_id: cohort_id, block: %{id: bid}}
+        when not is_nil(cohort_id) ->
+          Engagement.report_proctoring_connection(sid, cohort_id, bid, false)
+
+        _ ->
+          :ok
+      end
+    else
+      :ok
+    end
+  end
+
   defp process_exam_answer(params, socket) do
-    case check_time_limit(socket) do
-      {:halt, socket} ->
-        {:noreply, socket}
+    with {:ok, socket} <- check_time_limit(socket),
+         {:ok, socket} <- check_telemetry_live(socket) do
+      q = socket.assigns.current_question
+      answer = resolve_exam_answer(socket, q, Map.get(params, "answer"))
+      answer_content = normalize_answer(q, answer)
 
-      {:ok, socket} ->
-        q = socket.assigns.current_question
-        answer = resolve_exam_answer(socket, q, Map.get(params, "answer"))
-        answer_content = normalize_answer(q, answer)
+      case Learning.save_question_submission(
+             socket.assigns.submission,
+             socket.assigns.current_user.id,
+             q.id,
+             socket.assigns.team_id,
+             answer_content
+           ) do
+        {:ok, child_sub} ->
+          new_child_subs = Map.put(socket.assigns.child_submissions, q.id, child_sub)
 
-        case Learning.save_question_submission(
-               socket.assigns.submission,
-               socket.assigns.current_user.id,
-               q.id,
-               socket.assigns.team_id,
-               answer_content
-             ) do
-          {:ok, child_sub} ->
-            new_child_subs = Map.put(socket.assigns.child_submissions, q.id, child_sub)
+          socket =
+            socket
+            |> assign(:child_submissions, new_child_subs)
+            |> EngagementSignals.record_quiz_interaction(q)
 
-            socket =
-              socket
-              |> assign(:child_submissions, new_child_subs)
-              |> EngagementSignals.record_quiz_interaction(q)
+          {:noreply, socket}
 
-            {:noreply, socket}
-
-          {:error, :time_limit_exceeded} ->
-            {:noreply, submit_and_exit(socket, socket.assigns.submission, :time_limit_exceeded)}
-        end
+        {:error, :time_limit_exceeded} ->
+          {:noreply, submit_and_exit(socket, socket.assigns.submission, :time_limit_exceeded)}
+      end
+    else
+      {:halt, socket} -> {:noreply, socket}
     end
   end
 
@@ -1312,6 +1392,15 @@ defmodule AthenaWeb.LearnLive.Exam do
   defp hydrate_questions(_), do: []
 
   defp save_exam_file_assignment(socket, block_id, file_urls) do
+    with {:ok, socket} <- check_time_limit(socket),
+         {:ok, socket} <- check_telemetry_live(socket) do
+      persist_exam_file_assignment(socket, block_id, file_urls)
+    else
+      {:halt, socket} -> socket
+    end
+  end
+
+  defp persist_exam_file_assignment(socket, block_id, file_urls) do
     answer_content = %{"type" => "file_assignment", "file_urls" => file_urls || []}
 
     case Learning.save_question_submission(

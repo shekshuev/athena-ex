@@ -2,7 +2,7 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
   # Not async: pokes global :athena, Athena.Engagement config to speed up the
   # idle-timeout test, and starts/stops named (Registry-keyed) processes that
   # would otherwise collide with a concurrently-running copy of this test.
-  use ExUnit.Case, async: false
+  use Athena.DataCase, async: false
 
   alias Athena.Engagement.ProctoringMonitor
 
@@ -98,6 +98,7 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
 
     test "paste_detected shortly after returning from being away accumulates into a running ratio, not a plain count" do
       submission_id = Ecto.UUID.generate()
+      age_attempt(submission_id)
       cohort_id = Ecto.UUID.generate()
       block_id = Ecto.UUID.generate()
 
@@ -129,10 +130,21 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
 
     test "a paste long after the last absence does not count toward the paste ratio" do
       submission_id = Ecto.UUID.generate()
+      age_attempt(submission_id)
 
       ProctoringMonitor.report_events(submission_id, Ecto.UUID.generate(), "block", [
-        back_event(:window_focus, 5_000, DateTime.add(DateTime.utc_now(), -120, :second))
+        back_event(:window_focus, 5_000)
       ])
+
+      {:ok, pid} = ProctoringMonitor.get_or_start(submission_id, nil, "block")
+
+      :sys.replace_state(pid, fn state ->
+        %{
+          state
+          | last_away_ended_at:
+              DateTime.to_unix(DateTime.add(DateTime.utc_now(), -120, :second), :millisecond)
+        }
+      end)
 
       ProctoringMonitor.report_events(submission_id, Ecto.UUID.generate(), "block", [
         paste_event(50, 100)
@@ -189,7 +201,11 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
       submission_id = Ecto.UUID.generate()
 
       ProctoringMonitor.heartbeat(submission_id, Ecto.UUID.generate(), "block")
-      Process.sleep(1100)
+      {:ok, pid} = ProctoringMonitor.get_or_start(submission_id, nil, "block")
+
+      :sys.replace_state(pid, fn state ->
+        %{state | last_event_at: DateTime.add(DateTime.utc_now(), -2, :second)}
+      end)
 
       reading = ProctoringMonitor.snapshot(submission_id)
       assert reading.silence_seconds >= 1
@@ -200,7 +216,12 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
       cohort_id = Ecto.UUID.generate()
 
       ProctoringMonitor.heartbeat(submission_id, cohort_id, "block")
-      Process.sleep(1100)
+      {:ok, pid} = ProctoringMonitor.get_or_start(submission_id, nil, "block")
+
+      :sys.replace_state(pid, fn state ->
+        %{state | last_event_at: DateTime.add(DateTime.utc_now(), -2, :second)}
+      end)
+
       ProctoringMonitor.heartbeat(submission_id, cohort_id, "block")
 
       reading = ProctoringMonitor.snapshot(submission_id)
@@ -216,7 +237,11 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
         %{event_type: :tab_hidden}
       ])
 
-      Process.sleep(1100)
+      {:ok, pid} = ProctoringMonitor.get_or_start(submission_id, nil, "block")
+
+      :sys.replace_state(pid, fn state ->
+        %{state | last_event_at: DateTime.add(DateTime.utc_now(), -2, :second)}
+      end)
 
       reading = ProctoringMonitor.snapshot(submission_id)
       assert reading.silence_seconds == 0
@@ -235,6 +260,7 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
 
     test "a long enough absence counts as an incident and adds to the total" do
       submission_id = Ecto.UUID.generate()
+      age_attempt(submission_id)
 
       ProctoringMonitor.report_events(submission_id, Ecto.UUID.generate(), "block", [
         back_event(:window_focus, 15_000)
@@ -247,6 +273,7 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
 
     test "a very short absence is in the total but is not an incident" do
       submission_id = Ecto.UUID.generate()
+      age_attempt(submission_id)
 
       ProctoringMonitor.report_events(submission_id, Ecto.UUID.generate(), "block", [
         back_event(:tab_visible, 3_000)
@@ -259,6 +286,7 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
 
     test "the same absence seen by two signals (blur and hidden tab) is counted once" do
       submission_id = Ecto.UUID.generate()
+      age_attempt(submission_id)
 
       ProctoringMonitor.report_events(submission_id, Ecto.UUID.generate(), "block", [
         back_event(:window_focus, 20_000),
@@ -272,6 +300,7 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
 
     test "leaving fullscreen counts as time away and as its own event" do
       submission_id = Ecto.UUID.generate()
+      age_attempt(submission_id)
 
       ProctoringMonitor.report_events(submission_id, Ecto.UUID.generate(), "block", [
         back_event(:fullscreen_exit, 30_000)
@@ -286,6 +315,7 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
   describe "environment and input signals" do
     test "an offline period is remembered as the longest one" do
       submission_id = Ecto.UUID.generate()
+      age_attempt(submission_id)
 
       ProctoringMonitor.report_events(submission_id, Ecto.UUID.generate(), "block", [
         %{event_type: :offline_period, payload: %{"duration_ms" => 70_000}},
@@ -299,6 +329,7 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
 
     test "pointer-outside time accumulates" do
       submission_id = Ecto.UUID.generate()
+      age_attempt(submission_id)
 
       ProctoringMonitor.report_events(submission_id, Ecto.UUID.generate(), "block", [
         %{event_type: :mouse_left, payload: %{"duration_ms" => 12_000}},
@@ -321,6 +352,7 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
 
     test "a large paste shortly after being away is counted separately from the paste ratio, and the longest is kept" do
       submission_id = Ecto.UUID.generate()
+      age_attempt(submission_id)
 
       ProctoringMonitor.report_events(submission_id, Ecto.UUID.generate(), "block", [
         back_event(:window_focus, 5_000),
@@ -422,6 +454,45 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
       assert new_pid != pid
       assert Process.alive?(new_pid)
     end
+  end
+
+  describe "connection/4 (p2)" do
+    test "connection(true) starts a monitor for the attempt" do
+      sid = Ecto.UUID.generate()
+
+      assert ProctoringMonitor.connection(sid, Ecto.UUID.generate(), Ecto.UUID.generate(), true) ==
+               :ok
+
+      assert [{_pid, _}] = Registry.lookup(Athena.Engagement.ProctoringMonitorRegistry, sid)
+    end
+
+    test "connection(false) never starts a monitor (no resurrection after finalize)" do
+      sid = Ecto.UUID.generate()
+
+      assert ProctoringMonitor.connection(sid, nil, nil, false) == :ok
+      assert [] == Registry.lookup(Athena.Engagement.ProctoringMonitorRegistry, sid)
+    end
+  end
+
+  describe "clock skew (p4)" do
+    test "a wildly off client clock is recorded as a clock_skew incident" do
+      sid = Ecto.UUID.generate()
+      stale = DateTime.add(DateTime.utc_now(), -600, :second)
+      event = %{event_type: :tab_hidden, payload: %{}, occurred_at: stale}
+
+      ProctoringMonitor.report_events(sid, Ecto.UUID.generate(), Ecto.UUID.generate(), [event])
+
+      reading = ProctoringMonitor.snapshot(sid)
+      assert Enum.any?(reading.incidents, &(&1["type"] == "clock_skew"))
+    end
+  end
+
+  defp age_attempt(sid) do
+    pid = start_supervised!({ProctoringMonitor, {sid, nil, "block"}})
+
+    :sys.replace_state(pid, fn state ->
+      %{state | started_at: DateTime.add(DateTime.utc_now(), -180, :second)}
+    end)
   end
 
   defp wait_until(fun, attempts \\ 20)

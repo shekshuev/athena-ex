@@ -187,6 +187,9 @@ if config_env() == :prod do
     engagement_legacy_move_cron =
       System.get_env("ENGAGEMENT_LEGACY_MOVE_CRON") || "*/5 * * * *"
 
+    engagement_checkpoint_purge_cron =
+      System.get_env("ENGAGEMENT_CHECKPOINT_PURGE_CRON") || "30 * * * *"
+
     config :athena, Oban,
       plugins: [
         Oban.Plugins.Pruner,
@@ -207,6 +210,8 @@ if config_env() == :prod do
            {engagement_partitions_cron, Athena.Engagement.Workers.EnsurePartitions,
             queue: :maintenance},
            {engagement_legacy_move_cron, Athena.Engagement.Workers.MoveLegacyEvents,
+            queue: :maintenance},
+           {engagement_checkpoint_purge_cron, Athena.Engagement.Workers.PurgeStaleCheckpoints,
             queue: :maintenance}
          ]}
       ]

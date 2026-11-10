@@ -116,6 +116,27 @@ defmodule Athena.Engagement.ProctoringTimelineTest do
              ProctoringTimeline.build(submission)
   end
 
+  test "new monitoring incidents remain visible to the reviewer", ctx do
+    types = ["silence_connected", "concurrent_session", "inert_channel", "clock_skew"]
+
+    incidents =
+      Enum.map(types, fn type ->
+        %{
+          "type" => type,
+          "at" => DateTime.to_iso8601(DateTime.add(@started_at, 200, :second)),
+          "seconds" => 75
+        }
+      end)
+
+    submission = %{
+      ctx.submission
+      | content: Map.put(ctx.submission.content, "incidents", incidents)
+    }
+
+    assert Enum.map(ProctoringTimeline.build(submission), & &1.type) ==
+             [:silence_connected, :concurrent_session, :inert_channel, :clock_skew]
+  end
+
   describe "one absence is one line" do
     test "an Alt-Tab that fired both tab_visible and window_focus is a single entry", ctx do
       record(ctx, ctx.block.id, :window_focus, 100, %{"duration_ms" => 20_000})

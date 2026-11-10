@@ -83,10 +83,8 @@ EngagementHooks.EngagementTracker = {
     // server unconditionally, even when `flush()` above had nothing queued
     // - that's what lets the server notice *silence* (tracking JS
     // disabled/tampered) instead of only ever seeing suspicious events. A
-    // student who patches just the listeners below (visibilitychange,
-    // IntersectionObserver, BroadcastChannel) can't quietly stop this too
-    // without also breaking their own `pushEvent`-based ability to answer
-    // and submit.
+    // modified client can retain this ping while suppressing other events;
+    // it is a liveness signal, not proof of detector integrity.
     this.flushTimer = setInterval(() => {
       this.flush();
       if (this.el.dataset.heartbeat === "true") this.pushEvent("engagement_heartbeat", {});

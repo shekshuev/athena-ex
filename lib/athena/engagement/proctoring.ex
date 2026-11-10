@@ -152,29 +152,53 @@ defmodule Athena.Engagement.Proctoring do
     baselines = ExamIntegrityStats.baselines(cohort_id, block_id, opts[:submission_id])
     relative = relative_signals(eligible, baselines, reading.elapsed_minutes, counts, t)
 
+    # Tag each signal by who the server has to trust for it. "server"
+    # signals (silence, connected-silence) are facts the server observes
+    # itself and the client can't fake or withhold; "client" signals
+    # (direct violations, absences, split-screen, typing, behavioral
+    # outliers) ride on what the browser chose to report. The split is
+    # surfaced (`server_points`/`client_points`) and can optionally gate the
+    # top verdict (see `apply_server_corroboration/3`).
+    server_tabs =
+      min(count(counts, :multi_tab_detected), Map.get(reading, :server_multi_tab_detected, 0))
+
+    client_counts =
+      Map.put(counts, :multi_tab_detected, count(counts, :multi_tab_detected) - server_tabs)
+
     signals =
-      hard_signals(counts) ++
-        away_signals(reading, t) ++
-        silence_signals(silence_seconds, t) ++
-        split_screen_signals(counts) ++
-        typing_signals(Map.get(reading, :typing, %{}), t) ++
-        relative
+      tag(hard_signals(client_counts), "client") ++
+        tag(hard_signals(%{multi_tab_detected: server_tabs}), "server") ++
+        tag(away_signals(reading, t), "client") ++
+        attributed_silence_signals(reading, t) ++
+        tag(
+          connected_silence_signals(Map.get(reading, :max_connected_silence_seconds, 0), t),
+          "server"
+        ) ++
+        tag(split_screen_signals(counts), "client") ++
+        tag(typing_signals(Map.get(reading, :typing, %{}), t), "client") ++
+        tag(relative, "client")
 
     points = signals |> Enum.map(& &1["points"]) |> Enum.sum()
+    server_points = signal_points(signals, "server")
+    client_points = points - server_points
+    level = points |> risk_level() |> apply_server_corroboration(server_points, t)
 
     outlier_metrics = Map.new(relative, fn signal -> {signal["key"], signal["value"]} end)
 
     %{
       "hard_evidence_count" => Enum.sum(for event <- @hard_events, do: count(counts, event)),
       "outlier_metrics" => outlier_metrics,
-      "risk_level" => points |> risk_level() |> Atom.to_string(),
+      "risk_level" => Atom.to_string(level),
       "points" => points,
+      "server_points" => server_points,
+      "client_points" => client_points,
       "signals" => signals,
       "event_counts" => stringify(Map.drop(counts, [:paste_ratio])),
       "rates" => stringify(all),
       "group_baselines" => group_baselines(all, baselines),
       "elapsed_minutes" => reading.elapsed_minutes,
       "heartbeat_silence_seconds" => silence_seconds,
+      "connected_silence_seconds" => Map.get(reading, :max_connected_silence_seconds, 0),
       "away_incidents" => Map.get(reading, :away_incidents, 0),
       "away_total_seconds" => Map.get(reading, :away_total_seconds, 0),
       "mouse_away_seconds" => Map.get(reading, :mouse_away_seconds, 0),
@@ -236,6 +260,19 @@ defmodule Athena.Engagement.Proctoring do
     end
   end
 
+  # Offline duration is browser-reported. Attribute the winning severity to
+  # the server only when its own silence observation supports that severity.
+  defp attributed_silence_signals(reading, t) do
+    observed = Map.get(reading, :max_silence_seconds, 0)
+    reported = Map.get(reading, :max_offline_seconds, 0)
+    server_points = silence_signals(observed, t) |> Enum.map(& &1["points"]) |> Enum.sum()
+
+    Enum.map(silence_signals(max(observed, reported), t), fn signal ->
+      origin = if signal["points"] <= server_points, do: "server", else: "client"
+      Map.put(signal, "origin", origin)
+    end)
+  end
+
   defp silence_signals(seconds, t) do
     cond do
       seconds >= t.heartbeat_silence_red_threshold_seconds ->
@@ -260,6 +297,27 @@ defmodule Athena.Engagement.Proctoring do
 
       true ->
         []
+    end
+  end
+
+  # Silence that elapsed while the exam tab was still connected - not a
+  # network drop already observed by the server. Socket closure can lag a
+  # network failure and browser scheduling can delay heartbeats, so this
+  # is a risk indicator for review, not proof of tampering. Additive
+  # with the general `silence` signal above, so a tampered-dark stretch
+  # scores strictly higher than an equally long honest offline stretch.
+  defp connected_silence_signals(seconds, t) do
+    if seconds >= t.heartbeat_silence_yellow_threshold_seconds do
+      [
+        %{
+          "key" => "silence_connected",
+          "points" => t.red_points,
+          "value" => seconds,
+          "basis" => "duration"
+        }
+      ]
+    else
+      []
     end
   end
 
@@ -416,6 +474,31 @@ defmodule Athena.Engagement.Proctoring do
     end
   end
 
+  defp tag(signals, origin), do: Enum.map(signals, &Map.put(&1, "origin", origin))
+
+  defp signal_points(signals, origin) do
+    signals
+    |> Enum.filter(&(&1["origin"] == origin))
+    |> Enum.map(& &1["points"])
+    |> Enum.sum()
+  end
+
+  # p5: lean the top verdict on facts the server observes itself. When
+  # `require_server_corroboration_for_red` is on, a :red total that rests
+  # purely on client-reported signals (server points below the red bar) is
+  # capped to :yellow - still flagged for a human, but not asserted as
+  # strong evidence, since a determined client could have faked those
+  # signals. Off by default: enabling it only ever lowers a verdict, never
+  # raises one, so turn it on once you've seen the server/client split in
+  # practice.
+  defp apply_server_corroboration(:red, server_points, t) do
+    if t.require_server_corroboration_for_red and server_points < t.red_points,
+      do: :yellow,
+      else: :red
+  end
+
+  defp apply_server_corroboration(level, _server_points, _t), do: level
+
   @doc """
   Every tunable threshold this module reads from config, for display in the
   methodology modal - keeps that copy from going stale if `config.exs`
@@ -453,7 +536,12 @@ defmodule Athena.Engagement.Proctoring do
       machine_typing_max_dwell_ms: Keyword.get(config, :exam_machine_typing_max_dwell_ms, 5),
       clean_typing_min_chars: Keyword.get(config, :exam_clean_typing_min_chars, 500),
       clean_typing_max_correction_ratio:
-        Keyword.get(config, :exam_clean_typing_max_correction_ratio, 0.01)
+        Keyword.get(config, :exam_clean_typing_max_correction_ratio, 0.01),
+      # p5: when true, a :red verdict needs server-observed points (silence,
+      # connected-silence) at or above the red bar - client-only evidence is
+      # capped to :yellow. Off by default (no behavior change until enabled).
+      require_server_corroboration_for_red:
+        Keyword.get(config, :exam_require_server_corroboration_for_red, false)
     }
   end
 
