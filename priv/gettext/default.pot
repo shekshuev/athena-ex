@@ -10641,3 +10641,27 @@ msgstr ""
 
 msgid "Important"
 msgstr ""
+
+msgid "Duplicate Competition"
+msgstr ""
+
+msgid "Duplicate Competition: %{title}"
+msgstr ""
+
+msgid "New Competition Title"
+msgstr ""
+
+msgid "Duplicating competition in the background…"
+msgstr ""
+
+msgid "Failed to duplicate competition."
+msgstr ""
+
+msgid "Retrying competition copy…"
+msgstr ""
+
+msgid "You do not have permission to duplicate this competition."
+msgstr ""
+
+msgid "This creates an independent copy of all sections, blocks, and files, as a background job. Teams already enrolled in the original competition are unaffected."
+msgstr ""

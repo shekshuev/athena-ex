@@ -34,6 +34,9 @@ defmodule AthenaWeb.StudioLive.Competitions do
      |> assign(course_to_delete: nil)
      |> assign(course_to_share: nil)
      |> assign(course_to_enroll: nil)
+     |> assign(course_to_duplicate: nil)
+     |> assign(duplicate_form: to_form(%{"title" => ""}))
+     |> assign(duplicate_error: nil)
      |> stream(:courses, [])}
   end
 
@@ -187,6 +190,85 @@ defmodule AthenaWeb.StudioLive.Competitions do
 
   def handle_event("cancel_enroll", _, socket) do
     {:noreply, assign(socket, course_to_enroll: nil)}
+  end
+
+  def handle_event("duplicate_click", %{"id" => id}, socket) do
+    case Content.get_course(socket.assigns.current_user, id) do
+      {:ok, course} ->
+        if course.owner_id == socket.assigns.current_user.id or
+             Identity.can?(socket.assigns.current_user, "competitions.update", course) do
+          {:noreply,
+           socket
+           |> assign(course_to_duplicate: course)
+           |> assign(
+             duplicate_form:
+               to_form(%{"title" => gettext("%{title} (Copy)", title: course.title)})
+           )
+           |> assign(duplicate_error: nil)}
+        else
+          {:noreply,
+           socket
+           |> put_flash(
+             :error,
+             gettext("You do not have permission to duplicate this competition.")
+           )}
+        end
+
+      _ ->
+        {:noreply, socket |> put_flash(:error, gettext("Cannot access this competition."))}
+    end
+  end
+
+  def handle_event("cancel_duplicate", _, socket) do
+    {:noreply, assign(socket, course_to_duplicate: nil, duplicate_error: nil)}
+  end
+
+  def handle_event(
+        "confirm_duplicate",
+        %{"title" => title},
+        %{assigns: %{course_to_duplicate: course}} = socket
+      ) do
+    case Content.duplicate_course(socket.assigns.current_user, course.id, title) do
+      {:ok, new_course} ->
+        [enriched_course] = enrich_with_owners([new_course])
+
+        {:noreply,
+         socket
+         |> stream_insert(:courses, enriched_course, at: 0)
+         |> put_flash(:info, gettext("Duplicating competition in the background…"))
+         |> assign(course_to_duplicate: nil, duplicate_error: nil)}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply,
+         assign(socket,
+           duplicate_form: to_form(%{"title" => title}),
+           duplicate_error: changeset_error_message(changeset)
+         )}
+
+      {:error, _reason} ->
+        {:noreply, assign(socket, duplicate_error: gettext("Failed to duplicate competition."))}
+    end
+  end
+
+  def handle_event("retry_duplicate_click", %{"id" => id}, socket) do
+    case Content.get_course(socket.assigns.current_user, id) do
+      {:ok, course} ->
+        case Content.retry_course_copy(socket.assigns.current_user, course) do
+          {:ok, updated_course} ->
+            [enriched_course] = enrich_with_owners([updated_course])
+
+            {:noreply,
+             socket
+             |> stream_insert(:courses, enriched_course)
+             |> put_flash(:info, gettext("Retrying competition copy…"))}
+
+          {:error, _reason} ->
+            {:noreply, socket |> put_flash(:error, gettext("Failed to retry the copy."))}
+        end
+
+      _ ->
+        {:noreply, socket |> put_flash(:error, gettext("Cannot access this competition."))}
+    end
   end
 
   @impl true
@@ -373,9 +455,22 @@ defmodule AthenaWeb.StudioLive.Competitions do
           </span>
         </:col>
         <:col :let={{_id, course}} label={gettext("Status")} sort="status">
-          <.badge tone={status_tone(course.status)}>
-            {Atom.to_string(course.status) |> String.capitalize()}
-          </.badge>
+          <div class="flex flex-col gap-1 items-start">
+            <.badge tone={status_tone(course.status)}>
+              {Atom.to_string(course.status) |> String.capitalize()}
+            </.badge>
+
+            <.badge :if={course.copy_status != :ready} tone={copy_status_tone(course.copy_status)}>
+              <.icon
+                :if={course.copy_status == :copying}
+                name="hero-arrow-path"
+                class="size-3 mr-1 animate-spin"
+              />
+              {if course.copy_status == :copying,
+                do: gettext("Copying…"),
+                else: gettext("Copy failed")}
+            </.badge>
+          </div>
         </:col>
 
         <:col :let={{_id, course}} label={gettext("Owner")}>
@@ -395,8 +490,16 @@ defmodule AthenaWeb.StudioLive.Competitions do
           <% can_view = can_edit or info.role == :reader or info.is_public %>
 
           <div class="flex justify-end gap-2">
+            <span
+              :if={course.copy_status == :copying}
+              class="btn btn-square btn-disabled"
+              title={gettext("Copying in progress…")}
+            >
+              <.icon name="hero-arrow-path" class="size-4 animate-spin" />
+            </span>
+
             <.icon_button
-              :if={can_view}
+              :if={can_view && course.copy_status != :copying}
               navigate={~p"/studio/competitions/#{course.id}/builder"}
               variant="primary"
               icon={if can_edit, do: "hero-wrench-screwdriver", else: "hero-eye"}
@@ -404,14 +507,14 @@ defmodule AthenaWeb.StudioLive.Competitions do
             />
 
             <.icon_button
-              :if={can_edit}
+              :if={can_edit && course.copy_status != :copying}
               patch={~p"/studio/competitions/#{course.id}/edit?#{build_query_params(assigns, %{})}"}
               icon="hero-pencil-square"
               label={gettext("Edit Settings")}
             />
 
             <.icon_button
-              :if={can_edit}
+              :if={can_edit && course.copy_status != :copying}
               type="button"
               phx-click="share_click"
               phx-value-id={course.id}
@@ -420,12 +523,32 @@ defmodule AthenaWeb.StudioLive.Competitions do
             />
 
             <.icon_button
-              :if={can_edit}
+              :if={can_edit && course.copy_status != :copying}
               type="button"
               phx-click="enroll_click"
               phx-value-id={course.id}
               icon="hero-user-plus"
               label={gettext("Enroll Students")}
+            />
+
+            <.icon_button
+              :if={can_edit && course.copy_status != :copying}
+              type="button"
+              id={"duplicate-competition-#{course.id}"}
+              phx-click="duplicate_click"
+              phx-value-id={course.id}
+              icon="hero-document-duplicate"
+              label={gettext("Duplicate Competition")}
+            />
+
+            <.icon_button
+              :if={can_edit && course.copy_status == :failed}
+              type="button"
+              id={"retry-competition-#{course.id}"}
+              phx-click="retry_duplicate_click"
+              phx-value-id={course.id}
+              icon="hero-arrow-path"
+              label={gettext("Retry Copy")}
             />
 
             <.icon_button
@@ -517,6 +640,52 @@ defmodule AthenaWeb.StudioLive.Competitions do
           current_user={@current_user}
         />
       </.modal>
+      <.modal
+        id="duplicate-competition-modal"
+        show={@course_to_duplicate != nil}
+        title={
+          gettext("Duplicate Competition: %{title}",
+            title: if(@course_to_duplicate, do: @course_to_duplicate.title, else: "")
+          )
+        }
+        on_cancel={JS.push("cancel_duplicate")}
+      >
+        <.form
+          for={@duplicate_form}
+          id="duplicate-competition-form"
+          phx-submit="confirm_duplicate"
+          class="flex flex-col gap-4"
+        >
+          <p class="text-sm text-base-content/70">
+            {gettext(
+              "This creates an independent copy of all sections, blocks, and files, as a background job. Teams already enrolled in the original competition are unaffected."
+            )}
+          </p>
+
+          <.input
+            field={@duplicate_form[:title]}
+            label={gettext("New Competition Title")}
+            autocomplete="off"
+            autofocus
+          />
+          <p
+            :if={@duplicate_error}
+            id="duplicate-competition-error"
+            class="text-sm text-error font-bold"
+          >
+            {@duplicate_error}
+          </p>
+
+          <div class="flex justify-end gap-3 mt-2">
+            <.button type="button" variant="ghost" phx-click="cancel_duplicate">
+              {gettext("Cancel")}
+            </.button>
+            <.button type="submit" variant="primary">
+              {gettext("Duplicate")}
+            </.button>
+          </div>
+        </.form>
+      </.modal>
     </.page_container>
     """
   end
@@ -524,4 +693,16 @@ defmodule AthenaWeb.StudioLive.Competitions do
   defp status_tone(:published), do: "success"
   defp status_tone(:draft), do: "warning"
   defp status_tone(:archived), do: "error"
+  defp copy_status_tone(:copying), do: "info"
+  defp copy_status_tone(:failed), do: "error"
+
+  defp changeset_error_message(changeset) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(fn {msg, opts} ->
+      Enum.reduce(opts, msg, fn {key, value}, acc ->
+        String.replace(acc, "%{#{key}}", to_string(value))
+      end)
+    end)
+    |> Enum.map_join("; ", fn {field, errors} -> "#{field} #{Enum.join(errors, ", ")}" end)
+  end
 end
