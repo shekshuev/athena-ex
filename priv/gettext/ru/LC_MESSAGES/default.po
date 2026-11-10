@@ -10659,3 +10659,27 @@ msgstr "Окончание показа"
 
 msgid "Important"
 msgstr "Важное"
+
+msgid "Duplicate Competition"
+msgstr "Копировать соревнование"
+
+msgid "Duplicate Competition: %{title}"
+msgstr "Копировать соревнование: %{title}"
+
+msgid "New Competition Title"
+msgstr "Название нового соревнования"
+
+msgid "Duplicating competition in the background…"
+msgstr "Соревнование копируется в фоновом режиме…"
+
+msgid "Failed to duplicate competition."
+msgstr "Не удалось скопировать соревнование."
+
+msgid "Retrying competition copy…"
+msgstr "Повторное копирование соревнования…"
+
+msgid "You do not have permission to duplicate this competition."
+msgstr "У вас нет прав на копирование этого соревнования."
+
+msgid "This creates an independent copy of all sections, blocks, and files, as a background job. Teams already enrolled in the original competition are unaffected."
+msgstr "Будет создана независимая копия всех разделов, блоков и файлов в фоновом режиме. Команды, уже зарегистрированные на исходное соревнование, продолжат работу без изменений."
