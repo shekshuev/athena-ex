@@ -105,6 +105,11 @@ defmodule Athena.Engagement do
     to: ProctoringMonitor,
     as: :heartbeat
 
+  @doc "Reports whether an exam tab is connected - see `ProctoringMonitor.connection/4`."
+  defdelegate report_proctoring_connection(submission_id, cohort_id, block_id, connected?),
+    to: ProctoringMonitor,
+    as: :connection
+
   @doc """
   Live (non-destructive) risk evaluation for an in-progress exam attempt -
   what the group-monitoring view and a single submission's badge both read

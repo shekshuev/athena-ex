@@ -236,18 +236,29 @@ defmodule Athena.Engagement.ProctoringTimeline do
   end
 
   defp incident_entries(submission, started_at) do
-    for %{"type" => "silence", "at" => at, "seconds" => seconds} <-
+    types = %{
+      "silence" => :silence,
+      "silence_connected" => :silence_connected,
+      "concurrent_session" => :concurrent_session,
+      "inert_channel" => :inert_channel,
+      "clock_skew" => :clock_skew
+    }
+
+    for %{"type" => name, "at" => at} = incident <-
           Map.get(submission.content || %{}, "incidents", []),
+        type = types[name],
+        not is_nil(type),
+        is_binary(at),
         {:ok, at, _} <- [DateTime.from_iso8601(at)] do
       %{
         offset: max(DateTime.diff(at, started_at, :second), 0),
-        type: :silence,
+        type: type,
         count: 1,
-        duration_ms: seconds * 1000,
+        duration_ms: if(is_number(incident["seconds"]), do: incident["seconds"] * 1000),
         chars: nil,
         split: nil,
         source: nil,
-        kinds: [:silence],
+        kinds: [type],
         block_id: nil
       }
     end

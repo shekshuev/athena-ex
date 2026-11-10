@@ -525,4 +525,96 @@ defmodule Athena.Engagement.ProctoringTest do
       assert evaluate(reading(%{split_screen: 2}))["points"] == 2
     end
   end
+
+  describe "evaluate/3 - connected silence (server-observed, p2)" do
+    test "silence while still connected is a red server signal on its own" do
+      fields = evaluate(reading(%{}, %{max_connected_silence_seconds: 60}))
+
+      assert fields["risk_level"] == "red"
+      assert fields["connected_silence_seconds"] == 60
+      assert fields["server_points"] >= 4
+      assert fields["client_points"] == 0
+      assert Enum.any?(fields["signals"], &(&1["key"] == "silence_connected"))
+    end
+
+    test "connected silence below the yellow threshold does nothing" do
+      fields = evaluate(reading(%{}, %{max_connected_silence_seconds: 30}))
+
+      assert fields["risk_level"] == "green"
+      refute Enum.any?(fields["signals"], &(&1["key"] == "silence_connected"))
+    end
+  end
+
+  describe "evaluate/3 - server vs client weighting (p5)" do
+    test "every signal is tagged, and server + client points add up to the total" do
+      fields = evaluate(reading(%{copy_attempt: 1}, %{max_connected_silence_seconds: 60}))
+
+      assert Enum.all?(fields["signals"], &(&1["origin"] in ["server", "client"]))
+      assert fields["server_points"] + fields["client_points"] == fields["points"]
+      # copy_attempt is a client signal, connected-silence is a server one.
+      assert fields["client_points"] >= 2
+      assert fields["server_points"] >= 4
+    end
+
+    test "client-only evidence still scores red by default (flag off)" do
+      fields = evaluate(reading(%{printscreen_attempt: 2}))
+
+      assert fields["server_points"] == 0
+      assert fields["client_points"] == 4
+      assert fields["risk_level"] == "red"
+    end
+
+    test "with server corroboration required, a client-only red is capped to yellow" do
+      with_corroboration_required(fn ->
+        fields = evaluate(reading(%{printscreen_attempt: 2}))
+
+        assert fields["server_points"] == 0
+        assert fields["points"] == 4
+        assert fields["risk_level"] == "yellow"
+      end)
+    end
+
+    test "with the flag on, a server-corroborated red stays red" do
+      with_corroboration_required(fn ->
+        fields = evaluate(reading(%{}, %{max_connected_silence_seconds: 60}))
+
+        assert fields["server_points"] >= 4
+        assert fields["risk_level"] == "red"
+      end)
+    end
+  end
+
+  test "client offline durations cannot satisfy server corroboration" do
+    with_corroboration_required(fn ->
+      fields = evaluate(reading(%{}, %{max_offline_seconds: 600}))
+      assert fields["server_points"] == 0
+      assert fields["client_points"] == 4
+      assert fields["risk_level"] == "yellow"
+    end)
+  end
+
+  test "server-detected concurrent tabs retain their origin without double scoring" do
+    fields = evaluate(reading(%{multi_tab_detected: 2}, %{server_multi_tab_detected: 1}))
+    assert fields["server_points"] == 2
+    assert fields["client_points"] == 2
+    assert fields["points"] == 4
+  end
+
+  # Runs `fun` with the (normally off) p5 "red needs server corroboration"
+  # rule enabled, restoring the previous app env afterwards.
+  defp with_corroboration_required(fun) do
+    prev = Application.get_env(:athena, Athena.Engagement, [])
+
+    Application.put_env(
+      :athena,
+      Athena.Engagement,
+      Keyword.put(prev, :exam_require_server_corroboration_for_red, true)
+    )
+
+    try do
+      fun.()
+    after
+      Application.put_env(:athena, Athena.Engagement, prev)
+    end
+  end
 end

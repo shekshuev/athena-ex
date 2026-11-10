@@ -460,6 +460,12 @@ defmodule AthenaWeb.ProctoringComponents do
                 <div>
                   <div class="text-base-content">{signal_label(signal["key"])}</div>
                   <div class="text-xs text-base-content/60">{signal_note(signal)}</div>
+                  <span :if={signal["origin"] == "server"} class="text-xs text-base-content/60">
+                    {gettext("Observed by the server")}
+                  </span>
+                  <span :if={signal["origin"] == "client"} class="text-xs text-base-content/60">
+                    {gettext("Reported by the browser")}
+                  </span>
                 </div>
                 <span class="font-mono font-bold text-warning shrink-0">+{signal["points"]}</span>
               </div>
@@ -674,6 +680,7 @@ defmodule AthenaWeb.ProctoringComponents do
   defp signal_label("large_paste"), do: gettext("Large pastes")
   defp signal_label("bulk_insert"), do: gettext("Text inserted without typing")
   defp signal_label("away"), do: gettext("Time away from the exam")
+  defp signal_label("silence_connected"), do: gettext("Browser connected but monitoring silent")
   defp signal_label("silence"), do: gettext("No signal from the browser")
   defp signal_label("split_screen"), do: gettext("Window sharing the screen with another window")
   defp signal_label("machine_typing"), do: gettext("Machine-like typing rhythm")
@@ -699,7 +706,7 @@ defmodule AthenaWeb.ProctoringComponents do
         sec: Engagement.proctoring_thresholds().away_incident_min_seconds
       )
 
-  defp signal_note(%{"key" => "silence"} = signal),
+  defp signal_note(%{"key" => key} = signal) when key in ["silence", "silence_connected"],
     do: gettext("longest gap: %{n}s", n: signal["value"])
 
   defp signal_note(%{"basis" => "group"} = signal),
@@ -754,6 +761,18 @@ defmodule AthenaWeb.ProctoringComponents do
 
   defp timeline_label(%{type: :silence, duration_ms: ms}),
     do: gettext("No signal from the browser for %{sec}s", sec: seconds(ms))
+
+  defp timeline_label(%{type: :silence_connected, duration_ms: ms}),
+    do: gettext("Browser connected but monitoring silent for %{sec}s", sec: seconds(ms))
+
+  defp timeline_label(%{type: :concurrent_session}),
+    do: gettext("Multiple exam sessions observed by the server")
+
+  defp timeline_label(%{type: :inert_channel, duration_ms: ms}),
+    do: gettext("Only monitoring pings for %{sec}s; review needed", sec: seconds(ms))
+
+  defp timeline_label(%{type: :clock_skew}),
+    do: gettext("Browser event timestamps differ from server time")
 
   defp timeline_label(%{type: :paste_detected, chars: chars, source: source}),
     do:
