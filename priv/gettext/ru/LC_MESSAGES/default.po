@@ -10409,7 +10409,7 @@ msgstr "Копировать ссылку"
 #: lib/athena_web/live/learn_live/player.ex:2256
 #, elixir-autogen, elixir-format
 msgid "Copy link to this block"
-msgstr ""
+msgstr "Скопировать ссылку на блок"
 
 #: lib/athena_web/components/block_components.ex:1963
 #, elixir-autogen, elixir-format
@@ -10683,3 +10683,11 @@ msgstr "У вас нет прав на копирование этого сор�
 
 msgid "This creates an independent copy of all sections, blocks, and files, as a background job. Teams already enrolled in the original competition are unaffected."
 msgstr "Будет создана независимая копия всех разделов, блоков и файлов в фоновом режиме. Команды, уже зарегистрированные на исходное соревнование, продолжат работу без изменений."
+
+#, elixir-autogen, elixir-format
+msgid "Copy player link"
+msgstr "Ссылка на плеер"
+
+#, elixir-autogen, elixir-format
+msgid "Copy editing link"
+msgstr "Ссылка на редактирование"

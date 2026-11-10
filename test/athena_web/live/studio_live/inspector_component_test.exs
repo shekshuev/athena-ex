@@ -42,7 +42,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
       assert html =~ "Delete Section"
     end
 
-    test "renders a Copy Link button pointing at the section's permalink" do
+    test "renders separate player and editing permalink buttons for the section" do
       section = insert(:section)
 
       html =
@@ -52,8 +52,21 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
           active_block: nil
         )
 
-      assert html =~ "Copy Link"
-      assert html =~ ~s(data-copy-text="http://localhost:4000/go/sections/#{section.id}")
+      document = LazyHTML.from_fragment(html)
+
+      assert Enum.count(
+               LazyHTML.query(
+                 document,
+                 ~s(#copy-section-link-#{section.id}[data-copy-text="http://localhost:4000/go/sections/#{section.id}"])
+               )
+             ) == 1
+
+      assert Enum.count(
+               LazyHTML.query(
+                 document,
+                 ~s(#copy-section-edit-link-#{section.id}[data-copy-text="http://localhost:4000/go/sections/#{section.id}/edit"])
+               )
+             ) == 1
     end
 
     test "renders reset_waterline checkbox regardless of visibility", %{section: section} do
@@ -132,10 +145,11 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
 
       # `build/1` (unlike `insert/1`) never gets a real id for a block -
       # there's nothing to link to yet.
-      refute html =~ "Copy Link"
+      refute html =~ "Copy player link"
+      refute html =~ "Copy editing link"
     end
 
-    test "renders a Copy Link button pointing at the block's permalink, once it has a real id" do
+    test "renders separate player and editing permalink buttons for a saved block" do
       block = insert(:block, type: :text)
 
       html =
@@ -145,8 +159,21 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
           active_block: block
         )
 
-      assert html =~ "Copy Link"
-      assert html =~ ~s(data-copy-text="http://localhost:4000/go/blocks/#{block.id}")
+      document = LazyHTML.from_fragment(html)
+
+      assert Enum.count(
+               LazyHTML.query(
+                 document,
+                 ~s(#copy-block-link-#{block.id}[data-copy-text="http://localhost:4000/go/blocks/#{block.id}"])
+               )
+             ) == 1
+
+      assert Enum.count(
+               LazyHTML.query(
+                 document,
+                 ~s(#copy-block-edit-link-#{block.id}[data-copy-text="http://localhost:4000/go/blocks/#{block.id}/edit"])
+               )
+             ) == 1
     end
 
     test "renders button_text input when completion rule is button", %{block: base_block} do

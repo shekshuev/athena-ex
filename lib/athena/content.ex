@@ -9,8 +9,13 @@ defmodule Athena.Content do
   alias Athena.Content.{Courses, Sections, Blocks, Library, Policy, Characters, Permalinks}
   alias Athena.Content.{Course, Section, Block}
 
-  defdelegate resolve_block_permalink(user, block_id), to: Permalinks, as: :resolve_block
-  defdelegate resolve_section_permalink(user, section_id), to: Permalinks, as: :resolve_section
+  defdelegate resolve_block_permalink(user, block_id, mode \\ :player),
+    to: Permalinks,
+    as: :resolve_block
+
+  defdelegate resolve_section_permalink(user, section_id, mode \\ :player),
+    to: Permalinks,
+    as: :resolve_section
 
   defdelegate list_courses(user, params \\ %{}), to: Courses
   defdelegate list_competitions_by_phase(), to: Courses

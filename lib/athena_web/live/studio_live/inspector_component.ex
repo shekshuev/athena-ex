@@ -197,7 +197,19 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
         >
           <.icon name="hero-link" class="size-4 copy-icon-default" />
           <.icon name="hero-check" class="size-4 copy-icon-success text-success" />
-          {gettext("Copy Link")}
+          {gettext("Copy player link")}
+        </button>
+        <button
+          :if={@section.id}
+          type="button"
+          id={"copy-section-edit-link-#{@section.id}"}
+          phx-hook="ClipboardCopy"
+          data-copy-text={url(~p"/go/sections/#{@section.id}/edit")}
+          class="btn btn-outline w-full"
+        >
+          <.icon name="hero-pencil-square" class="size-4 copy-icon-default" />
+          <.icon name="hero-check" class="size-4 copy-icon-success text-success" />
+          {gettext("Copy editing link")}
         </button>
 
         <.button
@@ -949,7 +961,19 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
         >
           <.icon name="hero-link" class="size-4 copy-icon-default" />
           <.icon name="hero-check" class="size-4 copy-icon-success text-success" />
-          {gettext("Copy Link")}
+          {gettext("Copy player link")}
+        </button>
+        <button
+          :if={@block.id}
+          type="button"
+          id={"copy-block-edit-link-#{@block.id}"}
+          phx-hook="ClipboardCopy"
+          data-copy-text={url(~p"/go/blocks/#{@block.id}/edit")}
+          class="btn btn-outline w-full"
+        >
+          <.icon name="hero-pencil-square" class="size-4 copy-icon-default" />
+          <.icon name="hero-check" class="size-4 copy-icon-success text-success" />
+          {gettext("Copy editing link")}
         </button>
 
         <.button

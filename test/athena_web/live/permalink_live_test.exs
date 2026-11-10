@@ -13,7 +13,7 @@ defmodule AthenaWeb.PermalinkLiveTest do
       block = insert(:block, section: section)
 
       conn = init_test_session(conn, %{"account_id" => editor.id})
-      conn = get(conn, ~p"/go/blocks/#{block.id}")
+      conn = get(conn, ~p"/go/blocks/#{block.id}/edit")
 
       assert redirected_to(conn, 302) ==
                ~p"/studio/courses/#{course.id}/builder/sections/#{section.id}/blocks/#{block.id}"
@@ -55,6 +55,32 @@ defmodule AthenaWeb.PermalinkLiveTest do
     end
   end
 
+  test "an enrolled editor follows the player link into the Player", %{conn: conn} do
+    editor = insert(:account)
+    course = insert(:course, owner_id: editor.id)
+    insert(:enrollment, account_id: editor.id, course_id: course.id)
+    section = insert(:section, course: course)
+    block = insert(:block, section: section)
+    conn = init_test_session(conn, %{"account_id" => editor.id})
+
+    conn = get(conn, ~p"/go/blocks/#{block.id}")
+
+    assert redirected_to(conn) ==
+             ~p"/learn/courses/#{course.id}/play/#{section.id}?block=#{block.id}"
+  end
+
+  test "an editing link denies a student instead of opening the Player", %{conn: conn} do
+    student = insert_student()
+    course = insert(:course)
+    insert(:enrollment, account_id: student.id, course_id: course.id)
+    section = insert(:section, course: course)
+    block = insert(:block, section: section)
+    conn = init_test_session(conn, %{"account_id" => student.id})
+
+    {:ok, view, _html} = live(conn, ~p"/go/blocks/#{block.id}/edit")
+    assert has_element?(view, "h1", "Access denied")
+  end
+
   describe "/go/sections/:id" do
     test "an editor is redirected into the Builder at the section", %{conn: conn} do
       editor = insert(:account)
@@ -63,7 +89,9 @@ defmodule AthenaWeb.PermalinkLiveTest do
 
       conn = init_test_session(conn, %{"account_id" => editor.id})
 
-      assert {:error, {:live_redirect, %{to: to}}} = live(conn, ~p"/go/sections/#{section.id}")
+      assert {:error, {:live_redirect, %{to: to}}} =
+               live(conn, ~p"/go/sections/#{section.id}/edit")
+
       assert to == ~p"/studio/courses/#{course.id}/builder/sections/#{section.id}"
     end
 

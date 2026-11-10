@@ -45,13 +45,13 @@ defmodule Athena.Content.PermalinksTest do
       block = insert(:block, section: section)
 
       assert {:ok, :builder, result_course, result_section, nil} =
-               Permalinks.resolve_section(editor, section.id)
+               Permalinks.resolve_section(editor, section.id, :builder)
 
       assert result_course.id == course.id
       assert result_section.id == section.id
 
       assert {:ok, :builder, _course, _section, block_id} =
-               Permalinks.resolve_block(editor, block.id)
+               Permalinks.resolve_block(editor, block.id, :builder)
 
       assert block_id == block.id
     end
@@ -63,14 +63,37 @@ defmodule Athena.Content.PermalinksTest do
       block = insert(:block, section: section)
 
       assert {:ok, :builder, result_course, result_section, nil} =
-               Permalinks.resolve_section(editor, section.id)
+               Permalinks.resolve_section(editor, section.id, :builder)
 
       assert result_course.id == course.id
       assert result_section.id == section.id
 
       assert {:ok, :builder, _course, _section, _block_id} =
-               Permalinks.resolve_block(editor, block.id)
+               Permalinks.resolve_block(editor, block.id, :builder)
     end
+  end
+
+  test "editing rights never change the requested destination" do
+    editor = insert(:account)
+    course = insert(:course, owner_id: editor.id)
+    section = insert(:section, course: course)
+    block = insert(:block, section: section)
+
+    assert Permalinks.resolve_block(editor, block.id) == {:error, :forbidden}
+    insert(:enrollment, account_id: editor.id, course_id: course.id)
+    assert {:ok, :player, _, _, _} = Permalinks.resolve_block(editor, block.id)
+    assert {:ok, :builder, _, _, _} = Permalinks.resolve_block(editor, block.id, :builder)
+  end
+
+  test "enrollment does not grant access to editing permalinks" do
+    student = insert_student()
+    course = insert(:course)
+    insert(:enrollment, account_id: student.id, course_id: course.id)
+    section = insert(:section, course: course)
+    block = insert(:block, section: section)
+
+    assert Permalinks.resolve_block(student, block.id, :builder) == {:error, :forbidden}
+    assert Permalinks.resolve_section(student, section.id, :builder) == {:error, :forbidden}
   end
 
   describe "resolve_block/2 and resolve_section/2 - student" do
