@@ -209,7 +209,7 @@ defmodule AthenaWeb.StudioLive.CompetitionFormComponent do
             )}
           </p>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 gap-4">
             <.input
               field={@form[:starts_at]}
               type="datetime-local"

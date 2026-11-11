@@ -45,18 +45,23 @@ defmodule AthenaWeb.AuthLive.ForcePasswordChange do
 
   def mount(
         _params,
-        _session,
+        session,
         %{assigns: %{current_user: %{must_change_password: false}}} = socket
       ),
-      do: {:ok, redirect(socket, to: "/dashboard")}
+      do: {:ok, redirect(socket, to: session["permalink_return_to"] || "/dashboard")}
 
   def mount(
         _params,
-        _session,
+        session,
         %{assigns: %{current_user: %{must_change_password: true}}} = socket
       ) do
     changeset = PasswordForm.changeset(%{})
-    {:ok, assign(socket, form: to_form(changeset, as: "user"))}
+
+    {:ok,
+     assign(socket,
+       form: to_form(changeset, as: "user"),
+       return_to: session["permalink_return_to"] || "/dashboard"
+     )}
   end
 
   def handle_event("validate", %{"user" => params}, socket) do
@@ -83,7 +88,7 @@ defmodule AthenaWeb.AuthLive.ForcePasswordChange do
           {:noreply,
            socket
            |> put_flash(:info, gettext("Password successfully updated. Welcome!"))
-           |> push_navigate(to: "/dashboard")}
+           |> redirect(to: socket.assigns.return_to)}
 
         {:error, _db_changeset} ->
           {:noreply,

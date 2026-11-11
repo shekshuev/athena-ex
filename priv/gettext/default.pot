@@ -10665,3 +10665,11 @@ msgstr ""
 
 msgid "This creates an independent copy of all sections, blocks, and files, as a background job. Teams already enrolled in the original competition are unaffected."
 msgstr ""
+
+#, elixir-autogen, elixir-format
+msgid "Copy player link"
+msgstr ""
+
+#, elixir-autogen, elixir-format
+msgid "Copy editing link"
+msgstr ""

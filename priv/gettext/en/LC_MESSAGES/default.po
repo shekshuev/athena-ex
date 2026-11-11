@@ -10629,3 +10629,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Upcoming Competitions"
 msgstr ""
+
+#, elixir-autogen, elixir-format
+msgid "Copy player link"
+msgstr ""
+
+#, elixir-autogen, elixir-format
+msgid "Copy editing link"
+msgstr ""

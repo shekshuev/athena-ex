@@ -2494,6 +2494,25 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       assert block_id == block.id
     end
 
+    test "block copy button has one copy icon and a player permalink", %{
+      conn: conn,
+      course: course
+    } do
+      section = insert(:section, course: course)
+      block = insert(:block, section: section, type: :text)
+      {:ok, view, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{section.id}")
+
+      button = "#copy-link-#{block.id}"
+
+      assert has_element?(
+               view,
+               button <> "[aria-label][data-copy-text$='/go/blocks/#{block.id}']"
+             )
+
+      assert has_element?(view, button <> " .hero-document-duplicate")
+      refute has_element?(view, button <> " .hero-check")
+    end
+
     test "mounting with no ?block= pushes nothing", %{conn: conn, course: course} do
       s1 = insert(:section, course: course)
       insert(:block, section: s1, type: :text)

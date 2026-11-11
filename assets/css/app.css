@@ -1086,16 +1086,21 @@
   /* `.copy-icon-default`/`.copy-icon-success` pair toggled by the
      `ClipboardCopy` hook's `.is-copied` class - a brief checkmark swap,
      same convention as the TipTap "copy code" button's icon swap. */
+  [phx-hook="ClipboardCopy"].is-copied {
+    color: var(--color-success);
+    border-color: var(--color-success);
+  }
+
   .copy-icon-success {
-    display: none;
+    display: none !important;
   }
 
   .is-copied .copy-icon-default {
-    display: none;
+    display: none !important;
   }
 
   .is-copied .copy-icon-success {
-    display: inline;
+    display: inline-block !important;
   }
 }
 

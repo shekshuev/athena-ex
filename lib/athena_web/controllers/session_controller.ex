@@ -17,10 +17,17 @@ defmodule AthenaWeb.SessionController do
   def create(conn, %{"user" => %{"login" => login, "password" => password}}) do
     case Identity.authenticate(login, password) do
       {:ok, account} ->
+        return_to = get_session(conn, :permalink_return_to) || "/dashboard"
+
+        conn =
+          if account.must_change_password,
+            do: conn,
+            else: delete_session(conn, :permalink_return_to)
+
         conn
         |> put_session(:account_id, account.id)
         |> put_flash(:info, gettext("Successfully logged in!"))
-        |> redirect(to: "/dashboard")
+        |> redirect(to: return_to)
 
       {:error, :account_blocked} ->
         conn

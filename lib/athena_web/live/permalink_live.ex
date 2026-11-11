@@ -1,8 +1,7 @@
 defmodule AthenaWeb.PermalinkLive do
   @moduledoc """
-  Resolves a shareable `/go/blocks/:id` or `/go/sections/:id` link into
-  wherever the current viewer should land - the Builder (editor) or the
-  Player (enrolled student) - or a plain "not found"/"access denied" page.
+  Resolves `/go/blocks/:id` and `/go/sections/:id` into the Player,
+  and their `/edit` variants into the Builder, subject to access checks.
 
   All the actual authorization/unlock logic lives in
   `Athena.Content.Permalinks`; this LiveView only turns its answer into a
@@ -22,6 +21,8 @@ defmodule AthenaWeb.PermalinkLive do
       case socket.assigns.live_action do
         :block -> Content.resolve_block_permalink(user, id)
         :section -> Content.resolve_section_permalink(user, id)
+        :edit_block -> Content.resolve_block_permalink(user, id, :builder)
+        :edit_section -> Content.resolve_section_permalink(user, id, :builder)
       end
 
     case result do

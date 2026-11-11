@@ -1,16 +1,8 @@
 defmodule Athena.Content.Permalinks do
   @moduledoc """
-  Resolves a shareable `/go/blocks/:id` or `/go/sections/:id` link: is the
-  given viewer someone who can edit the course (→ `:builder`), an enrolled
-  student with that section currently unlocked (→ `:player`), or neither?
-
-  This lets a teacher paste one durable link into an assignment (e.g. "see
-  literature blocks #2 and #3") that resolves differently for themselves
-  (back into the Builder) than for a student (into the Player, scrolled to
-  that block). Deliberately returns the resolved `Course`/`Section`
-  structs rather than a built path - path-building needs `AthenaWeb`
-  (route helpers, `~p`), which this context boundary may not depend on; see
-  `AthenaWeb.PermalinkLive` for where the actual redirect path gets built.
+  Resolves player permalinks and explicit `/edit` permalinks. Permissions
+  authorize the requested destination; they never select another destination.
+  Returns course/section structs so route building stays in AthenaWeb.
   """
 
   alias Athena.{Content, Learning}
@@ -24,25 +16,29 @@ defmodule Athena.Content.Permalinks do
   Resolves a permalink to a single block - the block's id is carried
   through on success so the caller can anchor the Player to it.
   """
-  @spec resolve_block(map(), String.t()) :: target()
-  def resolve_block(user, block_id) do
+  @spec resolve_block(map(), String.t(), :player | :builder) :: target()
+  def resolve_block(user, block_id, mode \\ :player) do
     case Content.get_block(block_id) do
-      {:ok, block} -> resolve(user, block.section_id, block.id)
+      {:ok, block} -> resolve(user, block.section_id, block.id, mode)
       {:error, :not_found} -> {:error, :not_found}
     end
   end
 
   @doc "Resolves a permalink to a whole section (no block anchor)."
-  @spec resolve_section(map(), String.t()) :: target()
-  def resolve_section(user, section_id), do: resolve(user, section_id, nil)
+  @spec resolve_section(map(), String.t(), :player | :builder) :: target()
+  def resolve_section(user, section_id, mode \\ :player),
+    do: resolve(user, section_id, nil, mode)
 
   @doc false
-  defp resolve(user, section_id, block_id) do
+  defp resolve(user, section_id, block_id, mode) do
     with {:ok, section} <- Content.get_section(section_id),
          {:ok, course} <- Content.get_course(section.course_id) do
       cond do
-        Content.can_edit_course?(user, course) ->
+        mode == :builder and Content.can_edit_course?(user, course) ->
           {:ok, :builder, course, section, block_id}
+
+        mode == :builder ->
+          {:error, :forbidden}
 
         not Learning.has_access?(user.id, course.id) ->
           {:error, :forbidden}

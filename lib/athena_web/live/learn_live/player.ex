@@ -2342,18 +2342,18 @@ defmodule AthenaWeb.LearnLive.Player do
             >
               <div
                 :if={!@test_run}
-                class="hidden lg:flex absolute -left-12 top-0 flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                class="absolute right-2 top-2 z-10 flex lg:-left-8 lg:right-auto opacity-100 lg:opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
               >
                 <button
                   type="button"
                   id={"copy-link-#{block.id}"}
                   phx-hook="ClipboardCopy"
                   data-copy-text={url(~p"/go/blocks/#{block.id}")}
-                  class="btn btn-ghost btn-xs btn-square"
+                  class="min-h-7 h-7 w-7 flex items-center justify-center bg-base-100 border border-base-300 shadow-xs hover:text-primary hover:border-primary focus-visible:outline-2 focus-visible:outline-primary transition-colors cursor-pointer rounded-sm text-base-content/50"
+                  aria-label={gettext("Copy link to this block")}
                   title={gettext("Copy link to this block")}
                 >
-                  <.icon name="hero-link" class="size-4 copy-icon-default" />
-                  <.icon name="hero-check" class="size-4 copy-icon-success text-success" />
+                  <.icon name="hero-document-duplicate" class="size-4" />
                 </button>
                 <%!-- future per-block actions (e.g. bookmark) go here as additional siblings --%>
               </div>

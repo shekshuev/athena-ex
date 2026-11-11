@@ -11,6 +11,7 @@ defmodule AthenaWeb.Router do
     plug :put_locale
     plug AthenaWeb.Plugs.PutTimezone
     plug AthenaWeb.Plugs.FetchCurrentUser
+    plug AthenaWeb.Plugs.RememberPermalink
     plug AthenaWeb.Plugs.Trace
   end
 
@@ -90,6 +91,8 @@ defmodule AthenaWeb.Router do
       live "/profile/:id", AccountLive.Profile, :index
       live "/daily-challenge", LearnLive.DailyChallenge, :index
 
+      live "/go/blocks/:id/edit", PermalinkLive, :edit_block
+      live "/go/sections/:id/edit", PermalinkLive, :edit_section
       live "/go/blocks/:id", PermalinkLive, :block
       live "/go/sections/:id", PermalinkLive, :section
 
