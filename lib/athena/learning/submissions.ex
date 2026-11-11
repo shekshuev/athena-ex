@@ -28,6 +28,9 @@ defmodule Athena.Learning.Submissions do
   @doc """
   Lists submissions with pagination, filtering, and sorting using Flop.
   Enforces grading.read ACL through custom scoping.
+
+  Omits `content`, which may contain large execution results or exam snapshots.
+  Load an individual submission to retrieve its full content.
   """
   @spec list_submissions(map(), map()) ::
           {:ok, {[Submission.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
@@ -36,6 +39,7 @@ defmodule Athena.Learning.Submissions do
       Submission
       |> scope_submissions(user, "grading.read")
       |> maybe_exclude_daily_challenge(params)
+      |> select([s], struct(s, ^(Submission.__schema__(:fields) -- [:content])))
 
     Flop.validate_and_run(query, params, for: Submission)
   end
