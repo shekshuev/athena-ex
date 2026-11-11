@@ -25,6 +25,23 @@ defmodule Athena.Learning.SubmissionsTest do
       assert meta.total_count == 2
     end
 
+    test "omits content from the list but loads it for an individual submission", %{admin: admin} do
+      content = %{"code" => "SELECT 1", "execution_results" => [%{"stdout" => "large result"}]}
+      submission = insert(:submission, content: content, status: :graded, score: 100)
+
+      assert {:ok, {[listed], meta}} = Submissions.list_submissions(admin, %{})
+
+      assert listed.id == submission.id
+      assert listed.account_id == submission.account_id
+      assert listed.block_id == submission.block_id
+      assert listed.status == :graded
+      assert listed.score == 100
+      assert listed.inserted_at == submission.inserted_at
+      assert listed.content == %{}
+      assert meta.total_count == 1
+      assert Submissions.get_submission!(admin, submission.id).content == content
+    end
+
     test "filters submissions by status", %{admin: admin} do
       insert(:submission, status: :graded)
       insert(:submission, status: :graded)
