@@ -4,7 +4,7 @@ defmodule Athena.Content.SearchIndexConcurrencyTest do
   import Athena.Factory
   import Ecto.Query
 
-  alias Athena.Content.{Block, Blocks}
+  alias Athena.Content.{Block, Blocks, SearchIndex}
   alias Athena.Content.Workers.IndexBlockSearch
   alias Athena.Repo
   alias Ecto.Adapters.SQL.Sandbox
@@ -142,6 +142,61 @@ defmodule Athena.Content.SearchIndexConcurrencyTest do
     send(enqueuer, :release)
     assert_receive {:finished, ^enqueuer, {:error, :probe_finished}}
     refute scheduled_job?(ctx.block)
+  end
+
+  test "a backfill waiting for an edit preserves the committed quiet period", ctx do
+    parent = self()
+
+    {editor, editor_backend} =
+      connection_task(fn ->
+        Repo.transaction(fn ->
+          {:ok, edited} = Blocks.update_block(ctx.admin, ctx.block, %{"content" => doc("After")})
+          send(parent, {:edit_held, self()})
+
+          receive do
+            :release -> edited
+          end
+        end)
+      end)
+
+    send(editor, :run)
+    assert_receive {:edit_held, ^editor}
+
+    {backfill, backfill_backend} =
+      connection_task(fn -> SearchIndex.ensure_scheduled(ctx.block.id, true) end)
+
+    send(backfill, :run)
+    await_blocked(backfill_backend, editor_backend)
+    send(editor, :release)
+
+    assert_receive {:finished, ^editor, {:ok, edited}}
+    assert_receive {:finished, ^backfill, {:ok, :pending}}
+    assert Repo.get!(Block, ctx.block.id).search_due_at == edited.search_due_at
+    assert Repo.get!(Block, ctx.block.id).content == doc("After")
+  end
+
+  test "an edit waiting for a backfill keeps a new deadline and follow-up", ctx do
+    {backfill, backfill_backend} =
+      connection_task(fn -> SearchIndex.ensure_scheduled(ctx.block.id) end)
+
+    pause_worker_after_lock(backfill)
+    send(backfill, :run)
+    assert_receive {:row_locked, ^backfill}
+
+    {editor, editor_backend} =
+      connection_task(fn ->
+        Blocks.update_block(ctx.admin, ctx.block, %{"content" => doc("After")})
+      end)
+
+    send(editor, :run)
+    await_blocked(editor_backend, backfill_backend)
+    send(backfill, :release)
+
+    assert_receive {:finished, ^backfill, {:ok, :enqueued}}
+    assert_receive {:finished, ^editor, {:ok, edited}}
+    assert Repo.get!(Block, ctx.block.id).search_due_at == edited.search_due_at
+    assert scheduled_job?(ctx.block)
+    assert {:snooze, _} = perform(ctx.block)
   end
 
   defp connection_task(fun) do
