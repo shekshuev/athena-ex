@@ -160,7 +160,11 @@ defmodule Athena.Learning.TestRuns do
     |> Ecto.Multi.insert(:account, fn %{role: role} -> ephemeral_account_changeset(role) end)
     |> Ecto.Multi.insert(:course, preview_course_changeset(course_id, instructor))
     |> Ecto.Multi.insert(:section, preview_section_changeset(course_id, section_id))
-    |> Ecto.Multi.insert(:block, preview_block_changeset(section_id, library_block))
+    |> Ecto.Multi.run(:block, fn _repo, _changes ->
+      section_id
+      |> preview_block_changeset(library_block)
+      |> Athena.Content.SearchIndex.insert()
+    end)
     |> Ecto.Multi.run(:pins, fn _repo, _changes ->
       pin_exam_question_pool(library_block, course_id, instructor, source_course_id)
     end)

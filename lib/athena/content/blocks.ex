@@ -9,7 +9,7 @@ defmodule Athena.Content.Blocks do
   import Ecto.Query
   alias Athena.{Repo, Media, Identity}
   alias Athena.Audit
-  alias Athena.Content.{Block, Course, Section, Policy}
+  alias Athena.Content.{Block, Course, Section, Policy, SearchIndex}
   alias Athena.Identity.Account
 
   @doc """
@@ -98,8 +98,8 @@ defmodule Athena.Content.Blocks do
   end
 
   @doc """
-  Like `list_blocks_by_section_ids/1`, but without the `content` column, which is
-  left at the schema default (`%{}`).
+  Like `list_blocks_by_section_ids/1`, but without the `content` and derived
+  `search_text` columns, which are left at their schema defaults.
 
   A block's `content` holds the whole tiptap document (question text, options,
   embedded media) and is by far the heaviest column. Callers that only look at
@@ -115,7 +115,7 @@ defmodule Athena.Content.Blocks do
     |> Repo.all()
   end
 
-  defp header_fields, do: Block.__schema__(:fields) -- [:content]
+  defp header_fields, do: Block.__schema__(:fields) -- [:content, :search_text]
 
   @doc """
   Retrieves a single block by its ID without ACL (internal/student use).
@@ -129,8 +129,8 @@ defmodule Athena.Content.Blocks do
   end
 
   @doc """
-  Like `get_block/1`, but without the heavy `content` column (left at the
-  schema default `%{}`) - for callers that only need the block's type,
+  Like `get_block/1`, but without the heavy `content` and `search_text`
+  columns - for callers that only need the block's type,
   section, ordering or rules.
   """
   @spec get_block_header(String.t()) :: {:ok, Block.t()} | {:error, :not_found}
@@ -200,7 +200,7 @@ defmodule Athena.Content.Blocks do
 
       %Block{}
       |> Block.changeset(merged_attrs)
-      |> Repo.insert()
+      |> SearchIndex.insert()
       |> Audit.on_ok(
         "block.created",
         &[block_id: &1.id, section_id: &1.section_id, type: &1.type, by: user.id]
@@ -260,7 +260,7 @@ defmodule Athena.Content.Blocks do
     if has_rights? do
       block
       |> Block.changeset(attrs)
-      |> Repo.update()
+      |> SearchIndex.update()
       |> Audit.on_ok(
         "block.updated",
         &[block_id: &1.id, section_id: &1.section_id, type: &1.type, by: user.id]
@@ -449,7 +449,11 @@ defmodule Athena.Content.Blocks do
       |> Ecto.Multi.run(:file, fn _repo, _changes ->
         Media.create_file(file_attrs)
       end)
-      |> Ecto.Multi.update(:block, Block.changeset(block, %{"content" => new_content}))
+      |> Ecto.Multi.run(:block, fn _repo, _changes ->
+        block
+        |> Block.changeset(%{"content" => new_content})
+        |> SearchIndex.update()
+      end)
       |> Repo.transaction()
       |> case do
         {:ok, %{block: updated_block}} ->
