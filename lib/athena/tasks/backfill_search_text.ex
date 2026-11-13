@@ -86,24 +86,22 @@ defmodule Athena.Tasks.BackfillSearchText do
     query = candidate_query(opts, summary.after_id)
     remaining = opts[:limit] - summary.scanned
 
-    cond do
-      remaining == 0 ->
-        status = if Repo.exists?(query), do: :limit_reached, else: :complete
-        finish(summary, status)
+    if remaining == 0 do
+      status = if Repo.exists?(query), do: :limit_reached, else: :complete
+      finish(summary, status)
+    else
+      ids =
+        Repo.all(
+          from b in query,
+            order_by: b.id,
+            limit: ^min(opts[:batch_size], remaining),
+            select: b.id
+        )
 
-      true ->
-        ids =
-          Repo.all(
-            from b in query,
-              order_by: b.id,
-              limit: ^min(opts[:batch_size], remaining),
-              select: b.id
-          )
-
-        case ids do
-          [] -> finish(summary, :complete)
-          ids -> process_batch(ids, opts, summary)
-        end
+      case ids do
+        [] -> finish(summary, :complete)
+        ids -> process_batch(ids, opts, summary)
+      end
     end
   end
 
@@ -112,21 +110,8 @@ defmodule Athena.Tasks.BackfillSearchText do
     summary = %{summary | batches: summary.batches + 1}
 
     result =
-      Enum.reduce_while(ids, {summary, room}, fn
-        _id, {summary, 0} ->
-          {:halt, {:queue_full, summary}}
-
-        id, {summary, room} ->
-          case SearchIndex.ensure_scheduled(id, opts[:rebuild]) do
-            {:ok, outcome} ->
-              summary = record(summary, id, outcome)
-              room = if outcome == :enqueued, do: room - 1, else: room
-              {:cont, {summary, room}}
-
-            {:error, reason} ->
-              summary = %{summary | scanned: summary.scanned + 1, errors: summary.errors + 1}
-              {:halt, {:error, Map.put(summary, :error, %{block_id: id, reason: reason})}}
-          end
+      Enum.reduce_while(ids, {summary, room}, fn id, state ->
+        process_block(id, state, opts[:rebuild])
       end)
 
     case result do
@@ -139,6 +124,22 @@ defmodule Athena.Tasks.BackfillSearchText do
       {summary, _room} ->
         log_progress(summary)
         scan(opts, summary)
+    end
+  end
+
+  defp process_block(_id, {summary, 0}, _rebuild?),
+    do: {:halt, {:queue_full, summary}}
+
+  defp process_block(id, {summary, room}, rebuild?) do
+    case SearchIndex.ensure_scheduled(id, rebuild?) do
+      {:ok, outcome} ->
+        summary = record(summary, id, outcome)
+        room = if outcome == :enqueued, do: room - 1, else: room
+        {:cont, {summary, room}}
+
+      {:error, reason} ->
+        summary = %{summary | scanned: summary.scanned + 1, errors: summary.errors + 1}
+        {:halt, {:error, Map.put(summary, :error, %{block_id: id, reason: reason})}}
     end
   end
 
@@ -182,25 +183,27 @@ defmodule Athena.Tasks.BackfillSearchText do
         rebuild: false
       )
 
-    for key <- [:batch_size, :limit, :max_pending_jobs] do
-      value = opts[key]
-
-      unless is_integer(value) and value > 0,
-        do: raise(ArgumentError, "#{key} must be a positive integer")
-    end
+    Enum.each([:batch_size, :limit, :max_pending_jobs], &validate_positive_integer!(opts, &1))
 
     if opts[:batch_size] > 1000, do: raise(ArgumentError, "batch_size must be at most 1000")
     unless is_boolean(opts[:rebuild]), do: raise(ArgumentError, "rebuild must be a boolean")
 
-    case opts[:after_id] do
-      nil ->
-        opts
+    Keyword.update!(opts, :after_id, &normalize_cursor!/1)
+  end
 
-      id ->
-        case Ecto.UUID.cast(id) do
-          {:ok, id} -> Keyword.put(opts, :after_id, id)
-          :error -> raise ArgumentError, "after_id must be a UUID"
-        end
+  defp validate_positive_integer!(opts, key) do
+    value = opts[key]
+
+    unless is_integer(value) and value > 0,
+      do: raise(ArgumentError, "#{key} must be a positive integer")
+  end
+
+  defp normalize_cursor!(nil), do: nil
+
+  defp normalize_cursor!(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} -> id
+      :error -> raise ArgumentError, "after_id must be a UUID"
     end
   end
 end

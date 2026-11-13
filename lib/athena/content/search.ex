@@ -31,9 +31,10 @@ defmodule Athena.Content.Search do
       Repo.transaction(
         fn ->
           # Restore explicitly as well: callers may already be in a transaction.
+          # A fresh backend may not have loaded pg_trgm's GUCs yet.
           %{rows: [[threshold, timeout]]} =
             Repo.query!(
-              "SELECT current_setting('pg_trgm.word_similarity_threshold'), current_setting('statement_timeout')"
+              "SELECT current_setting('pg_trgm.word_similarity_threshold', true), current_setting('statement_timeout')"
             )
 
           Repo.query!("SELECT set_config('pg_trgm.word_similarity_threshold', '0.6', true)")
@@ -41,7 +42,7 @@ defmodule Athena.Content.Search do
 
           Repo.query!(
             "SELECT set_config('pg_trgm.word_similarity_threshold', $1, true), set_config('statement_timeout', $2, true)",
-            [threshold, timeout]
+            [threshold || "0.6", timeout]
           )
 
           result

@@ -413,10 +413,14 @@
 
   <div class="flex flex-col flex-1 min-w-0 bg-base-100 h-screen">
     <%= unless assigns[:hide_mobile_nav] do %>
-      <header class="h-16 flex items-center justify-between px-4 border-b border-base-300 lg:hidden shrink-0">
+      <% player_search? = @socket.view == AthenaWeb.LearnLive.Player && !assigns[:test_run] %>
+      <header class={[
+        "h-16 flex items-center justify-between gap-4 px-4 sm:px-8 border-b border-base-300 shrink-0",
+        !player_search? && "lg:hidden"
+      ]}>
         <button
           phx-click={JS.toggle_class("is-mobile-open", to: "#main-sidebar")}
-          class="btn btn-square btn-ghost min-h-11 h-11 w-11"
+          class="btn btn-square btn-ghost min-h-11 h-11 w-11 lg:hidden"
         >
           <.icon name="hero-bars-3" class="size-6" />
         </button>
@@ -424,7 +428,17 @@
           <div class="font-display font-black text-xl uppercase tracking-tighter">ATHENA</div>
           <span class="badge badge-primary font-display font-bold rounded-none">LMS</span>
         </div>
-        <div class="size-10"></div>
+        <%= if player_search? do %>
+          {live_render(@socket, AthenaWeb.SearchLive,
+            id: "global-search",
+            session: %{
+              "account_id" => @current_user.id,
+              "locale" => Gettext.get_locale(AthenaWeb.Gettext)
+            }
+          )}
+        <% else %>
+          <div class="size-10"></div>
+        <% end %>
       </header>
     <% end %>
 

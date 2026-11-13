@@ -10673,3 +10673,117 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Copy editing link"
 msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Across all your available courses"
+msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Close search"
+msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Could not load more results. Try again."
+msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Enter at least three characters to find learning materials in your courses."
+msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Find a topic, a task, a line of code…"
+msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Loading…"
+msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Materials"
+msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Navigate"
+msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "No materials found"
+msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Please try again."
+msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Search is temporarily unavailable"
+msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Search learning materials"
+msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Search materials"
+msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Search results"
+msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Searching materials…"
+msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Show more"
+msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Try again"
+msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Try another phrase or check the spelling."
+msgstr ""
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "What would you like to find?"
+msgstr ""

@@ -47,25 +47,34 @@ defmodule Athena.Content.SearchSnippet do
     if count == 0 do
       0
     else
+      sizes = Enum.uniq([max(words - 1, 1), words, words + 1])
+
       {_, position} =
         Enum.reduce(0..(count - 1), {-1.0, 0}, fn index, best ->
-          Enum.reduce(Enum.uniq([max(words - 1, 1), words, words + 1]), best, fn size,
-                                                                                 {score, _} = best ->
-            {start, _} = elem(tokens, index)
-            {last, length} = elem(tokens, min(index + size - 1, count - 1))
-            window = binary_part(text, start, min(last + length - start, 800))
-            # Windows end on a UTF-8 character boundary unless the byte cap
-            # applies; skip those rather than splitting Unicode characters.
-            candidate_score =
-              if String.valid?(window),
-                do: String.jaro_distance(query, String.downcase(window)),
-                else: 0.0
-
-            if candidate_score > score, do: {candidate_score, start}, else: best
-          end)
+          best_window_at(text, tokens, query, index, sizes, best)
         end)
 
       position
     end
+  end
+
+  defp best_window_at(text, tokens, query, index, sizes, best) do
+    Enum.reduce(sizes, best, fn size, best ->
+      score_window(text, tokens, query, index, size, best)
+    end)
+  end
+
+  defp score_window(text, tokens, query, index, size, {score, _} = best) do
+    {start, _} = elem(tokens, index)
+    {last, length} = elem(tokens, min(index + size - 1, tuple_size(tokens) - 1))
+    window = binary_part(text, start, min(last + length - start, 800))
+
+    # Skip a capped window if its byte boundary splits a UTF-8 character.
+    candidate_score =
+      if String.valid?(window),
+        do: String.jaro_distance(query, String.downcase(window)),
+        else: 0.0
+
+    if candidate_score > score, do: {candidate_score, start}, else: best
   end
 end
