@@ -569,10 +569,11 @@ defmodule Athena.Learning.Progress do
         opts \\ []
       ) do
     gate_blocks = get_gate_blocks(linear_sections, user, overrides, opts)
-    completed_ids = fetch_completed_gate_ids(gate_blocks, user, cohort_id)
 
     completed_ids =
-      completed_ids ++ heal_missing_completions(gate_blocks, completed_ids, user, cohort_id)
+      Keyword.get_lazy(opts, :completed_ids, fn ->
+        effective_completed_block_ids(gate_blocks, user, cohort_id, opts)
+      end)
 
     uncompleted_gates_by_section =
       gate_blocks
@@ -587,6 +588,18 @@ defmodule Athena.Learning.Progress do
     Enum.reverse(accessible_reversed)
   end
 
+  @doc """
+  Reads effective completions, including finished submissions satisfying gates.
+
+  Set `:heal_progress?` to false for read-only callers. Both modes use the
+  same submission rules; only the player persists missing completion rows.
+  """
+  def effective_completed_block_ids(blocks, user, team_id, opts \\ []) do
+    completed = fetch_completed_gate_ids(blocks, user, team_id)
+    gates = Enum.filter(blocks, &(&1.completion_rule && &1.completion_rule.type != :none))
+    completed ++ heal_missing_completions(gates, completed, user, team_id, opts)
+  end
+
   # A block's completion is recorded as a side effect of its submission being
   # saved, and a side effect can be lost (a crash between the two writes, a
   # result stored while nobody was listening, data from before the write was
@@ -598,7 +611,7 @@ defmodule Athena.Learning.Progress do
   @healable_statuses [:graded, :accepted, :needs_review]
 
   @doc false
-  defp heal_missing_completions(gate_blocks, completed_ids, user, cohort_id) do
+  defp heal_missing_completions(gate_blocks, completed_ids, user, cohort_id, opts) do
     open_gates = Enum.reject(gate_blocks, &(&1.id in completed_ids))
 
     if open_gates == [] do
@@ -612,7 +625,8 @@ defmodule Athena.Learning.Progress do
 
       for block <- open_gates,
           Enum.any?(Map.get(submissions_by_block, block.id, []), &block_solved?(block, &1)),
-          {:ok, _progress} <- [mark_completed(user.id, block.id, cohort_id)] do
+          not Keyword.get(opts, :heal_progress?, true) or
+            match?({:ok, _}, mark_completed(user.id, block.id, cohort_id)) do
         block.id
       end
     end
@@ -652,9 +666,12 @@ defmodule Athena.Learning.Progress do
   def get_gate_blocks(linear_sections, user, overrides \\ [], opts \\ []) do
     opts = Keyword.put(opts, :sections, Map.new(linear_sections, &{&1.id, &1}))
 
-    linear_sections
-    |> Enum.map(& &1.id)
-    |> Content.list_block_headers_by_section_ids()
+    headers =
+      Keyword.get_lazy(opts, :block_headers, fn ->
+        linear_sections |> Enum.map(& &1.id) |> Content.list_block_headers_by_section_ids()
+      end)
+
+    headers
     |> Enum.filter(fn block ->
       block.completion_rule &&
         block.completion_rule.type != :none &&

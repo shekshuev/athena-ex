@@ -27,6 +27,15 @@ defmodule Athena.Learning do
     TestRuns
   }
 
+  defdelegate policy_visible_blocks(blocks, section, user, overrides, opts),
+    to: Athena.Learning.BlockAccess
+
+  defdelegate effective_completed_block_ids(blocks, user, team_id, opts \\ []), to: Progress
+
+  defdelegate course_block_access(user, course_id), to: Athena.Learning.BlockAccess
+
+  defdelegate visible_blocks(blocks, completed_ids), to: Athena.Learning.BlockAccess
+
   defdelegate list_instructors(user, params \\ %{}), to: Instructors
   defdelegate list_all_instructors(user), to: Instructors
   defdelegate search_instructors(user, search_query, limit \\ 10), to: Instructors

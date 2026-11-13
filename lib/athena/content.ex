@@ -9,6 +9,8 @@ defmodule Athena.Content do
   alias Athena.Content.{Courses, Sections, Blocks, Library, Policy, Characters, Permalinks}
   alias Athena.Content.{Course, Section, Block}
 
+  defdelegate search_blocks(user, query, opts \\ []), to: Athena.Content.Search, as: :search
+
   defdelegate resolve_block_permalink(user, block_id, mode \\ :player),
     to: Permalinks,
     as: :resolve_block
