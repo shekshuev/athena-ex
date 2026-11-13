@@ -97,7 +97,12 @@ end
 if server_role != "runner" do
   config :athena, Oban,
     repo: Athena.Repo,
-    queues: [code_execution: System.schedulers_online() * 2, default: 5, maintenance: 2]
+    queues: [
+      code_execution: System.schedulers_online() * 2,
+      default: 5,
+      maintenance: 2,
+      search_index: 2
+    ]
 end
 
 if config_env() == :prod do

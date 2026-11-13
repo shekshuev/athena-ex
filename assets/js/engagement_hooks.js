@@ -55,6 +55,7 @@ export const EngagementHooks = {};
 EngagementHooks.EngagementTracker = {
   mounted() {
     activeTracker = this;
+    this.isConnected = true;
     this.queue = [];
     this.intersecting = new Map(); // block_id -> bool
     this.reachedMilestones = new Map(); // block_id -> Set(percent)
@@ -73,7 +74,7 @@ EngagementHooks.EngagementTracker = {
     };
 
     this.flush = () => {
-      if (this.queue.length === 0) return;
+      if (this.queue.length === 0 || !this.isConnected) return;
       const events = this.queue;
       this.queue = [];
       this.pushEvent("engagement_batch", { events });
@@ -89,7 +90,7 @@ EngagementHooks.EngagementTracker = {
     // and submit.
     this.flushTimer = setInterval(() => {
       this.flush();
-      if (this.el.dataset.heartbeat === "true") this.pushEvent("engagement_heartbeat", {});
+      if (this.isConnected && this.el.dataset.heartbeat === "true") this.pushEvent("engagement_heartbeat", {});
     }, FLUSH_INTERVAL_MS);
 
     this.observer = new IntersectionObserver(
@@ -241,6 +242,12 @@ EngagementHooks.EngagementTracker = {
 
     this.handleBeforeUnload = () => this.flush();
     window.addEventListener("beforeunload", this.handleBeforeUnload);
+    // Flush while the old LiveView channel is still connected. During
+    // destroyed(), live navigation has already closed it and pushEvent throws.
+    this.handlePageLoadingStart = ({ detail }) => {
+      if (detail.kind === "redirect") this.flush();
+    };
+    window.addEventListener("phx:page-loading-start", this.handlePageLoadingStart);
 
     if (this.el.dataset.heartbeat === "true") this.startProctoring();
   },
@@ -420,7 +427,7 @@ EngagementHooks.EngagementTracker = {
   destroyed() {
     clearInterval(this.flushTimer);
     clearTimeout(this.idleTimer);
-    this.flush();
+    this.isConnected = false;
     if (activeTracker === this) activeTracker = null;
     this.stopProctoring?.();
     if (this.observer) this.observer.disconnect();
@@ -430,6 +437,7 @@ EngagementHooks.EngagementTracker = {
     window.removeEventListener("blur", this.handleWindowBlur);
     window.removeEventListener("focus", this.handleWindowFocus);
     window.removeEventListener("beforeunload", this.handleBeforeUnload);
+    window.removeEventListener("phx:page-loading-start", this.handlePageLoadingStart);
     for (const eventName of this.idleActivityEvents || []) {
       window.removeEventListener(eventName, this.resetIdleTimer);
     }

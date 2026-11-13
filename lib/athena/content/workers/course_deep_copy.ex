@@ -21,7 +21,7 @@ defmodule Athena.Content.Workers.CourseDeepCopy do
 
   alias Athena.Repo
   alias Athena.Audit
-  alias Athena.Content.{Course, Section, Block, Blocks, CourseLibraryBlock}
+  alias Athena.Content.{Course, Section, Block, Blocks, CourseLibraryBlock, SearchIndex}
   alias Athena.Media
   alias Athena.Media.File, as: MediaFile
 
@@ -205,7 +205,7 @@ defmodule Athena.Content.Workers.CourseDeepCopy do
       section_id: Map.fetch!(section_id_map, block.section_id)
     }
 
-    case Repo.insert(new_block) do
+    case SearchIndex.insert(new_block) do
       {:ok, _} -> :ok
       {:error, reason} -> Repo.rollback(reason)
     end

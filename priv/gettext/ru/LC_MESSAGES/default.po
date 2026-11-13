@@ -10691,3 +10691,117 @@ msgstr "Ссылка на плеер"
 #, elixir-autogen, elixir-format
 msgid "Copy editing link"
 msgstr "Ссылка на редактирование"
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Across all your available courses"
+msgstr "Во всех доступных вам курсах"
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Close search"
+msgstr "Закрыть поиск"
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Could not load more results. Try again."
+msgstr "Не удалось загрузить следующие результаты. Попробуйте ещё раз."
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Enter at least three characters to find learning materials in your courses."
+msgstr "Введите хотя бы три символа, чтобы найти нужный материал в ваших курсах."
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Find a topic, a task, a line of code…"
+msgstr "Найти тему, задание, строку кода…"
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Loading…"
+msgstr "Загружаем…"
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Materials"
+msgstr "Материалы"
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Navigate"
+msgstr "Выбрать"
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "No materials found"
+msgstr "Материалы не найдены"
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Please try again."
+msgstr "Попробуйте ещё раз."
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Search is temporarily unavailable"
+msgstr "Поиск временно недоступен"
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Search learning materials"
+msgstr "Поиск по учебным материалам"
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Search materials"
+msgstr "Поиск по материалам"
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Search results"
+msgstr "Результаты поиска"
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Searching materials…"
+msgstr "Ищем материалы…"
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Show more"
+msgstr "Показать ещё"
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Try again"
+msgstr "Повторить"
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "Try another phrase or check the spelling."
+msgstr "Попробуйте другую фразу или проверьте написание."
+
+
+#: lib/athena_web/live/search_live.ex
+#, elixir-autogen, elixir-format
+msgid "What would you like to find?"
+msgstr "Что вы хотите найти?"

@@ -59,6 +59,7 @@ import {
 } from "./engagement_hooks";
 import { attachInputTelemetry } from "./input_telemetry";
 import { MessengerHooks } from "./messenger_hooks";
+import { GlobalSearch } from "./search_hook";
 
 const lowlight = createLowlight(common);
 // `plaintext` and `bash` ship with lowlight's `common` bundle; PowerShell
@@ -231,6 +232,7 @@ const Hooks = {};
 Object.assign(Hooks, EngagementHooks);
 Object.assign(Hooks, ChartsHooks);
 Object.assign(Hooks, MessengerHooks);
+Object.assign(Hooks, { GlobalSearch });
 
 Hooks.TippyTooltip = {
   mounted() {

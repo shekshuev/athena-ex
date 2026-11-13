@@ -217,7 +217,16 @@ defmodule Athena.Learning.TestRunsTest do
                TestRuns.start_library_block(instructor, lib_block.id)
 
       assert %Course{type: :library_preview} = course = Repo.get!(Course, session.course_id)
-      assert [%Block{type: :text, content: %{"text" => "hello"}}] = blocks_of(session.section_id)
+
+      assert [%Block{type: :text, content: %{"text" => "hello"}} = block] =
+               blocks_of(session.section_id)
+
+      assert block.search_due_at
+
+      assert_enqueued(
+        worker: Athena.Content.Workers.IndexBlockSearch,
+        args: %{block_id: block.id}
+      )
 
       assert {:error, :not_found} = Athena.Content.get_course(instructor, course.id)
       assert session.instructor_account_id == instructor.id

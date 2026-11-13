@@ -205,7 +205,7 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:course_map_open, false)
       |> assign(:leaderboard_open, false)
       |> assign(:leaderboard, load_leaderboard(course))
-      |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
+      |> assign(:visible_blocks, Learning.visible_blocks(blocks, completed_ids))
       |> assign(:submissions, submissions)
       |> assign(
         :exam_holders,
@@ -592,12 +592,9 @@ defmodule AthenaWeb.LearnLive.Player do
   # to the policy so `:inherit` blocks don't each load it again.
   @doc false
   defp visible_section_blocks(section, user, overrides, opts) do
-    opts = Keyword.put(opts, :sections, %{section.id => section})
-
     section.id
     |> Content.list_blocks_by_section(:all)
-    |> Enum.filter(&Content.can_view?(user, &1, overrides, opts))
-    |> Enum.sort_by(& &1.order)
+    |> Learning.policy_visible_blocks(section, user, overrides, opts)
   end
 
   # A `/go/blocks/:id` permalink lands here as `?block=` - reuses the same
@@ -763,7 +760,7 @@ defmodule AthenaWeb.LearnLive.Player do
      socket
      |> assign(:completed_ids, new_completed_ids)
      |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
-     |> assign(:visible_blocks, calc_visible_blocks(socket.assigns.blocks, new_completed_ids))}
+     |> assign(:visible_blocks, Learning.visible_blocks(socket.assigns.blocks, new_completed_ids))}
   end
 
   def handle_event("open_course_map", _, socket),
@@ -1692,28 +1689,6 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp calc_visible_blocks(blocks, completed_ids) do
-    {visible, _blocked?} =
-      Enum.reduce(blocks, {[], false}, fn block, {acc, blocked?} ->
-        reset? = block.access_rules && block.access_rules.reset_waterline
-        current_blocked? = if reset?, do: false, else: blocked?
-
-        is_completed = block.id in completed_ids
-
-        if current_blocked? do
-          {acc, true}
-        else
-          new_acc = acc ++ [block]
-          next_blocked? = gate?(block) and not is_completed
-
-          {new_acc, next_blocked?}
-        end
-      end)
-
-    visible
-  end
-
-  @doc false
   defp build_submission_content(block, answer) do
     q_type = block.content["question_type"]
     answer_type = block.content["answer_type"] || "plain_text"
@@ -1861,7 +1836,7 @@ defmodule AthenaWeb.LearnLive.Player do
     socket
     |> assign(:completed_ids, new_completed_ids)
     |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
-    |> assign(:visible_blocks, calc_visible_blocks(socket.assigns.blocks, new_completed_ids))
+    |> assign(:visible_blocks, Learning.visible_blocks(socket.assigns.blocks, new_completed_ids))
   end
 
   # Teammates' progress, grading and every builder autosave all broadcast a
@@ -1958,7 +1933,7 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:exam_holders, load_exam_holders(blocks, submissions, user.id, team_id))
       |> assign(:feedback_map, feedback_map)
       |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
-      |> assign(:visible_blocks, calc_visible_blocks(blocks, completed_ids))
+      |> assign(:visible_blocks, Learning.visible_blocks(blocks, completed_ids))
       |> assign(:overrides, overrides)
       |> assign(:block_counts, outline.block_counts)
       |> schedule_next_unlock()

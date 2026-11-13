@@ -46,6 +46,8 @@ defmodule Athena.Content.Block do
     field :type, Ecto.Enum, values: BlockTypes.all()
 
     field :content, :map, default: %{}
+    field :search_text, :string
+    field :search_due_at, :utc_datetime_usec
     field :order, :integer, default: 0
 
     # What this task is worth. `nil` means unweighted, and each reader

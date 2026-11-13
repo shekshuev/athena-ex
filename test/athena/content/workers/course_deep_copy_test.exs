@@ -96,6 +96,13 @@ defmodule Athena.Content.Workers.CourseDeepCopyTest do
         assert new_block.type == :text
         assert new_block.content == %{"text" => "hello world"}
         assert new_block.order == 1024
+        assert is_nil(new_block.search_text)
+        assert new_block.search_due_at
+
+        assert_enqueued(
+          worker: Athena.Content.Workers.IndexBlockSearch,
+          args: %{block_id: new_block.id}
+        )
 
         # source block untouched, still points at the original section
         original_blocks = Blocks.list_blocks_by_section(section.id)
