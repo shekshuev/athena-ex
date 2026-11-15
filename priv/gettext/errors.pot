@@ -226,7 +226,7 @@ msgid "Cannot enroll: the following students already have access to this course:
 msgstr ""
 
 #: lib/athena/content/library.ex:153
-#: lib/athena/content/library_block.ex:64
+#: lib/athena/content/library_block.ex:69
 #, elixir-autogen, elixir-format
 msgid "is pinned to a course and cannot be deleted"
 msgstr ""
@@ -241,7 +241,17 @@ msgstr ""
 msgid "is already taken"
 msgstr ""
 
-#: lib/athena/content/course.ex:101
+#: lib/athena/content/course.ex:107
 #, elixir-autogen, elixir-format
 msgid "must be after the start date"
+msgstr ""
+
+#: lib/athena/content/scoring_rules.ex:187
+#, elixir-autogen, elixir-format
+msgid "can't be higher than the initial value"
+msgstr ""
+
+#: lib/athena/content/scoring_rules.ex:156
+#, elixir-autogen, elixir-format
+msgid "must not repeat the same tiebreaker"
 msgstr ""

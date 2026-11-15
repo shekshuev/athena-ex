@@ -160,6 +160,17 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
               ]}
             />
 
+            <.input
+              type="select"
+              field={@form[:interaction_mode]}
+              label={gettext("Student interaction")}
+              options={[
+                {gettext("Inherit from parent section"), "inherit"},
+                {gettext("Can answer"), "interactive"},
+                {gettext("Read-only"), "readonly"}
+              ]}
+            />
+
             <.inputs_for :let={ar} field={@form[:access_rules]}>
               <div class="mt-2">
                 <label class="flex items-start gap-3 cursor-pointer">
@@ -921,6 +932,17 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                 {gettext("Enrolled Students"), "enrolled"},
                 {gettext("Restricted"), "restricted"},
                 {gettext("Hidden"), "hidden"}
+              ]}
+            />
+
+            <.input
+              type="select"
+              field={@form[:interaction_mode]}
+              label={gettext("Student interaction")}
+              options={[
+                {gettext("Inherit from Section"), "inherit"},
+                {gettext("Can answer"), "interactive"},
+                {gettext("Read-only"), "readonly"}
               ]}
             />
 

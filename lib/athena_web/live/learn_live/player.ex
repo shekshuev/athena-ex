@@ -13,9 +13,11 @@ defmodule AthenaWeb.LearnLive.Player do
   use AthenaWeb, :live_view
 
   on_mount {AthenaWeb.Hooks.Auth, :test_run}
+  on_mount {AthenaWeb.Hooks.Readonly, :player}
 
   alias Athena.Content
   alias Athena.Content.Policy
+  alias Athena.Content.InteractionPolicy
   alias Athena.Engagement
   alias Athena.Execution
   alias Athena.Identity
@@ -168,13 +170,14 @@ defmodule AthenaWeb.LearnLive.Player do
     next_section = Enum.at(linear_lessons, current_index + 1)
     next_accessible? = next_section != nil and next_section.id in accessible_ids
 
-    submissions =
-      Learning.get_latest_submissions(ctx.user.id, Enum.map(blocks, & &1.id), ctx.team_id)
+    readonly_ids = InteractionPolicy.readonly_block_ids(blocks)
+
+    submissions = load_submissions(ctx.user.id, blocks, ctx.team_id, readonly_ids)
 
     feedback_map =
       Learning.get_feedback_map(ctx.user.id, Enum.map(blocks, & &1.id), ctx.team_id)
 
-    drafts = load_drafts(ctx.user.id, Enum.map(blocks, & &1.id), ctx.team_id)
+    drafts = load_editable_drafts(ctx.user.id, blocks, ctx.team_id, readonly_ids)
 
     pending_file_urls = load_pending_file_urls(blocks, drafts)
 
@@ -199,6 +202,7 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:linear_lessons, linear_lessons)
       |> assign(:section, section)
       |> assign(:blocks, blocks)
+      |> assign(:readonly_ids, readonly_ids)
       |> assign(:completed_ids, completed_ids)
       |> assign(:prev_section_id, if(prev_section, do: prev_section.id, else: nil))
       |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
@@ -402,6 +406,35 @@ defmodule AthenaWeb.LearnLive.Player do
       </header>
       {render_slot(@inner_block)}
     </section>
+    """
+  end
+
+  attr :state, :map, default: nil
+  attr :block, :map, required: true
+
+  defp readonly_survey(%{state: %{survey: _, flow: _}} = assigns) do
+    assigns =
+      assign(
+        assigns,
+        :questions,
+        Surveys.visible_questions(assigns.state.flow, assigns.state.answers)
+      )
+
+    ~H"""
+    <.survey_shell title={@state.survey.title}>
+      <.question
+        :for={question <- @questions}
+        question={question}
+        mode={:review}
+        answers={@state.answers}
+      />
+    </.survey_shell>
+    """
+  end
+
+  defp readonly_survey(assigns) do
+    ~H"""
+    <.survey_notice block={@block} />
     """
   end
 
@@ -652,6 +685,23 @@ defmodule AthenaWeb.LearnLive.Player do
   @doc false
   defp load_drafts(user_id, block_ids, team_id),
     do: Learning.get_drafts(user_id, block_ids, team_id)
+
+  defp load_editable_drafts(user_id, blocks, team_id, readonly_ids) do
+    ids = blocks |> Enum.reject(&MapSet.member?(readonly_ids, &1.id)) |> Enum.map(& &1.id)
+    load_drafts(user_id, ids, team_id)
+  end
+
+  defp load_submissions(user_id, blocks, team_id, readonly_ids) do
+    Learning.get_latest_submissions(user_id, Enum.map(blocks, & &1.id), team_id,
+      readonly_code_ids: readonly_code_ids(blocks, readonly_ids)
+    )
+  end
+
+  defp readonly_code_ids(blocks, readonly_ids) do
+    blocks
+    |> Enum.filter(&(&1.type == :code and MapSet.member?(readonly_ids, &1.id)))
+    |> Enum.map(& &1.id)
+  end
 
   @doc false
   defp refresh_exam_holders(socket) do
@@ -1431,6 +1481,9 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
+  defp handle_failed_file_submission(socket, :readonly),
+    do: put_flash(socket, :info, gettext("This block is read-only."))
+
   defp handle_failed_file_submission(socket, changeset) do
     error_msg =
       changeset.errors
@@ -1579,6 +1632,9 @@ defmodule AthenaWeb.LearnLive.Player do
         {flash_type, flash_msg} = build_quiz_flash(final_sub)
 
         {:noreply, put_flash(socket, flash_type, flash_msg)}
+
+      {:error, :readonly} ->
+        {:noreply, put_flash(socket, :info, gettext("This block is read-only."))}
 
       {:error, changeset} ->
         error_msg =
@@ -1911,8 +1967,17 @@ defmodule AthenaWeb.LearnLive.Player do
 
       block_ids = Enum.map(blocks, & &1.id)
       completed_ids = Learning.completed_block_ids(user.id, current_section_id, team_id)
-      submissions = Learning.get_latest_submissions(user.id, block_ids, team_id)
+      readonly_ids = InteractionPolicy.readonly_block_ids(blocks)
+      submissions = load_submissions(user.id, blocks, team_id, readonly_ids)
+      drafts = load_editable_drafts(user.id, blocks, team_id, readonly_ids)
       feedback_map = Learning.get_feedback_map(user.id, block_ids, team_id)
+
+      socket =
+        if MapSet.member?(readonly_ids, socket.assigns[:active_upload_block_id]) do
+          assign(socket, show_media_modal: false, active_upload_block_id: nil, upload_type: nil)
+        else
+          socket
+        end
 
       current_index = Enum.find_index(linear_lessons, fn s -> s.id == current_section_id end)
       next_section = current_index && Enum.at(linear_lessons, current_index + 1)
@@ -1928,6 +1993,9 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:linear_lessons, linear_lessons)
       |> assign(:section, section)
       |> assign(:blocks, blocks)
+      |> assign(:readonly_ids, readonly_ids)
+      |> assign(:drafts, drafts)
+      |> assign(:pending_file_urls, load_pending_file_urls(blocks, drafts))
       |> assign(:completed_ids, completed_ids)
       |> assign(:submissions, submissions)
       |> assign(:exam_holders, load_exam_holders(blocks, submissions, user.id, team_id))
@@ -1985,33 +2053,11 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @impl true
-  def handle_info({:submission_updated, %{status: :draft} = submission}, socket) do
-    real_sub =
-      Learning.get_submission(
-        socket.assigns.current_user.id,
-        submission.block_id,
-        socket.assigns.team_id
-      )
-
-    submissions =
-      if real_sub do
-        Map.put(socket.assigns.submissions, submission.block_id, real_sub)
-      else
-        Map.delete(socket.assigns.submissions, submission.block_id)
-      end
-
-    {:noreply, assign(socket, submissions: submissions)}
-  end
-
-  @impl true
-  def handle_info({:submission_updated, submission}, socket) do
-    case Enum.find(socket.assigns.blocks, &(&1.id == submission.block_id)) do
-      nil ->
-        submissions = Map.put(socket.assigns.submissions, submission.block_id, submission)
-        {:noreply, assign(socket, submissions: submissions)}
-
-      block ->
-        handle_block_submission_update(socket, block, submission)
+  def handle_info({:submission_updated, submission} = message, socket) do
+    if InteractionPolicy.block_readonly?(submission.block_id) do
+      {:noreply, request_refresh(socket, :content)}
+    else
+      handle_submission_update(message, socket)
     end
   end
 
@@ -2096,7 +2142,7 @@ defmodule AthenaWeb.LearnLive.Player do
         {:draft_updated, %{block_id: block_id, content: content, updater_id: updater_id}},
         socket
       ) do
-    if updater_id == socket.assigns.current_user.id do
+    if updater_id == socket.assigns.current_user.id or InteractionPolicy.block_readonly?(block_id) do
       {:noreply, socket}
     else
       new_drafts = Map.put(socket.assigns.drafts || %{}, block_id, content)
@@ -2299,6 +2345,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
             <% is_review_needed = sub_status_str in ["rejected", "needs_review"] %>
 
+            <% readonly = MapSet.member?(@readonly_ids, block.id) %>
             <% is_locked = is_passed or is_review_needed %>
             <% mode = if is_locked, do: :review, else: :play %>
 
@@ -2333,61 +2380,39 @@ defmodule AthenaWeb.LearnLive.Player do
                 <%!-- future per-block actions (e.g. bookmark) go here as additional siblings --%>
               </div>
 
-              <%= case block.type do %>
-                <% :quiz_question -> %>
-                  <form
-                    phx-submit="submit_quiz"
-                    phx-change="save_draft"
-                    phx-value-block_id={block.id}
-                    id={"quiz-form-#{block.id}"}
+              <%= if readonly do %>
+                <div
+                  id={"readonly-notice-#{block.id}"}
+                  class="mb-4 flex items-center gap-2 text-sm text-base-content/60"
+                >
+                  <.icon name="hero-lock-closed" class="size-4" />
+                  {gettext("Read-only")}
+                  <span
+                    :if={submission && submission.status not in [:pending, :processing, :draft]}
+                    id={"readonly-score-#{block.id}"}
+                    class="ml-auto font-medium tabular-nums text-base-content"
                   >
-                    <input type="hidden" name="block_id" value={block.id} />
-
-                    <.content_block
-                      block={block}
-                      mode={mode}
-                      submission={submission}
-                      draft={Map.get(@drafts || %{}, block.id)}
-                      user_id={@current_user.id}
-                    />
-
-                    <div class="mt-6 flex items-center justify-between">
-                      <button
-                        type="submit"
-                        class="btn btn-primary btn-sm"
-                        disabled={is_locked}
-                      >
-                        {cond do
-                          is_review_needed -> gettext("With the instructor")
-                          is_passed -> gettext("Passed")
-                          submission != nil -> gettext("Retry Answer")
-                          true -> gettext("Submit Answer")
-                        end}
-                      </button>
-                    </div>
-                  </form>
-                <% :survey -> %>
-                  <.survey_block
+                    {gettext("Score")}: {submission.score || 0} / 100
+                  </span>
+                </div>
+                <%= if block.type == :survey do %>
+                  <.readonly_survey block={block} state={Map.get(@survey_state || %{}, block.id)} />
+                <% else %>
+                  <.content_block
                     block={block}
-                    state={Map.get(@survey_state || %{}, block.id)}
-                    completed?={block.id in @completed_ids}
+                    mode={:readonly}
+                    submission={submission}
+                    user_id={@current_user.id}
                   />
-                <% type when type in [:quiz_exam, :ticket_exam] -> %>
-                  <div class="relative">
-                    <.content_block
-                      block={block}
-                      mode={mode}
-                      submission={submission}
-                      exam_holder={Map.get(@exam_holders || %{}, block.id)}
-                    />
-                  </div>
-                <% :code -> %>
-                  <div class="space-y-4">
+                <% end %>
+              <% else %>
+                <%= case block.type do %>
+                  <% :quiz_question -> %>
                     <form
-                      phx-submit="submit_code"
+                      phx-submit="submit_quiz"
                       phx-change="save_draft"
                       phx-value-block_id={block.id}
-                      id={"code-form-#{block.id}"}
+                      id={"quiz-form-#{block.id}"}
                     >
                       <input type="hidden" name="block_id" value={block.id} />
 
@@ -2396,53 +2421,103 @@ defmodule AthenaWeb.LearnLive.Player do
                         mode={mode}
                         submission={submission}
                         draft={Map.get(@drafts || %{}, block.id)}
-                      />
-                    </form>
-                  </div>
-                <% :file_assignment -> %>
-                  <% fa_locked =
-                    sub_status_str == "accepted" or (sub_status_str == "graded" and sub_score == 100) or
-                      is_pending %>
-
-                  <div class="space-y-4">
-                    <form
-                      phx-submit="submit_file_assignment"
-                      phx-change="save_draft"
-                      phx-value-block_id={block.id}
-                      id={"file-assignment-form-#{block.id}"}
-                    >
-                      <input type="hidden" name="block_id" value={block.id} />
-
-                      <.content_block
-                        block={block}
-                        mode={if fa_locked, do: :review, else: :play}
-                        submission={submission}
-                        pending_file_urls={@pending_file_urls}
-                        draft={Map.get(@drafts || %{}, block.id)}
+                        user_id={@current_user.id}
                       />
 
-                      <div :if={!fa_locked} class="mt-6 flex items-center justify-between">
+                      <div class="mt-6 flex items-center justify-between">
                         <button
                           type="submit"
-                          class="btn btn-primary"
-                          disabled={Map.get(@pending_file_urls, block.id, []) == []}
+                          class="btn btn-primary btn-sm"
+                          disabled={is_locked}
                         >
                           {cond do
-                            submission != nil ->
-                              gettext("Resubmit")
-
-                            Map.get(@pending_file_urls, block.id, []) == [] ->
-                              gettext("Select Files First")
-
-                            true ->
-                              gettext("Submit Assignment")
+                            is_review_needed -> gettext("With the instructor")
+                            is_passed -> gettext("Passed")
+                            submission != nil -> gettext("Retry Answer")
+                            true -> gettext("Submit Answer")
                           end}
                         </button>
                       </div>
                     </form>
-                  </div>
-                <% _ -> %>
-                  <.content_block block={block} mode={:play} />
+                  <% :survey -> %>
+                    <.survey_block
+                      block={block}
+                      state={Map.get(@survey_state || %{}, block.id)}
+                      completed?={block.id in @completed_ids}
+                    />
+                  <% type when type in [:quiz_exam, :ticket_exam] -> %>
+                    <div class="relative">
+                      <.content_block
+                        block={block}
+                        mode={mode}
+                        submission={submission}
+                        exam_holder={Map.get(@exam_holders || %{}, block.id)}
+                      />
+                    </div>
+                  <% :code -> %>
+                    <div class="space-y-4">
+                      <form
+                        phx-submit="submit_code"
+                        phx-change="save_draft"
+                        phx-value-block_id={block.id}
+                        id={"code-form-#{block.id}"}
+                      >
+                        <input type="hidden" name="block_id" value={block.id} />
+
+                        <.content_block
+                          block={block}
+                          mode={mode}
+                          submission={submission}
+                          draft={Map.get(@drafts || %{}, block.id)}
+                        />
+                      </form>
+                    </div>
+                  <% :file_assignment -> %>
+                    <% fa_locked =
+                      sub_status_str == "accepted" or
+                        (sub_status_str == "graded" and sub_score == 100) or
+                        is_pending %>
+
+                    <div class="space-y-4">
+                      <form
+                        phx-submit="submit_file_assignment"
+                        phx-change="save_draft"
+                        phx-value-block_id={block.id}
+                        id={"file-assignment-form-#{block.id}"}
+                      >
+                        <input type="hidden" name="block_id" value={block.id} />
+
+                        <.content_block
+                          block={block}
+                          mode={if fa_locked, do: :review, else: :play}
+                          submission={submission}
+                          pending_file_urls={@pending_file_urls}
+                          draft={Map.get(@drafts || %{}, block.id)}
+                        />
+
+                        <div :if={!fa_locked} class="mt-6 flex items-center justify-between">
+                          <button
+                            type="submit"
+                            class="btn btn-primary"
+                            disabled={Map.get(@pending_file_urls, block.id, []) == []}
+                          >
+                            {cond do
+                              submission != nil ->
+                                gettext("Resubmit")
+
+                              Map.get(@pending_file_urls, block.id, []) == [] ->
+                                gettext("Select Files First")
+
+                              true ->
+                                gettext("Submit Assignment")
+                            end}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  <% _ -> %>
+                    <.content_block block={block} mode={:play} />
+                <% end %>
               <% end %>
 
               <.review_notice
@@ -2457,7 +2532,7 @@ defmodule AthenaWeb.LearnLive.Player do
                 entry={Map.fetch!(@feedback_map, block.id)}
               />
 
-              <div :if={gate?(block)} class="mt-8">
+              <div :if={gate?(block) and not readonly} class="mt-8">
                 <.render_gate block={block} is_completed={block.id in @completed_ids} />
               </div>
             </div>
@@ -2799,4 +2874,33 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   def quiz_passed?(_block, sub), do: sub.score == 100
+
+  defp handle_submission_update({:submission_updated, %{status: :draft} = submission}, socket) do
+    real_sub =
+      Learning.get_submission(
+        socket.assigns.current_user.id,
+        submission.block_id,
+        socket.assigns.team_id
+      )
+
+    submissions =
+      if real_sub do
+        Map.put(socket.assigns.submissions, submission.block_id, real_sub)
+      else
+        Map.delete(socket.assigns.submissions, submission.block_id)
+      end
+
+    {:noreply, assign(socket, submissions: submissions)}
+  end
+
+  defp handle_submission_update({:submission_updated, submission}, socket) do
+    case Enum.find(socket.assigns.blocks, &(&1.id == submission.block_id)) do
+      nil ->
+        submissions = Map.put(socket.assigns.submissions, submission.block_id, submission)
+        {:noreply, assign(socket, submissions: submissions)}
+
+      block ->
+        handle_block_submission_update(socket, block, submission)
+    end
+  end
 end

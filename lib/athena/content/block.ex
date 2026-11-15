@@ -60,6 +60,10 @@ defmodule Athena.Content.Block do
       values: ~w(enrolled restricted hidden inherit)a,
       default: :enrolled
 
+    field :interaction_mode, Ecto.Enum,
+      values: [:inherit, :interactive, :readonly],
+      default: :inherit
+
     embeds_one :access_rules, AccessRules, on_replace: :update
 
     embeds_one :completion_rule, CompletionRule, on_replace: :update
@@ -86,12 +90,12 @@ defmodule Athena.Content.Block do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(block, attrs) do
     block
-    |> cast(attrs, [:type, :content, :order, :points, :section_id, :visibility])
+    |> cast(attrs, [:type, :content, :order, :points, :section_id, :visibility, :interaction_mode])
     |> update_change(:content, &Tiptap.strip_colors/1)
     |> cast_embed(:access_rules, with: &AccessRules.changeset/2)
     |> cast_embed(:completion_rule, with: &CompletionRule.changeset/2)
     |> cast_embed(:engagement_rule, with: &EngagementRule.changeset/2)
-    |> validate_required([:type, :content, :section_id, :visibility])
+    |> validate_required([:type, :content, :section_id, :visibility, :interaction_mode])
     |> validate_number(:points, greater_than: 0)
     |> foreign_key_constraint(:section_id)
     |> validate_content_by_type()

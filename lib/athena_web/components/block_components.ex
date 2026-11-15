@@ -16,7 +16,7 @@ defmodule AthenaWeb.BlockComponents do
     Routes to specific renderers based on block type.
   """
   attr :block, :map, required: true
-  attr :mode, :atom, required: true, values: [:edit, :play, :review, :preview]
+  attr :mode, :atom, required: true, values: [:edit, :play, :review, :preview, :readonly]
   attr :answers, :map, default: %{}
   attr :submission, :map, default: nil
   attr :active, :boolean, default: false
@@ -117,6 +117,7 @@ defmodule AthenaWeb.BlockComponents do
 
   defp wrapper_classes(:play, _), do: "mb-10 last:mb-0 w-full"
   defp wrapper_classes(:review, _), do: "mb-10 last:mb-0 w-full"
+  defp wrapper_classes(:readonly, _), do: "mb-10 last:mb-0 w-full"
 
   defp wrapper_classes(:preview, true),
     do: "p-5 rounded-sm border-2 border-base-300 bg-base-100 transition-all cursor-default"
@@ -327,7 +328,11 @@ defmodule AthenaWeb.BlockComponents do
     lang = assigns.block.content["language"] || Execution.default_language()
     is_processing = !!(assigns.submission && assigns.submission.status in [:pending, :processing])
     readonly = !!(assigns.mode not in [:edit, :play] or is_processing)
-    execution_results = resolve_execution_results(assigns.draft, assigns.submission)
+
+    execution_results =
+      if assigns.mode == :readonly,
+        do: [],
+        else: resolve_execution_results(assigns.draft, assigns.submission)
 
     assigns =
       assigns

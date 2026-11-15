@@ -10751,3 +10751,33 @@ msgstr "Try another phrase or check the spelling."
 #, elixir-autogen, elixir-format
 msgid "What would you like to find?"
 msgstr "What would you like to find?"
+
+
+#: lib/athena_web/live/studio_live/inspector_component.ex
+#, elixir-autogen, elixir-format
+msgid "Student interaction"
+msgstr "Student interaction"
+
+
+#: lib/athena_web/live/studio_live/inspector_component.ex
+#, elixir-autogen, elixir-format
+msgid "Inherit from parent section"
+msgstr "Inherit from parent section"
+
+
+#: lib/athena_web/live/studio_live/inspector_component.ex
+#, elixir-autogen, elixir-format
+msgid "Can answer"
+msgstr "Can answer"
+
+
+#: lib/athena_web/live/studio_live/inspector_component.ex lib/athena_web/live/learn_live/player.ex
+#, elixir-autogen, elixir-format
+msgid "Read-only"
+msgstr "Read-only"
+
+
+#: lib/athena_web/hooks/readonly.ex lib/athena_web/live/learn_live/player.ex lib/athena_web/live/learn_live/exam.ex lib/athena_web/live/learn_live/ticket_exam.ex
+#, elixir-autogen, elixir-format
+msgid "This block is read-only."
+msgstr "This block is read-only."
