@@ -6,6 +6,8 @@ defmodule Athena.Execution.SqlRunner do
   """
   require Logger
 
+  alias Athena.Execution.SqlValue
+
   # Fixed PRNG seed, re-applied before every query so that `random()` /
   # `ORDER BY RANDOM()` yields the same values for the reference solution
   # and the student's query (the session PRNG is otherwise consumed by
@@ -65,31 +67,120 @@ defmodule Athena.Execution.SqlRunner do
 
   The session PRNG is reset to a fixed seed first, so queries using `random()`
   are reproducible: running the same query twice returns the same rows.
+
+  Results are fetched in `:stream_max_rows` chunks and bounded by
+  `:max_result_rows`, `:max_result_bytes`, `:max_row_bytes` and `:max_cell_bytes`
+  in this module's application configuration. Byte limits measure JSON after
+  `SqlValue` conversion. Exceeding a limit rolls back the query and returns
+  `{:error, {:result_limit_exceeded, message}}`, without a partial result.
+
+  Byte checks run after Postgrex decodes a chunk; they do not bound PostgreSQL
+  execution memory or prevent allocation of a single oversized value.
   """
   @spec query(pid(), String.t(), float()) ::
           {:ok, Postgrex.Result.t()}
-          | {:error, :timeout | {:sql_error, String.t()} | {:system_error, any()}}
+          | {:error,
+             :timeout
+             | {:result_limit_exceeded, String.t()}
+             | {:sql_error, String.t()}
+             | {:system_error, any()}}
   def query(conn, sql, time_limit_sec) do
     statement_timeout_ms = trunc((time_limit_sec || 2.0) * 1000)
-    client_timeout_ms = statement_timeout_ms + 2_000
-
-    Postgrex.query(conn, "SET statement_timeout = #{statement_timeout_ms};", [])
     reseed(conn)
+    bounded_query(conn, sql, statement_timeout_ms)
+  end
 
-    case Postgrex.query(conn, sql, [], timeout: client_timeout_ms) do
-      {:ok, result} ->
-        {:ok, result}
+  defp bounded_query(conn, sql, statement_timeout_ms) do
+    client_timeout_ms = statement_timeout_ms + 2_000
+    limits = Application.fetch_env!(:athena, __MODULE__)
+    deadline = System.monotonic_time(:millisecond) + statement_timeout_ms
 
-      {:error, %Postgrex.Error{postgres: %{code: :query_canceled}}} ->
-        {:error, :timeout}
+    case Postgrex.query(conn, "SET statement_timeout = #{statement_timeout_ms}", []) do
+      {:ok, _} ->
+        Postgrex.transaction(
+          conn,
+          &collect_result(&1, sql, limits, deadline, client_timeout_ms),
+          timeout: client_timeout_ms
+        )
 
-      {:error, %Postgrex.Error{postgres: %{message: msg}}} ->
-        {:error, {:sql_error, msg}}
+      {:error, error} ->
+        query_error(error)
+    end
+  rescue
+    error in Postgrex.Error -> query_error(error)
+    error in DBConnection.ConnectionError -> {:error, {:system_error, error}}
+  end
 
-      {:error, reason} ->
-        {:error, {:system_error, reason}}
+  defp collect_result(conn, sql, limits, deadline, timeout) do
+    initial = %{result: nil, rows: [], count: 0, bytes: 2}
+
+    state =
+      conn
+      |> Postgrex.stream(sql, [],
+        max_rows: Keyword.fetch!(limits, :stream_max_rows),
+        timeout: timeout
+      )
+      |> Enum.reduce(initial, &collect_chunk(&1, &2, conn, limits, deadline))
+
+    # DML without RETURNING reports affected rows, not returned rows.
+    result = state.result
+    rows = if is_nil(result.rows), do: nil, else: Enum.reverse(state.rows)
+    num_rows = if is_nil(result.columns), do: result.num_rows, else: state.count
+    %{result | rows: rows, num_rows: num_rows}
+  end
+
+  defp collect_chunk(chunk, state, conn, limits, deadline) do
+    check_deadline!(conn, deadline)
+
+    Enum.reduce(
+      chunk.rows || [],
+      %{state | result: chunk},
+      &collect_row(&1, &2, conn, limits, deadline)
+    )
+  end
+
+  defp collect_row(row, state, conn, limits, deadline) do
+    check_deadline!(conn, deadline)
+    count = state.count + 1
+    check_limit!(conn, count, limits, :max_result_rows, "rows")
+
+    cells = Enum.map(row, &SqlValue.to_cell/1)
+
+    Enum.each(cells, fn cell ->
+      check_limit!(conn, json_size(cell), limits, :max_cell_bytes, "bytes per cell")
+    end)
+
+    row_bytes = json_size(cells)
+    check_limit!(conn, row_bytes, limits, :max_row_bytes, "bytes per row")
+    bytes = state.bytes + row_bytes + if(state.count == 0, do: 0, else: 1)
+    check_limit!(conn, bytes, limits, :max_result_bytes, "bytes per result")
+
+    %{state | rows: [row | state.rows], count: count, bytes: bytes}
+  end
+
+  defp json_size(value), do: value |> Jason.encode_to_iodata!() |> IO.iodata_length()
+
+  defp check_deadline!(conn, deadline) do
+    if System.monotonic_time(:millisecond) >= deadline do
+      Postgrex.rollback(conn, :timeout)
     end
   end
+
+  defp check_limit!(conn, value, limits, key, unit) do
+    maximum = Keyword.fetch!(limits, key)
+
+    if value > maximum do
+      Postgrex.rollback(conn, {:result_limit_exceeded, "SQL result exceeds #{maximum} #{unit}."})
+    end
+  end
+
+  defp query_error(%Postgrex.Error{postgres: %{code: :query_canceled}}),
+    do: {:error, :timeout}
+
+  defp query_error(%Postgrex.Error{postgres: %{message: msg}}),
+    do: {:error, {:sql_error, msg}}
+
+  defp query_error(error), do: {:error, {:system_error, error}}
 
   defp reseed(conn), do: Postgrex.query(conn, "SELECT setseed(#{@seed});", [])
 
@@ -100,10 +191,17 @@ defmodule Athena.Execution.SqlRunner do
     statements = parse_statements(setup_sql)
 
     Enum.reduce_while(statements, :ok, fn stmt, :ok ->
-      case Postgrex.query(conn, stmt, []) do
-        {:ok, _} -> {:cont, :ok}
-        {:error, %Postgrex.Error{postgres: %{message: msg}}} -> {:halt, {:error, msg}}
-        {:error, reason} -> {:halt, {:error, inspect(reason)}}
+      # Setup may also contain SELECT or RETURNING. Bound its output without
+      # reseeding between statements, which would change generated datasets.
+      case bounded_query(conn, stmt, 15_000) do
+        {:ok, _} ->
+          {:cont, :ok}
+
+        {:error, {kind, msg}} when kind in [:sql_error, :result_limit_exceeded] ->
+          {:halt, {:error, msg}}
+
+        {:error, reason} ->
+          {:halt, {:error, inspect(reason)}}
       end
     end)
   end

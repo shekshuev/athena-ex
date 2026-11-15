@@ -67,11 +67,17 @@ defmodule Athena.Execution.Verifier do
 
   defp evaluate_sql_query_result(conn, student_sql, solution_sql, time_limit, ordered?) do
     {_t_ref, ref_res} = :timer.tc(fn -> SqlRunner.query(conn, solution_sql, time_limit) end)
-    {t_stu, student_res} = :timer.tc(fn -> SqlRunner.query(conn, student_sql, time_limit) end)
 
-    time_sec = Float.round(t_stu / 1_000_000, 3)
+    case ref_res do
+      {:ok, _} ->
+        {t_stu, student_res} = :timer.tc(fn -> SqlRunner.query(conn, student_sql, time_limit) end)
+        time_sec = Float.round(t_stu / 1_000_000, 3)
 
-    compare_query_results(ref_res, student_res, time_sec, ordered?)
+        compare_query_results(ref_res, student_res, time_sec, ordered?)
+
+      {:error, _} ->
+        compare_query_results(ref_res, nil, 0.0, ordered?)
+    end
   end
 
   defp compare_query_results({:ok, ref_out}, {:ok, stu_out}, time_sec, ordered?) do
@@ -85,6 +91,44 @@ defmodule Athena.Execution.Verifier do
   defp compare_query_results({:error, {:sql_error, msg}}, _stu_res, time_sec, _ordered?) do
     {:error, :compilation_error,
      build_sql_query_error("sql_error", "Reference Solution Error: #{msg}", time_sec)}
+  end
+
+  defp compare_query_results(
+         {:error, {:result_limit_exceeded, msg}},
+         _stu_res,
+         time_sec,
+         _ordered?
+       ) do
+    {:error, :compilation_error,
+     build_sql_query_error("result_limit_exceeded", "Reference Solution Error: #{msg}", time_sec)}
+  end
+
+  defp compare_query_results({:error, :timeout}, _stu_res, time_sec, _ordered?) do
+    {:error, :compilation_error,
+     build_sql_query_error(
+       "timeout",
+       "Reference Solution Error: Query execution timed out.",
+       time_sec
+     )}
+  end
+
+  defp compare_query_results({:error, reason}, _stu_res, time_sec, _ordered?) do
+    {:error, :system_error,
+     build_sql_query_error(
+       "system_error",
+       "Reference Solution Error: #{inspect(reason)}",
+       time_sec
+     )}
+  end
+
+  defp compare_query_results(
+         _ref_res,
+         {:error, {:result_limit_exceeded, msg}},
+         time_sec,
+         _ordered?
+       ) do
+    {:error, :memory_limit_exceeded,
+     build_sql_query_error("result_limit_exceeded", msg, time_sec)}
   end
 
   defp compare_query_results(_ref_res, {:error, :timeout}, time_sec, _ordered?) do
@@ -159,6 +203,15 @@ defmodule Athena.Execution.Verifier do
           {:error, :wrong_answer, payload}
       end
     else
+      {:error, {:result_limit_exceeded, msg}} ->
+        {:error, :memory_limit_exceeded,
+         %{
+           "type" => "sql_state",
+           "status" => "result_limit_exceeded",
+           "stderr" => msg,
+           "time" => time_sec
+         }}
+
       {:error, :timeout} ->
         {:error, :time_limit_exceeded,
          %{
