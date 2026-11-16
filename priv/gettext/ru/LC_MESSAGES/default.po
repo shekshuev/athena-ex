@@ -10886,7 +10886,7 @@ msgstr "От вашей команды проходит %{name}."
 #: lib/athena_web/live/studio_live/competition_form_component.ex:46
 #, elixir-autogen, elixir-format
 msgid "- none -"
-msgstr "— нет —"
+msgstr "– нет –"
 
 #: lib/athena_web/live/studio_live/competition_form_component.ex:236
 #, elixir-autogen, elixir-format
