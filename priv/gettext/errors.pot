@@ -255,3 +255,8 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "must not repeat the same tiebreaker"
 msgstr ""
+
+#: lib/athena/learning/submissions.ex:233
+#, elixir-autogen, elixir-format
+msgid "This block has already been solved with 100 points."
+msgstr ""

@@ -7,6 +7,7 @@ defmodule Athena.Learning.Submissions do
   """
 
   import Ecto.Query
+  use Gettext, backend: AthenaWeb.Gettext
   alias Athena.{Repo, Content}
   alias Athena.Audit
   alias Athena.Content.{InteractionPolicy, ScoringRules}
@@ -213,14 +214,44 @@ defmodule Athena.Learning.Submissions do
   Creates a new submission, forces the account_id, and enqueues execution if it's a code block.
   If a draft exists for this block, updates it instead of creating a new record.
   Uses Ecto.Multi to guarantee that the job is queued ONLY if the submission is saved.
+  Rejects a new attempt if this user/team already has a real, completed
+  top-level attempt on this block graded at 100 points.
   """
   @spec create_submission(map(), map()) :: {:ok, Submission.t()} | {:error, any()}
   def create_submission(user, attrs) do
-    if InteractionPolicy.block_readonly?(Map.get(attrs, "block_id")) do
-      {:error, :readonly}
-    else
-      do_create_submission(user, attrs)
+    changeset = Submission.changeset(%Submission{}, Map.put(attrs, "account_id", user.id))
+
+    cond do
+      InteractionPolicy.block_readonly?(Map.get(attrs, "block_id")) ->
+        {:error, :readonly}
+
+      changeset.valid? and perfect_submission_exists?(changeset) ->
+        {:error,
+         Ecto.Changeset.add_error(
+           changeset,
+           :base,
+           dgettext("errors", "This block has already been solved with 100 points."),
+           validation: :already_solved
+         )}
+
+      true ->
+        do_create_submission(user, attrs)
     end
+  end
+
+  defp perfect_submission_exists?(changeset) do
+    block_id = Ecto.Changeset.get_field(changeset, :block_id)
+    account_id = Ecto.Changeset.get_field(changeset, :account_id)
+    cohort_id = Ecto.Changeset.get_field(changeset, :cohort_id)
+
+    from(s in Submission,
+      where:
+        s.block_id == ^block_id and is_nil(s.parent_submission_id) and s.score == 100 and
+          s.status in [:graded, :accepted],
+      where: fragment("?->>'is_test_run' IS NULL", s.content)
+    )
+    |> where_owner(account_id, cohort_id)
+    |> Repo.exists?()
   end
 
   defp do_create_submission(user, attrs) do
