@@ -121,7 +121,14 @@ config :athena, Athena.Execution.Worker, timeout: 60_000
 config :athena, Athena.Execution.TestWorker, timeout: 60_000
 
 config :athena, Athena.Execution.SqlRunner,
-  url: "ecto://postgres:postgres@localhost:5432/postgres"
+  url: "ecto://postgres:postgres@localhost:5432/postgres",
+  # Byte limits apply to JSON after SqlValue conversion, independently per query.
+  # Streaming bounds rows per fetch, not the size of an individual decoded value.
+  max_result_rows: 5_000,
+  max_result_bytes: 2 * 1024 * 1024,
+  max_row_bytes: 64 * 1024,
+  max_cell_bytes: 16 * 1024,
+  stream_max_rows: 100
 
 config :athena, Athena.Engagement,
   default_expected_seconds: nil,

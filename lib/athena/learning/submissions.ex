@@ -9,7 +9,7 @@ defmodule Athena.Learning.Submissions do
   import Ecto.Query
   alias Athena.{Repo, Content}
   alias Athena.Audit
-  alias Athena.Content.ScoringRules
+  alias Athena.Content.{InteractionPolicy, ScoringRules}
 
   alias Athena.Learning.{
     Submission,
@@ -216,6 +216,14 @@ defmodule Athena.Learning.Submissions do
   """
   @spec create_submission(map(), map()) :: {:ok, Submission.t()} | {:error, any()}
   def create_submission(user, attrs) do
+    if InteractionPolicy.block_readonly?(Map.get(attrs, "block_id")) do
+      {:error, :readonly}
+    else
+      do_create_submission(user, attrs)
+    end
+  end
+
+  defp do_create_submission(user, attrs) do
     safe_attrs = Map.put(attrs, "account_id", user.id)
     block_id = Map.get(attrs, "block_id")
     cohort_id = Map.get(attrs, "cohort_id")
@@ -277,6 +285,26 @@ defmodule Athena.Learning.Submissions do
   Works for both regular blocks and generated exam questions.
   """
   def enqueue_code_execution(%Submission{} = submission) do
+    block_id =
+      if submission.parent_submission_id do
+        Repo.one(
+          from(s in Submission,
+            where: s.id == ^submission.parent_submission_id,
+            select: s.block_id
+          )
+        )
+      else
+        submission.block_id
+      end
+
+    if InteractionPolicy.block_readonly?(block_id) do
+      {:error, :readonly}
+    else
+      enqueue_writable_code(submission)
+    end
+  end
+
+  defp enqueue_writable_code(submission) do
     is_code_content = submission.content["type"] in [:code, "code"]
 
     if is_code_content do
@@ -410,7 +438,7 @@ defmodule Athena.Learning.Submissions do
   @spec get_latest_submissions(String.t(), [String.t()], String.t() | nil) :: %{
           String.t() => Submission.t()
         }
-  def get_latest_submissions(account_id, block_ids, cohort_id \\ nil) do
+  def get_latest_submissions(account_id, block_ids, cohort_id \\ nil, opts \\ []) do
     query =
       if cohort_id do
         from s in Submission,
@@ -426,10 +454,29 @@ defmodule Athena.Learning.Submissions do
       end
 
     query
+    |> project_readonly_code(Keyword.get(opts, :readonly_code_ids, []))
     |> distinct([s], s.block_id)
     |> order_by([s], ^attempt_precedence())
     |> Repo.all()
     |> Map.new(&{&1.block_id, &1})
+  end
+
+  # Extract only the submitted code inside PostgreSQL. Removing results after
+  # Repo.all/1 would already have decoded the oversized JSON into BEAM memory.
+  defp project_readonly_code(query, []), do: query
+
+  defp project_readonly_code(query, ids) do
+    select_merge(query, [s], %{
+      content:
+        fragment(
+          "CASE WHEN ? THEN jsonb_build_object('type', ?->'type', 'code', ?->'code', 'text_answer', ?->'text_answer') ELSE ? END",
+          s.block_id in ^ids,
+          s.content,
+          s.content,
+          s.content,
+          s.content
+        )
+    })
   end
 
   # Which of a block's attempts is *the* attempt, shared by
@@ -482,10 +529,20 @@ defmodule Athena.Learning.Submissions do
       |> where_owner(account_id, cohort_id)
       |> distinct([s], s.block_id)
       |> order_by([s], ^attempt_precedence())
+      |> select([s], %Submission{
+        id: s.id,
+        block_id: s.block_id,
+        status: s.status,
+        feedback: s.feedback,
+        content: fragment("jsonb_build_object('questions', ?->'questions')", s.content)
+      })
       |> Repo.all()
 
     children_by_parent =
-      from(c in Submission, where: c.parent_submission_id in ^Enum.map(parents, & &1.id))
+      from(c in Submission,
+        where: c.parent_submission_id in ^Enum.map(parents, & &1.id),
+        select: struct(c, [:id, :parent_submission_id, :block_id, :score, :feedback])
+      )
       |> Repo.all()
       |> Enum.group_by(& &1.parent_submission_id)
 
@@ -805,8 +862,16 @@ defmodule Athena.Learning.Submissions do
   For team submissions, broadcasts update to all team members.
   """
   @spec save_draft(map(), String.t(), map(), String.t() | nil) ::
-          {:ok, Submission.t()} | {:error, Ecto.Changeset.t()}
+          {:ok, Submission.t()} | {:error, Ecto.Changeset.t() | :readonly}
   def save_draft(user, block_id, content, cohort_id \\ nil) do
+    if InteractionPolicy.block_readonly?(block_id) do
+      {:error, :readonly}
+    else
+      do_save_draft(user, block_id, content, cohort_id)
+    end
+  end
+
+  defp do_save_draft(user, block_id, content, cohort_id) do
     attrs = %{
       "account_id" => user.id,
       "block_id" => block_id,
@@ -943,6 +1008,14 @@ defmodule Athena.Learning.Submissions do
   Creates a parent submission with an expiration time.
   """
   def start_exam_submission(account_id, exam_block_id, cohort_id, time_limit_seconds) do
+    if InteractionPolicy.block_readonly?(exam_block_id) do
+      {:error, :readonly}
+    else
+      start_writable_exam_submission(account_id, exam_block_id, cohort_id, time_limit_seconds)
+    end
+  end
+
+  defp start_writable_exam_submission(account_id, exam_block_id, cohort_id, time_limit_seconds) do
     expires_at = DateTime.add(DateTime.utc_now(), time_limit_seconds, :second)
 
     %Submission{}
@@ -981,6 +1054,26 @@ defmodule Athena.Learning.Submissions do
         cohort_id,
         answer_content
       ) do
+    if InteractionPolicy.block_readonly?(parent_submission.block_id) do
+      {:error, :readonly}
+    else
+      save_writable_question(
+        parent_submission,
+        account_id,
+        question_block_id,
+        cohort_id,
+        answer_content
+      )
+    end
+  end
+
+  defp save_writable_question(
+         parent_submission,
+         account_id,
+         question_block_id,
+         cohort_id,
+         answer_content
+       ) do
     limit_check =
       if parent_submission.expires_at do
         DateTime.compare(DateTime.utc_now(), parent_submission.expires_at)
@@ -1203,6 +1296,30 @@ defmodule Athena.Learning.Submissions do
   end
 
   defp do_fetch_or_create_exam_attempt(
+         course_id,
+         account_id,
+         exam_block_id,
+         block_type,
+         cohort_id,
+         time_limit_sec,
+         exam_config
+       ) do
+    if InteractionPolicy.block_readonly?(exam_block_id) do
+      {:error, :readonly}
+    else
+      fetch_writable_exam_attempt(
+        course_id,
+        account_id,
+        exam_block_id,
+        block_type,
+        cohort_id,
+        time_limit_sec,
+        exam_config
+      )
+    end
+  end
+
+  defp fetch_writable_exam_attempt(
          course_id,
          account_id,
          exam_block_id,

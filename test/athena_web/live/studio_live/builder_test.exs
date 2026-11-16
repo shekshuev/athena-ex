@@ -18,6 +18,43 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
   end
 
   describe "Mount & Access" do
+    test "section and block interaction settings update an open player", ctx do
+      section = insert(:section, course: ctx.course)
+      block = insert(:block, section: section)
+      student = insert(:account)
+      insert(:enrollment, account_id: student.id, course_id: ctx.course.id)
+
+      student_conn =
+        init_test_session(Phoenix.ConnTest.build_conn(), %{"account_id" => student.id})
+
+      {:ok, player, _} =
+        live(student_conn, ~p"/learn/courses/#{ctx.course.id}/play/#{section.id}")
+
+      {:ok, builder, _} = live(ctx.conn, ~p"/studio/courses/#{ctx.course.id}/builder")
+
+      builder
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      builder
+      |> form("#section-inspector-form-#{section.id}", section: %{interaction_mode: "readonly"})
+      |> render_change()
+
+      assert Repo.get!(Athena.Content.Section, section.id).interaction_mode == :readonly
+      assert has_element?(player, "#readonly-notice-#{block.id}")
+
+      builder
+      |> element("div[phx-click='select_block'][phx-value-id='#{block.id}']")
+      |> render_click()
+
+      builder
+      |> form("#block-inspector-form-#{block.id}", block: %{interaction_mode: "interactive"})
+      |> render_change()
+
+      assert Repo.get!(Athena.Content.Block, block.id).interaction_mode == :interactive
+      refute has_element?(player, "#readonly-notice-#{block.id}")
+    end
+
     test "redirects if course does not exist", %{conn: conn} do
       fake_id = Ecto.UUID.generate()
 

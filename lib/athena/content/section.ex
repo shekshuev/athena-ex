@@ -37,6 +37,10 @@ defmodule Athena.Content.Section do
       values: ~w(enrolled restricted hidden)a,
       default: :enrolled
 
+    field :interaction_mode, Ecto.Enum,
+      values: [:inherit, :interactive, :readonly],
+      default: :inherit
+
     embeds_one :access_rules, AccessRules, on_replace: :update
 
     embeds_one :engagement_rule, EngagementRule, on_replace: :update
@@ -54,10 +58,19 @@ defmodule Athena.Content.Section do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(section, attrs) do
     section
-    |> cast(attrs, [:id, :title, :order, :path, :course_id, :parent_id, :visibility])
+    |> cast(attrs, [
+      :id,
+      :title,
+      :order,
+      :path,
+      :course_id,
+      :parent_id,
+      :visibility,
+      :interaction_mode
+    ])
     |> cast_embed(:access_rules, with: &AccessRules.changeset/2)
     |> cast_embed(:engagement_rule, with: &EngagementRule.changeset/2)
-    |> validate_required([:id, :title, :path, :course_id, :visibility])
+    |> validate_required([:id, :title, :path, :course_id, :visibility, :interaction_mode])
     |> validate_length(:title, min: 1, max: 255)
     |> foreign_key_constraint(:course_id)
     |> foreign_key_constraint(:parent_id)

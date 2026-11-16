@@ -33,6 +33,7 @@ defmodule Athena do
       Content.ScoringRules,
       Content.SurveyRef,
       Content.Policy,
+      Content.InteractionPolicy,
       Media,
       Media.Config,
       Announcements,

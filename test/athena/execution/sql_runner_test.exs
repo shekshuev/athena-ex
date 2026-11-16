@@ -5,7 +5,7 @@ defmodule Athena.Execution.SqlRunnerTest do
   alias Athena.Execution.{SqlRunner, Verifier}
 
   setup_all do
-    {:ok, agent} = Agent.start_link(fn -> 9000 end)
+    agent = start_supervised!({Agent, fn -> 9000 end})
     %{box_agent: agent}
   end
 
@@ -427,11 +427,11 @@ defmodule Athena.Execution.SqlRunnerTest do
 
       result = Verifier.verify(student_sql, challenge, box_id)
 
-      assert result.status == :time_limit_exceeded
+      assert result.status in [:time_limit_exceeded, :memory_limit_exceeded]
       assert result.score == 0
       assert [test_res] = result.test_results
-      assert test_res.status == :time_limit_exceeded
-      assert test_res.stderr =~ "timed out"
+      assert test_res.status == result.status
+      assert test_res.stderr =~ "timed out" or test_res.stderr =~ "rows"
     end
   end
 
@@ -525,16 +525,16 @@ defmodule Athena.Execution.SqlRunnerTest do
       }
 
       student_sql = """
-      SELECT set_config('statement_timeout', '0', false), repeat('A', 10000000)
+      SELECT set_config('statement_timeout', '0', false), repeat('A', 100000)
       FROM generate_series(1, 10000000);
       """
 
       result = Verifier.verify(student_sql, challenge, box_id)
 
-      assert result.status in [:time_limit_exceeded, :runtime_error]
+      assert result.status in [:time_limit_exceeded, :runtime_error, :memory_limit_exceeded]
       assert result.score == 0
       assert [test_res] = result.test_results
-      assert test_res.status in [:time_limit_exceeded, :runtime_error]
+      assert test_res.status == result.status
 
       assert_database_dropped("athena_sandbox_#{box_id}")
     end

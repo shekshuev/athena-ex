@@ -226,6 +226,7 @@ defmodule Athena.Content.Blocks do
       "type" => block.type,
       "content" => block.content,
       "visibility" => block.visibility,
+      "interaction_mode" => block.interaction_mode,
       "access_rules" => embed_to_map(block.access_rules),
       "completion_rule" => embed_to_map(block.completion_rule),
       "engagement_rule" => embed_to_map(block.engagement_rule),

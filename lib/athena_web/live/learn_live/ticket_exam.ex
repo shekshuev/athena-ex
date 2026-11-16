@@ -11,6 +11,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   use AthenaWeb, :live_view
 
   on_mount {AthenaWeb.Hooks.Auth, :test_run}
+  on_mount {AthenaWeb.Hooks.Readonly, :assessment}
 
   alias Athena.{Content, Engagement, Identity, Learning}
   alias AthenaWeb.LearnLive.EngagementSignals
@@ -60,7 +61,8 @@ defmodule AthenaWeb.LearnLive.TicketExam do
 
   @doc false
   defp resolve_exam_mount(socket, course_id, block_id, user_id, team_id, cohort_id, return_to) do
-    with {:ok, block} <- Content.get_block(block_id),
+    with false <- Athena.Content.InteractionPolicy.block_readonly?(block_id),
+         {:ok, block} <- Content.get_block(block_id),
          time_limit_sec <- get_time_limit_sec(block) do
       # Default to the section the exam block itself lives in - not a
       # section-less `/play` (which `Player` resolves to the *first* section
@@ -219,6 +221,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     pending_urls = build_pending_urls(child_subs)
 
     if connected?(socket) do
+      Phoenix.PubSub.subscribe(Athena.PubSub, "course_content:#{course_id}")
       # The ticket's own submission - an instructor rejecting a cheater from
       # the grading screen, or another tab finalizing it, must end this
       # session immediately (see `handle_info({:submission_updated, ...})`
@@ -702,17 +705,21 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     end
   end
 
-  def handle_info(:tick, socket) do
-    time_left = DateTime.diff(socket.assigns.submission.expires_at, DateTime.utc_now())
-
-    if time_left <= 0 do
-      {:noreply, submit_and_exit(socket, socket.assigns.submission, :time_limit_exceeded)}
+  def handle_info(:refresh_content, socket) do
+    if Athena.Content.InteractionPolicy.block_readonly?(socket.assigns.block.id) do
+      {:noreply,
+       exit_exam(socket, socket.assigns.return_to, :info, gettext("This block is read-only."))}
     else
-      socket = socket |> assign(:time_left, time_left) |> maybe_beat_exam_lock()
-
-      Process.send_after(self(), :tick, 1000)
-
       {:noreply, socket}
+    end
+  end
+
+  def handle_info(:tick, socket) do
+    if Athena.Content.InteractionPolicy.block_readonly?(socket.assigns.block.id) do
+      {:noreply,
+       exit_exam(socket, socket.assigns.return_to, :info, gettext("This block is read-only."))}
+    else
+      tick(socket)
     end
   end
 
@@ -1336,4 +1343,18 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     do:
       questions
       |> Enum.all?(fn q -> Map.has_key?(child_submissions, q.id) end)
+
+  defp tick(socket) do
+    time_left = DateTime.diff(socket.assigns.submission.expires_at, DateTime.utc_now())
+
+    if time_left <= 0 do
+      {:noreply, submit_and_exit(socket, socket.assigns.submission, :time_limit_exceeded)}
+    else
+      socket = socket |> assign(:time_left, time_left) |> maybe_beat_exam_lock()
+
+      Process.send_after(self(), :tick, 1000)
+
+      {:noreply, socket}
+    end
+  end
 end
