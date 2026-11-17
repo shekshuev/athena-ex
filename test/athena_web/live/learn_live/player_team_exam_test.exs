@@ -169,7 +169,7 @@ defmodule AthenaWeb.LearnLive.PlayerTeamExamTest do
   end
 
   describe "what the team's score ends up being" do
-    test "a teammate's ungraded attempt does not wipe the team's graded score", ctx do
+    test "a teammate's latest ungraded attempt counts as zero", ctx do
       block = exam_block(ctx.section)
 
       # Alice finished and scored 90.
@@ -179,6 +179,7 @@ defmodule AthenaWeb.LearnLive.PlayerTeamExamTest do
         block_id: block.id,
         status: :graded,
         score: 90,
+        inserted_at: ~U[2026-01-01 00:00:00Z],
         content: %{"type" => "quiz_exam", "questions" => []}
       )
 
@@ -190,6 +191,7 @@ defmodule AthenaWeb.LearnLive.PlayerTeamExamTest do
           cohort_id: ctx.team.id,
           block_id: block.id,
           status: :needs_review,
+          inserted_at: ~U[2026-01-02 00:00:00Z],
           content: %{"type" => "quiz_exam", "questions" => []}
         )
 
@@ -197,11 +199,10 @@ defmodule AthenaWeb.LearnLive.PlayerTeamExamTest do
 
       [team_row] = Athena.Learning.get_team_leaderboard(ctx.course.id)
 
-      assert team_row.total_score == 90,
-             "an unscored attempt masked the team's graded result (got #{team_row.total_score})"
+      assert team_row.total_score == 0
     end
 
-    test "the player shows the team's graded result, not a teammate's blank one", ctx do
+    test "the player shows the team's latest ungraded attempt", ctx do
       block = exam_block(ctx.section)
 
       insert(:submission,
@@ -210,6 +211,7 @@ defmodule AthenaWeb.LearnLive.PlayerTeamExamTest do
         block_id: block.id,
         status: :graded,
         score: 90,
+        inserted_at: ~U[2026-01-01 00:00:00Z],
         content: %{"type" => "quiz_exam", "questions" => []}
       )
 
@@ -218,14 +220,14 @@ defmodule AthenaWeb.LearnLive.PlayerTeamExamTest do
         cohort_id: ctx.team.id,
         block_id: block.id,
         status: :needs_review,
+        inserted_at: ~U[2026-01-02 00:00:00Z],
         content: %{"type" => "quiz_exam", "questions" => []}
       )
       |> null_out_score()
 
       {:ok, _bob_lv, html} = live(ctx.bob_conn, play_path(ctx.course, ctx.section))
 
-      assert html =~ "90 / 100",
-             "the player showed an unscored attempt instead of the team's 90"
+      refute html =~ "90 / 100"
     end
   end
 

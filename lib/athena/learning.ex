@@ -177,12 +177,15 @@ defmodule Athena.Learning do
 
   defdelegate list_group_submissions_for_block(cohort_id, block_id), to: Submissions
   defdelegate delete_submission_with_rollback(user, submission), to: Submissions
-  defdelegate save_draft(user, block_id, content, cohort_id \\ nil), to: Submissions
+  defdelegate save_draft(user, block_id, content, cohort_id \\ nil, opts \\ []), to: Submissions
+  defdelegate discard_draft(user, block_id, cohort_id \\ nil, opts \\ []), to: Submissions
+  defdelegate current_draft?(user_id, block_id, cohort_id, id), to: Submissions
+  defdelegate submission_locks(account_id, block_ids, cohort_id \\ nil), to: Submissions
   defdelegate get_draft(user_id, block_id, cohort_id \\ nil), to: Submissions
   defdelegate get_drafts(user_id, block_ids, cohort_id \\ nil), to: Submissions
   defdelegate clear_draft(user_id, block_id, cohort_id \\ nil), to: Submissions
   defdelegate enqueue_code_execution(submission), to: Submissions
-  defdelegate test_code(user, block, code), to: Submissions
+  defdelegate test_code(user, block, code, opts \\ []), to: Submissions
 
   defdelegate start_exam_submission(account_id, exam_block_id, cohort_id, time_limit_seconds),
     to: Submissions

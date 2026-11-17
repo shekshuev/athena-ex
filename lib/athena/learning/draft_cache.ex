@@ -9,6 +9,35 @@ defmodule Athena.Learning.DraftCache do
   @cache_name :draft_cache
   @draft_ttl :timer.hours(1)
 
+  @doc "Editor generation shared by all tabs/team members; changes only on discard."
+  def revision(account_id, cohort_id, block_id) do
+    key = {:revision, build_key(account_id, cohort_id, block_id)}
+    {status, revision} = Cachex.fetch(@cache_name, key, fn -> {:commit, Ecto.UUID.generate()} end)
+    if status in [:ok, :commit], do: revision, else: raise("Draft revision cache unavailable")
+  end
+
+  def rotate_revision(account_id, cohort_id, block_id) do
+    revision = Ecto.UUID.generate()
+
+    {:ok, true} =
+      Cachex.put(@cache_name, {:revision, build_key(account_id, cohort_id, block_id)}, revision)
+
+    revision
+  end
+
+  def broadcast_reset(account_id, cohort_id, block_id, revision) do
+    topic =
+      if cohort_id,
+        do: "draft:#{cohort_id}:#{block_id}",
+        else: "submission:#{account_id}:#{block_id}"
+
+    PubSub.broadcast(
+      Athena.PubSub,
+      topic,
+      {:draft_reset, %{block_id: block_id, revision: revision}}
+    )
+  end
+
   @doc """
   Saves a draft to cache with 1-hour TTL.
   For team submissions, uses cohort_id; for individual, uses account_id.
@@ -77,7 +106,13 @@ defmodule Athena.Learning.DraftCache do
     PubSub.broadcast(
       Athena.PubSub,
       topic,
-      {:draft_updated, %{block_id: block_id, content: content, updater_id: updater_id}}
+      {:draft_updated,
+       %{
+         block_id: block_id,
+         content: content,
+         updater_id: updater_id,
+         revision: revision(updater_id, cohort_id, block_id)
+       }}
     )
   end
 

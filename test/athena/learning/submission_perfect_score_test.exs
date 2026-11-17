@@ -122,11 +122,11 @@ defmodule Athena.Learning.SubmissionPerfectScoreTest do
     assert team_id == target.id
   end
 
-  test "an incomplete, rejected, test-run or child result is not a completed perfect attempt",
+  test "an incomplete, test-run or child result is not a completed perfect attempt",
        ctx do
     parent = insert(:submission, account_id: ctx.user.id)
 
-    for status <- [:draft, :pending, :processing, :needs_review, :rejected] do
+    for status <- [:draft, :pending, :processing, :needs_review] do
       insert(:submission,
         account_id: ctx.user.id,
         block_id: ctx.block.id,

@@ -256,7 +256,12 @@ msgstr ""
 msgid "must not repeat the same tiebreaker"
 msgstr ""
 
-#: lib/athena/learning/submissions.ex:233
+#: lib/athena/learning/submissions.ex:246
 #, elixir-autogen, elixir-format
 msgid "This block has already been solved with 100 points."
+msgstr ""
+
+#: lib/athena/learning/submissions.ex:234
+#, elixir-autogen, elixir-format
+msgid "New submissions are blocked because an earlier submission was rejected."
 msgstr ""

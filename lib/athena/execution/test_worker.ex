@@ -117,13 +117,24 @@ defmodule Athena.Execution.TestWorker do
   end
 
   defp broadcast_update(submission) do
+    topic =
+      if submission.cohort_id,
+        do: "draft:#{submission.cohort_id}:#{submission.block_id}",
+        else: "submission:#{submission.account_id}:#{submission.block_id}"
+
     Phoenix.PubSub.broadcast(
       Athena.PubSub,
-      "submission:#{submission.account_id}:#{submission.block_id}",
+      topic,
       {:draft_updated,
        %{
          block_id: submission.block_id,
          content: submission.content,
+         revision:
+           Athena.Learning.DraftCache.revision(
+             submission.account_id,
+             submission.cohort_id,
+             submission.block_id
+           ),
          updater_id: "test_worker"
        }}
     )
