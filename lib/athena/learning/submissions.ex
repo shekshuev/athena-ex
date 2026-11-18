@@ -7,6 +7,7 @@ defmodule Athena.Learning.Submissions do
   """
 
   import Ecto.Query
+  use Gettext, backend: AthenaWeb.Gettext
   alias Athena.{Repo, Content}
   alias Athena.Audit
   alias Athena.Content.{InteractionPolicy, ScoringRules}
@@ -204,7 +205,7 @@ defmodule Athena.Learning.Submissions do
       end
 
     query
-    |> order_by([s], desc: s.inserted_at)
+    |> order_by([s], desc: s.inserted_at, desc: s.id)
     |> limit(1)
     |> Repo.one()
   end
@@ -213,14 +214,68 @@ defmodule Athena.Learning.Submissions do
   Creates a new submission, forces the account_id, and enqueues execution if it's a code block.
   If a draft exists for this block, updates it instead of creating a new record.
   Uses Ecto.Multi to guarantee that the job is queued ONLY if the submission is saved.
+  Rejects a new attempt if this user/team already has a real, completed
+  top-level attempt on this block graded at 100 points.
   """
   @spec create_submission(map(), map()) :: {:ok, Submission.t()} | {:error, any()}
   def create_submission(user, attrs) do
-    if InteractionPolicy.block_readonly?(Map.get(attrs, "block_id")) do
-      {:error, :readonly}
-    else
-      do_create_submission(user, attrs)
+    changeset = Submission.changeset(%Submission{}, Map.put(attrs, "account_id", user.id))
+    lock = submission_lock(changeset)
+
+    cond do
+      InteractionPolicy.block_readonly?(Map.get(attrs, "block_id")) ->
+        {:error, :readonly}
+
+      lock == :rejected ->
+        {:error,
+         Ecto.Changeset.add_error(
+           changeset,
+           :base,
+           dgettext(
+             "errors",
+             "New submissions are blocked because an earlier submission was rejected."
+           ),
+           validation: :submission_rejected
+         )}
+
+      lock == :passed ->
+        {:error,
+         Ecto.Changeset.add_error(
+           changeset,
+           :base,
+           dgettext("errors", "This block has already been solved with 100 points."),
+           validation: :already_solved
+         )}
+
+      true ->
+        do_create_submission(user, attrs)
     end
+  end
+
+  defp submission_lock(%{valid?: false}), do: nil
+
+  defp submission_lock(changeset) do
+    block_id = Ecto.Changeset.get_field(changeset, :block_id)
+    account_id = Ecto.Changeset.get_field(changeset, :account_id)
+    cohort_id = Ecto.Changeset.get_field(changeset, :cohort_id)
+
+    Map.get(submission_locks(account_id, [block_id], cohort_id), block_id)
+  end
+
+  @doc "Submission restrictions, separate from which attempt is shown. Loads no content."
+  def submission_locks(account_id, block_ids, cohort_id \\ nil) do
+    from(s in Submission,
+      where:
+        s.block_id in ^block_ids and is_nil(s.parent_submission_id) and s.origin == :regular and
+          (s.status == :rejected or (s.score == 100 and s.status in [:graded, :accepted])),
+      where: fragment("?->>'is_test_run' IS NULL", s.content),
+      order_by: [asc: s.block_id, desc: fragment("? = 'rejected'", s.status)],
+      distinct: s.block_id,
+      select: {s.block_id, s.status}
+    )
+    |> where_owner(account_id, cohort_id)
+    |> Repo.all()
+    |> Map.new(fn {id, status} -> {id, if(status == :rejected, do: :rejected, else: :passed)} end)
   end
 
   defp do_create_submission(user, attrs) do
@@ -228,10 +283,12 @@ defmodule Athena.Learning.Submissions do
     block_id = Map.get(attrs, "block_id")
     cohort_id = Map.get(attrs, "cohort_id")
 
-    existing_draft = find_draft(user.id, block_id, cohort_id)
-
     Ecto.Multi.new()
-    |> Ecto.Multi.run(:submission, fn _repo, _changes ->
+    |> Ecto.Multi.run(:draft, fn _repo, _changes ->
+      lock_draft(user.id, cohort_id, block_id)
+      {:ok, find_draft(user.id, block_id, cohort_id)}
+    end)
+    |> Ecto.Multi.run(:submission, fn _repo, %{draft: existing_draft} ->
       if existing_draft do
         existing_draft
         |> Submission.changeset(Map.put(safe_attrs, "status", :pending))
@@ -263,20 +320,23 @@ defmodule Athena.Learning.Submissions do
     end)
     |> Repo.transaction()
     |> case do
-      {:ok, %{submission: submission}} -> {:ok, submission}
-      {:error, _failed_op, changeset, _changes} -> {:error, changeset}
+      {:ok, %{submission: submission, draft: draft}} ->
+        {:ok, submission}
+        |> Audit.on_ok(
+          "submission.submitted",
+          &[
+            submission_id: &1.id,
+            block_id: &1.block_id,
+            cohort_id: &1.cohort_id,
+            account_id: &1.account_id,
+            status: &1.status,
+            resubmit: not is_nil(draft)
+          ]
+        )
+
+      {:error, _failed_op, changeset, _changes} ->
+        {:error, changeset}
     end
-    |> Audit.on_ok(
-      "submission.submitted",
-      &[
-        submission_id: &1.id,
-        block_id: &1.block_id,
-        cohort_id: &1.cohort_id,
-        account_id: &1.account_id,
-        status: &1.status,
-        resubmit: not is_nil(existing_draft)
-      ]
-    )
   end
 
   @doc """
@@ -335,10 +395,10 @@ defmodule Athena.Learning.Submissions do
   Initiates a test run for code by updating the draft and enqueuing an Oban worker.
   Does NOT count as a formal submission attempt.
   """
-  def test_code(user, block, code) do
+  def test_code(user, block, code, opts \\ []) do
     content = %{"type" => :code, "code" => code, "is_test_run" => true}
 
-    case save_draft(user, block.id, content, nil) do
+    case save_draft(user, block.id, content, Keyword.get(opts, :cohort_id), opts) do
       {:ok, draft} ->
         %{submission_id: draft.id}
         |> Athena.Execution.TestWorker.new()
@@ -427,33 +487,19 @@ defmodule Athena.Learning.Submissions do
   Gets the attempt that counts for each of `block_ids`, scoped by cohort or
   user. Excludes draft submissions.
 
-  A rejected attempt wins outright; otherwise the highest score, latest
-  first on a tie. Rejection is a verdict on the work rather than a score
-  to be beaten - it is what disqualifies a team from a competition
-  (`get_team_leaderboard/2`) - so letting an earlier, higher-scoring
-  attempt mask it would punish a team for work they were never told about.
-  Showing it also locks the block for review, which is the point: the
-  instructor removes the rejected attempt when they want it reopened.
+  The most recent real submission wins, ordered by submission time and id.
+  Grades and later instructor edits never change an attempt's precedence.
   """
   @spec get_latest_submissions(String.t(), [String.t()], String.t() | nil) :: %{
           String.t() => Submission.t()
         }
   def get_latest_submissions(account_id, block_ids, cohort_id \\ nil, opts \\ []) do
-    query =
-      if cohort_id do
-        from s in Submission,
-          where:
-            s.cohort_id == ^cohort_id and s.block_id in ^block_ids and s.status != :draft and
-              fragment("?->>'is_test_run' IS NULL", s.content)
-      else
-        from s in Submission,
-          where:
-            s.account_id == ^account_id and is_nil(s.cohort_id) and
-              s.block_id in ^block_ids and s.status != :draft and
-              fragment("?->>'is_test_run' IS NULL", s.content)
-      end
-
-    query
+    from(s in Submission,
+      where: s.block_id in ^block_ids and s.status != :draft,
+      where: is_nil(s.parent_submission_id) and s.origin == :regular,
+      where: fragment("?->>'is_test_run' IS NULL", s.content)
+    )
+    |> where_owner(account_id, cohort_id)
     |> project_readonly_code(Keyword.get(opts, :readonly_code_ids, []))
     |> distinct([s], s.block_id)
     |> order_by([s], ^attempt_precedence())
@@ -479,20 +525,9 @@ defmodule Athena.Learning.Submissions do
     })
   end
 
-  # Which of a block's attempts is *the* attempt, shared by
-  # `get_latest_submissions/3` and `get_feedback_map/3` so the score and
-  # the comment a student reads can never come from different work.
-  #
-  # `desc_nulls_last` on the score because a plain `desc` is NULLS FIRST in
-  # Postgres: an attempt still awaiting a grade would otherwise hide an
-  # already-graded one - a teammate's blank exam masking the team's 90.
+  # Shared by the player and its feedback, so both always refer to one attempt.
   defp attempt_precedence do
-    [
-      asc: dynamic([s], s.block_id),
-      desc: dynamic([s], fragment("? = 'rejected'", s.status)),
-      desc_nulls_last: dynamic([s], s.score),
-      desc: dynamic([s], s.inserted_at)
-    ]
+    [asc: dynamic([s], s.block_id), desc: dynamic([s], s.inserted_at), desc: dynamic([s], s.id)]
   end
 
   @doc """
@@ -525,6 +560,7 @@ defmodule Athena.Learning.Submissions do
       from(s in Submission)
       |> where([s], s.block_id in ^block_ids and s.status != :draft)
       |> where([s], is_nil(s.parent_submission_id))
+      |> where([s], s.origin == :regular)
       |> where([s], fragment("?->>'is_test_run' IS NULL", s.content))
       |> where_owner(account_id, cohort_id)
       |> distinct([s], s.block_id)
@@ -640,22 +676,20 @@ defmodule Athena.Learning.Submissions do
   def get_team_leaderboard(course_id, scoring) do
     rules = ScoringRules.resolve(scoring)
 
-    best_rows = best_attempt_per_block(course_id)
-    solves = solves_per_block(best_rows, rules)
-    first_bloods = first_bloods_per_team(best_rows, rules)
+    latest_rows = latest_attempt_per_block(course_id)
+    solves = solves_per_block(latest_rows, rules)
+    first_bloods = first_bloods_per_team(latest_rows, rules)
     attempts = team_attempt_counts(course_id)
 
     course_id
     |> competing_teams()
-    |> Enum.map(&build_team_row(&1, best_rows, solves, first_bloods, attempts, rules))
+    |> Enum.map(&build_team_row(&1, latest_rows, solves, first_bloods, attempts, rules))
     |> order_teams(rules)
   end
 
-  # One row per (team, block): the attempt that counts. `desc_nulls_last`
-  # because a plain `desc` is NULLS FIRST in Postgres, so an attempt still
-  # awaiting a grade used to win its group and wipe a score a teammate had
-  # already earned on the same block.
-  defp best_attempt_per_block(course_id) do
+  # Choose the latest submission before interpreting its status/score. A
+  # pending latest attempt must not fall back to an earlier, graded score.
+  defp latest_attempt_per_block(course_id) do
     from(s in Submission,
       join: b in Block,
       on: s.block_id == b.id,
@@ -663,35 +697,49 @@ defmodule Athena.Learning.Submissions do
       on: b.section_id == sec.id,
       where:
         not is_nil(s.cohort_id) and sec.course_id == ^course_id and
-          s.status in [:graded, :needs_review],
+          s.status != :draft and is_nil(s.parent_submission_id) and s.origin == :regular,
+      where: fragment("?->>'is_test_run' IS NULL", s.content),
       distinct: [s.cohort_id, s.block_id],
-      order_by: [s.cohort_id, s.block_id, desc_nulls_last: s.score, asc: s.inserted_at],
+      order_by: [s.cohort_id, s.block_id, desc: s.inserted_at, desc: s.id],
       select: %{
         cohort_id: s.cohort_id,
         block_id: s.block_id,
         block_points: b.points,
+        status: s.status,
         score: s.score,
         inserted_at: s.inserted_at
       }
     )
     |> Repo.all()
+    |> Enum.map(fn row ->
+      scored? =
+        row.status in [
+          :graded,
+          :accepted,
+          :wrong_answer,
+          :time_limit_exceeded,
+          :memory_limit_exceeded,
+          :runtime_error,
+          :compilation_error
+        ] and is_integer(row.score)
+
+      row |> Map.put(:score, if(scored?, do: row.score, else: 0)) |> Map.put(:scored?, scored?)
+    end)
   end
 
   # How many teams have solved each block, from the same rows the points
   # are computed from - so the threshold lives in one place and the two can
   # never disagree.
-  defp solves_per_block(best_rows, rules) do
-    best_rows
-    |> Enum.filter(&ScoringRules.solve?(rules, &1.score))
+  defp solves_per_block(latest_rows, rules) do
+    latest_rows
+    |> Enum.filter(&(&1.scored? and ScoringRules.solve?(rules, &1.score)))
     |> Enum.frequencies_by(& &1.block_id)
   end
 
-  # Who solved each block first, counted per team. Note this is the time of
-  # the team's *best* attempt, which is what "solved it first" means here -
-  # not the first time they touched the block.
-  defp first_bloods_per_team(best_rows, rules) do
-    best_rows
-    |> Enum.filter(&ScoringRules.solve?(rules, &1.score))
+  # First solves among the same latest attempts used for points.
+  defp first_bloods_per_team(latest_rows, rules) do
+    latest_rows
+    |> Enum.filter(&(&1.scored? and ScoringRules.solve?(rules, &1.score)))
     |> Enum.group_by(& &1.block_id)
     |> Enum.map(fn {_block_id, rows} ->
       rows
@@ -707,7 +755,10 @@ defmodule Athena.Learning.Submissions do
       on: s.block_id == b.id,
       join: sec in Section,
       on: b.section_id == sec.id,
-      where: not is_nil(s.cohort_id) and sec.course_id == ^course_id,
+      where:
+        not is_nil(s.cohort_id) and sec.course_id == ^course_id and s.status != :draft and
+          is_nil(s.parent_submission_id) and s.origin == :regular,
+      where: fragment("?->>'is_test_run' IS NULL", s.content),
       group_by: s.cohort_id,
       select:
         {s.cohort_id,
@@ -730,8 +781,8 @@ defmodule Athena.Learning.Submissions do
     |> Repo.all()
   end
 
-  defp build_team_row(team, best_rows, solves, first_bloods, attempts, rules) do
-    rows = Enum.filter(best_rows, &(&1.cohort_id == team.team_id))
+  defp build_team_row(team, latest_rows, solves, first_bloods, attempts, rules) do
+    rows = Enum.filter(latest_rows, &(&1.cohort_id == team.team_id))
 
     block_points =
       Map.new(rows, fn row ->
@@ -863,11 +914,129 @@ defmodule Athena.Learning.Submissions do
   """
   @spec save_draft(map(), String.t(), map(), String.t() | nil) ::
           {:ok, Submission.t()} | {:error, Ecto.Changeset.t() | :readonly}
-  def save_draft(user, block_id, content, cohort_id \\ nil) do
+  def save_draft(user, block_id, content, cohort_id \\ nil, opts \\ []) do
     if InteractionPolicy.block_readonly?(block_id) do
       {:error, :readonly}
     else
+      with_draft_lock(user.id, cohort_id, block_id, fn ->
+        save_current_draft(user, block_id, content, cohort_id, Keyword.get(opts, :revision))
+      end)
+    end
+  end
+
+  defp save_current_draft(user, block_id, content, cohort_id, revision) do
+    if current_draft_revision?(user.id, cohort_id, block_id, revision) do
       do_save_draft(user, block_id, content, cohort_id)
+    else
+      {:error, :stale_draft}
+    end
+  end
+
+  @doc "Deletes only the caller's draft, leaving all submitted attempts and progress intact."
+  def discard_draft(user, block_id, cohort_id \\ nil, opts \\ []) do
+    with {:ok, block} <- Content.get_block_header(block_id),
+         {:ok, section} <- Content.get_section(block.section_id),
+         true <- draft_access?(user.id, section),
+         true <- draft_owner?(user.id, cohort_id),
+         false <- InteractionPolicy.block_readonly?(block_id) do
+      result =
+        with_draft_lock(user.id, cohort_id, block_id, fn ->
+          discard_locked_draft(user, block_id, cohort_id, Keyword.get(opts, :revision))
+        end)
+
+      case result do
+        {:ok, revision} ->
+          DraftCache.broadcast_reset(user.id, cohort_id, block_id, revision)
+          {:ok, revision}
+
+        error ->
+          error
+      end
+    else
+      _ -> {:error, :forbidden}
+    end
+  end
+
+  defp draft_access?(account_id, section) do
+    Athena.Learning.has_access?(account_id, section.course_id) or
+      Repo.exists?(
+        from(t in TestRunSession,
+          where:
+            t.ephemeral_account_id == ^account_id and t.course_id == ^section.course_id and
+              t.section_id == ^section.id and t.status == :active and
+              t.expires_at > ^DateTime.utc_now()
+        )
+      )
+  end
+
+  defp discard_locked_draft(user, block_id, cohort_id, revision) do
+    attempts =
+      from(s in Submission,
+        where:
+          s.block_id == ^block_id and s.status != :draft and s.origin == :regular and
+            is_nil(s.parent_submission_id),
+        where: fragment("?->>'is_test_run' IS NULL", s.content)
+      )
+      |> where_owner(user.id, cohort_id)
+
+    drafts =
+      draft_query([block_id], user.id, cohort_id)
+      |> where([s], is_nil(s.parent_submission_id))
+
+    ids = drafts |> select([s], s.id) |> Repo.all()
+
+    active_jobs =
+      from(j in Oban.Job,
+        where: j.state in ["available", "scheduled", "executing", "retryable"],
+        where: fragment("?->>'submission_id'", j.args) in ^ids
+      )
+
+    cond do
+      not current_draft_revision?(user.id, cohort_id, block_id, revision) ->
+        {:error, :stale_draft}
+
+      not Repo.exists?(attempts) ->
+        {:error, :no_submission}
+
+      Repo.exists?(active_jobs) ->
+        {:error, :processing}
+
+      true ->
+        Repo.delete_all(drafts)
+        DraftCache.clear_draft(user.id, cohort_id, block_id)
+        {:ok, DraftCache.rotate_revision(user.id, cohort_id, block_id)}
+    end
+  end
+
+  defp draft_owner?(_account_id, nil), do: true
+
+  defp draft_owner?(account_id, cohort_id),
+    do:
+      Repo.exists?(
+        from(m in CohortMembership,
+          where: m.account_id == ^account_id and m.cohort_id == ^cohort_id
+        )
+      )
+
+  defp current_draft_revision?(_account_id, _cohort_id, _block_id, nil), do: true
+
+  defp current_draft_revision?(account_id, cohort_id, block_id, revision),
+    do: DraftCache.revision(account_id, cohort_id, block_id) == revision
+
+  defp lock_draft(account_id, cohort_id, block_id) do
+    Repo.query!("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+      "draft:#{cohort_id || account_id}:#{block_id}"
+    ])
+  end
+
+  defp with_draft_lock(account_id, cohort_id, block_id, fun) do
+    Repo.transaction(fn ->
+      lock_draft(account_id, cohort_id, block_id)
+      fun.()
+    end)
+    |> case do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -975,6 +1144,11 @@ defmodule Athena.Learning.Submissions do
         DraftCache.save_draft(user_id, cohort_id, block_id, submission.content)
         submission.content
     end
+  end
+
+  @doc "Whether a test-run broadcast still belongs to a persisted draft."
+  def current_draft?(user_id, block_id, cohort_id, id) do
+    draft_query([block_id], user_id, cohort_id) |> where([s], s.id == ^id) |> Repo.exists?()
   end
 
   @doc false
@@ -1457,12 +1631,8 @@ defmodule Athena.Learning.Submissions do
   # so with a `cohort_id` the author is deliberately not part of the
   # lookup - the same rule as `where_owner/3` and `Progress`.
   #
-  # The ordering matters because teams created before the one-attempt rule
-  # may still have several parallel attempts on one block: most advanced
-  # first, then highest score, then earliest. That elects the attempt the
-  # leaderboard already credits the team with, so nothing moves downward,
-  # and among unfinished ones the earliest - the one the lock would have
-  # granted.
+  # Legacy teams can have multiple attempts. Resume/show the same latest
+  # attempt as the player, independently of its score.
   @doc false
   defp get_last_exam_submission(account_id, exam_block_id, cohort_id) do
     from(s in Submission,
@@ -1470,15 +1640,7 @@ defmodule Athena.Learning.Submissions do
       where: is_nil(s.parent_submission_id)
     )
     |> exam_attempt_owner(account_id, cohort_id)
-    |> order_by([s],
-      desc:
-        fragment(
-          "? IN ('graded','needs_review','rejected','time_limit_exceeded')",
-          s.status
-        ),
-      desc_nulls_last: s.score,
-      asc: s.inserted_at
-    )
+    |> order_by([s], desc: s.inserted_at, desc: s.id)
     |> limit(1)
     |> Repo.one()
   end

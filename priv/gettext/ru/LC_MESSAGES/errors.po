@@ -257,3 +257,13 @@ msgstr "не может превышать начальную стоимость
 #, elixir-autogen, elixir-format
 msgid "must not repeat the same tiebreaker"
 msgstr "не должен содержать повторяющиеся дополнительные критерии"
+
+#: lib/athena/learning/submissions.ex:246
+#, elixir-autogen, elixir-format
+msgid "This block has already been solved with 100 points."
+msgstr "Задание уже решено на 100 баллов."
+
+#: lib/athena/learning/submissions.ex:234
+#, elixir-autogen, elixir-format
+msgid "New submissions are blocked because an earlier submission was rejected."
+msgstr "Отправка новых решений запрещена: одно из предыдущих решений отклонено."

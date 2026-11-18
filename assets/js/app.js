@@ -464,6 +464,7 @@ Hooks.CodeEditor = {
 Hooks.Sortable = {
   mounted() {
     const eventName = this.el.dataset.eventName || "reorder";
+    const draftRevision = this.el.closest("[data-draft-revision]")?.dataset.draftRevision;
 
     // Chrome buttons here (move up/down, add-content, ...) can sit next to
     // per-item content that's itself a live, focusable TiptapEditor (the
@@ -489,6 +490,7 @@ Hooks.Sortable = {
       onEnd: (evt) => {
         this.pushEvent(eventName, {
           ...this.el.dataset,
+          draft_revision: draftRevision,
           id: evt.item.dataset.id,
           new_index: evt.newIndex,
           old_index: evt.oldIndex,
@@ -525,8 +527,10 @@ Hooks.TiptapEditor = {
       ? JSON.parse(this.el.dataset.content)
       : "";
     const blockId = this.el.dataset.id;
+    const draftRevision = this.el.closest("[data-draft-revision]")?.dataset.draftRevision;
     const isReadOnly = this.el.dataset.readonly === "true";
     let timeout;
+    this.cancelPendingUpdate = () => clearTimeout(timeout);
 
     // Opens the server-rendered "insert/edit link" modal (`LinkFormComponent`,
     // wired per-host - see `open_link_modal`/`apply_link`/`remove_link` in
@@ -899,7 +903,7 @@ Hooks.TiptapEditor = {
             const onChangeEvent = hook.el.dataset.onChange;
 
             if (onChangeEvent) {
-              const payload = { id: blockId, content: editor.getJSON() };
+              const payload = { id: blockId, content: editor.getJSON(), draft_revision: draftRevision };
               const target = hook.el.getAttribute("phx-target");
 
               if (target) {
@@ -1378,6 +1382,7 @@ Hooks.TiptapEditor = {
   },
 
   destroyed() {
+    if (this.cancelPendingUpdate) this.cancelPendingUpdate();
     if (this.detachTelemetry) this.detachTelemetry();
     if (this.editor) this.editor.destroy();
     if (this.handleInsertMedia) {
@@ -1686,6 +1691,11 @@ const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: { _csrf_token: csrfToken, timezone: browserTimezone },
   hooks: { ...colocatedHooks, ...Hooks },
+  metadata: {
+    click: (_event, element) => ({
+      draft_revision: element.closest("[data-draft-revision]")?.dataset.draftRevision,
+    }),
+  },
 });
 
 const savedTheme = localStorage.getItem("phx:theme") || "system";

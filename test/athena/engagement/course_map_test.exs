@@ -133,8 +133,23 @@ defmodule Athena.Engagement.CourseMapTest do
     Enum.each([a, b], &insert(:cohort_membership, account_id: &1.id, cohort_id: cohort.id))
 
     insert(:submission, account_id: a.id, block_id: quiz.id, status: :graded, score: 80)
-    insert(:submission, account_id: b.id, block_id: quiz.id, status: :graded, score: 20)
-    insert(:submission, account_id: b.id, block_id: quiz.id, status: :graded, score: 40)
+
+    insert(:submission,
+      account_id: b.id,
+      block_id: quiz.id,
+      status: :graded,
+      score: 20,
+      inserted_at: ~U[2026-01-01 10:00:00Z]
+    )
+
+    insert(:submission,
+      account_id: b.id,
+      block_id: quiz.id,
+      status: :graded,
+      score: 40,
+      inserted_at: ~U[2026-01-02 10:00:00Z]
+    )
+
     Athena.Learning.mark_completed(a.id, quiz.id)
 
     summary = Engagement.cohort_summary(cohort.id, course.id, since: nil)

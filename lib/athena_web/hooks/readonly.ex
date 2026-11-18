@@ -5,6 +5,7 @@ defmodule AthenaWeb.Hooks.Readonly do
   use Gettext, backend: AthenaWeb.Gettext
 
   alias Athena.Content.InteractionPolicy
+  alias Athena.Learning.DraftCache
 
   @read_events ~w(open_course_map close_course_map open_leaderboard close_leaderboard cancel_media_upload engagement_batch engagement_heartbeat)
 
@@ -22,7 +23,7 @@ defmodule AthenaWeb.Hooks.Readonly do
        ) do
     id = block_id(mode, %{"block_id" => block_id}, socket.assigns)
 
-    if InteractionPolicy.block_readonly?(id) do
+    if InteractionPolicy.block_readonly?(id) or stale_upload?(mode, id, socket.assigns) do
       {:halt, socket |> assign(:show_media_modal, false) |> assign(:active_upload_block_id, nil)}
     else
       {:cont, socket}
@@ -31,16 +32,33 @@ defmodule AthenaWeb.Hooks.Readonly do
 
   defp check_upload(_mode, _message, socket), do: {:cont, socket}
 
+  defp stale_upload?(:player, id, assigns) do
+    revision = assigns[:active_upload_draft_revision]
+
+    is_binary(revision) and
+      revision != DraftCache.revision(assigns.current_user.id, assigns.team_id, id)
+  end
+
+  defp stale_upload?(_mode, _id, _assigns), do: false
+
   defp check_event(_mode, event, _params, socket) when event in @read_events,
     do: {:cont, socket}
 
   defp check_event(mode, event, params, socket) do
     id = action_block_id(mode, event, params, socket.assigns)
 
-    if InteractionPolicy.block_readonly?(id) do
-      {:halt, put_flash(socket, :info, gettext("This block is read-only."))}
-    else
-      {:cont, socket}
+    cond do
+      InteractionPolicy.block_readonly?(id) ->
+        {:halt, put_flash(socket, :info, gettext("This block is read-only."))}
+
+      mode == :player and is_binary(params["draft_revision"]) and
+          params["draft_revision"] !=
+            DraftCache.revision(socket.assigns.current_user.id, socket.assigns.team_id, id) ->
+        send(self(), {:draft_reset, %{block_id: id}})
+        {:halt, socket}
+
+      true ->
+        {:cont, socket}
     end
   end
 

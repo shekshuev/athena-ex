@@ -23,6 +23,8 @@ defmodule AthenaWeb.BlockComponents do
   attr :pending_file_urls, :map, default: %{}
   attr :draft, :map, default: nil
   attr :hide_submit, :boolean, default: false
+  attr :submission_locked, :boolean, default: false
+  attr :editor_revision, :string, default: "static"
 
   # Set only for a `:quiz_exam`/`:ticket_exam` block whose single team
   # attempt a *teammate* is currently sitting: the display name to show in
@@ -61,6 +63,8 @@ defmodule AthenaWeb.BlockComponents do
             submission={@submission}
             draft={@draft}
             hide_submit={@hide_submit}
+            submission_locked={@submission_locked}
+            editor_revision={@editor_revision}
           />
         <% :quiz_question -> %>
           <.render_quiz_question
@@ -326,7 +330,11 @@ defmodule AthenaWeb.BlockComponents do
       )
 
     lang = assigns.block.content["language"] || Execution.default_language()
-    is_processing = !!(assigns.submission && assigns.submission.status in [:pending, :processing])
+
+    is_processing =
+      !!((assigns.submission && assigns.submission.status in [:pending, :processing]) ||
+           (assigns.draft && assigns.draft["processing"]))
+
     readonly = !!(assigns.mode not in [:edit, :play] or is_processing)
 
     execution_results =
@@ -404,7 +412,7 @@ defmodule AthenaWeb.BlockComponents do
           <% end %>
 
           <div
-            id={"code-editor-#{@mode}-#{@block.id}-#{code_editor_cache_key(@mode, @block, @code)}"}
+            id={"code-editor-#{@mode}-#{@block.id}-#{code_editor_cache_key(@mode, @block, @code)}-#{@editor_revision}"}
             phx-hook="CodeEditor"
             data-language={@cm_lang}
             data-readonly={to_string(@readonly)}
@@ -437,7 +445,7 @@ defmodule AthenaWeb.BlockComponents do
                 phx-click="run_code"
                 phx-value-block_id={@block.id}
                 class="btn btn-outline btn-sm"
-                disabled={@is_processing}
+                disabled={@is_processing || @submission_locked}
               >
                 <.icon name="hero-play" class="size-4 mr-1" /> {gettext("Run")}
               </button>
@@ -446,7 +454,7 @@ defmodule AthenaWeb.BlockComponents do
                 :if={not @hide_submit and @mode == :play}
                 type="submit"
                 class="btn btn-primary btn-sm"
-                disabled={@readonly || @is_processing}
+                disabled={@readonly || @is_processing || @submission_locked}
               >
                 <%= cond do %>
                   <% @is_processing -> %>

@@ -174,8 +174,11 @@ defmodule AthenaWeb.TeachingLive.CohortGradebookTest do
     submit(ctx.ivanov, ctx.quiz, :graded, 55, 10)
 
     {:ok, lv, _html} = live(ctx.conn, gb_path(ctx))
-    assert cell(lv, ctx.ivanov, ctx.quiz) =~ "90"
+    assert cell(lv, ctx.ivanov, ctx.quiz) =~ "55"
     assert cell(lv, ctx.ivanov, ctx.quiz) =~ "×2"
+
+    lv |> element("#gradebook-filters") |> render_change(%{"attempt" => "best"})
+    assert cell(lv, ctx.ivanov, ctx.quiz) =~ "90"
 
     lv |> element("#gradebook-filters") |> render_change(%{"attempt" => "last"})
     assert cell(lv, ctx.ivanov, ctx.quiz) =~ "55"
@@ -184,7 +187,7 @@ defmodule AthenaWeb.TeachingLive.CohortGradebookTest do
     |> element("#gradebook-filters")
     |> render_change(%{"display" => "pass", "threshold" => "60"})
 
-    assert_patch(lv, gb_path(ctx, "?attempt=last&display=pass&threshold=60"))
+    assert_patch(lv, gb_path(ctx, "?display=pass&threshold=60"))
     assert cell(lv, ctx.ivanov, ctx.quiz) =~ "hero-x-mark-mini"
   end
 

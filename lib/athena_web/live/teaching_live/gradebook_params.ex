@@ -53,7 +53,7 @@ defmodule AthenaWeb.TeachingLive.GradebookParams do
       types: [],
       from: nil,
       to: nil,
-      attempt: :best,
+      attempt: :last,
       status: :all,
       threshold: Gradebook.default_threshold(),
       display: :score,

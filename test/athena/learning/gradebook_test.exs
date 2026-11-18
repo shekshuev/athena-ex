@@ -78,17 +78,17 @@ defmodule Athena.Learning.GradebookTest do
   end
 
   describe "build/3 - which attempt is shown" do
-    test "best attempt by default, with the total attempt count", ctx do
+    test "last attempt by default, with the total attempt count", ctx do
       submit(ctx.ivanov, ctx.quiz, :graded, 40, 30)
-      best = submit(ctx.ivanov, ctx.quiz, :graded, 90, 20)
-      submit(ctx.ivanov, ctx.quiz, :graded, 60, 10)
+      submit(ctx.ivanov, ctx.quiz, :graded, 90, 20)
+      last = submit(ctx.ivanov, ctx.quiz, :graded, 60, 10)
 
       %{cells: cells} = Gradebook.build(ctx.cohort, ctx.course.id)
 
-      assert %{state: :scored, score: 90, attempts: 3, submission_id: id} =
+      assert %{state: :scored, score: 60, attempts: 3, submission_id: id} =
                cells[{ctx.ivanov.id, ctx.quiz.id}]
 
-      assert id == best.id
+      assert id == last.id
     end
 
     test "last and first attempt policies", ctx do
@@ -113,7 +113,7 @@ defmodule Athena.Learning.GradebookTest do
       submit(ctx.petrova, ctx.quiz, :needs_review, 0, 10)
       submit(ctx.petrova, ctx.code, :processing, 0, 5)
 
-      %{cells: cells} = Gradebook.build(ctx.cohort, ctx.course.id)
+      %{cells: cells} = Gradebook.build(ctx.cohort, ctx.course.id, %{attempt: :best})
 
       assert %{state: :scored, score: 70, attempts: 2} = cells[{ctx.ivanov.id, ctx.quiz.id}]
       assert %{state: :review, score: nil} = cells[{ctx.petrova.id, ctx.quiz.id}]

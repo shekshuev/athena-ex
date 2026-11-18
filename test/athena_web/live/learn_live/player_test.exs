@@ -635,7 +635,8 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         status: :graded,
         score: 60,
         feedback: "Partly right - see the second step.",
-        updated_at: DateTime.add(now, -1, :day)
+        inserted_at: DateTime.add(now, -1, :day),
+        updated_at: now
       )
 
       insert(:submission,
@@ -644,18 +645,18 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
         status: :graded,
         score: 20,
         feedback: "This retry went backwards.",
-        updated_at: now
+        inserted_at: now
       )
 
       {:ok, lv, _html} = live(conn, ~p"/learn/courses/#{course.id}/play/#{s1.id}")
 
-      assert has_element?(
+      refute has_element?(
                lv,
                "#instructor-feedback-#{block.id}",
                "Partly right - see the second step."
              )
 
-      refute has_element?(
+      assert has_element?(
                lv,
                "#instructor-feedback-#{block.id}",
                "This retry went backwards."
@@ -1338,7 +1339,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
     test "submits code and reacts to async result via PubSub", %{
       conn: conn,
       course: course,
-      user: user
+      user: _user
     } do
       s1 = insert(:section, course: course)
       block = insert(:block, section: s1, type: :code, content: %{"language" => "python3"})
@@ -1355,9 +1356,8 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       assert render(lv) =~ "Checking..."
 
       submission =
-        insert(:submission,
-          account_id: user.id,
-          block_id: block.id,
+        :sys.get_state(lv.pid).socket.assigns.submissions[block.id]
+        |> Ecto.Changeset.change(
           status: :accepted,
           score: 100,
           content: %{
@@ -1366,6 +1366,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
             ]
           }
         )
+        |> Athena.Repo.update!()
 
       send(lv.pid, {:submission_updated, submission})
 
@@ -1375,7 +1376,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
     end
 
     test "after a wrong submission, typing new code updates the editor's value instead of sticking to the old submission's code",
-         %{conn: conn, course: course, user: user} do
+         %{conn: conn, course: course} do
       s1 = insert(:section, course: course)
       block = insert(:block, section: s1, type: :code, content: %{"language" => "python3"})
 
@@ -1386,9 +1387,10 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       |> render_submit(%{"block_id" => block.id, "answer" => %{"code" => "AAAWRONGCODE"}})
 
       wrong_submission =
-        insert(:submission,
-          account_id: user.id,
-          block_id: block.id,
+        :sys.get_state(lv.pid).socket.assigns.submissions[block.id]
+        |> Ecto.Changeset.change(
+          inserted_at:
+            DateTime.add(DateTime.utc_now() |> DateTime.truncate(:second), -1, :second),
           status: :wrong_answer,
           score: 0,
           content: %{
@@ -1398,6 +1400,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
             ]
           }
         )
+        |> Athena.Repo.update!()
 
       send(lv.pid, {:submission_updated, wrong_submission})
       assert render(lv) =~ "AAAWRONGCODE"
@@ -1408,13 +1411,13 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       # `extract_code_answer/4` must prefer this fresh draft over that
       # submission's own (stale) code, or the hidden input the browser
       # actually submits on the next click would still hold "AAAWRONGCODE".
-      html =
-        lv
-        |> form("#code-form-#{block.id}")
-        |> render_change(%{"block_id" => block.id, "answer" => %{"code" => "BBBRIGHTCODE"}})
+      lv
+      |> form("#code-form-#{block.id}")
+      |> render_change(%{"block_id" => block.id, "answer" => %{"code" => "BBBRIGHTCODE"}})
 
-      assert html =~ "BBBRIGHTCODE"
-      refute html =~ "AAAWRONGCODE"
+      assert has_element?(lv, "#code-form-#{block.id} [data-code='BBBRIGHTCODE']")
+      refute has_element?(lv, "#code-form-#{block.id} [data-code='AAAWRONGCODE']")
+      assert has_element?(lv, "#submitted-solution-#{block.id} [data-code='AAAWRONGCODE']")
 
       # And submitting now actually sends the new code, not the old one.
       lv
@@ -1496,6 +1499,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
           account_id: user.id,
           block_id: gate_block.id,
           status: :wrong_answer,
+          inserted_at: ~U[2026-01-01 10:00:00Z],
           score: 0
         )
 
@@ -1508,6 +1512,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
           account_id: user.id,
           block_id: gate_block.id,
           status: :accepted,
+          inserted_at: ~U[2026-01-02 10:00:00Z],
           score: 100
         )
 

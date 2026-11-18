@@ -196,17 +196,15 @@ defmodule Athena.Learning.SubmissionsTest do
       block_id = Ecto.UUID.generate()
       now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-      # The attempt the player shows: `get_latest_submissions/3` prefers
-      # the highest score, and the comment has to come from that same row -
-      # otherwise a regrade leaves a new comment sitting above an old,
-      # higher number that describes different work.
+      # Submission time, not score or review time, selects both code and feedback.
       insert(:submission,
         account_id: account_id,
         block_id: block_id,
         score: 80,
         status: :graded,
         feedback: "Good, but check your units",
-        updated_at: DateTime.add(now, -1, :day)
+        inserted_at: DateTime.add(now, -1, :day),
+        updated_at: now
       )
 
       insert(:submission,
@@ -215,12 +213,13 @@ defmodule Athena.Learning.SubmissionsTest do
         score: 40,
         status: :graded,
         feedback: "This retry is weaker",
+        inserted_at: now,
         updated_at: now
       )
 
       result = Submissions.get_feedback_map(account_id, [block_id])
 
-      assert %{feedback: "Good, but check your units", status: :graded, questions: []} =
+      assert %{feedback: "This retry is weaker", status: :graded, questions: []} =
                result[block_id]
     end
 
@@ -367,7 +366,7 @@ defmodule Athena.Learning.SubmissionsTest do
   end
 
   describe "get_latest_submissions/3" do
-    test "returns a map of the highest scored individual submissions for the given block ids" do
+    test "returns the latest individual submissions regardless of score" do
       account_id = Ecto.UUID.generate()
       other_account_id = Ecto.UUID.generate()
       _team = insert(:cohort)
@@ -379,7 +378,7 @@ defmodule Athena.Learning.SubmissionsTest do
       now = DateTime.utc_now() |> DateTime.truncate(:second)
       yesterday = DateTime.add(now, -1, :day)
 
-      best_b1 =
+      _earlier_b1 =
         insert(:submission,
           account_id: account_id,
           block_id: block_1_id,
@@ -387,12 +386,13 @@ defmodule Athena.Learning.SubmissionsTest do
           inserted_at: yesterday
         )
 
-      insert(:submission,
-        account_id: account_id,
-        block_id: block_1_id,
-        score: 0,
-        inserted_at: now
-      )
+      latest_b1 =
+        insert(:submission,
+          account_id: account_id,
+          block_id: block_1_id,
+          score: 0,
+          inserted_at: now
+        )
 
       best_b2 =
         insert(:submission,
@@ -414,8 +414,8 @@ defmodule Athena.Learning.SubmissionsTest do
 
       assert map_size(result) == 2
 
-      assert result[block_1_id].id == best_b1.id
-      assert result[block_1_id].score == 100
+      assert result[block_1_id].id == latest_b1.id
+      assert result[block_1_id].score == 0
 
       assert result[block_2_id].id == best_b2.id
       assert result[block_2_id].score == 80
@@ -719,14 +719,14 @@ defmodule Athena.Learning.SubmissionsTest do
       block2 = insert(:block, section: ctx.section)
 
       solve(block1, alpha, inserted_at: ~U[2026-01-01 08:00:00Z])
-      solve(block2, alpha, inserted_at: ~U[2026-01-03 10:00:00Z])
+      solve(block2, alpha, inserted_at: ~U[2026-01-01 09:00:00Z])
 
       solve(block1, beta, inserted_at: ~U[2026-01-02 10:00:00Z])
       solve(block2, beta, inserted_at: ~U[2026-01-02 11:00:00Z])
 
       rules = %ScoringRules{tiebreakers: [:first_blood]}
 
-      assert [%{team_name: "Alpha", first_bloods: 1}, %{team_name: "Beta"} | _] =
+      assert [%{team_name: "Alpha", first_bloods: 2}, %{team_name: "Beta"} | _] =
                Submissions.get_team_leaderboard(ctx.course.id, rules)
     end
 
@@ -735,8 +735,8 @@ defmodule Athena.Learning.SubmissionsTest do
       block = insert(:block, section: ctx.section)
 
       solve(block, alpha, score: 50)
-      solve(block, beta, score: 0, status: :rejected)
-      solve(block, beta, score: 90)
+      solve(block, beta, score: 0, status: :rejected, inserted_at: ~U[2026-01-01 10:00:00Z])
+      solve(block, beta, score: 90, inserted_at: ~U[2026-01-02 10:00:00Z])
 
       strict = Submissions.get_team_leaderboard(ctx.course.id, %ScoringRules{})
 
@@ -764,24 +764,24 @@ defmodule Athena.Learning.SubmissionsTest do
       assert Enum.all?(rest, &is_nil(&1.last_activity))
     end
 
-    test "an unscored attempt does not mask a graded one on the same block", ctx do
+    test "the latest unscored attempt does not fall back to an older grade", ctx do
       [alpha | _] = ctx.teams
       block = insert(:block, section: ctx.section)
 
-      solve(block, alpha, score: 90)
+      solve(block, alpha, score: 90, inserted_at: ~U[2026-01-01 10:00:00Z])
 
-      unscored = solve(block, alpha, status: :needs_review)
+      unscored = solve(block, alpha, status: :needs_review, inserted_at: ~U[2026-01-02 10:00:00Z])
 
       {1, _} =
         Submission |> where([s], s.id == ^unscored.id) |> Repo.update_all(set: [score: nil])
 
       assert score_for(Submissions.get_team_leaderboard(ctx.course.id, %ScoringRules{}), alpha) ==
-               90
+               0
     end
   end
 
   describe "get_team_leaderboard/1" do
-    test "calculates team scores by summing max score per block and handles ties by time" do
+    test "calculates team scores from latest attempts and handles ties by time" do
       course = insert(:course)
       section = insert(:section, course: course)
       block1 = insert(:block, section: section)

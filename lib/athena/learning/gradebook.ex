@@ -20,8 +20,8 @@ defmodule Athena.Learning.Gradebook do
       team cohorts match by the team's own `cohort_id`.
 
   When a student has several attempts on a block, `filters.attempt` picks
-  the one shown: `:best` (highest final score; the default, as in Moodle),
-  `:last` or `:first`. `filters.from`/`filters.to` restrict which attempts
+  the one shown: `:last` (latest submission, the default),
+  `:best` (highest final score) or `:first`. `filters.from`/`filters.to` restrict which attempts
   are considered at all, by submission date in the app timezone.
   """
 
@@ -36,7 +36,7 @@ defmodule Athena.Learning.Gradebook do
                      runtime_error compilation_error rejected)a
   @in_progress_statuses ~w(pending processing system_error)a
 
-  @attempt_policies [:best, :last, :first]
+  @attempt_policies [:last, :best, :first]
   @status_filters [:all, :failed, :review, :not_started, :in_progress]
   @default_threshold 50
 
@@ -90,7 +90,7 @@ defmodule Athena.Learning.Gradebook do
     columns = select_columns(catalog, filters)
     all_rows = rows_for(cohort)
     rows = select_rows(all_rows, Map.get(filters, :account_ids))
-    policy = Map.get(filters, :attempt, :best)
+    policy = Map.get(filters, :attempt, :last)
 
     cells =
       cohort
