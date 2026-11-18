@@ -27,7 +27,7 @@ defmodule AthenaWeb.LearnLive.PlayerSubmissionHistoryTest do
     }
   end
 
-  test "draft is editable, submitted code can be inspected, discard restores latest send", ctx do
+  test "draft is editable, submitted code can be inspected, discard clears the editor", ctx do
     old = sent(ctx, "SELECT 80", 80, ~U[2026-01-01 10:00:00Z], "Old comment")
     latest = sent(ctx, "SELECT 40", 40, ~U[2026-01-02 10:00:00Z], "Latest comment")
 
@@ -46,10 +46,26 @@ defmodule AthenaWeb.LearnLive.PlayerSubmissionHistoryTest do
     assert has_element?(view, "#instructor-feedback-#{ctx.block.id}", "Latest comment")
     assert has_element?(view, "#feedback-submission-note-#{ctx.block.id}")
     refute has_element?(view, "#instructor-feedback-#{ctx.block.id}", "Old comment")
+    assert has_element?(view, "#block-wrapper-#{ctx.block.id} > details:last-child")
+
+    assert has_element?(
+             view,
+             "#block-wrapper-#{ctx.block.id} > div:has(> #discard-draft-#{ctx.block.id}) + #submitted-solution-#{ctx.block.id}"
+           )
+
+    refute has_element?(view, "#discard-draft-#{ctx.block.id}[data-confirm]")
     view |> element("#discard-draft-#{ctx.block.id}") |> render_click()
+    assert has_element?(view, "#discard-draft-modal.modal-open")
+    assert Repo.get!(Submission, draft.id)
+    view |> element("#discard-draft-modal button", "Cancel") |> render_click()
+    refute has_element?(view, "#discard-draft-modal.modal-open")
+    assert Repo.get!(Submission, draft.id)
+    view |> element("#discard-draft-#{ctx.block.id}") |> render_click()
+    view |> element("#discard-draft-modal button", "Delete draft") |> render_click()
+    refute has_element?(view, "#discard-draft-modal.modal-open")
     refute has_element?(view, "#discard-draft-#{ctx.block.id}")
-    refute has_element?(view, "#submitted-solution-#{ctx.block.id}")
-    assert has_element?(view, "#code-form-#{ctx.block.id} [data-code='SELECT 40']")
+    assert has_element?(view, "#submitted-solution-#{ctx.block.id} [data-code='SELECT 40']")
+    assert has_element?(view, "#code-form-#{ctx.block.id} [data-code='']")
     assert Repo.get(Submission, draft.id) == nil
     assert Repo.get!(Submission, latest.id).score == 40
     assert Repo.get!(Submission, old.id).score == 80
@@ -67,7 +83,35 @@ defmodule AthenaWeb.LearnLive.PlayerSubmissionHistoryTest do
     })
 
     assert Learning.get_draft(ctx.user.id, ctx.block.id) == nil
-    assert has_element?(view, "#code-form-#{ctx.block.id} [data-code='SELECT 40']")
+    assert has_element?(view, "#code-form-#{ctx.block.id} [data-code='']")
+  end
+
+  test "discard clears a quiz answer while keeping its submitted answer available", ctx do
+    ctx.block
+    |> Ecto.Changeset.change(
+      type: :quiz_question,
+      content: %{"question_type" => "exact_match", "correct_answer" => "42"}
+    )
+    |> Repo.update!()
+
+    insert(:submission,
+      account_id: ctx.user.id,
+      block_id: ctx.block.id,
+      status: :graded,
+      score: 40,
+      content: %{"type" => "quiz_question", "text_answer" => "old answer"}
+    )
+
+    Learning.save_draft(ctx.user, ctx.block.id, %{"text_answer" => "draft answer"})
+    {:ok, view, _} = live(ctx.conn, path(ctx))
+    assert has_element?(view, "#exact-answer-#{ctx.block.id}[value='draft answer']")
+    view |> element("#discard-draft-#{ctx.block.id}") |> render_click()
+    view |> element("#discard-draft-modal button", "Delete draft") |> render_click()
+
+    refute has_element?(view, "#exact-answer-#{ctx.block.id}[value='old answer']")
+    refute has_element?(view, "#exact-answer-#{ctx.block.id}[value='draft answer']")
+    assert has_element?(view, "#exact-answer-submitted-#{ctx.block.id}[value='old answer']")
+    assert Learning.get_draft(ctx.user.id, ctx.block.id) == nil
   end
 
   test "late grading of an old attempt cannot replace the latest code or comment", ctx do
@@ -151,7 +195,8 @@ defmodule AthenaWeb.LearnLive.PlayerSubmissionHistoryTest do
     {:ok, bob, _} = live(other_conn, path(ctx))
     old_revision = DraftCache.revision(other.id, team.id, ctx.block.id)
     alice |> element("#discard-draft-#{ctx.block.id}") |> render_click()
-    assert has_element?(bob, "#code-form-#{ctx.block.id} [data-code='SELECT 60']")
+    alice |> element("#discard-draft-modal button", "Delete draft") |> render_click()
+    assert has_element?(bob, "#code-form-#{ctx.block.id} [data-code='']")
     refute has_element?(bob, "#discard-draft-#{ctx.block.id}")
 
     render_click(bob, "save_draft", %{
@@ -161,7 +206,7 @@ defmodule AthenaWeb.LearnLive.PlayerSubmissionHistoryTest do
     })
 
     assert Learning.get_draft(other.id, ctx.block.id, team.id) == nil
-    assert has_element?(alice, "#code-form-#{ctx.block.id} [data-code='SELECT 60']")
+    assert has_element?(alice, "#code-form-#{ctx.block.id} [data-code='']")
   end
 
   test "an upload started before discard cannot recreate a deleted file draft", ctx do
@@ -190,6 +235,7 @@ defmodule AthenaWeb.LearnLive.PlayerSubmissionHistoryTest do
     })
 
     view |> element("#discard-draft-#{ctx.block.id}") |> render_click()
+    view |> element("#discard-draft-modal button", "Delete draft") |> render_click()
 
     send(view.pid, {
       AthenaWeb.StudioLive.MediaUploadComponent,

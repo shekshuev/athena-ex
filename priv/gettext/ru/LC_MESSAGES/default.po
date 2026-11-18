@@ -11052,8 +11052,8 @@ msgstr "Удалить черновик"
 
 #: lib/athena_web/live/learn_live/player.ex:2511
 #, elixir-autogen, elixir-format
-msgid "Delete the draft and return to the last submitted solution? This also deletes the draft for your team."
-msgstr "Удалить черновик и вернуться к последнему отправленному решению? У команды черновик также будет удалён."
+msgid "Delete the draft and clear the answer field? This also deletes the draft for your team."
+msgstr "Удалить черновик и очистить поле ответа? У команды черновик также будет удалён."
 
 #: lib/athena_web/live/learn_live/player.ex:2479
 #, elixir-autogen, elixir-format

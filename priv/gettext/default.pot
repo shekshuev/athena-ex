@@ -11034,7 +11034,7 @@ msgstr ""
 
 #: lib/athena_web/live/learn_live/player.ex:2511
 #, elixir-autogen, elixir-format
-msgid "Delete the draft and return to the last submitted solution? This also deletes the draft for your team."
+msgid "Delete the draft and clear the answer field? This also deletes the draft for your team."
 msgstr ""
 
 #: lib/athena_web/live/learn_live/player.ex:2479

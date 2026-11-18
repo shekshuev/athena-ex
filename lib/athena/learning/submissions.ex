@@ -936,7 +936,7 @@ defmodule Athena.Learning.Submissions do
   def discard_draft(user, block_id, cohort_id \\ nil, opts \\ []) do
     with {:ok, block} <- Content.get_block_header(block_id),
          {:ok, section} <- Content.get_section(block.section_id),
-         true <- Athena.Learning.has_access?(user.id, section.course_id),
+         true <- draft_access?(user.id, section),
          true <- draft_owner?(user.id, cohort_id),
          false <- InteractionPolicy.block_readonly?(block_id) do
       result =
@@ -955,6 +955,18 @@ defmodule Athena.Learning.Submissions do
     else
       _ -> {:error, :forbidden}
     end
+  end
+
+  defp draft_access?(account_id, section) do
+    Athena.Learning.has_access?(account_id, section.course_id) or
+      Repo.exists?(
+        from(t in TestRunSession,
+          where:
+            t.ephemeral_account_id == ^account_id and t.course_id == ^section.course_id and
+              t.section_id == ^section.id and t.status == :active and
+              t.expires_at > ^DateTime.utc_now()
+        )
+      )
   end
 
   defp discard_locked_draft(user, block_id, cohort_id, revision) do

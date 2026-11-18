@@ -24,6 +24,7 @@ defmodule AthenaWeb.BlockComponents do
   attr :draft, :map, default: nil
   attr :hide_submit, :boolean, default: false
   attr :submission_locked, :boolean, default: false
+  attr :editor_revision, :string, default: "static"
 
   # Set only for a `:quiz_exam`/`:ticket_exam` block whose single team
   # attempt a *teammate* is currently sitting: the display name to show in
@@ -63,6 +64,7 @@ defmodule AthenaWeb.BlockComponents do
             draft={@draft}
             hide_submit={@hide_submit}
             submission_locked={@submission_locked}
+            editor_revision={@editor_revision}
           />
         <% :quiz_question -> %>
           <.render_quiz_question
@@ -410,7 +412,7 @@ defmodule AthenaWeb.BlockComponents do
           <% end %>
 
           <div
-            id={"code-editor-#{@mode}-#{@block.id}-#{code_editor_cache_key(@mode, @block, @code)}"}
+            id={"code-editor-#{@mode}-#{@block.id}-#{code_editor_cache_key(@mode, @block, @code)}-#{@editor_revision}"}
             phx-hook="CodeEditor"
             data-language={@cm_lang}
             data-readonly={to_string(@readonly)}

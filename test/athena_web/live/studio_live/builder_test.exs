@@ -1594,6 +1594,62 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
   end
 
   describe "Test Run - code execution inside the nested player" do
+    test "a test student can discard a draft without enrollment", ctx do
+      section = insert(:section, course: ctx.course)
+      block = insert(:block, section: section, type: :code, content: %{"language" => "sql"})
+      {:ok, builder, _} = live(ctx.conn, ~p"/studio/courses/#{ctx.course.id}/builder")
+
+      builder
+      |> element("div[phx-click='select_section'][phx-value-id='#{section.id}']")
+      |> render_click()
+
+      builder |> element("button[phx-click='start_test_run']") |> render_click()
+      session = Repo.one!(Athena.Learning.TestRunSession)
+      player = find_live_child(builder, "test-run-player-#{session.id}")
+      refute Athena.Learning.has_access?(session.ephemeral_account_id, ctx.course.id)
+
+      submitted =
+        insert(:submission,
+          account_id: session.ephemeral_account_id,
+          block_id: block.id,
+          status: :graded,
+          score: 40,
+          content: %{"type" => "code", "code" => "SELECT 40"}
+        )
+
+      send(player.pid, {:submission_updated, submitted})
+      assert has_element?(player, "#code-form-#{block.id} [data-code='SELECT 40']")
+
+      player
+      |> form("#code-form-#{block.id}")
+      |> render_change(%{"block_id" => block.id, "answer" => %{"code" => "SELECT 50"}})
+
+      assert Athena.Learning.get_draft(session.ephemeral_account_id, block.id)
+      player |> element("#discard-draft-#{block.id}") |> render_click()
+      assert has_element?(player, "#discard-draft-modal.modal-open")
+      player |> element("#discard-draft-modal button", "Delete draft") |> render_click()
+
+      assert Athena.Learning.get_draft(session.ephemeral_account_id, block.id) == nil
+      assert Repo.get!(Athena.Learning.Submission, submitted.id).score == 40
+      assert has_element?(player, "#code-form-#{block.id} [data-code='']")
+      assert has_element?(player, "#submitted-solution-#{block.id} [data-code='SELECT 40']")
+      refute has_element?(player, "#discard-draft-#{block.id}")
+
+      editor_id = code_editor_id(player, block.id)
+
+      player
+      |> form("#code-form-#{block.id}")
+      |> render_change(%{"block_id" => block.id, "answer" => %{"code" => "SELECT 99"}})
+
+      assert code_editor_id(player, block.id) == editor_id
+      player |> element("#discard-draft-#{block.id}") |> render_click()
+      player |> element("#discard-draft-modal button", "Delete draft") |> render_click()
+
+      refute code_editor_id(player, block.id) == editor_id
+      assert has_element?(player, "#code-form-#{block.id} [data-code='']")
+      assert Athena.Learning.get_draft(session.ephemeral_account_id, block.id) == nil
+    end
+
     test "clicking Run on a SQL block inside a live Test Run actually executes it", %{
       conn: conn,
       course: course,
@@ -2512,5 +2568,14 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
     |> render_submit()
 
     Repo.get_by!(LibraryBlock, title: title)
+  end
+
+  defp code_editor_id(view, block_id) do
+    view
+    |> element("#code-form-#{block_id} [phx-hook='CodeEditor']")
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.attribute("id")
+    |> hd()
   end
 end

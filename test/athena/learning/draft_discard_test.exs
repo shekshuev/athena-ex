@@ -82,6 +82,42 @@ defmodule Athena.Learning.DraftDiscardTest do
     assert Repo.get!(Submission, draft.id).status == :draft
   end
 
+  test "test-run access requires an active unexpired session for the block's section", ctx do
+    user = insert(:account)
+    insert(:submission, account_id: user.id, block_id: ctx.block.id, status: :graded)
+    {:ok, draft} = Submissions.save_draft(user, ctx.block.id, %{"code" => "draft"})
+    assert {:error, :forbidden} = Submissions.discard_draft(user, ctx.block.id)
+
+    session =
+      insert(:test_run_session,
+        ephemeral_account_id: user.id,
+        course_id: ctx.course.id,
+        section_id: Ecto.UUID.generate()
+      )
+
+    assert {:error, :forbidden} = Submissions.discard_draft(user, ctx.block.id)
+
+    session =
+      session
+      |> Ecto.Changeset.change(
+        section_id: ctx.block.section_id,
+        expires_at: DateTime.add(DateTime.utc_now() |> DateTime.truncate(:second), -1)
+      )
+      |> Repo.update!()
+
+    assert {:error, :forbidden} = Submissions.discard_draft(user, ctx.block.id)
+
+    session
+    |> Ecto.Changeset.change(
+      status: :cleaned_up,
+      expires_at: DateTime.add(DateTime.utc_now() |> DateTime.truncate(:second), 1800)
+    )
+    |> Repo.update!()
+
+    assert {:error, :forbidden} = Submissions.discard_draft(user, ctx.block.id)
+    assert Repo.get!(Submission, draft.id).status == :draft
+  end
+
   test "does not remove a draft while its code job is queued or running", ctx do
     insert(:submission, account_id: ctx.user.id, block_id: ctx.block.id, status: :graded)
     {:ok, draft} = Submissions.save_draft(ctx.user, ctx.block.id, %{"code" => "draft"})

@@ -225,6 +225,8 @@ defmodule AthenaWeb.LearnLive.Player do
       |> assign(:drafts, drafts)
       |> assign(:overrides, ctx.overrides)
       |> assign(:block_counts, ctx.block_counts)
+      |> assign(:draft_to_discard, nil)
+      |> assign(:cleared_answers, %{})
       |> assign(:show_media_modal, false)
       |> assign(:active_upload_block_id, nil)
       |> assign(:upload_type, nil)
@@ -695,6 +697,29 @@ defmodule AthenaWeb.LearnLive.Player do
   defp draft_revisions(user_id, team_id, blocks),
     do: Map.new(blocks, &{&1.id, DraftCache.revision(user_id, team_id, &1.id)})
 
+  defp clear_editor(socket, block_id) do
+    socket = refresh(socket, :content)
+    submission = Map.get(socket.assigns.submissions, block_id)
+
+    if submission do
+      assign(
+        socket,
+        :cleared_answers,
+        Map.put(socket.assigns.cleared_answers, block_id, submission.id)
+      )
+    else
+      socket
+    end
+  end
+
+  defp answer_cleared?(cleared_answers, block_id, submission),
+    do: submission != nil and Map.get(cleared_answers, block_id) == submission.id
+
+  defp editor_block(block, true),
+    do: %{block | content: Map.put(block.content, "initial_code", "")}
+
+  defp editor_block(block, false), do: block
+
   defp draft_opts(socket, block_id),
     do: [revision: Map.get(socket.assigns.draft_revisions, block_id)]
 
@@ -1017,7 +1042,9 @@ defmodule AthenaWeb.LearnLive.Player do
 
     socket = EngagementSignals.emit_code_run_attempt(socket, block_id)
 
-    do_run_code(socket, block, draft, submission)
+    cleared? = answer_cleared?(socket.assigns.cleared_answers, block_id, submission)
+    block = if block, do: editor_block(block, cleared?)
+    do_run_code(socket, block, draft, if(cleared?, do: nil, else: submission))
   end
 
   def handle_event(
@@ -1076,7 +1103,25 @@ defmodule AthenaWeb.LearnLive.Player do
     handle_event("save_draft", params, socket)
   end
 
+  def handle_event("request_discard_draft", %{"block_id" => block_id}, socket) do
+    if Enum.any?(socket.assigns.blocks, &(&1.id == block_id)) do
+      {:noreply,
+       assign(socket, :draft_to_discard, %{
+         block_id: block_id,
+         draft_revision: Map.fetch!(socket.assigns.draft_revisions, block_id)
+       })}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("cancel_discard_draft", _params, socket) do
+    {:noreply, assign(socket, :draft_to_discard, nil)}
+  end
+
   def handle_event("discard_draft", %{"block_id" => block_id}, socket) do
+    socket = assign(socket, :draft_to_discard, nil)
+
     with %{} <- Enum.find(socket.assigns.blocks, &(&1.id == block_id)),
          {:ok, _revision} <-
            Learning.discard_draft(
@@ -1085,7 +1130,7 @@ defmodule AthenaWeb.LearnLive.Player do
              socket.assigns.team_id,
              draft_opts(socket, block_id)
            ) do
-      {:noreply, refresh(socket, :content)}
+      {:noreply, clear_editor(socket, block_id)}
     else
       {:error, :processing} ->
         {:noreply,
@@ -2108,7 +2153,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
   def handle_info({:draft_reset, %{block_id: block_id}}, socket) do
     if Enum.any?(socket.assigns.blocks, &(&1.id == block_id)) do
-      {:noreply, refresh(socket, :content)}
+      {:noreply, clear_editor(socket, block_id)}
     else
       {:noreply, socket}
     end
@@ -2419,6 +2464,9 @@ defmodule AthenaWeb.LearnLive.Player do
             <% sub_score = if submission, do: submission.score, else: 0 %>
 
             <% draft = Map.get(@drafts || %{}, block.id) %>
+            <% cleared? = answer_cleared?(@cleared_answers, block.id, submission) %>
+            <% answer_block = editor_block(block, cleared?) %>
+            <% answer_submission = if cleared?, do: nil, else: submission %>
             <% lock = Map.get(@submission_locks, block.id) %>
             <% is_passed =
               lock == :passed or
@@ -2475,7 +2523,7 @@ defmodule AthenaWeb.LearnLive.Player do
                         <%= cond do %>
                           <% draft != nil -> %>
                             {gettext("Draft")}
-                          <% submission != nil -> %>
+                          <% submission != nil and not cleared? -> %>
                             {gettext("Last submitted solution")}
                           <% true -> %>
                             {gettext("Your answer")}
@@ -2500,39 +2548,7 @@ defmodule AthenaWeb.LearnLive.Player do
                         </span>
                       </p>
                     </div>
-                    <button
-                      :if={draft != nil and submission != nil}
-                      id={"discard-draft-#{block.id}"}
-                      type="button"
-                      phx-click="discard_draft"
-                      phx-value-block_id={block.id}
-                      disabled={is_pending or draft["processing"] == true}
-                      data-confirm={
-                        gettext(
-                          "Delete the draft and return to the last submitted solution? This also deletes the draft for your team."
-                        )
-                      }
-                      class="btn btn-ghost btn-sm text-error"
-                    >
-                      <.icon name="hero-trash" class="size-4" /> {gettext("Delete draft")}
-                    </button>
                   </div>
-                  <details
-                    :if={draft != nil and submission != nil}
-                    id={"submitted-solution-#{block.id}"}
-                    class="mb-6 rounded-sm border border-base-300 bg-base-100"
-                  >
-                    <summary class="cursor-pointer px-4 py-3 text-sm font-medium transition-colors hover:bg-base-200">
-                      {gettext("View submitted solution")}
-                    </summary>
-                    <div class="border-t border-base-200 p-4">
-                      <.submitted_solution
-                        block={block}
-                        submission={submission}
-                        user_id={@current_user.id}
-                      />
-                    </div>
-                  </details>
                 <% end %>
                 <%= if readonly do %>
                   <div
@@ -2572,9 +2588,9 @@ defmodule AthenaWeb.LearnLive.Player do
                         <input type="hidden" name="draft_revision" value={revision} />
 
                         <.content_block
-                          block={block}
+                          block={answer_block}
                           mode={mode}
-                          submission={submission}
+                          submission={answer_submission}
                           draft={Map.get(@drafts || %{}, block.id)}
                           user_id={@current_user.id}
                         />
@@ -2621,11 +2637,12 @@ defmodule AthenaWeb.LearnLive.Player do
                           <input type="hidden" name="draft_revision" value={revision} />
 
                           <.content_block
-                            block={block}
+                            block={answer_block}
                             mode={mode}
-                            submission={submission}
+                            submission={answer_submission}
                             draft={Map.get(@drafts || %{}, block.id)}
                             submission_locked={is_locked}
+                            editor_revision={revision}
                           />
                         </form>
                       </div>
@@ -2643,9 +2660,9 @@ defmodule AthenaWeb.LearnLive.Player do
                           <input type="hidden" name="draft_revision" value={revision} />
 
                           <.content_block
-                            block={block}
+                            block={answer_block}
                             mode={if fa_locked and is_nil(draft), do: :review, else: :play}
-                            submission={submission}
+                            submission={answer_submission}
                             pending_file_urls={@pending_file_urls}
                             draft={Map.get(@drafts || %{}, block.id)}
                           />
@@ -2698,6 +2715,45 @@ defmodule AthenaWeb.LearnLive.Player do
               <div :if={gate?(block) and not readonly} class="mt-8">
                 <.render_gate block={block} is_completed={block.id in @completed_ids} />
               </div>
+
+              <div
+                :if={
+                  not readonly and block.type in [:code, :quiz_question, :file_assignment] and
+                    draft != nil and submission != nil
+                }
+                class="mt-6 flex justify-end"
+              >
+                <button
+                  id={"discard-draft-#{block.id}"}
+                  type="button"
+                  phx-click="request_discard_draft"
+                  phx-value-block_id={block.id}
+                  disabled={is_pending or draft["processing"] == true}
+                  class="btn btn-ghost btn-sm text-error"
+                >
+                  <.icon name="hero-trash" class="size-4" /> {gettext("Delete draft")}
+                </button>
+              </div>
+
+              <details
+                :if={
+                  not readonly and block.type in [:code, :quiz_question, :file_assignment] and
+                    (draft != nil or cleared?) and submission != nil
+                }
+                id={"submitted-solution-#{block.id}"}
+                class="mt-6 rounded-sm border border-base-300 bg-base-100"
+              >
+                <summary class="cursor-pointer px-4 py-3 text-sm font-medium transition-colors hover:bg-base-200">
+                  {gettext("View submitted solution")}
+                </summary>
+                <div class="border-t border-base-200 p-4">
+                  <.submitted_solution
+                    block={block}
+                    submission={submission}
+                    user_id={@current_user.id}
+                  />
+                </div>
+              </details>
             </div>
           <% end %>
         </div>
@@ -2726,6 +2782,21 @@ defmodule AthenaWeb.LearnLive.Player do
         >
           {gettext("Section complete. Cross-section navigation isn't available in a test run.")}
         </div>
+
+        <.modal
+          id="discard-draft-modal"
+          show={@draft_to_discard != nil}
+          title={gettext("Delete draft")}
+          description={
+            gettext(
+              "Delete the draft and clear the answer field? This also deletes the draft for your team."
+            )
+          }
+          confirm_label={gettext("Delete draft")}
+          danger={true}
+          on_cancel={JS.push("cancel_discard_draft")}
+          on_confirm={JS.push("discard_draft", value: @draft_to_discard || %{})}
+        />
 
         <.modal
           :if={@course_map_open}
