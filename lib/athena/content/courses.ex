@@ -79,11 +79,25 @@ defmodule Athena.Content.Courses do
   """
   @spec list_accessible_course_ids(map()) :: [String.t()]
   def list_accessible_course_ids(user) do
-    Course
-    |> where([c], is_nil(c.deleted_at))
-    |> scope_course_reads(user)
+    user
+    |> readable_query()
     |> select([c], c.id)
     |> Repo.all()
+  end
+
+  @doc false
+  def readable_query(user) do
+    Course |> where([c], is_nil(c.deleted_at)) |> scope_course_reads(user)
+  end
+
+  @doc false
+  def editable_query(user) do
+    conditions =
+      [{"courses.update", :standard}, {"competitions.update", :competition}]
+      |> Enum.map(fn {permission, type} -> course_write_condition(user, permission, type) end)
+      |> Enum.reject(&is_nil/1)
+
+    apply_course_conditions(readable_query(user), conditions)
   end
 
   @doc """
@@ -424,10 +438,29 @@ defmodule Athena.Content.Courses do
       |> Enum.map(fn {permission, type} -> course_type_condition(user, permission, type) end)
       |> Enum.reject(&is_nil/1)
 
+    apply_course_conditions(query, conditions)
+  end
+
+  defp apply_course_conditions(query, conditions) do
     case conditions do
       [] -> from c in query, where: false
       [condition] -> from c in query, where: ^condition
       [condition_1, condition_2] -> from c in query, where: ^dynamic(^condition_1 or ^condition_2)
+    end
+  end
+
+  defp course_write_condition(user, permission, type) do
+    if Identity.can?(user, permission) do
+      if "own_only" in Map.get(user.role.policies || %{}, permission, []) do
+        shares =
+          from s in CourseShare,
+            where: s.account_id == ^user.id and s.role == :writer,
+            select: s.course_id
+
+        dynamic([c], c.type == ^type and (c.owner_id == ^user.id or c.id in subquery(shares)))
+      else
+        dynamic([c], c.type == ^type)
+      end
     end
   end
 
@@ -460,10 +493,14 @@ defmodule Athena.Content.Courses do
           {:ok, CourseLibraryBlock.t()} | {:error, Ecto.Changeset.t() | atom()}
   def pin_library_block(user, course_id, library_block_id) do
     with {:ok, course} <- get_course(course_id),
-         :ok <- check_course_write_rights(user, course) do
+         :ok <- check_course_write_rights(user, course),
+         true <- Athena.Content.LibraryAccess.readable?(user, library_block_id) do
       %CourseLibraryBlock{}
       |> CourseLibraryBlock.changeset(%{course_id: course_id, library_block_id: library_block_id})
       |> Repo.insert()
+    else
+      false -> {:error, :forbidden}
+      error -> error
     end
   end
 
@@ -490,10 +527,11 @@ defmodule Athena.Content.Courses do
   @spec list_course_workspace_blocks(map(), String.t()) :: [LibraryBlock.t()]
   def list_course_workspace_blocks(user, course_id) do
     with {:ok, _course} <- get_course(user, course_id) do
-      CourseLibraryBlock
-      |> where(course_id: ^course_id)
-      |> join(:inner, [clb], lb in LibraryBlock, on: clb.library_block_id == lb.id)
-      |> select([clb, lb], lb)
+      LibraryBlock
+      |> join(:inner, [lb], clb in CourseLibraryBlock,
+        on: clb.library_block_id == lb.id and clb.course_id == ^course_id
+      )
+      |> Athena.Content.LibraryAccess.scope_reads(user)
       |> Repo.all()
     end
   end

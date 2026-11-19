@@ -11005,3 +11005,19 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "LaTeX formulas remain text. Hints and answer shuffling settings are not imported. Short-answer feedback is added to the general explanation."
 msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:988
+#: lib/athena_web/live/studio_live/library_editor.ex:1013
+#, elixir-autogen, elixir-format
+msgid "Create a copy for this course"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:904
+#, elixir-autogen, elixir-format
+msgid "Only course editors can pin or unpin templates."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library_editor.ex:975
+#, elixir-autogen, elixir-format
+msgid "You can edit this template through a shared course. Changes affect the original template in every course that uses it. Sharing, visibility and deletion require separate permissions."
+msgstr ""

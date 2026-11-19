@@ -17,6 +17,7 @@ defmodule AthenaWeb.StudioLive.Library do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Athena.PubSub, "user_library:#{socket.assigns.current_user.id}")
       Phoenix.PubSub.subscribe(Athena.PubSub, "public_library")
+      Phoenix.PubSub.subscribe(Athena.PubSub, "library_access")
     end
 
     {:ok,
@@ -38,7 +39,7 @@ defmodule AthenaWeb.StudioLive.Library do
        export_form: to_form(%{"scope" => "filtered", "format" => "moodle_xml"}, as: :export)
      )
      |> assign(course_library_mode: false)
-     |> assign(course: nil)
+     |> assign(course: nil, can_edit_course: false, block_access: %{})
      |> assign(pinned_ids: MapSet.new())
      |> assign(pinnable_ids: MapSet.new())
      |> stream(:library_blocks, [])}
@@ -49,7 +50,7 @@ defmodule AthenaWeb.StudioLive.Library do
     uri = URI.parse(url)
     current_path = if uri.query, do: "#{uri.path}?#{uri.query}", else: uri.path
 
-    course_id = params["id"]
+    course_id = library_course_id(socket.assigns.live_action, params)
 
     default_pinned = if course_id, do: "true", else: "false"
 
@@ -64,6 +65,7 @@ defmodule AthenaWeb.StudioLive.Library do
       |> assign(:current_path, current_path)
       |> assign(:course_id, course_id)
       |> assign(:pinned_only, pinned_only)
+      |> load_course_bank(course_id)
       |> apply_action(socket.assigns.live_action, params)
 
     {:noreply, load_blocks(socket, params)}
@@ -84,6 +86,9 @@ defmodule AthenaWeb.StudioLive.Library do
       {:ok, {blocks, meta}} ->
         socket
         |> assign(meta: meta, page_ids: MapSet.new(Enum.map(blocks, & &1.id)))
+        |> assign(
+          block_access: Content.library_blocks_access(socket.assigns.current_user, blocks)
+        )
         |> assign(search: search)
         |> assign(type_filter: type)
         |> assign(tag_filter: tag)
@@ -94,7 +99,7 @@ defmodule AthenaWeb.StudioLive.Library do
       {:error, _meta} ->
         socket
         |> assign(search: search, type_filter: type, tag_filter: tag, has_blocks: false)
-        |> assign(pinnable_ids: MapSet.new(), page_ids: MapSet.new())
+        |> assign(pinnable_ids: MapSet.new(), page_ids: MapSet.new(), block_access: %{})
         |> stream(:library_blocks, [], reset: true)
     end
   end
@@ -103,20 +108,10 @@ defmodule AthenaWeb.StudioLive.Library do
   # pin/unpin - mirrors the `can_toggle` check the "In Course" column itself
   # already does per row - so the header's select-all checkbox only ever
   # offers to touch blocks a bulk toggle could actually change.
-  defp pinnable_ids(%{assigns: %{course_library_mode: false}}, _blocks), do: MapSet.new()
+  defp pinnable_ids(%{assigns: %{can_edit_course: true}}, blocks),
+    do: MapSet.new(Enum.map(blocks, & &1.id))
 
-  defp pinnable_ids(socket, blocks) do
-    user = socket.assigns.current_user
-    is_course_owner = socket.assigns.course && socket.assigns.course.owner_id == user.id
-
-    blocks
-    |> Enum.filter(fn block ->
-      is_course_owner or block_badges(block, user).role in [:owner, :writer] or
-        Identity.can?(user, "library.update", block)
-    end)
-    |> Enum.map(& &1.id)
-    |> MapSet.new()
-  end
+  defp pinnable_ids(_socket, _blocks), do: MapSet.new()
 
   defp all_pinned?(pinnable_ids, _pinned_ids) when pinnable_ids == %MapSet{}, do: false
   defp all_pinned?(pinnable_ids, pinned_ids), do: MapSet.subset?(pinnable_ids, pinned_ids)
@@ -145,29 +140,49 @@ defmodule AthenaWeb.StudioLive.Library do
   defp toggle_membership(mapset, id, true = _member?), do: MapSet.put(mapset, id)
   defp toggle_membership(mapset, id, false = _member?), do: MapSet.delete(mapset, id)
 
-  defp apply_action(socket, :course_library, %{"id" => course_id}) do
+  defp library_course_id(:course_library, params), do: params["id"]
+  defp library_course_id(:new, params), do: params["id"]
+  defp library_course_id(:edit, %{"block_id" => _} = params), do: params["id"]
+  defp library_course_id(_action, _params), do: nil
+
+  defp load_course_bank(socket, nil),
+    do:
+      assign(socket,
+        course: nil,
+        course_library_mode: false,
+        can_edit_course: false,
+        pinned_ids: MapSet.new()
+      )
+
+  defp load_course_bank(socket, course_id) do
     case Content.get_course(socket.assigns.current_user, course_id) do
       {:ok, course} ->
-        if connected?(socket) do
-          Phoenix.PubSub.subscribe(Athena.PubSub, "course_library:#{course.id}")
-        end
+        blocks = Content.list_course_workspace_blocks(socket.assigns.current_user, course.id)
 
-        pinned_blocks =
-          Content.list_course_workspace_blocks(socket.assigns.current_user, course.id)
-
-        pinned_ids = MapSet.new(Enum.map(pinned_blocks, & &1.id))
-
-        socket
-        |> assign(page_title: gettext("Course Library: %{title}", title: course.title))
-        |> assign(library_block: nil)
-        |> assign(course_library_mode: true, course: course, pinned_ids: pinned_ids)
+        assign(socket,
+          course: course,
+          course_library_mode: true,
+          can_edit_course: Content.can_edit_course?(socket.assigns.current_user, course),
+          pinned_ids: MapSet.new(Enum.map(blocks, & &1.id))
+        )
 
       _ ->
         socket
+        |> assign(can_edit_course: false, pinned_ids: MapSet.new())
         |> put_flash(:error, gettext("Course not found or access denied."))
         |> push_navigate(to: ~p"/studio/courses")
     end
   end
+
+  defp apply_action(%{assigns: %{course: nil}} = socket, :course_library, _params),
+    do: assign(socket, page_title: gettext("Library"), library_block: nil)
+
+  defp apply_action(socket, :course_library, _params),
+    do:
+      assign(socket,
+        page_title: gettext("Course Library: %{title}", title: socket.assigns.course.title),
+        library_block: nil
+      )
 
   defp apply_action(socket, :index, _params) do
     assign(socket, page_title: gettext("Library"), library_block: nil)
@@ -183,13 +198,12 @@ defmodule AthenaWeb.StudioLive.Library do
     end
   end
 
-  defp apply_action(socket, :edit, %{"id" => id}) do
+  defp apply_action(socket, :edit, params) do
+    id = params["block_id"] || params["id"]
+
     case Content.get_library_block(socket.assigns.current_user, id) do
       {:ok, block} ->
-        info = block_badges(block, socket.assigns.current_user)
-
-        if info.role in [:owner, :writer] or
-             Identity.can?(socket.assigns.current_user, "library.update", block) do
+        if Content.can_edit_library_block?(socket.assigns.current_user, block) do
           assign(socket, page_title: gettext("Edit Template"), library_block: block)
         else
           socket
@@ -336,23 +350,12 @@ defmodule AthenaWeb.StudioLive.Library do
     do: {:noreply, assign(socket, export_open: false)}
 
   def handle_event("delete_click", %{"id" => id}, socket) do
-    {:ok, block} = Content.get_library_block(socket.assigns.current_user, id)
-
-    if block.owner_id == socket.assigns.current_user.id or
-         Identity.can?(socket.assigns.current_user, "library.delete", block) do
+    with {:ok, block} <- Content.get_library_block(socket.assigns.current_user, id),
+         true <- Content.library_block_access(socket.assigns.current_user, block).can_delete do
       {:noreply, assign(socket, block_to_delete: block)}
     else
-      target_path =
-        if socket.assigns.course_library_mode do
-          ~p"/studio/courses/#{socket.assigns.course.id}/library"
-        else
-          ~p"/studio/library"
-        end
-
-      {:noreply,
-       socket
-       |> put_flash(:error, gettext("Only the owner can delete this template."))
-       |> push_patch(to: target_path)}
+      _ ->
+        {:noreply, put_flash(socket, :error, gettext("Only the owner can delete this template."))}
     end
   end
 
@@ -377,8 +380,7 @@ defmodule AthenaWeb.StudioLive.Library do
   def handle_event("share_click", %{"id" => id}, socket) do
     case Content.get_library_block(socket.assigns.current_user, id) do
       {:ok, block} ->
-        if block.owner_id == socket.assigns.current_user.id or
-             Identity.can?(socket.assigns.current_user, "library.update", block) do
+        if Content.library_block_access(socket.assigns.current_user, block).can_manage do
           {:noreply, assign(socket, block_to_share: block)}
         else
           {:noreply,
@@ -456,10 +458,9 @@ defmodule AthenaWeb.StudioLive.Library do
 
   def handle_event("copy_block", %{"id" => id}, socket) do
     with {:ok, block} <- Content.get_library_block(socket.assigns.current_user, id),
-         {:ok, copy} <- Content.duplicate_library_block(socket.assigns.current_user, block) do
+         {:ok, _copy} <- duplicate_block(socket, block) do
       socket =
         socket
-        |> pin_copy_if_course_library(copy)
         |> put_flash(:info, gettext("Template duplicated successfully"))
         |> load_blocks(build_query_params(socket.assigns, %{}))
 
@@ -572,23 +573,20 @@ defmodule AthenaWeb.StudioLive.Library do
     }
   end
 
-  defp pin_copy_if_course_library(%{assigns: %{course_library_mode: false}} = socket, _copy),
-    do: socket
+  defp duplicate_block(%{assigns: %{course_library_mode: true}} = socket, block),
+    do:
+      Content.duplicate_library_block_for_course(
+        socket.assigns.current_user,
+        socket.assigns.course.id,
+        block.id
+      )
 
-  defp pin_copy_if_course_library(socket, copy) do
-    case Content.pin_library_block(
-           socket.assigns.current_user,
-           socket.assigns.course.id,
-           copy.id
-         ) do
-      {:ok, _} -> assign(socket, pinned_ids: MapSet.put(socket.assigns.pinned_ids, copy.id))
-      {:error, _} -> socket
-    end
-  end
+  defp duplicate_block(socket, block),
+    do: Content.duplicate_library_block(socket.assigns.current_user, block)
 
   @impl true
-  def handle_info({LibraryFormComponent, {:saved, block}}, socket) do
-    {:noreply, stream_insert(socket, :library_blocks, block)}
+  def handle_info({LibraryFormComponent, {:saved, _block}}, socket) do
+    {:noreply, load_blocks(socket, build_query_params(socket.assigns, %{}))}
   end
 
   def handle_info({LibraryShareComponent, {:updated, block}}, socket) do
@@ -599,42 +597,21 @@ defmodule AthenaWeb.StudioLive.Library do
         socket
       end
 
-    {:noreply, stream_insert(socket, :library_blocks, block)}
+    {:noreply, load_blocks(socket, build_query_params(socket.assigns, %{}))}
   end
 
   @impl true
   def handle_info(:refresh_library, socket) do
-    socket =
-      if socket.assigns.course_library_mode do
-        pinned_blocks =
-          Content.list_course_workspace_blocks(
-            socket.assigns.current_user,
-            socket.assigns.course.id
-          )
-
-        assign(socket, pinned_ids: MapSet.new(Enum.map(pinned_blocks, & &1.id)))
-      else
-        socket
-      end
-
+    socket = load_course_bank(socket, socket.assigns.course_id)
     params = build_query_params(socket.assigns, %{})
     {:noreply, load_blocks(socket, params)}
   end
 
-  defp block_badges(block, user) do
-    shares = Content.list_block_shares(block)
-
-    role =
-      cond do
-        block.owner_id == user.id -> :owner
-        share = Enum.find(shares, &(&1.account_id == user.id)) -> share.role
-        true -> :none
-      end
-
+  defp block_badges(block, user, access) do
     %{
-      role: role,
+      role: if(block.owner_id == user.id, do: :owner, else: access.role),
       is_public: block.is_public,
-      shares_count: length(shares)
+      shares_count: access.shares_count
     }
   end
 
@@ -928,11 +905,7 @@ defmodule AthenaWeb.StudioLive.Library do
                 />
               </:col>
               <:col :let={{_id, block}} :if={@course_library_mode} label={gettext("In Course")}>
-                <% info = block_badges(block, @current_user) %>
-                <% is_course_owner = @course && @course.owner_id == @current_user.id %>
-                <% can_toggle =
-                  is_course_owner or info.role in [:owner, :writer] or
-                    Identity.can?(@current_user, "library.update", block) %>
+                <% can_toggle = @can_edit_course %>
 
                 <.input
                   :if={can_toggle}
@@ -951,14 +924,16 @@ defmodule AthenaWeb.StudioLive.Library do
                   value={MapSet.member?(@pinned_ids, block.id)}
                   disabled
                   class="checkbox checkbox-primary checkbox-sm opacity-50 cursor-not-allowed"
-                  title={gettext("Only block owner or course owner can unpin this.")}
+                  title={gettext("Only course editors can pin or unpin templates.")}
                 />
               </:col>
 
               <:col :let={{_id, block}} label={gettext("Title")} sort="title">
                 <div class="flex flex-col gap-1 items-start">
                   <span class="font-bold">{block.title}</span>
-                  <.access_badges info={block_badges(block, @current_user)} />
+                  <.access_badges info={
+                    block_badges(block, @current_user, Map.fetch!(@block_access, block.id))
+                  } />
                 </div>
               </:col>
 
@@ -984,13 +959,10 @@ defmodule AthenaWeb.StudioLive.Library do
               </:col>
 
               <:action :let={{_id, block}}>
-                <% info = block_badges(block, @current_user) %>
-                <% can_edit =
-                  info.role in [:owner, :writer] or
-                    Identity.can?(@current_user, "library.update", block) %>
+                <% access = Map.fetch!(@block_access, block.id) %>
+                <% can_edit = access.can_edit %>
+                <% can_view = access.role != :none %>
                 <% is_pinned = @course_library_mode && MapSet.member?(@pinned_ids, block.id) %>
-
-                <% can_view = can_edit or info.role == :reader or info.is_public or is_pinned %>
 
                 <% is_pinned_anywhere =
                   (Ecto.assoc_loaded?(block.course_library_blocks) &&
@@ -1032,19 +1004,26 @@ defmodule AthenaWeb.StudioLive.Library do
                   </.button>
 
                   <.button
-                    :if={can_view and Identity.can?(@current_user, "library.create")}
+                    :if={
+                      can_view and Identity.can?(@current_user, "library.create") and
+                        (not @course_library_mode or @can_edit_course)
+                    }
                     id={"copy-block-#{block.id}"}
                     type="button"
                     phx-click="copy_block"
                     phx-value-id={block.id}
                     class="btn btn-ghost btn-xs btn-square"
-                    title={gettext("Duplicate Template")}
+                    title={
+                      if @course_library_mode,
+                        do: gettext("Create a copy for this course"),
+                        else: gettext("Duplicate Template")
+                    }
                   >
                     <.icon name="hero-square-2-stack" class="size-4" />
                   </.button>
 
                   <.button
-                    :if={info.role == :owner or Identity.can?(@current_user, "library.update", block)}
+                    :if={access.can_manage}
                     type="button"
                     phx-click="share_click"
                     phx-value-id={block.id}
@@ -1055,10 +1034,7 @@ defmodule AthenaWeb.StudioLive.Library do
                   </.button>
 
                   <.button
-                    :if={
-                      (info.role == :owner or Identity.can?(@current_user, "library.delete", block)) and
-                        not is_pinned_anywhere
-                    }
+                    :if={access.can_delete and not is_pinned_anywhere}
                     type="button"
                     phx-click="delete_click"
                     phx-value-id={block.id}

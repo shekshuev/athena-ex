@@ -219,11 +219,51 @@ defmodule Athena.Content.Library do
     create_library_block(user, attrs)
   end
 
+  @doc "Creates a private course-owned copy and pins it atomically, without modifying the original."
+  def duplicate_library_block_for_course(user, course_id, block_id) do
+    with true <- Identity.can?(user, "library.create"),
+         {:ok, course} <- Athena.Content.Courses.get_course(user, course_id),
+         true <- Athena.Content.Courses.can_edit_course?(user, course),
+         {:ok, block} <- get_library_block(user, block_id) do
+      copy_into_course(course, block)
+    else
+      false -> {:error, :forbidden}
+      error -> error
+    end
+  end
+
+  defp copy_into_course(course, block) do
+    attrs = %{
+      title: gettext("%{title} (Copy)", title: block.title),
+      type: block.type,
+      content: block.content,
+      tags: block.tags,
+      points: block.points
+    }
+
+    Ecto.Multi.new()
+    |> Ecto.Multi.insert(
+      :block,
+      LibraryBlock.changeset(%LibraryBlock{owner_id: course.owner_id}, attrs)
+    )
+    |> Ecto.Multi.insert(:pin, fn %{block: copy} ->
+      CourseLibraryBlock.changeset(%CourseLibraryBlock{}, %{
+        course_id: course.id,
+        library_block_id: copy.id
+      })
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{block: copy}} -> {:ok, copy}
+      {:error, _operation, reason, _changes} -> {:error, reason}
+    end
+  end
+
   @doc "Updates a library block template. Checks own_only policies."
   @spec update_library_block(map(), LibraryBlock.t(), map()) ::
           {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def update_library_block(user, %LibraryBlock{} = block, attrs) do
-    if can_edit_block?(user, block) do
+    if can_edit_block?(user, block) and allowed_update_attrs?(user, block, attrs) do
       block
       |> LibraryBlock.changeset(attrs)
       |> Repo.update()
@@ -232,11 +272,18 @@ defmodule Athena.Content.Library do
     end
   end
 
+  defp allowed_update_attrs?(user, block, attrs) do
+    protected? =
+      Enum.any?([:owner_id, :is_public, "owner_id", "is_public"], &Map.has_key?(attrs, &1))
+
+    not protected? or Athena.Content.LibraryAccess.manageable?(user, block)
+  end
+
   @doc "Deletes a library block template. Checks own_only policies."
   @spec delete_library_block(map(), LibraryBlock.t()) ::
           {:ok, LibraryBlock.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def delete_library_block(user, %LibraryBlock{} = block) do
-    if can_edit_block?(user, block) do
+    if Athena.Content.LibraryAccess.deletable?(user, block) do
       block
       |> Ecto.Changeset.change()
       |> Ecto.Changeset.foreign_key_constraint(:course_library_blocks,
@@ -388,7 +435,7 @@ defmodule Athena.Content.Library do
   Updates the role if the share already exists via UPSERT.
   """
   def share_block(user, %LibraryBlock{} = block, account_id, role \\ :reader) do
-    if can_edit_block?(user, block) do
+    if Athena.Content.LibraryAccess.manageable?(user, block) do
       %LibraryBlockShare{}
       |> LibraryBlockShare.changeset(%{
         library_block_id: block.id,
@@ -412,7 +459,7 @@ defmodule Athena.Content.Library do
   Revokes a specific user's access to a library block.
   """
   def revoke_block_share(user, %LibraryBlock{} = block, account_id) do
-    if can_edit_block?(user, block) do
+    if Athena.Content.LibraryAccess.manageable?(user, block) do
       from(s in LibraryBlockShare,
         where: s.library_block_id == ^block.id and s.account_id == ^account_id
       )
@@ -428,7 +475,7 @@ defmodule Athena.Content.Library do
   Toggles the public visibility of a library block.
   """
   def toggle_block_public(user, %LibraryBlock{} = block, is_public) when is_boolean(is_public) do
-    if can_edit_block?(user, block) do
+    if Athena.Content.LibraryAccess.manageable?(user, block) do
       block
       |> Ecto.Changeset.change(%{is_public: is_public})
       |> Repo.update()
@@ -448,76 +495,11 @@ defmodule Athena.Content.Library do
     )
   end
 
-  @doc false
-  defp scope_library_reads(query, user, course_id \\ nil)
+  defp scope_library_reads(query, user, _course_id \\ nil),
+    do: Athena.Content.LibraryAccess.scope_reads(query, user)
 
-  defp scope_library_reads(query, user, course_id) do
-    cond do
-      not Identity.can?(user, "library.read") ->
-        from(b in query, where: false)
-
-      "own_only" in get_own_only_policies(user) ->
-        scope_own_only_reads(query, user, course_id)
-
-      true ->
-        query
-    end
-  end
-
-  @doc false
-  defp get_own_only_policies(user) do
-    Map.get(user.role.policies || %{}, "library.read", [])
-  end
-
-  defp scope_own_only_reads(query, user, course_id) do
-    shared_block_ids =
-      from(s in LibraryBlockShare,
-        where: s.account_id == ^user.id,
-        select: s.library_block_id
-      )
-
-    pinned_block_ids = get_pinned_block_ids(course_id)
-
-    from(b in query,
-      where:
-        b.owner_id == ^user.id or
-          b.is_public == true or
-          b.id in subquery(shared_block_ids) or
-          b.id in subquery(pinned_block_ids)
-    )
-  end
-
-  @doc false
-  defp get_pinned_block_ids(course_id) when is_binary(course_id) do
-    from(clb in CourseLibraryBlock,
-      where: clb.course_id == ^course_id,
-      select: clb.library_block_id
-    )
-  end
-
-  @doc false
-  defp get_pinned_block_ids(_course_id) do
-    from(clb in CourseLibraryBlock, where: false, select: clb.library_block_id)
-  end
-
-  @doc """
-  Checks whether the user can edit the block (owner or has the writer role).
-  """
-  def can_edit_block?(user, block) do
-    if Identity.can?(user, "library.update", block) do
-      true
-    else
-      if Identity.can?(user, "library.update") do
-        Repo.exists?(
-          from s in LibraryBlockShare,
-            where:
-              s.library_block_id == ^block.id and s.account_id == ^user.id and s.role == :writer
-        )
-      else
-        false
-      end
-    end
-  end
+  @doc "Checks current direct or inherited permission to edit template content."
+  def can_edit_block?(user, block), do: Athena.Content.LibraryAccess.editable?(user, block)
 
   @doc """
   Generates a list of questions for a ticket (:ticket_exam) based on slots and a counter map.
