@@ -26,6 +26,14 @@ defmodule AthenaWeb.StudioLive.Library do
      |> assign(has_blocks: false)
      |> assign(selected_ids: MapSet.new(), page_ids: MapSet.new())
      |> assign(export_open: false, export_summary: nil, export_error: nil)
+     |> assign(import_open: false, import_result: nil, import_error: nil)
+     |> assign(import_form: to_form(%{"format" => "moodle_xml"}, as: :import))
+     |> allow_upload(:questions,
+       accept: ~w(.txt .gift .xml),
+       max_entries: 1,
+       max_file_size: 5_000_000
+     )
+     |> stream(:import_skipped, [])
      |> assign(
        export_form: to_form(%{"scope" => "filtered", "format" => "moodle_xml"}, as: :export)
      )
@@ -240,6 +248,44 @@ defmodule AthenaWeb.StudioLive.Library do
     {:noreply, push_patch(socket, to: target_path)}
   end
 
+  def handle_event("open_import", _params, socket) do
+    if Identity.can?(socket.assigns.current_user, "library.create") do
+      {:noreply,
+       socket
+       |> assign(import_open: true, import_result: nil, import_error: nil)
+       |> stream(:import_skipped, [], reset: true)}
+    else
+      {:noreply,
+       put_flash(socket, :error, gettext("You don't have permission to create templates."))}
+    end
+  end
+
+  def handle_event("close_import", _params, socket) do
+    socket =
+      Enum.reduce(
+        socket.assigns.uploads.questions.entries,
+        socket,
+        &cancel_upload(&2, :questions, &1.ref)
+      )
+
+    {:noreply, assign(socket, import_open: false)}
+  end
+
+  def handle_event("validate_import", %{"import" => params}, socket) do
+    {:noreply,
+     socket
+     |> assign(import_form: to_form(params, as: :import), import_error: nil, import_result: nil)
+     |> stream(:import_skipped, [], reset: true)}
+  end
+
+  def handle_event("cancel_import_upload", %{"ref" => ref}, socket),
+    do: {:noreply, cancel_upload(socket, :questions, ref)}
+
+  def handle_event("import_questions", %{"import" => params}, socket) do
+    result = import_upload(socket, params["format"])
+    {:noreply, finish_import(socket, result)}
+  end
+
   def handle_event("toggle_export_selection", %{"id" => id}, socket) do
     selected = socket.assigns.selected_ids
 
@@ -431,6 +477,61 @@ defmodule AthenaWeb.StudioLive.Library do
         {:noreply, put_flash(socket, :error, gettext("Failed to duplicate template"))}
     end
   end
+
+  defp import_upload(socket, format) do
+    with true <- Identity.can?(socket.assigns.current_user, "library.create"),
+         {[_entry], []} <- uploaded_entries(socket, :questions) do
+      [data] =
+        consume_uploaded_entries(socket, :questions, fn %{path: path}, _entry ->
+          {:ok, File.read!(path)}
+        end)
+
+      Content.import_library_questions(socket.assigns.current_user, data, format)
+    else
+      false -> {:error, :forbidden}
+      _ -> {:error, :missing_file}
+    end
+  end
+
+  defp finish_import(socket, {:ok, result}) do
+    socket
+    |> assign(import_result: Map.drop(result, [:skipped]), import_error: nil)
+    |> stream(:import_skipped, result.skipped, reset: true)
+    |> load_blocks(build_query_params(socket.assigns, %{}))
+  end
+
+  defp finish_import(socket, {:error, reason}),
+    do:
+      socket
+      |> assign(import_error: import_error(reason), import_result: nil)
+      |> stream(:import_skipped, [], reset: true)
+
+  defp import_error(:forbidden), do: gettext("You don't have permission to create templates.")
+
+  defp import_error(:missing_file),
+    do: gettext("Choose a file and wait for the upload to finish.")
+
+  defp import_error(:file_too_large), do: gettext("The file must be no larger than 5 MB.")
+  defp import_error(:too_many_questions), do: gettext("Import up to 2000 questions at a time.")
+  defp import_error(:no_questions), do: gettext("No questions found in the file.")
+
+  defp import_error(_reason),
+    do: gettext("Could not read the file. Check the selected format and UTF-8 encoding.")
+
+  defp import_skip_reason(:unsupported_type), do: gettext("Unsupported question type")
+  defp import_skip_reason(:unsupported_format), do: gettext("Unsupported text or answer format")
+
+  defp import_skip_reason(:embedded_files),
+    do: gettext("Embedded files or attachments are not supported")
+
+  defp import_skip_reason(:answer_pattern),
+    do: gettext("Answer rules cannot be represented in Athena")
+
+  defp import_skip_reason(:fractional_points),
+    do: gettext("Question points must be a positive integer")
+
+  defp import_skip_reason(:unsupported_content), do: gettext("Unsupported rich-text content")
+  defp import_skip_reason(_reason), do: gettext("Invalid or incomplete question")
 
   defp preview_export(socket, params) do
     case Content.preview_library_export(
@@ -644,6 +745,16 @@ defmodule AthenaWeb.StudioLive.Library do
             </div>
 
             <div class="flex gap-2">
+              <.button
+                :if={Identity.can?(@current_user, "library.create")}
+                id="library-import-open"
+                type="button"
+                phx-click="open_import"
+                class="btn btn-outline btn-sm"
+              >
+                <.icon name="hero-arrow-up-tray" class="size-4" />
+                {gettext("Import questions")}
+              </.button>
               <.button
                 id="library-export-open"
                 type="button"
@@ -987,6 +1098,120 @@ defmodule AthenaWeb.StudioLive.Library do
           patch={base_patch}
         />
       </.slide_over>
+
+      <.modal
+        id="library-import-modal"
+        show={@import_open}
+        title={gettext("Import questions")}
+        on_cancel={JS.push("close_import")}
+      >
+        <.form
+          for={@import_form}
+          id="library-import-form"
+          phx-change="validate_import"
+          phx-submit="import_questions"
+          class="space-y-4"
+        >
+          <.input
+            field={@import_form[:format]}
+            type="select"
+            label={gettext("File format")}
+            options={[{"Moodle XML", "moodle_xml"}, {"GIFT", "gift"}]}
+          />
+          <div
+            phx-drop-target={@uploads.questions.ref}
+            class="rounded-lg border border-dashed border-base-300 p-4 space-y-2"
+          >
+            <label for={@uploads.questions.ref} class="block font-medium text-sm">
+              {gettext("Question file (UTF-8, up to 5 MB)")}
+            </label>
+            <.live_file_input upload={@uploads.questions} class="block w-full text-sm" />
+            <div :for={entry <- @uploads.questions.entries} class="flex items-center gap-2 text-sm">
+              <span>{entry.client_name} — {entry.progress}%</span>
+              <button
+                type="button"
+                phx-click="cancel_import_upload"
+                phx-value-ref={entry.ref}
+                class="underline"
+              >
+                {gettext("Remove")}
+              </button>
+              <p :for={_error <- upload_errors(@uploads.questions, entry)} class="text-error">
+                {gettext("Use one .xml, .gift or .txt file no larger than 5 MB.")}
+              </p>
+            </div>
+            <p :for={_error <- upload_errors(@uploads.questions)} class="text-sm text-error">
+              {gettext("Use one .xml, .gift or .txt file no larger than 5 MB.")}
+            </p>
+          </div>
+          <details id="library-import-help" class="text-sm text-base-content/70 space-y-2">
+            <summary class="cursor-pointer font-medium">
+              {gettext("About importing questions")}
+            </summary>
+            <p class="mt-2">
+              {gettext(
+                "Import creates new private questions in your library. Existing questions are not updated, file IDs and sharing settings are ignored. Pin imported questions to a course separately. Reimporting a file creates copies."
+              )}
+            </p>
+            <p>
+              {gettext(
+                "Supported: single and multiple choice, true/false, matching, one literal exact answer, and open answers. Numerical, Cloze, calculated questions, wildcard answers, multiple accepted short answers and embedded files are skipped. Categories are ignored; question tags are preserved."
+              )}
+            </p>
+            <p>
+              {gettext(
+                "Partial answer weights and penalties are not preserved: Athena grades the complete answer as correct or incorrect. XML preserves whole-number question points and case sensitivity; GIFT does not provide them. Basic HTML formatting is preserved; styles and unsupported wrappers are simplified. Images must use external HTTP(S) links, which may require access to the original site."
+              )}
+            </p>
+          </details>
+          <p class="text-sm text-base-content/70">
+            {gettext(
+              "LaTeX formulas remain text. Hints and answer shuffling settings are not imported. Short-answer feedback is added to the general explanation."
+            )}
+          </p>
+          <p class="text-sm text-base-content/70">
+            {gettext("Import up to 2000 questions at a time.")}
+          </p>
+          <p :if={@import_error} id="library-import-error" class="text-sm text-error">
+            {@import_error}
+          </p>
+          <div
+            :if={@import_result}
+            id="library-import-result"
+            class="rounded-lg border border-base-300 p-3 text-sm"
+          >
+            {gettext("Imported: %{imported}. Skipped: %{skipped}.",
+              imported: @import_result.imported,
+              skipped: @import_result.skipped_count
+            )}
+            <.link navigate={~p"/studio/library"} class="underline ml-1">
+              {gettext("Open library")}
+            </.link>
+          </div>
+          <div
+            id="library-import-skipped"
+            phx-update="stream"
+            class="max-h-64 overflow-y-auto space-y-2 text-sm"
+          >
+            <p :for={{dom_id, item} <- @streams.import_skipped} id={dom_id}>
+              {gettext("Question %{number}: %{title} — %{reason}",
+                number: item.id,
+                title: item.title,
+                reason: import_skip_reason(item.reason)
+              )}
+            </p>
+          </div>
+          <.button
+            id="library-import-submit"
+            type="submit"
+            class="btn btn-primary w-full"
+            phx-disable-with={gettext("Importing...")}
+            disabled={@uploads.questions.entries == [] or upload_errors(@uploads.questions) != []}
+          >
+            {gettext("Import questions")}
+          </.button>
+        </.form>
+      </.modal>
 
       <.modal
         id="library-export-modal"

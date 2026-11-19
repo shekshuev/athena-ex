@@ -11167,3 +11167,126 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Some selected blocks are no longer available. Clear the selection and try again."
 msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1149
+#, elixir-autogen, elixir-format
+msgid "About importing questions"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:528
+#, elixir-autogen, elixir-format
+msgid "Answer rules cannot be represented in Athena"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:512
+#, elixir-autogen, elixir-format
+msgid "Choose a file and wait for the upload to finish."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:519
+#, elixir-autogen, elixir-format
+msgid "Could not read the file. Check the selected format and UTF-8 encoding."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:525
+#, elixir-autogen, elixir-format
+msgid "Embedded files or attachments are not supported"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1152
+#, elixir-autogen, elixir-format
+msgid "Import creates new private questions in your library. Existing questions are not updated, file IDs and sharing settings are ignored. Pin imported questions to a course separately. Reimporting a file creates copies."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:756
+#: lib/athena_web/live/studio_live/library.ex:1105
+#: lib/athena_web/live/studio_live/library.ex:1204
+#, elixir-autogen, elixir-format
+msgid "Import questions"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:515
+#, elixir-autogen, elixir-format
+msgid "Import up to 2000 questions at a time."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1176
+#, elixir-autogen, elixir-format
+msgid "Imported: %{imported}. Skipped: %{skipped}."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1201
+#, elixir-autogen, elixir-format
+msgid "Importing..."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:534
+#, elixir-autogen, elixir-format
+msgid "Invalid or incomplete question"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:516
+#, elixir-autogen, elixir-format
+msgid "No questions found in the file."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1181
+#, elixir-autogen, elixir-format
+msgid "Open library"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1162
+#, elixir-autogen, elixir-format
+msgid "Partial answer weights and penalties are not preserved: Athena grades the complete answer as correct or incorrect. XML preserves whole-number question points and case sensitivity; GIFT does not provide them. Basic HTML formatting is preserved; styles and unsupported wrappers are simplified. Images must use external HTTP(S) links, which may require access to the original site."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1190
+#, elixir-autogen, elixir-format
+msgid "Question %{number}: %{title} — %{reason}"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1126
+#, elixir-autogen, elixir-format
+msgid "Question file (UTF-8, up to 5 MB)"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:531
+#, elixir-autogen, elixir-format
+msgid "Question points must be a positive integer"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1157
+#, elixir-autogen, elixir-format
+msgid "Supported: single and multiple choice, true/false, matching, one literal exact answer, and open answers. Numerical, Cloze, calculated questions, wildcard answers, multiple accepted short answers and embedded files are skipped. Categories are ignored; question tags are preserved."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:514
+#, elixir-autogen, elixir-format
+msgid "The file must be no larger than 5 MB."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:521
+#, elixir-autogen, elixir-format
+msgid "Unsupported question type"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:533
+#, elixir-autogen, elixir-format
+msgid "Unsupported rich-text content"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:522
+#, elixir-autogen, elixir-format
+msgid "Unsupported text or answer format"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1140
+#: lib/athena_web/live/studio_live/library.ex:1144
+#, elixir-autogen, elixir-format
+msgid "Use one .xml, .gift or .txt file no larger than 5 MB."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1167
+#, elixir-autogen, elixir-format
+msgid "LaTeX formulas remain text. Hints and answer shuffling settings are not imported. Short-answer feedback is added to the general explanation."
+msgstr ""

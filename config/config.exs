@@ -106,6 +106,7 @@ config :mime, :types, %{
 }
 
 config :mime, :extensions, %{
+  "gift" => "text/plain",
   "rar" => "application/x-rar-compressed",
   "py" => "text/x-python",
   "cpp" => "text/x-c++src",

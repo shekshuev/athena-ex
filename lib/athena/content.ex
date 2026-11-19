@@ -183,6 +183,17 @@ defmodule Athena.Content do
   def attach_media_to_block(user, block, meta, file_info),
     do: Blocks.attach_media_to_block(user, block, meta, file_info) |> notify_subscribers()
 
+  def import_library_questions(user, data, format) do
+    case Athena.Content.LibraryImport.run(user, data, format) do
+      {:ok, %{imported: count}} = result when count > 0 ->
+        Phoenix.PubSub.broadcast(Athena.PubSub, "user_library:#{user.id}", :refresh_library)
+        result
+
+      result ->
+        result
+    end
+  end
+
   defdelegate library_filter_params(params), to: Library
   defdelegate preview_library_export(user, params), to: Athena.Content.LibraryExport, as: :preview
 
