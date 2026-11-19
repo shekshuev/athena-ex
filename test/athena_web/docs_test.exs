@@ -5,6 +5,8 @@ defmodule AthenaWeb.DocsTest do
   alias AthenaWeb.Docs.Converter
 
   @sources Path.wildcard("priv/docs/**/*.md")
+  # U+2014 is forbidden; U+2013 (en dash) is allowed.
+  @em_dash "\u2014"
 
   test "both languages have exactly the same pages" do
     paths = fn lang ->
@@ -30,7 +32,7 @@ defmodule AthenaWeb.DocsTest do
 
   describe "writing rules" do
     test "no em dash anywhere - use an en dash" do
-      offenders = for path <- @sources, File.read!(path) =~ "–", do: path
+      offenders = for path <- @sources, File.read!(path) =~ @em_dash, do: path
       assert offenders == [], "em dash found in: #{inspect(offenders)}"
     end
 
@@ -39,7 +41,7 @@ defmodule AthenaWeb.DocsTest do
         Path.wildcard("priv/gettext/**/*.{po,pot}") ++
           Path.wildcard("lib/**/*.{ex,heex}") ++ Path.wildcard("assets/js/**/*.js")
 
-      offenders = for path <- sources, File.read!(path) =~ "–", do: path
+      offenders = for path <- sources, File.read!(path) =~ @em_dash, do: path
       assert offenders == [], "em dash found in: #{inspect(offenders)}"
     end
 
