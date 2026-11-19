@@ -137,6 +137,146 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
   defp error_to_string({:writer_fail, _}), do: gettext("Upload writer failed")
   defp error_to_string(_), do: gettext("Upload error")
 
+  @doc "Shared file selection, progress and cancellation UI for media uploads and local file imports."
+  attr :id, :string, default: nil
+  attr :upload, :any, required: true
+  attr :description, :string, required: true
+  attr :target, :any, default: nil
+  attr :cancel_event, :string, default: "cancel_entry"
+  attr :icon, :string, default: "hero-document"
+
+  def file_picker(assigns) do
+    ~H"""
+    <div id={@id}>
+      <% has_entries = @upload.entries != [] %>
+      <div
+        class={[
+          "relative border-2 border-dashed rounded-sm transition-all duration-200 group flex flex-col items-center justify-center p-10 text-center",
+          if(has_entries,
+            do: "hidden",
+            else: "border-base-300 hover:border-primary/50 hover:bg-base-200/50 bg-base-100"
+          )
+        ]}
+        phx-drop-target={@upload.ref}
+      >
+        <.live_file_input
+          upload={@upload}
+          class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+          aria-label={@description}
+        />
+        <div class="flex items-center justify-center w-16 h-16 bg-primary/10 border border-primary/20 text-primary rounded-sm mb-4 group-hover:scale-105 transition-transform">
+          <.icon name="hero-cloud-arrow-up" class="size-8" />
+        </div>
+        <h4 class="font-black text-lg text-base-content mb-1">
+          {gettext("Click or drag files here")}
+        </h4>
+        <p class="text-sm font-medium text-base-content/50">{@description}</p>
+      </div>
+
+      <div :if={has_entries} class="space-y-3 max-h-64 overflow-y-auto">
+        <div
+          :for={entry <- @upload.entries}
+          class="flex flex-col gap-3 p-4 bg-base-200/50 rounded-sm border border-base-300"
+        >
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="p-2 bg-base-100 rounded-sm border border-base-200 text-base-content/50 shrink-0">
+                <.icon
+                  name={@icon}
+                  class="size-5"
+                />
+              </div>
+              <div class="truncate">
+                <div class="text-sm font-bold text-base-content truncate">
+                  {entry.client_name}
+                </div>
+                <div class="text-xs font-medium text-base-content/50 uppercase tracking-wider">
+                  {Float.round(entry.client_size / 1024 / 1024, 2)} MB
+                </div>
+              </div>
+            </div>
+
+            <% has_too_many =
+              Enum.any?(@upload.entries, fn entry ->
+                :too_many_files in upload_errors(@upload, entry)
+              end) %>
+
+            <div
+              :if={has_too_many}
+              class="mt-4 p-4 bg-error/10 border border-error/30 rounded-sm text-error text-sm font-bold flex items-start gap-3"
+            >
+              <.icon name="hero-exclamation-triangle" class="size-5 shrink-0 mt-0.5" />
+              <div>
+                <div class="font-black mb-1">{gettext("Too many files selected")}</div>
+                <div class="text-xs font-medium opacity-80">
+                  {gettext(
+                    "Maximum allowed: %{max}. Please cancel some entries below to continue.",
+                    max: @upload.max_entries
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-4 shrink-0">
+              <span :if={entry.progress > 0} class="text-sm font-black text-primary">
+                {entry.progress}%
+              </span>
+              <.icon_button
+                type="button"
+                phx-click={@cancel_event}
+                phx-value-ref={entry.ref}
+                phx-target={@target}
+                icon="hero-x-mark"
+                label={gettext("Cancel")}
+                variant="danger"
+                size="sm"
+                class="min-h-9 h-9 w-9"
+              />
+            </div>
+
+            <div
+              :if={entry.progress > 0 or upload_errors(@upload, entry) != []}
+              class="w-full bg-base-300 rounded-sm h-2 overflow-hidden mt-2"
+            >
+              <div
+                class={[
+                  "h-full transition-all duration-300",
+                  upload_errors(@upload, entry) != [] && "bg-error",
+                  upload_errors(@upload, entry) == [] && "bg-primary"
+                ]}
+                style={"width: #{entry.progress}%"}
+              >
+              </div>
+            </div>
+          </div>
+          <div class="w-full bg-base-300 rounded-sm h-2 overflow-hidden">
+            <div
+              class={[
+                "h-full transition-all duration-300",
+                upload_errors(@upload, entry) != [] && "bg-error",
+                upload_errors(@upload, entry) == [] && "bg-primary"
+              ]}
+              style={"width: #{entry.progress}%"}
+            >
+            </div>
+          </div>
+          <div
+            :for={err <- upload_errors(@upload, entry)}
+            class="text-error text-xs font-bold flex items-center gap-1"
+          >
+            <.icon name="hero-exclamation-circle" class="size-4 shrink-0" />
+            {error_to_string(err)}
+          </div>
+        </div>
+      </div>
+
+      <p :for={error <- upload_errors(@upload)} class="text-error text-xs font-bold mt-2">
+        {error_to_string(error)}
+      </p>
+    </div>
+    """
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -159,127 +299,12 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
           has_errors = Enum.any?(@uploads.media.entries, &(upload_errors(@uploads.media, &1) != [])) %>
 
           <form id="upload-form" phx-submit="save" phx-change="validate" phx-target={@myself}>
-            <div
-              class={[
-                "relative border-2 border-dashed rounded-sm transition-all duration-200 group flex flex-col items-center justify-center p-10 text-center",
-                if(has_entries,
-                  do: "hidden",
-                  else: "border-base-300 hover:border-primary/50 hover:bg-base-200/50 bg-base-100"
-                )
-              ]}
-              phx-drop-target={@uploads.media.ref}
-            >
-              <.live_file_input
-                upload={@uploads.media}
-                class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-              />
-              <div class="flex items-center justify-center w-16 h-16 bg-primary/10 border border-primary/20 text-primary rounded-sm mb-4 group-hover:scale-105 transition-transform">
-                <.icon name="hero-cloud-arrow-up" class="size-8" />
-              </div>
-              <h4 class="font-black text-lg text-base-content mb-1">
-                {gettext("Click or drag files here")}
-              </h4>
-              <p class="text-sm font-medium text-base-content/50">{@accept_str}</p>
-            </div>
-
-            <div :if={has_entries} class="space-y-3 max-h-64 overflow-y-auto">
-              <div
-                :for={entry <- @uploads.media.entries}
-                class="flex flex-col gap-3 p-4 bg-base-200/50 rounded-sm border border-base-300"
-              >
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-3 min-w-0">
-                    <div class="p-2 bg-base-100 rounded-sm border border-base-200 text-base-content/50 shrink-0">
-                      <.icon
-                        name={
-                          if @upload_type == "video", do: "hero-video-camera", else: "hero-document"
-                        }
-                        class="size-5"
-                      />
-                    </div>
-                    <div class="truncate">
-                      <div class="text-sm font-bold text-base-content truncate">
-                        {entry.client_name}
-                      </div>
-                      <div class="text-xs font-medium text-base-content/50 uppercase tracking-wider">
-                        {Float.round(entry.client_size / 1024 / 1024, 2)} MB
-                      </div>
-                    </div>
-                  </div>
-
-                  <% has_too_many =
-                    Enum.any?(@uploads.media.entries, fn entry ->
-                      :too_many_files in upload_errors(@uploads.media, entry)
-                    end) %>
-
-                  <div
-                    :if={has_too_many}
-                    class="mt-4 p-4 bg-error/10 border border-error/30 rounded-sm text-error text-sm font-bold flex items-start gap-3"
-                  >
-                    <.icon name="hero-exclamation-triangle" class="size-5 shrink-0 mt-0.5" />
-                    <div>
-                      <div class="font-black mb-1">{gettext("Too many files selected")}</div>
-                      <div class="text-xs font-medium opacity-80">
-                        {gettext(
-                          "Maximum allowed: %{max}. Please cancel some entries below to continue.",
-                          max: @max_entries
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="flex items-center gap-4 shrink-0">
-                    <span :if={entry.progress > 0} class="text-sm font-black text-primary">
-                      {entry.progress}%
-                    </span>
-                    <.icon_button
-                      type="button"
-                      phx-click="cancel_entry"
-                      phx-value-ref={entry.ref}
-                      phx-target={@myself}
-                      icon="hero-x-mark"
-                      label={gettext("Cancel")}
-                      variant="danger"
-                      size="sm"
-                      class="min-h-9 h-9 w-9"
-                    />
-                  </div>
-
-                  <div
-                    :if={entry.progress > 0 or upload_errors(@uploads.media, entry) != []}
-                    class="w-full bg-base-300 rounded-sm h-2 overflow-hidden mt-2"
-                  >
-                    <div
-                      class={[
-                        "h-full transition-all duration-300",
-                        upload_errors(@uploads.media, entry) != [] && "bg-error",
-                        upload_errors(@uploads.media, entry) == [] && "bg-primary"
-                      ]}
-                      style={"width: #{entry.progress}%"}
-                    >
-                    </div>
-                  </div>
-                </div>
-                <div class="w-full bg-base-300 rounded-sm h-2 overflow-hidden">
-                  <div
-                    class={[
-                      "h-full transition-all duration-300",
-                      upload_errors(@uploads.media, entry) != [] && "bg-error",
-                      upload_errors(@uploads.media, entry) == [] && "bg-primary"
-                    ]}
-                    style={"width: #{entry.progress}%"}
-                  >
-                  </div>
-                </div>
-                <div
-                  :for={err <- upload_errors(@uploads.media, entry)}
-                  class="text-error text-xs font-bold flex items-center gap-1"
-                >
-                  <.icon name="hero-exclamation-circle" class="size-4 shrink-0" />
-                  {error_to_string(err)}
-                </div>
-              </div>
-            </div>
+            <.file_picker
+              upload={@uploads.media}
+              description={@accept_str}
+              target={@myself}
+              icon={if @upload_type == "video", do: "hero-video-camera", else: "hero-document"}
+            />
 
             <div class="flex flex-col-reverse sm:flex-row justify-end gap-3 mt-8 pt-6 border-t border-base-200">
               <.button type="button" phx-click="cancel_media_upload">

@@ -49,6 +49,9 @@ defmodule AthenaWeb.StudioLive.LibraryImportTest do
     )
 
     assert has_element?(view, "#library-import-result", "Imported: 1. Skipped: 1.")
+    refute has_element?(view, "#library-import-modal.modal-open")
+    assert has_element?(view, "#library-import-report:not(.hidden) #library-import-result")
+    refute has_element?(view, "#library-import-modal #library-import-result")
     assert has_element?(view, "#library-import-skipped", "Numerical")
     assert has_element?(view, "#library-import-skipped", "Unsupported question type")
     [question] = Repo.all(from b in LibraryBlock, where: b.owner_id == ^user.id)
@@ -71,6 +74,8 @@ defmodule AthenaWeb.StudioLive.LibraryImportTest do
     )
 
     assert has_element?(view, "#library-import-result", "Imported: 1. Skipped: 0.")
+    refute has_element?(view, "#library-import-modal.modal-open")
+    assert has_element?(view, "#flash-info", "Imported: 1. Skipped: 0.")
     question = Repo.one!(from b in LibraryBlock, where: b.owner_id == ^user.id)
     assert question.content["question_type"] == "open"
     assert question.content["answer_type"] == "plain_text"
@@ -84,8 +89,24 @@ defmodule AthenaWeb.StudioLive.LibraryImportTest do
     view |> element("#library-import-open") |> render_click()
     upload(view, "unsupported.gift", "::Numerical::Value? {#2}", "gift")
     assert has_element?(view, "#library-import-result", "Imported: 0. Skipped: 1.")
+    refute has_element?(view, "#library-import-modal.modal-open")
+
+    assert has_element?(
+             view,
+             "#library-import-report:not(.hidden) #library-import-skipped",
+             "Numerical"
+           )
+
+    assert has_element?(view, "#flash-error", "Imported: 0. Skipped: 1.")
+    view |> element("#library-import-open") |> render_click()
     upload(view, "broken.xml", "<quiz><question>", "moodle_xml")
     assert has_element?(view, "#library-import-error")
+
+    assert has_element?(
+             view,
+             "#library-import-modal.modal-open #library-import-error[role='alert']"
+           )
+
     refute has_element?(view, "#library-import-skipped p")
     assert Repo.aggregate(from(b in LibraryBlock, where: b.owner_id == ^user.id), :count) == 0
   end
@@ -128,5 +149,19 @@ defmodule AthenaWeb.StudioLive.LibraryImportTest do
     upload(view, "questions.gift", "::Numerical::Value? {#2}", "gift")
     assert has_element?(view, "#library-import-result", "Импортировано: 0. Пропущено: 1.")
     assert has_element?(view, "#library-import-skipped", "Тип вопроса не поддерживается")
+  end
+
+  test "retrying after skipped questions replaces the previous outcome", %{conn: conn} do
+    {:ok, view, _} = live(conn, ~p"/studio/library")
+    view |> element("#library-import-open") |> render_click()
+    upload(view, "unsupported.gift", "::Numerical::Value? {#2}", "gift")
+    assert has_element?(view, "#flash-error", "Imported: 0")
+
+    view |> element("#library-import-open") |> render_click()
+    upload(view, "questions.gift", "::Imported question::Question {}", "gift")
+    refute has_element?(view, "#library-import-modal.modal-open")
+    assert has_element?(view, "#flash-info", "Imported: 1. Skipped: 0.")
+    refute has_element?(view, "#flash-error")
+    refute has_element?(view, "#library-import-skipped p")
   end
 end

@@ -8,7 +8,7 @@ defmodule AthenaWeb.StudioLive.Library do
   alias Athena.Content
   alias Athena.Content.LibraryBlock
   alias Athena.Identity
-  alias AthenaWeb.StudioLive.{LibraryFormComponent, LibraryShareComponent}
+  alias AthenaWeb.StudioLive.{LibraryFormComponent, LibraryShareComponent, MediaUploadComponent}
 
   on_mount {AthenaWeb.Hooks.Permission, "library.read"}
 
@@ -266,6 +266,7 @@ defmodule AthenaWeb.StudioLive.Library do
     if Identity.can?(socket.assigns.current_user, "library.create") do
       {:noreply,
        socket
+       |> clear_flash()
        |> assign(import_open: true, import_result: nil, import_error: nil)
        |> stream(:import_skipped, [], reset: true)}
     else
@@ -496,7 +497,15 @@ defmodule AthenaWeb.StudioLive.Library do
 
   defp finish_import(socket, {:ok, result}) do
     socket
-    |> assign(import_result: Map.drop(result, [:skipped]), import_error: nil)
+    |> clear_flash()
+    |> assign(import_open: false, import_result: Map.drop(result, [:skipped]), import_error: nil)
+    |> put_flash(
+      if(result.imported > 0, do: :info, else: :error),
+      gettext("Imported: %{imported}. Skipped: %{skipped}.",
+        imported: result.imported,
+        skipped: result.skipped_count
+      )
+    )
     |> stream(:import_skipped, result.skipped, reset: true)
     |> load_blocks(build_query_params(socket.assigns, %{}))
   end
@@ -504,6 +513,7 @@ defmodule AthenaWeb.StudioLive.Library do
   defp finish_import(socket, {:error, reason}),
     do:
       socket
+      |> clear_flash()
       |> assign(import_error: import_error(reason), import_result: nil)
       |> stream(:import_skipped, [], reset: true)
 
@@ -694,7 +704,7 @@ defmodule AthenaWeb.StudioLive.Library do
     }>
       <.page_container size="wide">
         <div class="space-y-6">
-          <div class="flex justify-between items-center">
+          <div class="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
             <div class="flex items-center gap-4">
               <.link
                 :if={@course_library_mode}
@@ -721,24 +731,24 @@ defmodule AthenaWeb.StudioLive.Library do
               </div>
             </div>
 
-            <div class="flex gap-2">
+            <div class="flex flex-wrap items-center gap-2">
               <.button
                 :if={Identity.can?(@current_user, "library.create")}
                 id="library-import-open"
                 type="button"
                 phx-click="open_import"
-                class="btn btn-outline btn-sm"
+                class="btn btn-outline"
               >
-                <.icon name="hero-arrow-up-tray" class="size-4" />
+                <.icon name="hero-arrow-up-tray" class="size-5" />
                 {gettext("Import questions")}
               </.button>
               <.button
                 id="library-export-open"
                 type="button"
                 phx-click="open_export"
-                class="btn btn-outline btn-sm"
+                class="btn btn-outline"
               >
-                <.icon name="hero-arrow-down-tray" class="size-4" />
+                <.icon name="hero-arrow-down-tray" class="size-5" />
                 {gettext("Export questions")}
               </.button>
               <% new_patch =
@@ -821,6 +831,39 @@ defmodule AthenaWeb.StudioLive.Library do
                 </div>
               </div>
             </form>
+          </div>
+
+          <div
+            id="library-import-report"
+            class={["space-y-3", is_nil(@import_result) && "hidden"]}
+            aria-live="polite"
+          >
+            <div
+              :if={@import_result}
+              id="library-import-result"
+              class="rounded-lg border border-base-300 p-3 text-sm"
+            >
+              {gettext("Imported: %{imported}. Skipped: %{skipped}.",
+                imported: @import_result.imported,
+                skipped: @import_result.skipped_count
+              )}
+              <.link navigate={~p"/studio/library"} class="underline ml-1">
+                {gettext("Open library")}
+              </.link>
+            </div>
+            <div
+              id="library-import-skipped"
+              phx-update="stream"
+              class="max-h-64 overflow-y-auto space-y-2 text-sm"
+            >
+              <p :for={{dom_id, item} <- @streams.import_skipped} id={dom_id}>
+                {gettext("Question %{number}: %{title} — %{reason}",
+                  number: item.id,
+                  title: item.title,
+                  reason: import_skip_reason(item.reason)
+                )}
+              </p>
+            </div>
           </div>
 
           <div
@@ -1088,38 +1131,26 @@ defmodule AthenaWeb.StudioLive.Library do
           phx-submit="import_questions"
           class="space-y-4"
         >
+          <p
+            :if={@import_error}
+            id="library-import-error"
+            role="alert"
+            class="rounded-lg border border-error/30 bg-error/10 p-3 text-sm text-error"
+          >
+            {@import_error}
+          </p>
           <.input
             field={@import_form[:format]}
             type="select"
             label={gettext("File format")}
             options={[{"Moodle XML", "moodle_xml"}, {"GIFT", "gift"}]}
           />
-          <div
-            phx-drop-target={@uploads.questions.ref}
-            class="rounded-lg border border-dashed border-base-300 p-4 space-y-2"
-          >
-            <label for={@uploads.questions.ref} class="block font-medium text-sm">
-              {gettext("Question file (UTF-8, up to 5 MB)")}
-            </label>
-            <.live_file_input upload={@uploads.questions} class="block w-full text-sm" />
-            <div :for={entry <- @uploads.questions.entries} class="flex items-center gap-2 text-sm">
-              <span>{entry.client_name} — {entry.progress}%</span>
-              <button
-                type="button"
-                phx-click="cancel_import_upload"
-                phx-value-ref={entry.ref}
-                class="underline"
-              >
-                {gettext("Remove")}
-              </button>
-              <p :for={_error <- upload_errors(@uploads.questions, entry)} class="text-error">
-                {gettext("Use one .xml, .gift or .txt file no larger than 5 MB.")}
-              </p>
-            </div>
-            <p :for={_error <- upload_errors(@uploads.questions)} class="text-sm text-error">
-              {gettext("Use one .xml, .gift or .txt file no larger than 5 MB.")}
-            </p>
-          </div>
+          <MediaUploadComponent.file_picker
+            id="library-import-picker"
+            upload={@uploads.questions}
+            description={gettext("Question file (UTF-8, up to 5 MB)")}
+            cancel_event="cancel_import_upload"
+          />
           <details id="library-import-help" class="text-sm text-base-content/70 space-y-2">
             <summary class="cursor-pointer font-medium">
               {gettext("About importing questions")}
@@ -1148,35 +1179,6 @@ defmodule AthenaWeb.StudioLive.Library do
           <p class="text-sm text-base-content/70">
             {gettext("Import up to 2000 questions at a time.")}
           </p>
-          <p :if={@import_error} id="library-import-error" class="text-sm text-error">
-            {@import_error}
-          </p>
-          <div
-            :if={@import_result}
-            id="library-import-result"
-            class="rounded-lg border border-base-300 p-3 text-sm"
-          >
-            {gettext("Imported: %{imported}. Skipped: %{skipped}.",
-              imported: @import_result.imported,
-              skipped: @import_result.skipped_count
-            )}
-            <.link navigate={~p"/studio/library"} class="underline ml-1">
-              {gettext("Open library")}
-            </.link>
-          </div>
-          <div
-            id="library-import-skipped"
-            phx-update="stream"
-            class="max-h-64 overflow-y-auto space-y-2 text-sm"
-          >
-            <p :for={{dom_id, item} <- @streams.import_skipped} id={dom_id}>
-              {gettext("Question %{number}: %{title} — %{reason}",
-                number: item.id,
-                title: item.title,
-                reason: import_skip_reason(item.reason)
-              )}
-            </p>
-          </div>
           <.button
             id="library-import-submit"
             type="submit"
