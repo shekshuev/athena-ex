@@ -1,0 +1,18 @@
+---
+title: Domain contracts and events
+applies_to:
+  - "lib/athena/**"
+read_when: "changing domain behavior or cross-context events"
+---
+
+# Domain contracts
+
+Read the relevant context facade and module documentation before changing behavior.
+
+- Content owns authoring and search. Keep derived search data consistent through indexing workers and the backfill task, including deletions and changes to block text.
+- Learning owns submissions, grading and progress. Gamification reacts to learning facts through `ActivityListener`; do not couple Learning mutations directly to XP writes. Preserve deduplication and idempotency when replaying jobs or events.
+- Surveys are standalone questionnaires delivered through course survey blocks. They are not graded, award no XP and collect no engagement telemetry. Preserve branching, resume behavior and cohort privacy in results and exports.
+- Execution runs untrusted code and SQL. Preserve isolate restrictions, time/memory/output limits, SQL restrictions, cleanup, family dispatch and verifier semantics. Do not relax controls to make a failing example pass.
+- PubSub listeners, caches and Oban workers affect observable behavior. Trace producers and consumers before changing event shapes or topics. Keep workers safe to retry; do not broadcast success for failed writes.
+
+Use [architecture.md](architecture.md) for ownership and [security.md](security.md) for visibility and privacy.
