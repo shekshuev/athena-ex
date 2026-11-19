@@ -79,7 +79,7 @@ defmodule EngagementDemoSeed do
   defp create_course(teacher) do
     {:ok, course} =
       Content.create_course(teacher, %{
-        "title" => "[ДЕМО] Инженерия ПО — вовлечённость",
+        "title" => "[ДЕМО] Инженерия ПО – вовлечённость",
         "description" => "Синтетический курс для визуальной проверки дашборда вовлечённости.",
         "status" => "published",
         "type" => "standard"

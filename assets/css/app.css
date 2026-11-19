@@ -201,7 +201,7 @@
   }
 
   /* The sidebar nav's current-route highlight (`.menu-active`, toggled by
-     the `Sidebar` JS hook) — daisyUI's default `--menu-active-*` vars
+     the `Sidebar` JS hook) – daisyUI's default `--menu-active-*` vars
      resolve to `neutral`, which reads as washed-out against this theme's
      pale `--color-neutral`; use `primary` instead so it's actually visible. */
   #main-sidebar .menu {

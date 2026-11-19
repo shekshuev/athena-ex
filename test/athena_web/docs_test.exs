@@ -30,7 +30,7 @@ defmodule AthenaWeb.DocsTest do
 
   describe "writing rules" do
     test "no em dash anywhere - use an en dash" do
-      offenders = for path <- @sources, File.read!(path) =~ "—", do: path
+      offenders = for path <- @sources, File.read!(path) =~ "–", do: path
       assert offenders == [], "em dash found in: #{inspect(offenders)}"
     end
 
@@ -39,7 +39,7 @@ defmodule AthenaWeb.DocsTest do
         Path.wildcard("priv/gettext/**/*.{po,pot}") ++
           Path.wildcard("lib/**/*.{ex,heex}") ++ Path.wildcard("assets/js/**/*.js")
 
-      offenders = for path <- sources, File.read!(path) =~ "—", do: path
+      offenders = for path <- sources, File.read!(path) =~ "–", do: path
       assert offenders == [], "em dash found in: #{inspect(offenders)}"
     end
 

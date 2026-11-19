@@ -23,7 +23,7 @@ defmodule Athena.MixProject do
   # Each release is a self-contained deployment artifact. The release name is
   # exposed to the running node via the RELEASE_NAME env var (set by the
   # generated bin/<name> script), which config/runtime.exs reads to determine
-  # the node's role and, for runner releases, its language family — this is
+  # the node's role and, for runner releases, its language family – this is
   # the only place that distinction is made; there is no operator-facing role
   # env var.
   defp releases do

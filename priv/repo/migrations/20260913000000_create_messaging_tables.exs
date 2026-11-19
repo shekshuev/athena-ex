@@ -77,7 +77,7 @@ defmodule Athena.Repo.Migrations.CreateMessagingTables do
 
       # soft ref to Identity.Account (mentioned user)
       add :account_id, :binary_id, null: false
-      # e.g. "@Jane Doe" — for render-time highlighting
+      # e.g. "@Jane Doe" – for render-time highlighting
       add :matched_text, :string, null: false
 
       timestamps(type: :utc_datetime_usec)
