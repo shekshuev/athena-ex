@@ -76,7 +76,7 @@ docker compose -f docker-compose.infra.yml up -d
 mix setup
 ```
 
-`mix setup` runs `deps.get`, `ecto.setup`, `athena.storage.setup`, and the asset pipeline. **Seeds are empty** — you must create an admin user manually (see below).
+`mix setup` runs `deps.get`, `ecto.setup`, `athena.storage.setup`, and the asset pipeline. **Seeds are empty** – you must create an admin user manually (see below).
 
 If Postgres or MinIO run on a remote host, set `DEV_EXTERNAL_HOST` before running `mix setup` and starting the server.
 
@@ -186,14 +186,14 @@ See [Images](#images) for the four releases and tag conventions. Docker is the s
 
 Athena is a set of separate Docker images clustered over **libcluster**
 (Gossip) with a shared `RELEASE_COOKIE`. There is no all-in-one production
-image and no operator-facing "role" setting — which image you run _is_ the
+image and no operator-facing "role" setting – which image you run _is_ the
 role, baked in at build time via a dedicated Mix release per image. This is
 enforced by construction, not by convention: a misconfigured or missing
 setting can't silently boot the wrong thing.
 
 ### Images
 
-Every image is published as two tags, `latest-u22` and `latest-u24` (also versioned as `vX.Y.Z-u22`/`-u24`) — pick the one matching your host's actual Ubuntu version. `docker-compose.prod.yml` picks this via the `IMAGE_OS` variable in `.env` (`u22` or `u24`, defaults to `u24`).
+Every image is published as two tags, `latest-u22` and `latest-u24` (also versioned as `vX.Y.Z-u22`/`-u24`) – pick the one matching your host's actual Ubuntu version. `docker-compose.prod.yml` picks this via the `IMAGE_OS` variable in `.env` (`u22` or `u24`, defaults to `u24`).
 
 | Image                                         | Mix release       | What it runs                                                             |
 | --------------------------------------------- | ----------------- | ------------------------------------------------------------------------ |
@@ -203,7 +203,7 @@ Every image is published as two tags, `latest-u22` and `latest-u24` (also versio
 | `ghcr.io/shekshuev/athena-ex-runner-script`   | `runner_script`   | Python challenges via isolate + python3. Requires `privileged: true`.    |
 
 Combined ("all-in-one") mode only exists when running from source without a
-built release — i.e. local development (`iex -S mix phx.server`) and the test
+built release – i.e. local development (`iex -S mix phx.server`) and the test
 suite. It cannot be reached in production; there's no release that produces it.
 
 ### Execution Containers

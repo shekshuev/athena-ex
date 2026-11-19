@@ -48,7 +48,7 @@ FROM ${RUNNER_IMAGE} AS final
 
 # The script-family runner executes Python submissions inside isolate. It
 # needs the python3 interpreter plus the toolchain to build isolate itself
-# (gcc/libc6-dev/make/libcap-dev/pkg-config/libseccomp-dev/libsystemd-dev) —
+# (gcc/libc6-dev/make/libcap-dev/pkg-config/libseccomp-dev/libsystemd-dev) –
 # no g++, that's the compiled family's job. libc6-dev is spelled out
 # explicitly: it's only a Recommends of the `gcc` package, so
 # --no-install-recommends won't pull it in on its own and gcc can't compile

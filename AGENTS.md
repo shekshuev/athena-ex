@@ -1,4 +1,4 @@
-# AGENTS.md — Athena
+# AGENTS.md – Athena
 
 Athena is a Phoenix learning platform built as a **modular monolith with bounded contexts**. **Boundary defines and checks module boundaries.** Keep business rules and data ownership inside their context; communicate through deliberate public APIs.
 

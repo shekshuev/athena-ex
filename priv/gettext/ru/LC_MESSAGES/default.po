@@ -11260,8 +11260,8 @@ msgstr "Частичные веса ответов и штрафы не сохр
 
 #: lib/athena_web/live/studio_live/library.ex:1190
 #, elixir-autogen, elixir-format
-msgid "Question %{number}: %{title} — %{reason}"
-msgstr "Вопрос %{number}: %{title} — %{reason}"
+msgid "Question %{number}: %{title} – %{reason}"
+msgstr "Вопрос %{number}: %{title} – %{reason}"
 
 #: lib/athena_web/live/studio_live/library.ex:1126
 #, elixir-autogen, elixir-format

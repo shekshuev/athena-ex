@@ -11242,7 +11242,7 @@ msgstr ""
 
 #: lib/athena_web/live/studio_live/library.ex:1190
 #, elixir-autogen, elixir-format
-msgid "Question %{number}: %{title} — %{reason}"
+msgid "Question %{number}: %{title} – %{reason}"
 msgstr ""
 
 #: lib/athena_web/live/studio_live/library.ex:1126

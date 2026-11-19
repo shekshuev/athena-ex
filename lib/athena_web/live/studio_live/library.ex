@@ -857,7 +857,7 @@ defmodule AthenaWeb.StudioLive.Library do
               class="max-h-64 overflow-y-auto space-y-2 text-sm"
             >
               <p :for={{dom_id, item} <- @streams.import_skipped} id={dom_id}>
-                {gettext("Question %{number}: %{title} — %{reason}",
+                {gettext("Question %{number}: %{title} – %{reason}",
                   number: item.id,
                   title: item.title,
                   reason: import_skip_reason(item.reason)

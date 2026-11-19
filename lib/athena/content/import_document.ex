@@ -31,7 +31,7 @@ defmodule Athena.Content.ImportDocument do
   @entities %{
     "nbsp" => "\u00A0",
     "ndash" => "–",
-    "mdash" => "—",
+    "mdash" => "–",
     "laquo" => "«",
     "raquo" => "»",
     "hellip" => "…",
