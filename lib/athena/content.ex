@@ -30,10 +30,14 @@ defmodule Athena.Content do
   def create_course(user, attrs), do: Courses.create_course(user, attrs) |> notify_subscribers()
 
   def update_course(user, course, attrs),
-    do: Courses.update_course(user, course, attrs) |> notify_subscribers()
+    do:
+      Courses.update_course(user, course, attrs)
+      |> notify_subscribers()
+      |> notify_library_access_if_changed(course)
 
   def soft_delete_course(user, course),
-    do: Courses.soft_delete_course(user, course) |> notify_subscribers()
+    do:
+      Courses.soft_delete_course(user, course) |> notify_subscribers() |> notify_library_access()
 
   defdelegate can_edit_course?(user, course), to: Courses
   defdelegate read_permission(course), to: Courses
@@ -44,6 +48,7 @@ defmodule Athena.Content do
     case Courses.share_course(user, course, account_id, role) do
       {:ok, _share} = result ->
         Phoenix.PubSub.broadcast(Athena.PubSub, "user_courses:#{account_id}", :refresh_courses)
+        notify_library_access(result)
         result
 
       error ->
@@ -55,6 +60,7 @@ defmodule Athena.Content do
     case Courses.revoke_course_share(user, course, account_id) do
       {:ok, :revoked} = result ->
         Phoenix.PubSub.broadcast(Athena.PubSub, "user_courses:#{account_id}", :refresh_courses)
+        notify_library_access(result)
         result
 
       error ->
@@ -66,6 +72,7 @@ defmodule Athena.Content do
     case Courses.toggle_course_public(user, course, is_public) do
       {:ok, _course} = result ->
         Phoenix.PubSub.broadcast(Athena.PubSub, "public_courses", :refresh_courses)
+        notify_library_access(result)
         result
 
       error ->
@@ -102,6 +109,7 @@ defmodule Athena.Content do
     case Courses.pin_library_block(user, course_id, library_block_id) do
       {:ok, _} = result ->
         Phoenix.PubSub.broadcast(Athena.PubSub, "course_library:#{course_id}", :refresh_library)
+        notify_library_access(result)
         result
 
       error ->
@@ -113,6 +121,7 @@ defmodule Athena.Content do
     case Courses.unpin_library_block(user, course_id, library_block_id) do
       {:ok, _} = result ->
         Phoenix.PubSub.broadcast(Athena.PubSub, "course_library:#{course_id}", :refresh_library)
+        notify_library_access(result)
         result
 
       error ->
@@ -183,17 +192,55 @@ defmodule Athena.Content do
   def attach_media_to_block(user, block, meta, file_info),
     do: Blocks.attach_media_to_block(user, block, meta, file_info) |> notify_subscribers()
 
+  def import_library_questions(user, data, format) do
+    case Athena.Content.LibraryImport.run(user, data, format) do
+      {:ok, %{imported: count}} = result when count > 0 ->
+        Phoenix.PubSub.broadcast(Athena.PubSub, "user_library:#{user.id}", :refresh_library)
+        result
+
+      result ->
+        result
+    end
+  end
+
+  defdelegate library_filter_params(params), to: Library
+
+  defdelegate library_blocks_access(user, blocks),
+    to: Athena.Content.LibraryAccess,
+    as: :for_blocks
+
+  defdelegate library_block_access(user, block), to: Athena.Content.LibraryAccess, as: :for_block
+
+  defdelegate can_edit_library_block?(user, block),
+    to: Athena.Content.LibraryAccess,
+    as: :editable?
+
+  defdelegate preview_library_export(user, params), to: Athena.Content.LibraryExport, as: :preview
+
+  defdelegate export_library_questions(user, params, format, opts \\ []),
+    to: Athena.Content.LibraryExport,
+    as: :download
+
   defdelegate list_library_blocks(user, params), to: Library
   defdelegate get_library_block(user, id), to: Library
   defdelegate get_library_block(id), to: Library
   defdelegate list_readable_question_block_ids(user), to: Library
   defdelegate create_library_block(user, attrs), to: Library
   defdelegate duplicate_library_block(user, block), to: Library
-  defdelegate update_library_block(user, block, attrs), to: Library
+
+  def update_library_block(user, block, attrs),
+    do:
+      Library.update_library_block(user, block, attrs) |> notify_library_access_if_changed(block)
+
   defdelegate delete_library_block(user, block), to: Library
   defdelegate generate_exam_questions(course_id, params), to: Library
   defdelegate generate_ticket_questions(course_id, slots, usage), to: Library
   defdelegate pinned_to_any_course?(library_block_id), to: Library
+
+  def duplicate_library_block_for_course(user, course_id, block_id),
+    do:
+      Library.duplicate_library_block_for_course(user, course_id, block_id)
+      |> notify_library_access()
 
   def share_block(user, block, account_id, role) do
     case Library.share_block(user, block, account_id, role) do
@@ -261,6 +308,23 @@ defmodule Athena.Content do
   end
 
   defp notify_subscribers(result), do: result
+
+  defp notify_library_access({:ok, _} = result) do
+    Phoenix.PubSub.broadcast(Athena.PubSub, "library_access", :refresh_library)
+    result
+  end
+
+  defp notify_library_access(result), do: result
+
+  defp notify_library_access_if_changed({:ok, updated} = result, previous) do
+    fields = [:owner_id, :is_public, :deleted_at, :type]
+
+    if Map.take(updated, fields) != Map.take(previous, fields),
+      do: notify_library_access(result),
+      else: result
+  end
+
+  defp notify_library_access_if_changed(result, _previous), do: result
 
   defp broadcast_course_update(course_id),
     do: Phoenix.PubSub.broadcast(Athena.PubSub, "course_content:#{course_id}", :refresh_content)

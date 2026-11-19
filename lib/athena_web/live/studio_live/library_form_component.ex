@@ -78,6 +78,12 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
+
+      {:error, :forbidden} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("You don't have permission to edit this template."))
+         |> push_patch(to: socket.assigns.patch)}
     end
   end
 

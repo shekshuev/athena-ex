@@ -7,11 +7,12 @@ defmodule Athena.Content.LibraryTest do
   setup do
     role =
       insert(:role,
-        permissions: ["library.read", "library.update", "library.delete"],
+        permissions: ["library.read", "library.update", "library.delete", "courses.read"],
         policies: %{
           "library.read" => ["own_only"],
           "library.update" => ["own_only"],
-          "library.delete" => ["own_only"]
+          "library.delete" => ["own_only"],
+          "courses.read" => ["own_only"]
         }
       )
 
@@ -82,12 +83,13 @@ defmodule Athena.Content.LibraryTest do
       assert hd(blocks).id == pinned_block.id
     end
 
-    test "should show blocks in course library, which doesn't belongs to user, if course_id passed",
+    test "should show other owners' pinned blocks through a readable course",
          %{
            owner1: owner1,
            owner2: owner2
          } do
-      course = insert(:course)
+      course = insert(:course, owner_id: owner2.id)
+      insert(:course_share, course: course, account_id: owner1.id, role: :reader)
 
       secret_block = insert(:library_block, owner_id: owner2.id, is_public: false)
 

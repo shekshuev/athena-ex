@@ -321,7 +321,12 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
 
   describe "Collaborator Roles (Reader vs Writer)" do
     setup %{admin: owner} do
-      role = insert(:role, permissions: ["library.read"])
+      role =
+        insert(:role,
+          permissions: ["library.read", "library.update"],
+          policies: %{"library.read" => ["own_only"], "library.update" => ["own_only"]}
+        )
+
       collaborator = insert(:account, role: role)
       block = insert(:library_block, title: "Collab Block", owner_id: owner.id)
 
@@ -371,7 +376,7 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
       assert html_index =~ block.title
       assert html_index =~ "hero-wrench-screwdriver"
       assert html_index =~ "hero-pencil-square"
-      refute html_index =~ "hero-share"
+      assert html_index =~ "hero-share"
       refute html_index =~ "hero-trash"
 
       lv_index
@@ -546,14 +551,13 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
       end
     end
 
-    test "select all only ever touches blocks the current user can actually pin", %{
+    test "course writers can pin every readable block on the page", %{
       conn: conn,
       admin: admin,
       course: course
     } do
-      # A course collaborator (writer share, so pinning to this course
-      # actually succeeds server-side) who isn't the course owner and holds
-      # no unscoped "library.update" - only owning `mine` makes it togglable.
+      # Pinning follows course write access; ownership of each readable template
+      # does not restrict which associations a course editor can manage.
       limited_role =
         insert(:role, permissions: ["library.read", "courses.read", "courses.update"])
 
@@ -565,7 +569,7 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
       not_mine = insert(:library_block, title: "Not Mine", owner_id: admin.id)
 
       {:ok, lv, html} = live(conn, "/studio/courses/#{course.id}/library?pinned_only=false")
-      assert html =~ "(0/1 in this course)"
+      assert html =~ "(0/2 in this course)"
 
       lv
       |> element("input[phx-click='toggle_pin_all']")
@@ -576,7 +580,7 @@ defmodule AthenaWeb.StudioLive.LibraryTest do
                course_id: course.id
              )
 
-      refute Athena.Repo.get_by(Athena.Content.CourseLibraryBlock,
+      assert Athena.Repo.get_by(Athena.Content.CourseLibraryBlock,
                library_block_id: not_mine.id,
                course_id: course.id
              )

@@ -38,9 +38,11 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
         ~p"/studio/library?#{return_query}"
       end
 
-    with {:ok, block} <- Content.get_library_block(block_id),
+    with :ok <- authorize_course(socket.assigns.current_user, course_id),
+         {:ok, block} <- Content.get_library_block(socket.assigns.current_user, block_id),
          role when role != :none <- determine_role(block, socket.assigns.current_user) do
       if connected?(socket) do
+        Phoenix.PubSub.subscribe(Athena.PubSub, "library_access")
         Phoenix.PubSub.subscribe(Athena.PubSub, "user_library:#{socket.assigns.current_user.id}")
         Phoenix.PubSub.subscribe(Athena.PubSub, "public_library")
       end
@@ -118,7 +120,8 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
   @impl true
   def handle_info(:refresh_library, socket) do
-    with {:ok, block} <-
+    with :ok <- authorize_course(socket.assigns.current_user, socket.assigns.course_id),
+         {:ok, block} <-
            Content.get_library_block(socket.assigns.current_user, socket.assigns.block.id),
          new_role when new_role != :none <- determine_role(block, socket.assigns.current_user) do
       socket =
@@ -282,11 +285,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     block = socket.assigns.block
 
     with true <- Identity.can?(user, "library.create"),
-         {:ok, copy} <- Content.duplicate_library_block(user, block) do
-      if socket.assigns.course_bank_mode do
-        Content.pin_library_block(user, socket.assigns.course_id, copy.id)
-      end
-
+         {:ok, copy} <- duplicate_block(socket, block) do
       new_path =
         if socket.assigns.course_bank_mode do
           ~p"/studio/courses/#{socket.assigns.course_id}/library/#{copy.id}/editor?#{socket.assigns.return_query}"
@@ -765,6 +764,10 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                tags_string: tags_string
              )}
 
+          {:error, :forbidden} ->
+            {:noreply,
+             put_flash(socket, :error, gettext("Your access to this template was revoked."))}
+
           {:error, changeset} ->
             changeset = %{changeset | action: :update}
             err_msg = format_changeset_errors(changeset)
@@ -882,6 +885,10 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
         {:noreply,
          assign(socket, block: updated, form: to_form(LibraryBlock.changeset(updated, %{})))}
 
+      {:error, :forbidden} ->
+        {:noreply,
+         put_flash(socket, :error, gettext("Your access to this template was revoked."))}
+
       {:error, changeset} ->
         changeset = %{changeset | action: :update}
         err_msg = format_changeset_errors(changeset)
@@ -951,7 +958,13 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
   def render(assigns) do
     assigns =
       assign(assigns,
-        block_mode: if(assigns.role in [:owner, :writer], do: :edit, else: :preview)
+        block_mode: if(assigns.role in [:owner, :writer], do: :edit, else: :preview),
+        inherited_edit:
+          assigns.role == :writer and
+            not Content.library_block_access(assigns.current_user, assigns.block).can_manage,
+        can_copy:
+          Identity.can?(assigns.current_user, "library.create") and
+            can_copy_to_course?(assigns.current_user, assigns.course_id)
       )
 
     ~H"""
@@ -963,6 +976,15 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
       <%!-- `inert` takes the page out of the selection/Ctrl+A/focus order while the test-run overlay is up, so the editor's own copy of the prompt can't be copied from behind it --%>
       <div inert={@test_run_session != nil}>
         <.page_container size="wide" class={not @course_bank_mode && "pb-20"}>
+          <p
+            :if={@inherited_edit}
+            id="library-inherited-edit-notice"
+            class="rounded-lg border border-base-300 bg-base-200 p-3 mb-4 text-sm"
+          >
+            {gettext(
+              "You can edit this template through a shared course. Changes affect the original template in every course that uses it. Sharing, visibility and deletion require separate permissions."
+            )}
+          </p>
           <.sticky_header id="library-editor-header" class="flex items-center gap-4">
             <.link
               id="library-editor-back"
@@ -994,15 +1016,23 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                 <span class="hidden sm:inline">{gettext("Test run")}</span>
               </.button>
               <.button
-                :if={Identity.can?(@current_user, "library.create")}
+                :if={@can_copy}
                 id="library-editor-copy"
                 type="button"
                 phx-click="copy_block"
                 class="btn btn-ghost btn-sm"
-                title={gettext("Duplicate Template")}
+                title={
+                  if @course_bank_mode,
+                    do: gettext("Create a copy for this course"),
+                    else: gettext("Duplicate Template")
+                }
               >
                 <.icon name="hero-square-2-stack" class="size-5" />
-                <span class="hidden sm:inline">{gettext("Duplicate")}</span>
+                <span class="hidden sm:inline">
+                  {if @course_bank_mode,
+                    do: gettext("Create a copy for this course"),
+                    else: gettext("Duplicate")}
+                </span>
               </.button>
             </div>
           </.sticky_header>
@@ -1517,22 +1547,45 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     """
   end
 
-  defp determine_role(block, user) do
-    shares = Content.list_block_shares(block)
+  defp can_copy_to_course?(_user, nil), do: true
 
-    is_pinned_to_course? = Content.pinned_to_any_course?(block.id)
-
-    cond do
-      block.owner_id == user.id -> :owner
-      share = Enum.find(shares, &(&1.account_id == user.id)) -> share.role
-      Identity.can?(user, "library.update", block) -> :writer
-      block.is_public -> :reader
-      is_pinned_to_course? -> :reader
-      true -> :none
+  defp can_copy_to_course?(user, course_id) do
+    case Content.get_course(user, course_id) do
+      {:ok, course} -> Content.can_edit_course?(user, course)
+      _ -> false
     end
   end
 
-  defp can_edit?(socket), do: socket.assigns.role in [:owner, :writer]
+  defp duplicate_block(%{assigns: %{course_bank_mode: true}} = socket, block),
+    do:
+      Content.duplicate_library_block_for_course(
+        socket.assigns.current_user,
+        socket.assigns.course_id,
+        block.id
+      )
+
+  defp duplicate_block(socket, block),
+    do: Content.duplicate_library_block(socket.assigns.current_user, block)
+
+  defp determine_role(block, user), do: Content.library_block_access(user, block).role
+
+  defp can_edit?(socket) do
+    user = socket.assigns.current_user
+
+    authorize_course(user, socket.assigns.course_id) == :ok and
+      Content.can_edit_library_block?(user, socket.assigns.block)
+  end
+
+  defp authorize_course(_user, nil), do: :ok
+
+  defp authorize_course(user, course_id) do
+    with {:ok, _id} <- Ecto.UUID.cast(course_id),
+         {:ok, _course} <- Content.get_course(user, course_id) do
+      :ok
+    else
+      _ -> {:error, :forbidden}
+    end
+  end
 
   defp normalize_content(%{__struct__: _} = struct),
     do: struct |> Map.from_struct() |> normalize_content()

@@ -22,9 +22,16 @@ defmodule Athena.Content.CoursesTest do
 
     instructor_role =
       insert(:role,
-        permissions: ["courses.read", "courses.create", "courses.update", "courses.delete"],
+        permissions: [
+          "courses.read",
+          "courses.create",
+          "courses.update",
+          "courses.delete",
+          "library.read"
+        ],
         policies: %{
           "courses.read" => ["own_only"],
+          "library.read" => ["own_only"],
           "courses.update" => ["own_only"],
           "courses.delete" => ["own_only"]
         }

@@ -8,11 +8,19 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
   setup %{conn: conn} do
     role =
       insert(:role,
-        permissions: ["library.read", "library.update", "library.delete"],
+        permissions: [
+          "library.read",
+          "library.update",
+          "library.delete",
+          "courses.read",
+          "courses.update"
+        ],
         policies: %{
           "library.read" => ["own_only"],
           "library.update" => ["own_only"],
-          "library.delete" => ["own_only"]
+          "library.delete" => ["own_only"],
+          "courses.read" => ["own_only"],
+          "courses.update" => ["own_only"]
         }
       )
 
@@ -673,7 +681,9 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       conn: conn,
       admin: owner
     } do
-      role_reader = insert(:role, permissions: ["library.read"])
+      role_reader =
+        insert(:role, permissions: ["library.read"], policies: %{"library.read" => ["own_only"]})
+
       reader = insert(:account, role: role_reader)
 
       block = insert(:library_block, title: "Revoked Template", owner_id: owner.id)
@@ -693,7 +703,12 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       conn: conn,
       admin: owner
     } do
-      role_writer = insert(:role, permissions: ["library.read", "library.update"])
+      role_writer =
+        insert(:role,
+          permissions: ["library.read", "library.update"],
+          policies: %{"library.read" => ["own_only"], "library.update" => ["own_only"]}
+        )
+
       writer = insert(:account, role: role_writer)
 
       block = insert(:library_block, title: "Upgraded Template", owner_id: owner.id)
@@ -705,7 +720,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       Content.share_block(owner, block, writer.id, :writer)
       send(lv.pid, :refresh_library)
 
-      Process.sleep(50)
+      _ = :sys.get_state(lv.pid)
 
       html = render(lv)
       assert html =~ "Your access level has been updated."

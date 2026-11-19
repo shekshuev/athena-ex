@@ -49,6 +49,8 @@ defmodule AthenaWeb.Router do
   scope "/studio", AthenaWeb do
     pipe_through :browser
 
+    post "/library/export", LibraryExportController, :download
+
     get "/surveys/:id/export.csv", SurveyExportController, :download
     get "/surveys/:id/export.long.csv", SurveyExportController, :download_long
   end

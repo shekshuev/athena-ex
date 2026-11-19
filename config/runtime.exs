@@ -11,7 +11,7 @@ import Config
 #
 # There are four named releases (see `releases/0` in mix.exs): `web`,
 # `runner_db`, `runner_compiled`, `runner_script`. Each produces its own
-# `bin/<name>` script, and Elixir sets RELEASE_NAME to that name at boot —
+# `bin/<name>` script, and Elixir sets RELEASE_NAME to that name at boot –
 # that's what this file uses below to derive the node's role, instead of an
 # operator-facing env var. `rel/overlays/bin/server` sets PHX_SERVER=true and
 # execs `bin/$RELEASE_NAME start`.
@@ -19,7 +19,7 @@ import Config
 # The node's role is never an operator-facing setting: it's baked into which
 # release was built and deployed. Elixir sets RELEASE_NAME automatically from
 # the release name declared in mix.exs before the node boots. When it's unset
-# (running via `mix phx.server` / `mix test` instead of a built release —
+# (running via `mix phx.server` / `mix test` instead of a built release –
 # i.e. only in :dev and :test), the node runs every role combined.
 {server_role, runner_family} =
   case System.get_env("RELEASE_NAME") do
