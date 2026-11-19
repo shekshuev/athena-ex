@@ -183,6 +183,13 @@ defmodule Athena.Content do
   def attach_media_to_block(user, block, meta, file_info),
     do: Blocks.attach_media_to_block(user, block, meta, file_info) |> notify_subscribers()
 
+  defdelegate library_filter_params(params), to: Library
+  defdelegate preview_library_export(user, params), to: Athena.Content.LibraryExport, as: :preview
+
+  defdelegate export_library_questions(user, params, format, opts \\ []),
+    to: Athena.Content.LibraryExport,
+    as: :download
+
   defdelegate list_library_blocks(user, params), to: Library
   defdelegate get_library_block(user, id), to: Library
   defdelegate get_library_block(id), to: Library

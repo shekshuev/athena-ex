@@ -11066,3 +11066,104 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "The instructor rejected one of your submissions. New submissions are blocked. Contact the instructor if you think this is a mistake."
 msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1052
+#, elixir-autogen, elixir-format
+msgid "%{count} blocks of other types will not be included. Exams are not expanded into questions."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1062
+#, elixir-autogen, elixir-format
+msgid "About export formats"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1012
+#, elixir-autogen, elixir-format
+msgid "All blocks matching current filters (all pages)"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1046
+#, elixir-autogen, elixir-format
+msgid "Blocks: %{total}. Questions to export: %{questions}."
+msgstr ""
+
+#: lib/athena_web/controllers/library_export_controller.ex:34
+#, elixir-autogen, elixir-format
+msgid "Cannot export question: %{title}. Its content is unsupported or incomplete. Try Moodle XML if GIFT cannot represent the answer."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:779
+#, elixir-autogen, elixir-format
+msgid "Clear selection"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1085
+#, elixir-autogen, elixir-format
+msgid "Export %{count} questions"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:654
+#: lib/athena_web/live/studio_live/library.ex:994
+#, elixir-autogen, elixir-format
+msgid "Export questions"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1009
+#, elixir-autogen, elixir-format
+msgid "Export scope"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1018
+#, elixir-autogen, elixir-format
+msgid "File format"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1074
+#, elixir-autogen, elixir-format
+msgid "Images remain links in both exports and may require access to Athena. Formulas require a math filter in Moodle. Unsupported or incomplete question content stops the download instead of being silently omitted."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1069
+#, elixir-autogen, elixir-format
+msgid "In both formats, Moodle can award partial credit for multiple-choice and matching questions; Athena requires the complete correct answer. Matching answer labels become plain text."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1064
+#, elixir-autogen, elixir-format
+msgid "Moodle XML preserves question tags, points, case sensitivity and the open-answer editor type. GIFT preserves tags, but does not preserve points, case sensitivity or the open-answer editor type."
+msgstr ""
+
+#: lib/athena_web/controllers/library_export_controller.ex:27
+#, elixir-autogen, elixir-format
+msgid "No questions to export."
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:808
+#, elixir-autogen, elixir-format
+msgid "Select"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:816
+#, elixir-autogen, elixir-format
+msgid "Select %{title} for export"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:767
+#, elixir-autogen, elixir-format
+msgid "Select this page for export"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:1011
+#, elixir-autogen, elixir-format
+msgid "Selected blocks (%{count})"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:770
+#, elixir-autogen, elixir-format
+msgid "Selected: %{count}"
+msgstr ""
+
+#: lib/athena_web/live/studio_live/library.ex:452
+#, elixir-autogen, elixir-format
+msgid "Some selected blocks are no longer available. Clear the selection and try again."
+msgstr ""

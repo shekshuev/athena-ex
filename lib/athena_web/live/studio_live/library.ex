@@ -24,6 +24,11 @@ defmodule AthenaWeb.StudioLive.Library do
      |> assign(block_to_delete: nil)
      |> assign(block_to_share: nil)
      |> assign(has_blocks: false)
+     |> assign(selected_ids: MapSet.new(), page_ids: MapSet.new())
+     |> assign(export_open: false, export_summary: nil, export_error: nil)
+     |> assign(
+       export_form: to_form(%{"scope" => "filtered", "format" => "moodle_xml"}, as: :export)
+     )
      |> assign(course_library_mode: false)
      |> assign(course: nil)
      |> assign(pinned_ids: MapSet.new())
@@ -61,18 +66,16 @@ defmodule AthenaWeb.StudioLive.Library do
     type = Map.get(params, "type", "all")
     tag = Map.get(params, "tag", "")
 
-    flop_filters = build_flop_filters(search, type, tag)
-
     flop_params =
       params
-      |> Map.merge(%{"filters" => flop_filters})
       |> Map.put("course_id", socket.assigns.course_id)
       |> Map.put("pinned_only", socket.assigns.pinned_only)
+      |> Content.library_filter_params()
 
     case Content.list_library_blocks(socket.assigns.current_user, flop_params) do
       {:ok, {blocks, meta}} ->
         socket
-        |> assign(meta: meta)
+        |> assign(meta: meta, page_ids: MapSet.new(Enum.map(blocks, & &1.id)))
         |> assign(search: search)
         |> assign(type_filter: type)
         |> assign(tag_filter: tag)
@@ -83,7 +86,7 @@ defmodule AthenaWeb.StudioLive.Library do
       {:error, _meta} ->
         socket
         |> assign(search: search, type_filter: type, tag_filter: tag, has_blocks: false)
-        |> assign(pinnable_ids: MapSet.new())
+        |> assign(pinnable_ids: MapSet.new(), page_ids: MapSet.new())
         |> stream(:library_blocks, [], reset: true)
     end
   end
@@ -237,6 +240,55 @@ defmodule AthenaWeb.StudioLive.Library do
     {:noreply, push_patch(socket, to: target_path)}
   end
 
+  def handle_event("toggle_export_selection", %{"id" => id}, socket) do
+    selected = socket.assigns.selected_ids
+
+    if MapSet.member?(socket.assigns.page_ids, id) do
+      socket =
+        assign(socket,
+          selected_ids: toggle_membership(selected, id, not MapSet.member?(selected, id))
+        )
+
+      {:noreply, load_blocks(socket, build_query_params(socket.assigns, %{}))}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("select_export_page", _params, socket) do
+    selected = socket.assigns.selected_ids
+    page = socket.assigns.page_ids
+
+    selected =
+      if MapSet.subset?(page, selected),
+        do: MapSet.difference(selected, page),
+        else: MapSet.union(selected, page)
+
+    socket = assign(socket, selected_ids: selected)
+    {:noreply, load_blocks(socket, build_query_params(socket.assigns, %{}))}
+  end
+
+  def handle_event("clear_export_selection", _params, socket) do
+    socket = assign(socket, selected_ids: MapSet.new())
+    {:noreply, load_blocks(socket, build_query_params(socket.assigns, %{}))}
+  end
+
+  def handle_event("open_export", _params, socket) do
+    scope = if MapSet.size(socket.assigns.selected_ids) > 0, do: "selected", else: "filtered"
+
+    {:noreply,
+     socket
+     |> assign(export_open: true)
+     |> preview_export(%{"scope" => scope, "format" => "moodle_xml"})}
+  end
+
+  def handle_event("preview_export", %{"export" => params}, socket) do
+    {:noreply, preview_export(socket, params)}
+  end
+
+  def handle_event("close_export", _params, socket),
+    do: {:noreply, assign(socket, export_open: false)}
+
   def handle_event("delete_click", %{"id" => id}, socket) do
     {:ok, block} = Content.get_library_block(socket.assigns.current_user, id)
 
@@ -380,6 +432,45 @@ defmodule AthenaWeb.StudioLive.Library do
     end
   end
 
+  defp preview_export(socket, params) do
+    case Content.preview_library_export(
+           socket.assigns.current_user,
+           export_params(socket.assigns, params["scope"])
+         ) do
+      {:ok, summary} ->
+        assign(socket,
+          export_form: to_form(params, as: :export),
+          export_summary: summary,
+          export_error: nil
+        )
+
+      {:error, _} ->
+        assign(socket,
+          export_form: to_form(params, as: :export),
+          export_summary: nil,
+          export_error:
+            gettext(
+              "Some selected blocks are no longer available. Clear the selection and try again."
+            )
+        )
+    end
+  end
+
+  defp export_params(assigns, scope) do
+    %{
+      "scope" => scope,
+      "ids" => MapSet.to_list(assigns.selected_ids),
+      "search" => assigns.search,
+      "type" => assigns.type_filter,
+      "tag" => assigns.tag_filter,
+      "course_id" => if(assigns.course_library_mode, do: assigns.course.id, else: nil),
+      "pinned_only" => to_string(assigns.pinned_only),
+      "order_by" => assigns.meta.flop.order_by |> List.wrap() |> Enum.map(&to_string/1),
+      "order_directions" =>
+        assigns.meta.flop.order_directions |> List.wrap() |> Enum.map(&to_string/1)
+    }
+  end
+
   defp pin_copy_if_course_library(%{assigns: %{course_library_mode: false}} = socket, _copy),
     do: socket
 
@@ -482,35 +573,6 @@ defmodule AthenaWeb.StudioLive.Library do
     """
   end
 
-  defp build_flop_filters(search, type, tag) do
-    filters = []
-
-    filters =
-      if search != "",
-        do: [%{"field" => "title", "op" => "ilike_and", "value" => search} | filters],
-        else: filters
-
-    filters =
-      if type in ["", "all"],
-        do: filters,
-        else: [%{"field" => "type", "op" => "==", "value" => type} | filters]
-
-    tags_list =
-      (tag || "")
-      |> String.split(",")
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
-
-    filters =
-      Enum.reduce(tags_list, filters, fn t, acc ->
-        [%{"field" => "tags", "op" => "contains", "value" => t} | acc]
-      end)
-
-    filters
-    |> Enum.with_index(fn filter, index -> {Integer.to_string(index), filter} end)
-    |> Map.new()
-  end
-
   @doc false
   defp build_query_params(assigns, overrides) do
     meta = assigns.meta
@@ -582,6 +644,15 @@ defmodule AthenaWeb.StudioLive.Library do
             </div>
 
             <div class="flex gap-2">
+              <.button
+                id="library-export-open"
+                type="button"
+                phx-click="open_export"
+                class="btn btn-outline btn-sm"
+              >
+                <.icon name="hero-arrow-down-tray" class="size-4" />
+                {gettext("Export questions")}
+              </.button>
               <% new_patch =
                 if @course_library_mode,
                   do:
@@ -686,6 +757,28 @@ defmodule AthenaWeb.StudioLive.Library do
           end %>
 
           <div :if={@has_blocks}>
+            <div class="flex flex-wrap items-center gap-3 mb-3">
+              <.input
+                id="library-export-select-page"
+                type="checkbox"
+                name="export_select_page"
+                checked={MapSet.subset?(@page_ids, @selected_ids)}
+                phx-click="select_export_page"
+                label={gettext("Select this page for export")}
+              />
+              <span id="library-export-selection-count" class="text-sm text-base-content/60">
+                {gettext("Selected: %{count}", count: MapSet.size(@selected_ids))}
+              </span>
+              <button
+                :if={MapSet.size(@selected_ids) > 0}
+                id="library-export-clear"
+                type="button"
+                phx-click="clear_export_selection"
+                class="text-sm underline hover:text-primary"
+              >
+                {gettext("Clear selection")}
+              </button>
+            </div>
             <label
               :if={@course_library_mode && @pinnable_ids != MapSet.new()}
               class="flex items-center gap-2 mb-3 cursor-pointer select-none w-fit"
@@ -712,6 +805,17 @@ defmodule AthenaWeb.StudioLive.Library do
             </label>
 
             <.table id="library-blocks" rows={@streams.library_blocks} meta={@meta} path_fn={path_fn}>
+              <:col :let={{_id, block}} label={gettext("Select")}>
+                <.input
+                  id={"export-select-#{block.id}"}
+                  type="checkbox"
+                  name={"export_select_#{block.id}"}
+                  checked={MapSet.member?(@selected_ids, block.id)}
+                  phx-click="toggle_export_selection"
+                  phx-value-id={block.id}
+                  aria-label={gettext("Select %{title} for export", title: block.title)}
+                />
+              </:col>
               <:col :let={{_id, block}} :if={@course_library_mode} label={gettext("In Course")}>
                 <% info = block_badges(block, @current_user) %>
                 <% is_course_owner = @course && @course.owner_id == @current_user.id %>
@@ -883,6 +987,107 @@ defmodule AthenaWeb.StudioLive.Library do
           patch={base_patch}
         />
       </.slide_over>
+
+      <.modal
+        id="library-export-modal"
+        show={@export_open}
+        title={gettext("Export questions")}
+        on_cancel={JS.push("close_export")}
+      >
+        <.form
+          for={@export_form}
+          id="library-export-form"
+          action={~p"/studio/library/export"}
+          method="post"
+          target="_blank"
+          phx-change="preview_export"
+          class="space-y-4"
+        >
+          <.input
+            field={@export_form[:scope]}
+            type="select"
+            label={gettext("Export scope")}
+            options={[
+              {gettext("Selected blocks (%{count})", count: MapSet.size(@selected_ids)), "selected"},
+              {gettext("All blocks matching current filters (all pages)"), "filtered"}
+            ]}
+          />
+          <.input
+            field={@export_form[:format]}
+            type="select"
+            label={gettext("File format")}
+            options={[{"Moodle XML", "moodle_xml"}, {"GIFT", "gift"}]}
+          />
+          <input :for={id <- @selected_ids} type="hidden" name="ids[]" value={id} />
+          <input
+            :for={key <- ~w(search type tag course_id pinned_only)}
+            type="hidden"
+            name={key}
+            value={export_params(assigns, @export_form[:scope].value)[key]}
+          />
+          <input
+            :for={value <- export_params(assigns, "filtered")["order_by"]}
+            type="hidden"
+            name="order_by[]"
+            value={value}
+          />
+          <input
+            :for={value <- export_params(assigns, "filtered")["order_directions"]}
+            type="hidden"
+            name="order_directions[]"
+            value={value}
+          />
+          <div
+            :if={@export_summary}
+            id="library-export-summary"
+            class="rounded-lg border border-base-300 p-3 text-sm space-y-2"
+          >
+            <p>
+              {gettext("Blocks: %{total}. Questions to export: %{questions}.",
+                total: @export_summary.total,
+                questions: @export_summary.questions
+              )}
+            </p>
+            <p :if={@export_summary.skipped > 0} id="library-export-skipped">
+              {gettext(
+                "%{count} blocks of other types will not be included. Exams are not expanded into questions.",
+                count: @export_summary.skipped
+              )}
+            </p>
+          </div>
+          <p :if={@export_error} id="library-export-error" class="text-sm text-error">
+            {@export_error}
+          </p>
+          <details id="library-export-help" class="text-sm text-base-content/70 space-y-2">
+            <summary class="cursor-pointer font-medium">{gettext("About export formats")}</summary>
+            <p class="mt-2">
+              {gettext(
+                "Moodle XML preserves question tags, points, case sensitivity and the open-answer editor type. GIFT preserves tags, but does not preserve points, case sensitivity or the open-answer editor type."
+              )}
+            </p>
+            <p>
+              {gettext(
+                "In both formats, Moodle can award partial credit for multiple-choice and matching questions; Athena requires the complete correct answer. Matching answer labels become plain text."
+              )}
+            </p>
+            <p>
+              {gettext(
+                "Images remain links in both exports and may require access to Athena. Formulas require a math filter in Moodle. Unsupported or incomplete question content stops the download instead of being silently omitted."
+              )}
+            </p>
+          </details>
+          <.button
+            id="library-export-download"
+            type="submit"
+            class="btn btn-primary w-full"
+            disabled={is_nil(@export_summary) or @export_summary.questions == 0}
+          >
+            {gettext("Export %{count} questions",
+              count: if(@export_summary, do: @export_summary.questions, else: 0)
+            )}
+          </.button>
+        </.form>
+      </.modal>
 
       <.modal
         id="delete-library-modal"

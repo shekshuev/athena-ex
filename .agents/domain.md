@@ -10,6 +10,7 @@ read_when: "changing domain behavior or cross-context events"
 Read the relevant context facade and module documentation before changing behavior.
 
 - Content owns authoring and search. Keep derived search data consistent through indexing workers and the backfill task, including deletions and changes to block text.
+- Library question exports belong to Content. Reuse library read scopes and filters, validate course access before allowing its pinned bank to grant access, and recheck selected IDs at download time. Export only individual `quiz_question` blocks; report other selected types instead of silently ignoring them or expanding exams. Keep format limitations visible in the export UI and reject unsupported question content rather than losing it silently.
 - Learning owns submissions, grading and progress. Gamification reacts to learning facts through `ActivityListener`; do not couple Learning mutations directly to XP writes. Preserve deduplication and idempotency when replaying jobs or events.
 - Surveys are standalone questionnaires delivered through course survey blocks. They are not graded, award no XP and collect no engagement telemetry. Preserve branching, resume behavior and cohort privacy in results and exports.
 - Execution runs untrusted code and SQL. Preserve isolate restrictions, time/memory/output limits, SQL restrictions, cleanup, family dispatch and verifier semantics. Do not relax controls to make a failing example pass.

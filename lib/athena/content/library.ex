@@ -13,11 +13,14 @@ defmodule Athena.Content.Library do
   @spec list_library_blocks(map(), map()) ::
           {:ok, {[LibraryBlock.t()], Flop.Meta.t()}} | {:error, Flop.Meta.t()}
   def list_library_blocks(user, params \\ %{}) do
+    flop_params = Map.drop(params, ["tag_search", "course_id", "pinned_only"])
+    Flop.validate_and_run(library_query(user, params), flop_params, for: LibraryBlock)
+  end
+
+  defp library_query(user, params) do
     tag_search = Map.get(params, "tag_search")
     course_id = Map.get(params, "course_id")
     pinned_only = Map.get(params, "pinned_only") in [true, "true"]
-
-    flop_params = Map.drop(params, ["tag_search", "course_id", "pinned_only"])
 
     query =
       from(lb in LibraryBlock, preload: [:course_library_blocks])
@@ -58,8 +61,97 @@ defmodule Athena.Content.Library do
         query
       end
 
-    Flop.validate_and_run(query, flop_params, for: LibraryBlock)
+    query
   end
+
+  @doc "Builds library list filters from the library screen's URL parameters."
+  def library_filter_params(params) do
+    filters =
+      [
+        {"title", "ilike_and", params["search"]},
+        {"type", "==", if(params["type"] in [nil, "", "all"], do: nil, else: params["type"])}
+      ]
+      |> Enum.reject(fn {_, _, value} -> value in [nil, ""] end)
+      |> Enum.map(fn {field, op, value} -> %{"field" => field, "op" => op, "value" => value} end)
+
+    tags =
+      (params["tag"] || "")
+      |> String.split(",")
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.map(&%{"field" => "tags", "op" => "contains", "value" => &1})
+
+    params
+    |> Map.take(["page", "page_size", "order_by", "order_directions", "course_id", "pinned_only"])
+    |> Map.reject(fn {key, value} -> key == "course_id" and value in [nil, ""] end)
+    |> Map.put("filters", filters ++ tags)
+  end
+
+  @doc false
+  # Used by the export service: same filters and ACL as the list, without pagination.
+  # A supplied course must be readable before its bank can grant question access.
+  def export_query(user, params) do
+    with true <- Identity.can?(user, "library.read"),
+         :ok <- validate_export_params(params),
+         :ok <- authorize_export_course(user, params["course_id"]),
+         {:ok, query_params} <- export_selection_params(params),
+         {:ok, flop} <- Flop.validate(query_params, for: LibraryBlock, pagination: false) do
+      query =
+        library_query(user, query_params)
+        |> Flop.filter(flop, for: LibraryBlock)
+        |> Flop.order_by(flop, for: LibraryBlock)
+
+      scope_export_selection(query, params)
+    else
+      false -> {:error, :forbidden}
+      {:error, _} = error -> error
+    end
+  end
+
+  defp validate_export_params(params) do
+    if Enum.all?(~w(search type tag course_id), &(is_nil(params[&1]) or is_binary(params[&1]))),
+      do: :ok,
+      else: {:error, :invalid_params}
+  end
+
+  defp authorize_export_course(_user, course_id) when course_id in [nil, ""], do: :ok
+
+  defp authorize_export_course(user, course_id) do
+    with {:ok, _} <- Ecto.UUID.cast(course_id),
+         {:ok, _} <- Athena.Content.Courses.get_course(user, course_id) do
+      :ok
+    else
+      _ -> {:error, :forbidden}
+    end
+  end
+
+  defp export_selection_params(%{"scope" => "selected"} = params),
+    do: {:ok, library_filter_params(Map.take(params, ["course_id"]))}
+
+  defp export_selection_params(%{"scope" => "filtered"} = params),
+    do: {:ok, library_filter_params(params)}
+
+  defp export_selection_params(_params), do: {:error, :invalid_params}
+
+  defp scope_export_selection(query, %{"scope" => "selected", "ids" => []}),
+    do: {:ok, where(query, [lb], false)}
+
+  defp scope_export_selection(query, %{"scope" => "selected", "ids" => ids})
+       when is_list(ids) do
+    if ids != [] and Enum.all?(ids, &match?({:ok, _}, Ecto.UUID.cast(&1))) do
+      ids = Enum.uniq(ids)
+      query = where(query, [lb], lb.id in ^ids)
+
+      if Repo.aggregate(query, :count) == length(ids),
+        do: {:ok, query},
+        else: {:error, :forbidden}
+    else
+      {:error, :invalid_params}
+    end
+  end
+
+  defp scope_export_selection(query, %{"scope" => "filtered"}), do: {:ok, query}
+  defp scope_export_selection(_query, _params), do: {:error, :invalid_params}
 
   @doc "Retrieves a single library block without ACL (internal use)."
   @spec get_library_block(String.t()) :: {:ok, LibraryBlock.t()} | {:error, :not_found}
