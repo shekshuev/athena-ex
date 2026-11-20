@@ -228,6 +228,33 @@ defmodule Athena.MediaTest do
       assert file.context == :avatar
     end
 
+    test "infers missing MIME types and preserves the 2GB size in metadata" do
+      for {name, mime, attrs_type} <- [
+            {"archive.7z", "application/x-7z-compressed", :string},
+            {"archive.7Z", "application/x-7z-compressed", :atom},
+            {"unknown.athenafile", "application/octet-stream", :atom}
+          ] do
+        attrs = %{
+          bucket: "athena-test",
+          key: Ecto.UUID.generate(),
+          original_name: name,
+          mime_type: "",
+          size: 2 * 1024 * 1024 * 1024,
+          context: :submission,
+          owner_id: Ecto.UUID.generate()
+        }
+
+        attrs =
+          if attrs_type == :string,
+            do: Map.new(attrs, fn {key, value} -> {Atom.to_string(key), value} end),
+            else: attrs
+
+        assert {:ok, file} = Media.create_file(attrs)
+        assert file.mime_type == mime
+        assert file.size == 2 * 1024 * 1024 * 1024
+      end
+    end
+
     test "create_file/1 enforces unique constraint on bucket and key" do
       existing_file = insert(:media_file)
 

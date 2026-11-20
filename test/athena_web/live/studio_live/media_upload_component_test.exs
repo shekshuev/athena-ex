@@ -76,14 +76,14 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponentTest do
       {:ok, _view, html} = render_dummy(conn, admin, course, "video")
 
       assert html =~ ".MP4, .MOV, .WEBM"
-      assert html =~ "Max 1GB"
+      assert html =~ "Max 2GB"
     end
 
     test "renders correctly for attachments", %{conn: conn, admin: admin, course: course} do
       {:ok, _view, html} = render_dummy(conn, admin, course, "attachment")
 
-      assert html =~ "Docs, PDFs, Archives, Audio"
-      assert html =~ "10 files"
+      assert html =~ "including 7z"
+      assert html =~ "Max 2GB each"
     end
   end
 
@@ -134,6 +134,32 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponentTest do
 
       assert_receive :modal_cancelled
     end
+  end
+
+  test "saves a 7z submission when the browser sends no MIME type", %{
+    conn: conn,
+    admin: admin,
+    course: course
+  } do
+    {:ok, view, _html} = render_dummy(conn, admin, course, "file_assignment")
+
+    upload =
+      file_input(view, "#upload-form", :media, [
+        %{name: "solution.7z", content: "archive", type: ""}
+      ])
+
+    render_upload(upload, "solution.7z")
+    view |> form("#upload-form") |> render_submit()
+
+    assert_receive {AthenaWeb.StudioLive.MediaUploadComponent,
+                    {:saved, "fake_block_id", "file_assignment", [{:ok, saved}]}}
+
+    assert saved["mime"] == "application/x-7z-compressed"
+    assert saved["name"] == "solution.7z"
+
+    file = Athena.Repo.get_by!(Athena.Media.File, original_name: "solution.7z")
+    assert file.context == :submission
+    assert file.mime_type == saved["mime"]
   end
 
   describe "Save / Submit Event" do

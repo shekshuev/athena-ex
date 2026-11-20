@@ -3112,7 +3112,7 @@ msgstr ""
 
 #: lib/athena/media/config.ex:16
 #, elixir-autogen, elixir-format
-msgid ".MP4, .MOV, .WEBM, .AVI, .MKV (Max 1GB)"
+msgid ".MP4, .MOV, .WEBM, .AVI, .MKV (Max 2GB)"
 msgstr ""
 
 #: lib/athena_web/components/block_components.ex:1862
@@ -11020,4 +11020,7 @@ msgstr ""
 #: lib/athena_web/live/studio_live/library_editor.ex:975
 #, elixir-autogen, elixir-format
 msgid "You can edit this template through a shared course. Changes affect the original template in every course that uses it. Sharing, visibility and deletion require separate permissions."
+msgstr ""
+
+msgid "Documents, code, archives (including 7z), images, audio, video (Max 2GB each)"
 msgstr ""

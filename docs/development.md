@@ -184,6 +184,8 @@ See [Images](#images) for the four releases and tag conventions. Docker is the s
 
 ## Deployment
 
+For file uploads through HTTPS nginx, see [MinIO and nginx configuration](deployment/storage-https.md).
+
 Athena is a set of separate Docker images clustered over **libcluster**
 (Gossip) with a shared `RELEASE_COOKIE`. There is no all-in-one production
 image and no operator-facing "role" setting – which image you run _is_ the

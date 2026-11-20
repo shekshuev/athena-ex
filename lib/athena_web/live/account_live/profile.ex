@@ -60,6 +60,7 @@ defmodule AthenaWeb.AccountLive.Profile do
 
     case resolve_target(current_user, target_id) do
       {:ok, target} ->
+        avatar_settings = Media.Config.upload_settings("avatar")
         own_profile? = target.id == current_user.id
         profile = current_user.profile || %Profile{}
 
@@ -74,9 +75,9 @@ defmodule AthenaWeb.AccountLive.Profile do
             to_form(PasswordForm.changeset(%PasswordForm{}, %{}), as: "password")
           )
           |> allow_upload(:avatar,
-            accept: ~w(.jpg .jpeg .png .gif .webp),
-            max_entries: 1,
-            max_file_size: 5 * 1024 * 1024,
+            accept: avatar_settings.accept,
+            max_entries: avatar_settings.max_entries,
+            max_file_size: avatar_settings.max_size,
             external: &presign_avatar/2
           )
 

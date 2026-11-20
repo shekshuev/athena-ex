@@ -18,3 +18,7 @@ Read the relevant context facade and module documentation before changing behavi
 - PubSub listeners, caches and Oban workers affect observable behavior. Trace producers and consumers before changing event shapes or topics. Keep workers safe to retry; do not broadcast success for failed writes.
 
 Use [architecture.md](architecture.md) for ownership and [security.md](security.md) for visibility and privacy.
+
+## Media upload settings
+
+Keep general file extensions and per-file limits centralized in `Athena.Media.Config`: attachments, assignments and personal files share formats and a 2 GiB limit; videos use the same size limit with video extensions. Keep image/avatar and parser-based import limits specific to their purpose. Normalize missing browser MIME types in Media metadata validation before requiring the field.

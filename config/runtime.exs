@@ -172,7 +172,8 @@ if config_env() == :prod do
     config :athena, Athena.Media,
       bucket: System.get_env("MINIO_BUCKET"),
       public_host: System.get_env("MINIO_PUBLIC_HOST"),
-      public_port: System.get_env("MINIO_PORT_EXTERNAL")
+      public_scheme: System.get_env("MINIO_PUBLIC_SCHEME") || System.get_env("MINIO_SCHEME"),
+      public_port: System.get_env("MINIO_PUBLIC_PORT") || System.get_env("MINIO_PORT_EXTERNAL")
 
     media_cron = System.get_env("MEDIA_CLEANUP_CRON") || "0 * * * *"
     gamification_rollup_cron = System.get_env("GAMIFICATION_ROLLUP_CRON") || "5 0 * * MON"
