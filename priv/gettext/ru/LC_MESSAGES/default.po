@@ -3122,8 +3122,8 @@ msgstr "Вы уверены? Это удалит отправленный отв
 
 #: lib/athena/media/config.ex:16
 #, elixir-autogen, elixir-format
-msgid ".MP4, .MOV, .WEBM, .AVI, .MKV (Max 1GB)"
-msgstr ".MP4, .MOV, .WEBM, .AVI, .MKV (Максимум 1GB)"
+msgid ".MP4, .MOV, .WEBM, .AVI, .MKV (Max 2GB)"
+msgstr ".MP4, .MOV, .WEBM, .AVI, .MKV (Максимум 2GB)"
 
 #: lib/athena_web/components/block_components.ex:1894
 #, elixir-autogen, elixir-format
@@ -11324,3 +11324,6 @@ msgstr "Закреплять и откреплять шаблоны могут �
 #, elixir-autogen, elixir-format
 msgid "You can edit this template through a shared course. Changes affect the original template in every course that uses it. Sharing, visibility and deletion require separate permissions."
 msgstr "Вы можете редактировать этот шаблон благодаря доступу к общему курсу. Изменения затрагивают оригинал шаблона во всех использующих его курсах. Для изменения доступа, публичности и удаления нужны отдельные права."
+
+msgid "Documents, code, archives (including 7z), images, audio, video (Max 2GB each)"
+msgstr "Документы, код, архивы (включая 7z), изображения, аудио, видео (максимум 2 ГБ на файл)"

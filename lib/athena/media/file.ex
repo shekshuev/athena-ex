@@ -45,8 +45,21 @@ defmodule Athena.Media.File do
   def changeset(file, attrs) do
     file
     |> cast(attrs, [:bucket, :key, :original_name, :mime_type, :size, :context, :owner_id])
+    |> put_mime_type()
     |> validate_required([:bucket, :key, :original_name, :mime_type, :size, :context, :owner_id])
     |> validate_number(:size, greater_than: 0)
     |> unique_constraint([:bucket, :key])
+  end
+
+  # Browsers may send an empty MIME type for archives and source files.
+  # Infer it from the filename before validating the required metadata.
+  defp put_mime_type(changeset) do
+    case {get_field(changeset, :mime_type), get_field(changeset, :original_name)} do
+      {nil, name} when is_binary(name) ->
+        put_change(changeset, :mime_type, MIME.from_path(name))
+
+      _ ->
+        changeset
+    end
   end
 end

@@ -294,7 +294,9 @@ defmodule Athena.Media do
         p -> p
       end
 
-    %{config | host: host, port: port}
+    scheme = media_conf[:public_scheme] || config.scheme
+
+    %{config | host: host, port: port, scheme: scheme}
   end
 
   @doc """

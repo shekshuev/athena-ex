@@ -99,14 +99,14 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponent do
         }
 
         case Media.create_file(file_attrs) do
-          {:ok, _file} ->
+          {:ok, file} ->
             {:ok,
              {:ok,
               %{
                 "url" => meta.url_for_saved_entry,
                 "name" => file_info.name,
                 "size" => file_info.size,
-                "mime" => file_info.type
+                "mime" => file.mime_type
               }}}
 
           {:error, err} ->

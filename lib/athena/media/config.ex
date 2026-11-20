@@ -8,41 +8,27 @@ defmodule Athena.Media.Config do
   @mb 1024 * 1024
   @gb 1024 * 1024 * 1024
 
+  @file_extensions ~w(.pdf .doc .docx .xls .xlsx .ppt .pptx .txt .csv .rtf
+                      .zip .rar .7z .tar .gz .mp3 .wav .flac
+                      .jpg .jpeg .png .gif .webp .svg .bmp .tiff
+                      .mp4 .mov .webm .avi .mkv .py .cpp .c .h .js .ts .json)
+
   def upload_settings("video") do
     %{
       accept: ~w(.mp4 .mov .webm .avi .mkv),
       max_entries: 1,
-      max_size: 1 * @gb,
-      description: gettext(".MP4, .MOV, .WEBM, .AVI, .MKV (Max 1GB)")
-    }
-  end
-
-  def upload_settings("attachment") do
-    %{
-      accept:
-        ~w(.pdf .doc .docx .xls .xlsx .ppt .pptx .txt .csv .rtf .zip .rar .7z .tar .gz .mp3 .wav .flac),
-      max_entries: 10,
       max_size: 2 * @gb,
-      description: gettext("Docs, PDFs, Archives, Audio (Max 2GB, 10 files)")
+      description: gettext(".MP4, .MOV, .WEBM, .AVI, .MKV (Max 2GB)")
     }
   end
 
-  def upload_settings("file_assignment") do
+  def upload_settings(type) when type in ["attachment", "file_assignment", "personal"] do
     %{
-      accept: ~w(.pdf .doc .docx .txt .zip .rar .py .cpp .c .h .js .ts .json .csv),
-      max_entries: 20,
-      max_size: 50 * @mb,
-      description: gettext("Assignments: docs, code, archives (Max 50MB each)")
-    }
-  end
-
-  def upload_settings("personal") do
-    %{
-      accept:
-        ~w(.pdf .doc .docx .xls .xlsx .ppt .pptx .txt .csv .rtf .zip .rar .7z .tar .gz .mp3 .wav .flac .jpg .jpeg .png .gif .webp .svg .mp4 .mov .webm),
-      max_entries: 20,
-      max_size: 500 * @mb,
-      description: gettext("Docs, archives, images, audio, video (Max 500MB each)")
+      accept: @file_extensions,
+      max_entries: if(type == "attachment", do: 10, else: 20),
+      max_size: 2 * @gb,
+      description:
+        gettext("Documents, code, archives (including 7z), images, audio, video (Max 2GB each)")
     }
   end
 
