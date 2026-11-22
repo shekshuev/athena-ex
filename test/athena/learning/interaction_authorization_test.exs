@@ -232,10 +232,11 @@ defmodule Athena.Learning.InteractionAuthorizationTest do
       assert DateTime.diff(submission.expires_at, submission.inserted_at) in 719..721
       assert {:ok, resumed} = attempt(ctx, exam)
       assert resumed.id == submission.id
+      before_denied = Repo.get!(Submission, submission.id)
 
       Repo.update_all(Athena.Learning.Enrollment, set: [status: :dropped])
       assert {:error, :forbidden} = attempt(ctx, exam)
-      assert Repo.get!(Submission, submission.id) == submission
+      assert Repo.get!(Submission, submission.id) == before_denied
     end
 
     test "derives the team from enrollment and preserves the team's shared attempt", ctx do

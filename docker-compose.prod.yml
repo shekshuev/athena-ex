@@ -124,13 +124,16 @@ services:
       - minio
     env_file:
       - .env
-    entrypoint: >
-      /bin/sh -c "
-      until (/usr/bin/mc alias set myminio http://127.0.0.1:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD); do echo 'Waiting for MinIO...'; sleep 1; done;
-      /usr/bin/mc mb myminio/$$MINIO_BUCKET || true;
-      /usr/bin/mc anonymous set public myminio/$$MINIO_BUCKET;
-      exit 0;
-      "
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        until /usr/bin/mc alias set myminio http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"; do
+          echo 'Waiting for MinIO...'
+          sleep 1
+        done
+        /usr/bin/mc mb --ignore-existing "myminio/$$MINIO_BUCKET"
+        /usr/bin/mc anonymous set none "myminio/$$MINIO_BUCKET"
 
 volumes:
   postgres_prod_data:

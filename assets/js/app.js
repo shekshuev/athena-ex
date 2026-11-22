@@ -1198,7 +1198,7 @@ Hooks.TiptapEditor = {
       }
 
       this.handleClipboardPresigned = (e) => {
-        const { temp_id, upload_url, final_url } = e.detail;
+        const { temp_id, upload_url, final_url, content_type } = e.detail;
 
         const blob = this.clipboardFiles[temp_id];
         if (!blob) return;
@@ -1206,7 +1206,7 @@ Hooks.TiptapEditor = {
         const blobEntry = {
           file: blob,
           tempId: temp_id,
-          meta: { url: upload_url },
+          meta: { url: upload_url, content_type },
 
           progress: (percent) => {
             if (percent === 100) {
@@ -1551,6 +1551,7 @@ Uploaders.S3 = function (entries, onViewError) {
     onViewError(() => xhr.abort());
 
     xhr.open("PUT", url, true);
+    xhr.setRequestHeader("Content-Type", entry.meta.content_type);
 
     xhr.onload = () => {
       if (xhr.status === 200) {

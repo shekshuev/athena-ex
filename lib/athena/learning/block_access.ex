@@ -41,6 +41,15 @@ defmodule Athena.Learning.BlockAccess do
     if active?, do: [ignore_schedule?: true, ignore_visibility?: true], else: []
   end
 
+  @doc "Read-only media access for enrolled students or a persisted instructor preview."
+  def media_block_access(user, course_id) do
+    opts = preview_options(user.id, course_id)
+
+    if opts != [] or Learning.has_access?(user.id, course_id),
+      do: course_block_access(user, course_id, opts),
+      else: %{}
+  end
+
   @doc """
   Returns a read-only snapshot of currently accessible block headers in a course.
 

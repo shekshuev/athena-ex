@@ -4,6 +4,9 @@ Athena uses two endpoints: the server uses the internal endpoint for deletion,
 copying and storage checks; the browser uses the public endpoint for signed PUT
 and GET requests. When nginx terminates TLS, MinIO itself can keep using HTTP.
 
+All bucket prefixes must remain private. Follow [private storage deployment](private-storage.md)
+to audit existing links, back up/remove old policies and verify signed access.
+
 ## Environment
 
 For the test deployment at `10.0.109.60`, where Athena and MinIO are reachable
@@ -34,6 +37,15 @@ Recreate the MinIO container only if its Docker port mapping changed; preserve i
 existing data volume.
 
 ## nginx
+
+With `MINIO_BUCKET=athena`, every browser S3 request stays under `/athena/`,
+including `/athena/courses/...`, `/athena/library/...`, `/athena/personal/...`,
+`/athena/avatars/...` and `/athena/submissions/...`. These are object-key prefixes
+inside one bucket, so no separate nginx locations are needed for them.
+An application link such as `/media/submissions/...` first goes to Phoenix for
+authorization, then redirects to a signed `/athena/submissions/...` URL.
+Keep the MinIO administrative API and console on their internal endpoints;
+the public nginx location only needs to serve this bucket's signed object requests.
 
 Inside the existing HTTPS `server` block, replace `location /athena/` with:
 

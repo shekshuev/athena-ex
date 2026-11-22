@@ -1463,6 +1463,7 @@ defmodule AthenaWeb.StudioLive.Builder do
            |> push_event("media_upload_presigned", %{
              temp_id: temp_id,
              upload_url: upload_url,
+             content_type: Athena.Media.upload_content_type(key),
              final_url: final_url
            })}
 

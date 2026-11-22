@@ -388,43 +388,30 @@ defmodule Athena.Content.Blocks do
   Ensures user has appropriate rights depending on the upload context.
   """
   def prepare_media_upload(user, course_id, filename, upload_context \\ "course_material") do
-    authorized? =
-      case upload_context do
-        "submission" ->
-          true
+    cond do
+      upload_context == "submission" ->
+        Media.prepare_submission_upload(user, course_id, filename)
 
-        "library" ->
-          true
+      can_edit_course?(user, course_id) ->
+        bucket = Application.get_env(:athena, Athena.Media)[:bucket] || "athena"
+        prefix = if course_id == "library", do: "library/#{user.id}", else: "courses/#{course_id}"
+        clean_name = String.replace(filename, ~r/[^a-zA-Z0-9_\-.]/, "_")
+        key = "#{prefix}/#{Ecto.UUID.generate()}-#{clean_name}"
 
-        _ ->
-          can_edit_course?(user, course_id)
-      end
+        with {:ok, url} <- Media.generate_upload_url(bucket, key) do
+          {:ok,
+           %{
+             uploader: "S3",
+             url: url,
+             bucket: bucket,
+             key: key,
+             content_type: Media.upload_content_type(key),
+             url_for_saved_entry: "/media/#{key}"
+           }}
+        end
 
-    if authorized? do
-      bucket = Application.get_env(:athena, Athena.Media)[:bucket] || "athena"
-
-      unique_filename = "#{Ecto.UUID.generate()}-#{filename}"
-      key = "courses/#{course_id}/#{unique_filename}"
-
-      case Media.generate_upload_url(bucket, key) do
-        {:ok, presigned_url} ->
-          local_url = "/media/#{key}"
-
-          meta = %{
-            uploader: "S3",
-            url: presigned_url,
-            url_for_saved_entry: local_url,
-            bucket: bucket,
-            key: key
-          }
-
-          {:ok, meta}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
-    else
-      {:error, :forbidden}
+      true ->
+        {:error, :forbidden}
     end
   end
 
@@ -494,7 +481,8 @@ defmodule Athena.Content.Blocks do
     |> Map.new()
   end
 
-  defp can_edit_course?(_user, "library"), do: true
+  defp can_edit_course?(user, "library"),
+    do: Identity.can?(user, "library.create") or Identity.can?(user, "library.update")
 
   defp can_edit_course?(user, course_id) do
     case Repo.get(Course, course_id) do

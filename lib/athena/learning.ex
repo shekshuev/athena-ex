@@ -30,6 +30,12 @@ defmodule Athena.Learning do
     TestRuns
   }
 
+  defdelegate can_download_submission_media?(user, key), to: Athena.Learning.Submissions
+  defdelegate can_upload_submission_media?(user, course_id), to: Athena.Learning.Submissions
+  defdelegate can_download_exam_media?(user, key), to: Athena.Learning.Submissions
+  defdelegate media_block_access(user, course_id), to: Athena.Learning.BlockAccess
+  defdelegate audit_storage_links(), to: Athena.Learning.Submissions
+
   defdelegate policy_visible_blocks(blocks, section, user, overrides, opts),
     to: Athena.Learning.BlockAccess
 

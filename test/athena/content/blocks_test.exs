@@ -650,6 +650,8 @@ defmodule Athena.Content.BlocksTest do
       student: student,
       course: c
     } do
+      insert(:enrollment, account_id: student.id, course_id: c.id)
+
       assert {:ok, meta} =
                Blocks.prepare_media_upload(student, c.id, "homework.pdf", "submission")
 

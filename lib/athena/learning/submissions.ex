@@ -8,7 +8,7 @@ defmodule Athena.Learning.Submissions do
 
   import Ecto.Query
   use Gettext, backend: AthenaWeb.Gettext
-  alias Athena.{Repo, Content}
+  alias Athena.{Content, Media, Repo}
   alias Athena.Audit
   alias Athena.Content.{InteractionPolicy, ScoringRules}
 
@@ -25,6 +25,143 @@ defmodule Athena.Learning.Submissions do
   }
 
   alias Athena.Content.{Block, Section, TicketUsage}
+
+  def audit_storage_links do
+    Media.audit_link_records(fn cursor ->
+      query = from s in Submission, order_by: s.id, limit: 200, select: {s.id, s.content}
+      query = if cursor, do: where(query, [s], s.id > ^cursor), else: query
+      Repo.all(query)
+    end)
+  end
+
+  @doc "Authorizes attachments and question media through their persisted submission."
+  def can_download_submission_media?(user, key) do
+    team_ids = from m in CohortMembership, where: m.account_id == ^user.id, select: m.cohort_id
+
+    own =
+      from s in Submission,
+        where: s.account_id == ^user.id or s.cohort_id in subquery(team_ids)
+
+    unambiguous_submission_reference?(key) and
+      (referenced_submission?(own, key) or
+         referenced_submission?(scope_submissions(Submission, user, "grading.read"), key))
+  end
+
+  # Legacy clipboard keys did not record an uploader. A second account must
+  # not acquire a file by pasting it into their own answer. Ambiguous legacy
+  # references fail closed; a team's shared answers still form one scope.
+  defp unambiguous_submission_reference?("submissions/" <> _), do: true
+
+  defp unambiguous_submission_reference?(key) do
+    from(s in Submission,
+      where: fragment("strpos(?::text, ?) > 0", s.content, ^("/media/" <> key)),
+      select: {s.account_id, s.cohort_id, s.content}
+    )
+    |> Repo.all()
+    |> Enum.filter(fn {_account, _cohort, content} -> Media.references_key?(content, key) end)
+    |> Enum.map(fn {account, cohort, _content} ->
+      if cohort, do: {:team, cohort}, else: {:account, account}
+    end)
+    |> Enum.uniq()
+    |> length()
+    |> Kernel.==(1)
+  end
+
+  def can_upload_submission_media?(user, course_id) do
+    with {:ok, course_id} <- Ecto.UUID.cast(course_id),
+         {:ok, _} <- Content.get_course(course_id) do
+      Athena.Learning.has_access?(user.id, course_id) or
+        Repo.exists?(
+          from s in TestRunSession,
+            where:
+              s.ephemeral_account_id == ^user.id and s.course_id == ^course_id and
+                s.status == :active and s.expires_at > ^DateTime.utc_now()
+        )
+    else
+      _ -> false
+    end
+  end
+
+  @doc "Allows server-generated exam question media, never student-supplied answer links."
+  def can_download_exam_media?(user, key) do
+    team_ids = from m in CohortMembership, where: m.account_id == ^user.id, select: m.cohort_id
+
+    own =
+      from s in Submission,
+        where: s.account_id == ^user.id or s.cohort_id in subquery(team_ids)
+
+    exam_media_reference?(own, key, user) or
+      exam_media_reference?(scope_submissions(Submission, user, "grading.read"), key, nil)
+  end
+
+  defp exam_media_reference?(query, key, learner) do
+    query
+    |> where([s], not is_nil(s.expires_at) and s.status != :draft)
+    |> where([s], fragment("?->>'type'", s.content) in ["quiz_exam", "ticket_exam"])
+    |> where(
+      [s],
+      fragment("strpos((?->'questions')::text, ?) > 0", s.content, ^("/media/" <> key))
+    )
+    |> select([s], {s.block_id, fragment("?->'questions'", s.content)})
+    |> Repo.all()
+    |> Enum.any?(&question_media_reference?(&1, key, learner))
+  end
+
+  defp question_media_reference?({block_id, questions}, key, learner) do
+    case Content.get_block_header(block_id) do
+      {:ok, %{type: type} = block} when type in [:quiz_exam, :ticket_exam] ->
+        exam_media_visible?(learner, block) and Media.references_key?(questions, key)
+
+      _ ->
+        false
+    end
+  end
+
+  defp exam_media_visible?(nil, _block), do: true
+
+  defp exam_media_visible?(learner, block) do
+    case Content.get_section(block.section_id) do
+      {:ok, section} ->
+        learner
+        |> Athena.Learning.media_block_access(section.course_id)
+        |> Map.has_key?(block.id)
+
+      _ ->
+        false
+    end
+  end
+
+  defp referenced_submission?(query, key) do
+    query =
+      case String.split(key, "/") do
+        ["submissions", owner_id | _] ->
+          case Ecto.UUID.cast(owner_id) do
+            {:ok, owner_id} ->
+              owner_teams =
+                from m in CohortMembership, where: m.account_id == ^owner_id, select: m.cohort_id
+
+              where(query, [s], s.account_id == ^owner_id or s.cohort_id in subquery(owner_teams))
+
+            :error ->
+              where(query, false)
+          end
+
+        _ ->
+          query
+      end
+
+    query
+    |> where([s], fragment("strpos(?::text, ?) > 0", s.content, ^("/media/" <> key)))
+    |> select([s], s.content)
+    |> Repo.all()
+    |> Enum.any?(&Media.references_key?(submission_file_content(&1), key))
+  end
+
+  defp submission_file_content(%{"type" => type} = content)
+       when type in ["quiz_exam", "ticket_exam"],
+       do: Map.delete(content, "questions")
+
+  defp submission_file_content(content), do: content
 
   @doc """
   Lists submissions with pagination, filtering, and sorting using Flop.

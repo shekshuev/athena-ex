@@ -3,6 +3,7 @@ defmodule Athena.Media do
   Business logic for Media and S3 integrations.
   """
 
+  alias Athena.Media.Delivery
   import Ecto.Query
   alias Athena.Repo
   alias Athena.Audit
@@ -14,6 +15,20 @@ defmodule Athena.Media do
   @kb 1024
   @mb 1024 * 1024
   @gb 1024 * 1024 * 1024
+
+  defdelegate setup_storage!(), to: Athena.Media.Storage, as: :setup!
+  defdelegate harden_storage!(opts \\ []), to: Athena.Media.Storage, as: :harden!
+  defdelegate verify_storage!(bucket), to: Athena.Media.Storage, as: :verify!
+  defdelegate audit_link_records(fetch), to: Athena.Media.Links, as: :scan
+
+  @doc "Reports records containing direct storage links, without changing data or exposing signed URLs."
+  def audit_storage_links do
+    %{
+      content: Athena.Content.audit_storage_links(),
+      submissions: Athena.Learning.audit_storage_links(),
+      profiles: Athena.Identity.audit_storage_links()
+    }
+  end
 
   @doc """
   Retrieves a paginated list of files.
@@ -267,7 +282,39 @@ defmodule Athena.Media do
   def generate_upload_url(bucket, key) do
     public_config = get_public_config()
 
-    ExAws.S3.presigned_url(public_config, :put, bucket, key, expires_in: 900)
+    if Delivery.allowed_upload?(key) do
+      ExAws.S3.presigned_url(public_config, :put, bucket, key,
+        expires_in: 900,
+        headers: [{"content-type", upload_content_type(key)}]
+      )
+    else
+      {:error, :unsupported_file_type}
+    end
+  end
+
+  defdelegate upload_content_type(key), to: Delivery, as: :content_type
+
+  @doc "Creates an owner-scoped upload slot for a course participant's answer."
+  def prepare_submission_upload(user, course_id, filename) do
+    if Athena.Learning.can_upload_submission_media?(user, course_id) do
+      bucket = Application.get_env(:athena, __MODULE__)[:bucket] || "athena"
+      clean_name = String.replace(filename, ~r/[^a-zA-Z0-9_\-.]/, "_")
+      key = "submissions/#{user.id}/#{course_id}/#{Ecto.UUID.generate()}-#{clean_name}"
+
+      with {:ok, url} <- generate_upload_url(bucket, key) do
+        {:ok,
+         %{
+           uploader: "S3",
+           url: url,
+           key: key,
+           bucket: bucket,
+           content_type: upload_content_type(key),
+           url_for_saved_entry: "/media/#{key}"
+         }}
+      end
+    else
+      {:error, :forbidden}
+    end
   end
 
   @doc """
@@ -277,8 +324,33 @@ defmodule Athena.Media do
   def generate_download_url(bucket, key) do
     public_config = get_public_config()
 
-    ExAws.S3.presigned_url(public_config, :get, bucket, key, expires_in: 900)
+    ExAws.S3.presigned_url(public_config, :get, bucket, key,
+      expires_in: 900,
+      query_params: Delivery.download_params(key)
+    )
   end
+
+  @doc "Checks file authorization before issuing a download signature."
+  def download_url(user, key) do
+    bucket = Application.get_env(:athena, __MODULE__)[:bucket] || "athena"
+
+    if Athena.Media.Access.allowed?(user, key) do
+      generate_download_url(bucket, key)
+    else
+      {:error, :forbidden}
+    end
+  end
+
+  @doc "Checks an exact /media URL reference within JSON content."
+  def references_key?(value, key) when is_binary(value), do: value == "/media/" <> key
+
+  def references_key?(value, key) when is_map(value),
+    do: Enum.any?(value, fn {_field, item} -> references_key?(item, key) end)
+
+  def references_key?(value, key) when is_list(value),
+    do: Enum.any?(value, &references_key?(&1, key))
+
+  def references_key?(_value, _key), do: false
 
   @doc false
   defp get_public_config do
@@ -344,6 +416,7 @@ defmodule Athena.Media do
       {:ok, presigned_url} ->
         meta = %{
           uploader: "S3",
+          content_type: upload_content_type(key),
           url: presigned_url,
           url_for_saved_entry: "/media/#{key}",
           bucket: bucket,
@@ -375,6 +448,7 @@ defmodule Athena.Media do
       {:ok, presigned_url} ->
         meta = %{
           uploader: "S3",
+          content_type: upload_content_type(key),
           url: presigned_url,
           url_for_saved_entry: "/media/#{key}",
           bucket: bucket,
