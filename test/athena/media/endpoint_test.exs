@@ -54,4 +54,31 @@ defmodule Athena.Media.EndpointTest do
     assert URI.parse(url).scheme == "http"
     assert URI.parse(url).port == 9000
   end
+
+  test "submission upload and download both stay under the athena nginx location" do
+    Application.put_env(:athena, Media,
+      bucket: "athena",
+      public_host: "lms.example.test",
+      public_port: "443",
+      public_scheme: "https://"
+    )
+
+    user = insert(:account)
+    course = insert(:course)
+    insert(:enrollment, account_id: user.id, course_id: course.id)
+
+    assert {:ok, meta} = Media.prepare_submission_upload(user, course.id, "answer.pdf")
+    assert meta.url_for_saved_entry == "/media/#{meta.key}"
+    assert String.starts_with?(meta.key, "submissions/#{user.id}/#{course.id}/")
+    assert {:ok, download_url} = Media.download_url(user, meta.key)
+
+    for url <- [meta.url, download_url] do
+      uri = URI.parse(url)
+      assert uri.scheme == "https"
+      assert uri.host == "lms.example.test"
+      assert uri.port == 443
+      assert uri.path == "/athena/#{meta.key}"
+      assert URI.decode_query(uri.query)["X-Amz-Signature"]
+    end
+  end
 end

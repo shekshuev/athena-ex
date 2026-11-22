@@ -141,6 +141,7 @@ defmodule AthenaWeb.StudioLive.MediaUploadComponentTest do
     admin: admin,
     course: course
   } do
+    insert(:enrollment, account_id: admin.id, course_id: course.id)
     {:ok, view, _html} = render_dummy(conn, admin, course, "file_assignment")
 
     upload =

@@ -9,6 +9,16 @@ defmodule Athena.Identity.Profiles do
   alias Athena.Repo
   alias Athena.Identity.{Profile, Acl}
 
+  def audit_storage_links do
+    import Ecto.Query
+
+    Athena.Media.audit_link_records(fn cursor ->
+      query = from p in Profile, order_by: p.id, limit: 200, select: {p.id, p.avatar_url}
+      query = if cursor, do: where(query, [p], p.id > ^cursor), else: query
+      Repo.all(query)
+    end)
+  end
+
   @doc """
   Retrieves a profile by its owner ID (Account ID).
   """
@@ -25,10 +35,8 @@ defmodule Athena.Identity.Profiles do
   """
   @spec create_profile(String.t(), map()) :: {:ok, Profile.t()} | {:error, Ecto.Changeset.t()}
   def create_profile(owner_id, attrs) do
-    attrs = Map.put(attrs, "owner_id", owner_id)
-
     Ecto.Multi.new()
-    |> Ecto.Multi.insert(:profile, Profile.changeset(%Profile{}, attrs))
+    |> Ecto.Multi.insert(:profile, Profile.changeset(%Profile{owner_id: owner_id}, attrs))
     |> Repo.transaction()
     |> case do
       {:ok, %{profile: profile}} -> {:ok, profile}

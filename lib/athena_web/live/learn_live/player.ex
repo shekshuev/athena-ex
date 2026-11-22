@@ -816,37 +816,16 @@ defmodule AthenaWeb.LearnLive.Player do
   @impl true
   def handle_event("complete_gate", %{"block-id" => block_id}, socket) do
     user = socket.assigns.current_user
-    team_id = socket.assigns.team_id
 
-    {:ok, _} = Learning.mark_completed(user.id, block_id, team_id)
-
-    new_completed_ids = [block_id | socket.assigns.completed_ids]
-    linear_lessons = socket.assigns.linear_lessons
-
-    opts = [
-      ignore_schedule?: !!socket.assigns[:test_run],
-      ignore_visibility?: !!socket.assigns[:test_run]
-    ]
-
-    accessible_ids =
-      Learning.accessible_section_ids(
-        user,
-        socket.assigns.course.id,
-        linear_lessons,
-        socket.assigns.overrides,
-        team_id,
-        opts
-      )
-
-    current_index = Enum.find_index(linear_lessons, fn s -> s.id == socket.assigns.section.id end)
-    next_section = Enum.at(linear_lessons, current_index + 1)
-    next_accessible? = next_section != nil and next_section.id in accessible_ids
-
-    {:noreply,
-     socket
-     |> assign(:completed_ids, new_completed_ids)
-     |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
-     |> assign(:visible_blocks, Learning.visible_blocks(socket.assigns.blocks, new_completed_ids))}
+    case Learning.complete_button_gate(
+           user,
+           socket.assigns.course.id,
+           socket.assigns.section.id,
+           block_id
+         ) do
+      {:ok, _} -> refresh_after_button_gate(socket, block_id)
+      {:error, _} -> {:noreply, socket}
+    end
   end
 
   def handle_event("open_course_map", _, socket),
@@ -937,14 +916,14 @@ defmodule AthenaWeb.LearnLive.Player do
   def handle_event("media_upload_clipboard_request", params, socket) do
     %{"file_name" => file_name, "temp_id" => temp_id} = params
 
-    bucket = Application.get_env(:athena, Athena.Media)[:bucket] || "athena"
-    course_id = socket.assigns.course.id
-    unique_id = Ecto.UUID.generate()
-    clean_name = file_name |> String.replace(~r/[^a-zA-Z0-9_\-\.]/, "_")
-    key = "courses/#{course_id}/#{unique_id}-#{clean_name}"
-
-    case Athena.Media.generate_upload_url(bucket, key) do
-      {:ok, upload_url} ->
+    case Athena.Media.prepare_submission_upload(
+           socket.assigns.current_user,
+           socket.assigns.course.id,
+           file_name
+         ) do
+      {:ok, meta} ->
+        upload_url = meta.url
+        key = meta.key
         path_segments = String.split(key, "/")
         final_url = ~p"/media/#{path_segments}"
 
@@ -952,6 +931,7 @@ defmodule AthenaWeb.LearnLive.Player do
          push_event(socket, "media_upload_presigned", %{
            temp_id: temp_id,
            upload_url: upload_url,
+           content_type: meta.content_type,
            final_url: final_url
          })}
 
@@ -1606,6 +1586,39 @@ defmodule AthenaWeb.LearnLive.Player do
       {:error, _} ->
         {:noreply, put_flash(socket, :error, gettext("Failed to submit code."))}
     end
+  end
+
+  @doc false
+  defp refresh_after_button_gate(socket, block_id) do
+    user = socket.assigns.current_user
+    team_id = socket.assigns.team_id
+    new_completed_ids = [block_id | socket.assigns.completed_ids]
+    linear_lessons = socket.assigns.linear_lessons
+
+    opts = [
+      ignore_schedule?: !!socket.assigns[:test_run],
+      ignore_visibility?: !!socket.assigns[:test_run]
+    ]
+
+    accessible_ids =
+      Learning.accessible_section_ids(
+        user,
+        socket.assigns.course.id,
+        linear_lessons,
+        socket.assigns.overrides,
+        team_id,
+        opts
+      )
+
+    current_index = Enum.find_index(linear_lessons, fn s -> s.id == socket.assigns.section.id end)
+    next_section = Enum.at(linear_lessons, current_index + 1)
+    next_accessible? = next_section != nil and next_section.id in accessible_ids
+
+    {:noreply,
+     socket
+     |> assign(:completed_ids, new_completed_ids)
+     |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
+     |> assign(:visible_blocks, Learning.visible_blocks(socket.assigns.blocks, new_completed_ids))}
   end
 
   @doc false

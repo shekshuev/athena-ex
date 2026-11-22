@@ -51,8 +51,7 @@ defmodule Athena.Identity.Accounts do
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:account, Account.changeset(%Account{}, account_attrs))
       |> Ecto.Multi.insert(:profile, fn %{account: account} ->
-        attrs = Map.put(profile_attrs, "owner_id", account.id)
-        Profile.changeset(%Profile{}, attrs)
+        Profile.changeset(%Profile{owner_id: account.id}, profile_attrs)
       end)
       |> Repo.transaction()
       |> case do
@@ -117,10 +116,8 @@ defmodule Athena.Identity.Accounts do
       |> Profile.changeset(profile_attrs)
       |> repo.update()
     else
-      attrs = Map.put(profile_attrs, "owner_id", account.id)
-
-      %Profile{}
-      |> Profile.changeset(attrs)
+      %Profile{owner_id: account.id}
+      |> Profile.changeset(profile_attrs)
       |> repo.insert()
     end
   end

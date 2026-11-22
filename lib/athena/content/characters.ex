@@ -133,6 +133,7 @@ defmodule Athena.Content.Characters do
         {:ok,
          %{
            uploader: "S3",
+           content_type: Media.upload_content_type(key),
            url: presigned_url,
            url_for_saved_entry: "/media/#{key}",
            bucket: bucket,

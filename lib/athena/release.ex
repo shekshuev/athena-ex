@@ -8,6 +8,27 @@ defmodule Athena.Release do
   alias Athena.Repo
   alias Athena.Identity.{Roles, Accounts}
 
+  @doc "Run with bin/web eval using storage-admin credentials; defaults to dry-run."
+  def harden_storage(opts \\ []) do
+    storage_clients!()
+    Athena.Media.harden_storage!(opts)
+  end
+
+  def verify_storage(bucket) do
+    storage_clients!()
+    Athena.Media.verify_storage!(bucket)
+  end
+
+  def audit_storage_links, do: Athena.Media.audit_storage_links()
+
+  defp storage_clients! do
+    load_app()
+
+    for app <- [:ex_aws, :hackney, :req] do
+      {:ok, _} = Application.ensure_all_started(app)
+    end
+  end
+
   def migrate do
     load_app()
 

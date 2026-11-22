@@ -10,18 +10,32 @@ defmodule AthenaWeb.MediaControllerTest do
       assert response(conn, 403) =~ "Forbidden"
     end
 
-    test "redirects to presigned S3 URL if user is authenticated", %{conn: conn} do
+    test "redirects accessible course media to a presigned S3 URL", %{conn: conn} do
       user = insert(:account)
+      course = insert(:course)
+      section = insert(:section, course: course)
+      key = "courses/#{course.id}/secret_image.jpg"
+      insert(:enrollment, account_id: user.id, course_id: course.id)
+      insert(:block, section: section, type: :image, content: %{"url" => "/media/#{key}"})
 
       conn =
         conn
         |> init_test_session(%{"account_id" => user.id})
-        |> get("/media/courses/123/secret_image.jpg")
+        |> get("/media/#{key}")
 
       redirect_url = redirected_to(conn, 302)
 
-      assert redirect_url =~ "courses/123/secret_image.jpg"
+      assert redirect_url =~ key
       assert redirect_url =~ "X-Amz-Signature"
+    end
+
+    test "does not sign arbitrary unregistered keys for a logged-in account", %{conn: conn} do
+      user = insert(:account)
+
+      conn =
+        conn |> init_test_session(%{"account_id" => user.id}) |> get("/media/probe/attack.html")
+
+      assert response(conn, 403)
     end
   end
 

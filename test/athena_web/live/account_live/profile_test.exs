@@ -5,6 +5,28 @@ defmodule AthenaWeb.AccountLive.ProfileTest do
   import Athena.Factory
 
   describe "Profile page" do
+    test "crafted save_profile cannot move the profile to an account without one", %{conn: conn} do
+      account = insert(:account)
+      original = insert(:profile, owner: account)
+      target = insert(:account)
+      conn = init_test_session(conn, %{"account_id" => account.id})
+      {:ok, view, _} = live(conn, ~p"/me")
+
+      render_submit(view, "save_profile", %{
+        "profile" => %{"first_name" => "Updated", "owner_id" => target.id}
+      })
+
+      profile = Athena.Repo.get!(Athena.Identity.Profile, original.id)
+      assert profile.first_name == "Updated"
+      assert profile.owner_id == account.id
+      refute Athena.Repo.get_by(Athena.Identity.Profile, owner_id: target.id)
+
+      assert has_element?(
+               view,
+               "#profile-form input[name='profile[first_name]'][value='Updated']"
+             )
+    end
+
     test "renders the profile tab by default with the account's data", %{conn: conn} do
       account = insert(:account)
       insert(:profile, owner: account, first_name: "Ada", last_name: "Lovelace")

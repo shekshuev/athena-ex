@@ -275,6 +275,46 @@ defmodule Athena.Identity.AccountsTest do
   end
 
   describe "update_own_profile/2" do
+    test "ignores ownership input on creation" do
+      account = insert(:account)
+      target = insert(:account)
+
+      assert {:ok, profile} =
+               Accounts.update_own_profile(account, %{
+                 "first_name" => "Ada",
+                 "last_name" => "Lovelace",
+                 "owner_id" => target.id
+               })
+
+      assert profile.owner_id == account.id
+      refute Repo.get_by(Athena.Identity.Profile, owner_id: target.id)
+    end
+
+    test "ignores ownership input on update, including a target without a profile" do
+      account = insert(:account)
+      original = insert(:profile, owner: account)
+      without_profile = insert(:account)
+      with_profile = insert(:profile)
+
+      for target_id <- [without_profile.id, with_profile.owner_id, Ecto.UUID.generate()] do
+        assert {:ok, profile} =
+                 Accounts.update_own_profile(account, %{
+                   "first_name" => "Updated",
+                   "owner_id" => target_id
+                 })
+
+        assert profile.id == original.id
+        assert profile.owner_id == account.id
+        assert Repo.get!(Athena.Identity.Profile, original.id).owner_id == account.id
+      end
+
+      refute Repo.get_by(Athena.Identity.Profile, owner_id: without_profile.id)
+      unchanged = Repo.get!(Athena.Identity.Profile, with_profile.id)
+      assert unchanged.owner_id == with_profile.owner_id
+      assert unchanged.first_name == with_profile.first_name
+      assert unchanged.updated_at == with_profile.updated_at
+    end
+
     test "creates a profile when the account doesn't have one yet" do
       account = insert(:account)
 

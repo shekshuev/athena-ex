@@ -5,6 +5,8 @@ defmodule Athena.Identity do
 
   alias Athena.Identity.{Accounts, Roles, Account, Acl}
 
+  defdelegate audit_storage_links(), to: Athena.Identity.Profiles
+
   defdelegate list_accounts(user, params \\ %{}, opts \\ []), to: Accounts
   defdelegate get_account(id, opts \\ []), to: Accounts
   defdelegate get_account_by_login(login), to: Accounts

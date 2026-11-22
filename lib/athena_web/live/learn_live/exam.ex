@@ -61,8 +61,10 @@ defmodule AthenaWeb.LearnLive.Exam do
 
   @doc false
   defp resolve_exam_mount(socket, course_id, block_id, user_id, team_id, cohort_id, return_to) do
-    with false <- Athena.Content.InteractionPolicy.block_readonly?(block_id),
+    with {:ok, block_id} <- Ecto.UUID.cast(block_id),
+         false <- Athena.Content.InteractionPolicy.block_readonly?(block_id),
          {:ok, block} <- Content.get_block(block_id),
+         true <- block.type == :quiz_exam,
          time_limit_sec <- get_time_limit_sec(block) do
       # Default to the section the exam block itself lives in - not a
       # section-less `/play` (which `Player` resolves to the *first* section
@@ -386,14 +388,14 @@ defmodule AthenaWeb.LearnLive.Exam do
   def handle_event("media_upload_clipboard_request", params, socket) do
     %{"file_name" => file_name, "temp_id" => temp_id} = params
 
-    bucket = Application.get_env(:athena, Athena.Media)[:bucket] || "athena"
-    course_id = socket.assigns.course_id
-    unique_id = Ecto.UUID.generate()
-    clean_name = file_name |> String.replace(~r/[^a-zA-Z0-9_\-\.]/, "_")
-    key = "courses/#{course_id}/#{unique_id}-#{clean_name}"
-
-    case Athena.Media.generate_upload_url(bucket, key) do
-      {:ok, upload_url} ->
+    case Athena.Media.prepare_submission_upload(
+           socket.assigns.current_user,
+           socket.assigns.course_id,
+           file_name
+         ) do
+      {:ok, meta} ->
+        upload_url = meta.url
+        key = meta.key
         path_segments = String.split(key, "/")
         final_url = ~p"/media/#{path_segments}"
 
@@ -401,6 +403,7 @@ defmodule AthenaWeb.LearnLive.Exam do
          push_event(socket, "media_upload_presigned", %{
            temp_id: temp_id,
            upload_url: upload_url,
+           content_type: meta.content_type,
            final_url: final_url
          })}
 

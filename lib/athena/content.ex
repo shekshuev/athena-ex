@@ -9,6 +9,9 @@ defmodule Athena.Content do
   alias Athena.Content.{Courses, Sections, Blocks, Library, Policy, Characters, Permalinks}
   alias Athena.Content.{Course, Section, Block}
 
+  defdelegate media_download_access(user, key), to: Athena.Content.MediaAccess, as: :allowed?
+  defdelegate audit_storage_links(), to: Athena.Content.MediaAccess
+
   defdelegate search_blocks(user, query, opts \\ []), to: Athena.Content.Search, as: :search
 
   defdelegate resolve_block_permalink(user, block_id, mode \\ :player),
