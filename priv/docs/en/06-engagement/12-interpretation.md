@@ -55,7 +55,7 @@ Problems on the course map in the :ui[Whole cohort] lens describe the group (for
 
 ### Does "Integrity risk" mean the student cheated?
 
-No. The status means at least one sign was recorded during an assessment: a copy attempt, a screenshot, a second tab, frequent leaving of the page or a pasted answer. The decision is made by the teacher after reviewing the attempt in the cheating monitor (see [Academic integrity](/docs/grading/academic-integrity)). A teacher's :ui[Reviewed - no violation] removes the gradebook marker but not the signal on the group radar: the radar shows recorded behaviour.
+No. In the current implementation, ordinary clipboard actions, PrintScreen, tab reports, focus changes and pasted answers do not create :ui[Integrity] signals on the group radar. The radar status and the review priority of a particular attempt are separate. Review the scored signals and event history in the grading center: yellow recommends review, red prioritises it, and neither confirms a violation. :ui[Reviewed - no violation] removes the attempt marker in the gradebook; it does not delete raw observations. See [Academic integrity](/docs/grading/academic-integrity).
 
 ### Can thresholds be changed?
 
@@ -63,4 +63,4 @@ Thresholds are set in the application configuration and apply to every course (s
 
 ### Does a student see their status?
 
-No. The engagement screens are only available to users with the `engagement.read` permission. A student only sees nudges in the player, if they are enabled.
+No. The engagement screens are only available to users with the `engagement.read` permission. A student can see ordinary learning nudges in the player if enabled. During a real assessment, monitoring adds no warnings, fullscreen requests or clipboard restrictions; the separately configured prompt image and the normal deadline still apply.

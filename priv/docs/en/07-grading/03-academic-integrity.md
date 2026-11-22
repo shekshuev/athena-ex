@@ -9,6 +9,12 @@ Monitoring records browser observations during assessments and ticket assessment
 
 Students receive no monitoring warnings, fullscreen requests or clipboard restrictions. An author can separately enable rendering instructions as an image, per question or for all questions in an assessment. The normal assessment deadline still applies.
 
+## Prompt images
+
+The :ui[Render prompt as image (blocks copy/select, drops formatting)] setting is independent of monitoring. Enable it on a question/task to render that prompt as an image, or on an assessment or ticket assessment to apply it to child tasks. An enabled parent setting applies even if a child's own switch is off; switching the parent off leaves individual child settings in effect.
+
+This changes how the prompt is displayed: its text cannot be selected or copied as ordinary text and formatting is lost. Answer fields stay editable. The setting does not add monitoring points or restrict clipboard actions in answers.
+
 ## Review priorities
 
 | Colour | Label | Default rule |
@@ -31,6 +37,19 @@ Each category contributes at most once, regardless of repetition.
 | Window layout | At least 300 seconds with the window occupying part of the screen, plus at least 3 sideways pointer exits. A narrowed page alone may be a sidebar or developer tools and earns no points | 1 |
 
 For example, a confirmed concurrent session plus a large paste can produce a red priority. Pasting and time away without server confirmation are capped at yellow. Repeated tab reports or repeated pastes do not manufacture a red priority on their own.
+
+## Examples with default settings
+
+| Observations | Review priority |
+|---|---|
+| Copying, PrintScreen or a browser report of another tab | Green, 0 points; observations remain in the history |
+| Window layout lasting at least 300 seconds with at least 3 sideways pointer exits, with no other scored category | Green, 1 point |
+| One absence of at least 10 seconds | Yellow, 2 points; the absence may be legitimate |
+| Time away plus a large paste after returning, without confirmed concurrent sessions | Yellow, even with 4 points |
+| Confirmed concurrent sessions alone | Yellow, 2 points |
+| Confirmed concurrent sessions plus a large paste after returning | Red, 4 points; instructor review is still required |
+
+Returning to an answer after a short absence and pasting one's own work can resemble using an external source. Window tiling and pointer exits can reflect an ordinary workspace. Even a server-confirmed second session does not establish who is using it. Check the surrounding events and the answer before confirming a violation.
 
 ## Context without points
 
@@ -57,6 +76,8 @@ For example, `+01:05:05` means one hour, five minutes and five seconds **after t
 New browser events use the server receipt clock and are bound to one attempt. Interval starts are estimated by subtracting reported durations; they cannot precede the attempt. Older events may use the browser clock. Events from later attempts or after the recorded finish are excluded. Missing batches and server downtime are not charged as time in a particular layout. The first layout batch establishes observation without inventing earlier time.
 
 A notice identifies stored results produced by older scoring rules. Historical results are not silently recalculated; use the history and your own review.
+
+For an attempt resumed from a checkpoint written by the previous version, raw observations remain available, but old immediate concurrency confirmations and old layout totals are not promoted to scored evidence under the new rules.
 
 ## Instructor review
 

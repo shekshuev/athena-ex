@@ -43,7 +43,7 @@ Under the tiles is a line with the short rule for deciding a status and the :ui[
 |---|---|
 | :ui[Student] | The student's name; clicking it opens the card |
 | :ui[Status] | The student's status |
-| :ui[Why] | Up to three reason chips; the rest are folded into a "+N more" counter. A chip shows the short signal name and, if the signal fired several times, how many. All assessment violations are merged into the :ui[Exam violations] chip |
+| :ui[Why] | Up to three reason chips; the rest are folded into a "+N more" counter. A chip shows the short signal name and, if the signal fired several times, how many. The :ui[Exam violations] chip is reserved for :ui[Integrity] signals; current raw browser metrics do not create them |
 | :ui[Progress] | Share of the course's blocks completed, whole course |
 | :ui[Avg score] | Average best score over all graded tasks of the course, whole course |
 
@@ -65,7 +65,7 @@ If nothing fired during the period, :ui[What counted] reads ":ui[Nothing worth w
 
 ## Status rules
 
-A student is checked against the rules from top to bottom; **the first rule that matches sets the status**. So a student with an assessment violation and low scores gets :ui[Integrity risk], and the low scores stay in the card's list of signals.
+A student is checked against the rules from top to bottom; **the first rule that matches sets the status**. The :ui[Integrity risk] rule is retained, but the current metrics do not produce :ui[Integrity] signals from raw browser actions. Copying, PrintScreen, pasting or switching tabs therefore do not select this status. Attempt review priorities and instructor decisions are shown separately in grading and the gradebook.
 
 | # | Status | Rule (default values) |
 |---|---|---|
