@@ -47,7 +47,7 @@ For a paste only **character counts** are recorded (pasted and total in the answ
 | Event | When it happens |
 |---|---|
 | Screenshot attempt | The PrintScreen key was pressed (Windows only) |
-| Copy or cut attempt | An attempt to copy or cut the question text; the action itself is blocked |
+| Copy or cut attempt | The browser reported copying or cutting question text; monitoring does not block the action |
 | Right click | A right click on the question text |
 | Several tabs | The same attempt is open in another tab of the same browser |
 | Insert without typing | A large piece of text appeared in an answer field without typing, paste or drag-and-drop |
@@ -55,9 +55,11 @@ For a paste only **character counts** are recorded (pasted and total in the answ
 | Offline period | The browser reported being offline, and for how long |
 | Pointer outside the window | The mouse pointer left the browser window, and for how long |
 | Window size change | The window stopped filling the screen (for example, split with another window) or went back |
-| Fullscreen exit | Only for assessments that require fullscreen |
+| Fullscreen exit | An interval outside fullscreen after the student voluntarily used fullscreen; fullscreen is never requested or enforced |
 
-How these events turn into a risk rating is described in [Academic integrity](/docs/grading/academic-integrity).
+These are observations, not confirmed violations. Copying, PrintScreen, technical gaps and typing characteristics do not add review points. Browser tab reports alone do not confirm concurrent sessions. The scoring rules are described in [Academic integrity](/docs/grading/academic-integrity).
+
+Assessment events are attached to the attempt by the server and use the time of receipt. The original browser timestamp is retained as context. Delayed delivery can shift an event on the timeline; interval starts are estimates. The history shows elapsed time from the attempt start and a clock timestamp in the instructor's timezone. See [Academic integrity](/docs/grading/academic-integrity#event-history).
 
 ## Time and calendar days
 

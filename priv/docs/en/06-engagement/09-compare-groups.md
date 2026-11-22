@@ -43,8 +43,8 @@ The table's columns are the selected groups (with their number of students) and 
 | :ui[Results] | :ui[Passed on the first attempt] | Share of submitted tasks where the pass mark (50) was reached on the first attempt | Whole course | higher |
 | :ui[How they learn] | :ui[Rush through the material] | Share of students for whom rushing is a consistent pattern (the :ui[Skimming] condition) | Period | lower |
 | :ui[How they learn] | :ui[Get stuck] | Share of students for whom difficulties are a consistent pattern (the :ui[Struggling] condition) | Period | lower |
-| :ui[Integrity] | :ui[Exam violations] | Share of students with at least one :ui[Integrity] signal | Period | lower |
-| :ui[Integrity] | :ui[Attempts flagged by the cheating monitor] | Share of attempts (the best attempt of each task) the cheating monitor rated high risk, or the teacher confirmed as a violation | Whole course | lower |
+| :ui[Integrity] | :ui[Exam violations] | Share of students with at least one :ui[Integrity] signal; current raw browser metrics create no such signals | Period | lower |
+| :ui[Integrity] | :ui[Attempts flagged by the cheating monitor] | Share of attempts (the best attempt of each task) with a red review priority or a violation confirmed by the instructor; an automatic red priority is not proof of cheating | Whole course | lower |
 
 :ui[Rush through the material] and :ui[Get stuck] count a student regardless of their final status: a student with :ui[Integrity risk] and consistent rushing counts in both indicators.
 

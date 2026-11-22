@@ -91,6 +91,11 @@ defmodule Athena.Engagement do
   """
   defdelegate purge_raw_events(user, scope, scope_id), to: Purges, as: :request
   defdelegate normalize_event(raw_event, section_id), to: Events
+  defdelegate normalize_exam_event(raw_event, section_id, submission_id), to: Events
+
+  defdelegate normalize_proctoring_layout(samples),
+    to: Athena.Engagement.Layout,
+    as: :sanitize_samples
 
   @doc "The event types the proctoring monitor actually accumulates - used to decide whether a server-originated event is even worth forwarding."
   defdelegate proctoring_tracked_event_types(), to: ProctoringMonitor, as: :tracked_event_types
@@ -100,10 +105,17 @@ defmodule Athena.Engagement do
     to: ProctoringMonitor,
     as: :report_events
 
-  @doc "Liveness ping for one exam attempt - see `ProctoringMonitor.heartbeat/3`."
-  defdelegate report_proctoring_heartbeat(submission_id, cohort_id, block_id),
+  @doc """
+  Liveness ping for one exam attempt - see `ProctoringMonitor.heartbeat/4`.
+  `layout_samples` are the window-geometry samples that rode on the ping.
+  """
+  def report_proctoring_heartbeat(submission_id, cohort_id, block_id, layout_samples \\ []),
+    do: ProctoringMonitor.heartbeat(submission_id, cohort_id, block_id, layout_samples)
+
+  @doc "Reports whether an exam tab is connected - see `ProctoringMonitor.connection/4`."
+  defdelegate report_proctoring_connection(submission_id, cohort_id, block_id, connected?),
     to: ProctoringMonitor,
-    as: :heartbeat
+    as: :connection
 
   @doc """
   Live (non-destructive) risk evaluation for an in-progress exam attempt -
@@ -133,7 +145,7 @@ defmodule Athena.Engagement do
       |> ProctoringMonitor.finalize()
       |> Proctoring.evaluate(cohort_id, block_id, submission_id: submission_id)
 
-    fields
+    Map.put(fields, "proctoring_finished_at", DateTime.to_iso8601(DateTime.utc_now()))
   end
 
   @doc "Risk-level summary of a submission's proctoring data, or `nil` if it has none."

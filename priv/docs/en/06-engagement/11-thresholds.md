@@ -44,8 +44,6 @@ The "bottom 10%" boundary of the distribution for the fast-completion nudge is f
 | `no_debug_paste_ratio` | 0.5 | Pasted share of code from which an unrun solution gives :ui[Doesn't run code] |
 | `concern_backtrack_rate_threshold` | 0.4 | :ui[Students come back] on the course map |
 | `concern_hesitation_rate_threshold` | 0.4 | :ui[Answers keep changing] on the course map |
-| `exam_focus_loss_threshold` | 3 | Times leaving the assessment page for the frequent-leaving signal |
-| `exam_paste_ratio_threshold` | 0.6 | Pasted share in an assessment for the pasted-answers signal |
 
 ## Results and progress
 
@@ -94,8 +92,10 @@ How often the pre-aggregation job runs is set by the `ENGAGEMENT_ROLLUP_CRON` en
 
 ## Academic integrity
 
-Keys prefixed `exam_` (except the two listed under "Behaviour signals") drive the risk indicator of assessment attempts. They are described in [Academic integrity](/docs/grading/academic-integrity).
+Current assessment scoring settings, their defaults and which observations do not add points are described in [Academic integrity](/docs/grading/academic-integrity).
 
 ## Obsolete keys
 
 `student_radar_slacking_threshold` and `student_radar_struggling_threshold` belong to the radar's former colour scheme and do not affect the current statuses.
+
+`exam_focus_loss_threshold` and `exam_paste_ratio_threshold` no longer create integrity signals from raw dashboard metrics. `student_radar_integrity_threshold` still defines the status rule, but the current metrics produce no integrity signals to reach it. These settings do not change per-attempt proctoring scores.

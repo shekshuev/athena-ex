@@ -308,6 +308,16 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
         <.form for={@form} id={"block-inspector-form-#{@block.id}"} phx-change="update_block_meta">
           <.input type="hidden" field={@form[:id]} />
 
+          <.input
+            :if={@block.type in [:code, :file_assignment]}
+            id={"block-prompt-image-#{@block.id}"}
+            type="checkbox"
+            name="block[content][render_prompt_as_image]"
+            value={@block.content["render_prompt_as_image"]}
+            label={gettext("Render prompt as image (blocks copy/select, drops formatting)")}
+            class="checkbox checkbox-sm checkbox-primary"
+          />
+
           <%= if @block.type == :quiz_question do %>
             <div class="space-y-4 mb-6">
               <div class="text-xs font-semibold text-base-content/50 uppercase tracking-wider">
@@ -447,26 +457,14 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                   placeholder={gettext("Optional")}
                   min="1"
                 />
-
-                <label class="label cursor-pointer justify-start gap-3 items-start">
-                  <input type="hidden" name="block[content][require_fullscreen]" value="false" />
-                  <input
-                    type="checkbox"
-                    id="require-fullscreen-toggle-quiz"
-                    name="block[content][require_fullscreen]"
-                    value="true"
-                    checked={@block.content["require_fullscreen"] == true}
-                    class="checkbox checkbox-sm checkbox-primary mt-0.5"
-                  />
-                  <div>
-                    <span class="label-text">{gettext("Require fullscreen")}</span>
-                    <p class="text-xs text-base-content/50">
-                      {gettext(
-                        "Questions stay hidden until the student enters fullscreen; leaving it is recorded. Not applied in the builder's test run."
-                      )}
-                    </p>
-                  </div>
-                </label>
+                <.input
+                  id={"exam-prompt-image-#{@block.id}"}
+                  type="checkbox"
+                  name="block[content][render_prompt_as_image]"
+                  value={@block.content["render_prompt_as_image"]}
+                  label={gettext("Render prompt as image (blocks copy/select, drops formatting)")}
+                  class="checkbox checkbox-sm checkbox-primary"
+                />
               </div>
 
               <div class="flex items-center justify-between mb-2 mt-6">
@@ -595,26 +593,14 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                   min="1"
                   phx-debounce="500"
                 />
-
-                <label class="label cursor-pointer justify-start gap-3 items-start">
-                  <input type="hidden" name="block[content][require_fullscreen]" value="false" />
-                  <input
-                    type="checkbox"
-                    id="require-fullscreen-toggle-ticket"
-                    name="block[content][require_fullscreen]"
-                    value="true"
-                    checked={@block.content["require_fullscreen"] == true}
-                    class="checkbox checkbox-sm checkbox-primary mt-0.5"
-                  />
-                  <div>
-                    <span class="label-text">{gettext("Require fullscreen")}</span>
-                    <p class="text-xs text-base-content/50">
-                      {gettext(
-                        "Questions stay hidden until the student enters fullscreen; leaving it is recorded. Not applied in the builder's test run."
-                      )}
-                    </p>
-                  </div>
-                </label>
+                <.input
+                  id={"exam-prompt-image-#{@block.id}"}
+                  type="checkbox"
+                  name="block[content][render_prompt_as_image]"
+                  value={@block.content["render_prompt_as_image"]}
+                  label={gettext("Render prompt as image (blocks copy/select, drops formatting)")}
+                  class="checkbox checkbox-sm checkbox-primary"
+                />
               </div>
 
               <div class="flex items-center justify-between mb-2 mt-6">

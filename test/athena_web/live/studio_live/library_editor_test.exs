@@ -158,13 +158,15 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       block = insert(:library_block, type: :quiz_exam, owner_id: admin.id)
 
       {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+      assert has_element?(lv, "#library-exam-prompt-image")
 
       render_hook(lv, "update_meta", %{
         "library_block" => %{
           "content" => %{
             "count" => "25",
             "time_limit" => "60",
-            "require_fullscreen" => "true"
+            "require_fullscreen" => "true",
+            "render_prompt_as_image" => "true"
           }
         },
         "tags_mandatory" => "elixir, hard",
@@ -177,6 +179,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       assert updated_block.content["count"] == 25
       assert updated_block.content["time_limit"] == 60
       assert updated_block.content["require_fullscreen"] == true
+      assert updated_block.content["render_prompt_as_image"] == true
       assert updated_block.content["mandatory_tags"] == ["elixir", "hard"]
       assert updated_block.content["include_tags"] == ["medium"]
       assert updated_block.content["exclude_tags"] == ["draft"]
@@ -189,12 +192,14 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       block = insert(:library_block, type: :ticket_exam, owner_id: admin.id)
 
       {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+      assert has_element?(lv, "#library-exam-prompt-image")
 
       render_hook(lv, "update_meta", %{
         "library_block" => %{
           "content" => %{
             "time_limit" => "45",
             "require_fullscreen" => "true",
+            "render_prompt_as_image" => "true",
             "slots" => %{
               "0" => %{"id" => "s1", "tags_string" => "db, theory"},
               "1" => %{"id" => "s2", "tags_string" => "  db  ,  practice  "}
@@ -207,6 +212,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       {:ok, updated_block} = Content.get_library_block(block.id)
       assert updated_block.content["time_limit"] == 45
       assert updated_block.content["require_fullscreen"] == true
+      assert updated_block.content["render_prompt_as_image"] == true
 
       slots = updated_block.content["slots"]
       assert length(slots) == 2

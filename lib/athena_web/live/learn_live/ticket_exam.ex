@@ -237,6 +237,15 @@ defmodule AthenaWeb.LearnLive.TicketExam do
           "submission:#{socket.assigns.current_user.id}:#{q.id}"
         )
       end)
+
+      # Tell the proctoring monitor this exam tab is actually connected, so a
+      # later telemetry silence can be told apart from a plain network drop
+      # (see `Athena.Engagement.Proctoring`). Real, in-progress attempts only
+      # - never a builder test run, never a finished/expired attempt (which
+      # would otherwise spin up a fresh, empty monitor).
+      if not socket.assigns[:test_run] and submission.status in [:pending, :draft] do
+        Engagement.report_proctoring_connection(submission.id, cohort_id, block.id, true)
+      end
     end
 
     socket =
@@ -532,13 +541,10 @@ defmodule AthenaWeb.LearnLive.TicketExam do
 
   def handle_event("finish_exam", _, socket) do
     case check_time_limit(socket) do
-      {:halt, socket} ->
-        {:noreply, socket}
-
       {:ok, socket} ->
-        socket =
-          submit_and_exit(socket, socket.assigns.submission, :finished)
+        {:noreply, submit_and_exit(socket, socket.assigns.submission, :finished)}
 
+      {:halt, socket} ->
         {:noreply, socket}
     end
   end
@@ -546,18 +552,17 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   @impl true
   def handle_event("run_code", %{"block_id" => block_id}, socket) do
     case check_time_limit(socket) do
-      {:halt, socket} -> {:noreply, socket}
-      {:ok, socket} -> execute_run_code(socket, block_id)
+      {:ok, socket} ->
+        execute_run_code(socket, block_id)
+
+      {:halt, socket} ->
+        {:noreply, socket}
     end
   end
 
   def handle_event("engagement_batch", %{"events" => events}, socket) do
-    section_id = socket.assigns.block.section_id
-
-    normalized =
-      events
-      |> Enum.map(&Engagement.normalize_event(&1, section_id))
-      |> Enum.reject(&is_nil/1)
+    {normalized, socket} =
+      AthenaWeb.LearnLive.ExamTelemetry.normalize_batch(events, socket)
 
     {buffered, socket} = EngagementSignals.take_buffered_events(socket)
 
@@ -581,13 +586,19 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     {:noreply, socket}
   end
 
-  def handle_event("engagement_heartbeat", _params, socket) do
+  def handle_event("engagement_heartbeat", params, socket) do
+    # Raw window-geometry samples ride on the ping; they are bounded here and
+    # judged by the server (`Athena.Engagement.Layout`), never by the client.
+    samples = Engagement.normalize_proctoring_layout(params["layout"])
+
     Engagement.report_proctoring_heartbeat(
       socket.assigns.submission.id,
       socket.assigns.cohort_id,
-      socket.assigns.block.id
+      socket.assigns.block.id,
+      samples
     )
 
+    # Monitoring informs the instructor and never changes the student's flow.
     {:noreply, socket}
   end
 
@@ -790,6 +801,8 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   # nothing left to hold.
   @impl true
   def terminate(_reason, socket) do
+    report_proctoring_disconnect(socket)
+
     with %{team_id: team_id, submission: submission} when not is_nil(team_id) <- socket.assigns,
          true <- submission.status in [:pending, :draft] do
       Learning.release_exam_attempt(submission.id)
@@ -831,14 +844,6 @@ defmodule AthenaWeb.LearnLive.TicketExam do
       phx-hook="EngagementTracker"
       data-session-id={@engagement_session_id}
       data-heartbeat={to_string(!@test_run)}
-      data-fullscreen={to_string(!@test_run && require_fullscreen?(@block))}
-      data-fs-title={gettext("Fullscreen required")}
-      data-fs-text={
-        gettext(
-          "This assessment runs in fullscreen mode only. The questions are hidden until you enter fullscreen, and leaving it is recorded."
-        )
-      }
-      data-fs-button={gettext("Enter fullscreen")}
       class="flex flex-col min-h-screen"
     >
       <div
@@ -948,6 +953,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
                       <.content_block
                         block={@current_question}
                         mode={:play}
+                        render_prompt_as_image={@block.content["render_prompt_as_image"] == true}
                         submission={Map.get(@child_submissions, @current_question.id)}
                         pending_file_urls={@pending_file_urls}
                         user_id={@current_user.id}
@@ -964,6 +970,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
                       <.content_block
                         block={@current_question}
                         mode={:play}
+                        render_prompt_as_image={@block.content["render_prompt_as_image"] == true}
                         submission={Map.get(@child_submissions, @current_question.id)}
                         pending_file_urls={@pending_file_urls}
                         hide_submit={true}
@@ -979,6 +986,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
                       <.content_block
                         block={@current_question}
                         mode={:play}
+                        render_prompt_as_image={@block.content["render_prompt_as_image"] == true}
                         submission={Map.get(@child_submissions, @current_question.id)}
                         pending_file_urls={@pending_file_urls}
                       />
@@ -987,6 +995,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
                     <.content_block
                       block={@current_question}
                       mode={:play}
+                      render_prompt_as_image={@block.content["render_prompt_as_image"] == true}
                       submission={Map.get(@child_submissions, @current_question.id)}
                       pending_file_urls={@pending_file_urls}
                     />
@@ -1073,11 +1082,30 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     end
   end
 
+  # On socket teardown (tab closed, navigation, lost network) tell the
+  # proctoring monitor the exam tab is no longer connected, so any silence
+  # from here on reads as a network drop rather than suppressed telemetry.
+  # Real attempts only; best-effort - `connection/4` with `false` never
+  # starts a monitor, so a teardown at finalize can't resurrect one.
+  defp report_proctoring_disconnect(socket) do
+    assigns = socket.assigns
+
+    if Map.get(assigns, :test_run, true) == false do
+      case assigns do
+        %{submission: %{id: sid}, cohort_id: cohort_id, block: %{id: bid}}
+        when not is_nil(cohort_id) ->
+          Engagement.report_proctoring_connection(sid, cohort_id, bid, false)
+
+        _ ->
+          :ok
+      end
+    else
+      :ok
+    end
+  end
+
   defp process_exam_answer(params, socket) do
     case check_time_limit(socket) do
-      {:halt, socket} ->
-        {:noreply, socket}
-
       {:ok, socket} ->
         q = socket.assigns.current_question
         answer = resolve_exam_answer(socket, q, Map.get(params, "answer"))
@@ -1103,6 +1131,9 @@ defmodule AthenaWeb.LearnLive.TicketExam do
           {:error, :time_limit_exceeded} ->
             {:noreply, submit_and_exit(socket, socket.assigns.submission, :time_limit_exceeded)}
         end
+
+      {:halt, socket} ->
+        {:noreply, socket}
     end
   end
 
@@ -1284,8 +1315,6 @@ defmodule AthenaWeb.LearnLive.TicketExam do
     end
   end
 
-  defp require_fullscreen?(block), do: (block.content || %{})["require_fullscreen"] == true
-
   defp get_time_limit_sec(block) do
     content = block.content || %{}
 
@@ -1319,6 +1348,16 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   defp hydrate_questions(_), do: []
 
   defp save_exam_file_assignment(socket, block_id, file_urls) do
+    case check_time_limit(socket) do
+      {:ok, socket} ->
+        persist_exam_file_assignment(socket, block_id, file_urls)
+
+      {:halt, socket} ->
+        socket
+    end
+  end
+
+  defp persist_exam_file_assignment(socket, block_id, file_urls) do
     answer_content = %{"type" => "file_assignment", "file_urls" => file_urls || []}
 
     case Learning.save_question_submission(

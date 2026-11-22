@@ -20,6 +20,7 @@ defmodule Athena.Content.CodeChallenge do
              :solution_code,
              :test_cases,
              :body,
+             :render_prompt_as_image,
              :setup_sql,
              :check_sql,
              :evaluation_mode,
@@ -33,6 +34,7 @@ defmodule Athena.Content.CodeChallenge do
           initial_code: String.t(),
           solution_code: String.t(),
           body: map(),
+          render_prompt_as_image: boolean(),
           test_cases: [TestCase.t()],
           setup_sql: String.t(),
           check_sql: String.t(),
@@ -53,6 +55,7 @@ defmodule Athena.Content.CodeChallenge do
     # for every other block type) - it must never be reused to also carry
     # SQL sandbox config, or editing the instructions wipes that config out.
     field :body, :map, default: %{}
+    field :render_prompt_as_image, :boolean, default: false
 
     # SQL-only sandbox config, kept as top-level fields (not nested inside
     # `body`) precisely so they can't collide with the instructions doc.
@@ -83,6 +86,7 @@ defmodule Athena.Content.CodeChallenge do
       :initial_code,
       :solution_code,
       :body,
+      :render_prompt_as_image,
       :setup_sql,
       :check_sql,
       :evaluation_mode,

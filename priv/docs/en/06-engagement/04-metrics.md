@@ -98,7 +98,7 @@ Computed for every block type.
 | :ui[Code runs] | Number of code runs inside the assessment |
 | :ui[Rapid re-runs] | As for a code task |
 
-These metrics describe behaviour on the engagement screens. The risk of a particular attempt is decided by a separate procedure with different rules, see [Academic integrity](/docs/grading/academic-integrity).
+These are raw counts, not a count of violations. For example, a PrintScreen key event does not prove that a screenshot was saved, and a browser tab report does not prove persistent concurrent sessions. These metrics do not independently create integrity signals on engagement dashboards. The instructor-only review priority for an attempt uses separate, conservative rules, see [Academic integrity](/docs/grading/academic-integrity).
 
 ## Group figures
 

@@ -14,6 +14,7 @@ defmodule Athena.Content.QuizExam do
     field :count, :integer, default: 10
     field :time_limit, :integer
     field :require_fullscreen, :boolean, default: false
+    field :render_prompt_as_image, :boolean, default: false
 
     field :mandatory_tags, {:array, :string}, default: []
     field :include_tags, {:array, :string}, default: []
@@ -28,6 +29,7 @@ defmodule Athena.Content.QuizExam do
       :count,
       :time_limit,
       :require_fullscreen,
+      :render_prompt_as_image,
       :mandatory_tags,
       :include_tags,
       :exclude_tags

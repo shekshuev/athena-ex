@@ -84,13 +84,18 @@ EngagementHooks.EngagementTracker = {
     // server unconditionally, even when `flush()` above had nothing queued
     // - that's what lets the server notice *silence* (tracking JS
     // disabled/tampered) instead of only ever seeing suspicious events. A
-    // student who patches just the listeners below (visibilitychange,
-    // IntersectionObserver, BroadcastChannel) can't quietly stop this too
-    // without also breaking their own `pushEvent`-based ability to answer
-    // and submit.
+    // modified client can retain this ping while suppressing other events;
+    // it is a liveness signal, not proof of detector integrity.
+    //
+    // The ping also carries raw window-geometry samples (see
+    // `startLayoutSampling`). The client never judges them - the server
+    // classifies them and measures the time itself.
+    this.takeLayoutSamples = () => ({});
     this.flushTimer = setInterval(() => {
       this.flush();
-      if (this.isConnected && this.el.dataset.heartbeat === "true") this.pushEvent("engagement_heartbeat", {});
+      if (this.isConnected && this.el.dataset.heartbeat === "true") {
+        this.pushEvent("engagement_heartbeat", this.takeLayoutSamples());
+      }
     }, FLUSH_INTERVAL_MS);
 
     this.observer = new IntersectionObserver(
@@ -269,7 +274,7 @@ EngagementHooks.EngagementTracker = {
   // Integrity telemetry that only makes sense on a real exam page (see
   // `proctoringActive/0`): the browser's own account of a connection
   // outage, the pointer leaving the window, the window sharing the screen,
-  // and - for exams that require it - the fullscreen gate.
+  // and voluntary fullscreen changes, without changing the exam UI.
   startProctoring() {
     this.isConnected = true;
     this.isOnline = navigator.onLine;
@@ -305,31 +310,89 @@ EngagementHooks.EngagementTracker = {
     // by hovering it (scrolling works without a click), which never fires
     // blur or visibilitychange.
     this.pointerLeftAt = null;
-    this.handleMouseLeave = () => {
+    this.pointerLeftEdge = null;
+    this.handleMouseLeave = (e) => {
       this.pointerLeftAt = Date.now();
+      // Which side of the page the pointer left through. Sideways exits are
+      // how a neighbouring window is reached when the window is split; the
+      // server weighs them only together with the layout samples.
+      const distances = {
+        left: e.clientX,
+        right: window.innerWidth - e.clientX,
+        top: e.clientY,
+        bottom: window.innerHeight - e.clientY,
+      };
+      this.pointerLeftEdge = Object.keys(distances).reduce((a, b) =>
+        distances[a] <= distances[b] ? a : b,
+      );
     };
     this.handleMouseEnter = () => {
       if (this.pointerLeftAt == null) return;
       const durationMs = Date.now() - this.pointerLeftAt;
       this.pointerLeftAt = null;
       if (durationMs >= 2_000) {
-        this.enqueue(this.currentBlockId, "mouse_left", { duration_ms: durationMs });
+        this.enqueue(this.currentBlockId, "mouse_left", {
+          duration_ms: durationMs,
+          edge: this.pointerLeftEdge,
+        });
       }
     };
     document.documentElement.addEventListener("mouseleave", this.handleMouseLeave);
     document.documentElement.addEventListener("mouseenter", this.handleMouseEnter);
 
     this.startGeometryWatch();
-    if (this.el.dataset.fullscreen === "true") this.startFullscreenGate();
+    this.startLayoutSampling();
+    this.startFullscreenTracking();
+  },
+
+  // Raw window-layout samples every two seconds, handed to the server with
+  // the next heartbeat. Numbers and flags only - no judgement here, so there
+  // is no client-side verdict to suppress. Touch devices send none (window
+  // geometry is meaningless there). `isExtended` is Chromium-only.
+  startLayoutSampling() {
+    const SAMPLE_MS = 2_000;
+    const MAX_BUFFER = 8;
+    if (window.matchMedia("(pointer: coarse)").matches) return;
+
+    this.layoutBuffer = [];
+    const take = () => {
+      this.layoutBuffer.push({
+        ow: window.outerWidth,
+        oh: window.outerHeight,
+        iw: window.innerWidth,
+        ih: window.innerHeight,
+        aw: screen.availWidth,
+        ah: screen.availHeight,
+        dpr: window.devicePixelRatio,
+        f: document.hasFocus(),
+        vis: document.visibilityState === "visible",
+        ext: screen.isExtended === true,
+        fs: !!document.fullscreenElement,
+      });
+      if (this.layoutBuffer.length > MAX_BUFFER) this.layoutBuffer.shift();
+    };
+
+    this.layoutTimer = setInterval(take, SAMPLE_MS);
+    take();
+    this.takeLayoutSamples = () => {
+      take();
+      const layout = this.layoutBuffer;
+      this.layoutBuffer = [];
+      return { layout };
+    };
   },
 
   // "Window shares the screen" = the browser's *outer* width is a fraction
   // of the screen's usable width. Outer dimensions, not `innerWidth`: zoom
   // and a docked DevTools change the inner size but not the outer one.
-  // Touch devices and small screens are skipped, and a change must hold for
-  // ten seconds before it is reported so dragging a window doesn't spam.
+  // Touch devices and small screens are skipped, and a change must hold
+  // before it is reported so dragging a window doesn't spam (3 s to enter a
+  // split, 10 s to leave it). This is the announced, timeline-friendly edge;
+  // the server's own reading comes from the layout samples, which also cover
+  // a narrowed page area (browser split view) that outer size cannot show.
   startGeometryWatch() {
-    const SPLIT_RATIO = 0.65;
+    const SPLIT_RATIO = 0.7;
+    const SPLIT_HEIGHT_RATIO = 0.6;
     let reported = false;
     let pending = null;
 
@@ -337,7 +400,10 @@ EngagementHooks.EngagementTracker = {
       if (document.fullscreenElement) return false;
       if (window.matchMedia("(pointer: coarse)").matches) return false;
       if (screen.availWidth < 1000) return false;
-      return window.outerWidth / screen.availWidth <= SPLIT_RATIO;
+      return (
+        window.outerWidth / screen.availWidth <= SPLIT_RATIO ||
+        window.outerHeight / screen.availHeight <= SPLIT_HEIGHT_RATIO
+      );
     };
 
     const evaluate = () => {
@@ -351,7 +417,7 @@ EngagementHooks.EngagementTracker = {
           split,
           ratio: Number((window.outerWidth / screen.availWidth).toFixed(2)),
         });
-      }, 10_000);
+      }, split ? 3_000 : 10_000);
     };
 
     this.handleResize = evaluate;
@@ -360,51 +426,23 @@ EngagementHooks.EngagementTracker = {
     evaluate();
   },
 
-  // A blocking overlay until the page is fullscreen. Fullscreen can only be
-  // entered from a user gesture, so entering is a button, not automatic.
-  // Leaving it (Esc, F11) brings the overlay back over the questions and is
-  // reported with how long the student was out. The overlay lives on
-  // <body>, outside what LiveView patches. Browsers without the API get no
-  // gate and no penalty.
-  startFullscreenGate() {
-    const root = document.documentElement;
-    if (!root.requestFullscreen) return;
-
-    const overlay = document.createElement("div");
-    overlay.id = "fullscreen-gate";
-    overlay.className =
-      "fixed inset-0 z-[10000] flex items-center justify-center bg-base-100 p-6 text-center";
-    overlay.innerHTML = `
-      <div class="max-w-md space-y-4">
-        <h2 class="text-2xl font-black"></h2>
-        <p class="text-base-content/70"></p>
-        <button type="button" class="btn btn-primary"></button>
-      </div>`;
-    overlay.querySelector("h2").textContent = this.el.dataset.fsTitle || "";
-    overlay.querySelector("p").textContent = this.el.dataset.fsText || "";
-    const button = overlay.querySelector("button");
-    button.textContent = this.el.dataset.fsButton || "";
-    button.addEventListener("click", () => root.requestFullscreen().catch(() => {}));
-    document.body.appendChild(overlay);
-
-    this.fullscreenOverlay = overlay;
+  // Observe voluntary fullscreen changes without requesting fullscreen or
+  // covering the exam. Signals are only shown to the instructor.
+  startFullscreenTracking() {
     this.fullscreenLeftAt = null;
+    this.hasBeenFullscreen = !!document.fullscreenElement;
 
     this.handleFullscreenChange = () => {
       if (document.fullscreenElement) {
-        overlay.classList.add("hidden");
         if (this.fullscreenLeftAt != null) {
           const durationMs = Date.now() - this.fullscreenLeftAt;
           this.fullscreenLeftAt = null;
           this.enqueue(this.currentBlockId, "fullscreen_exit", { duration_ms: durationMs });
         }
-      } else {
-        overlay.classList.remove("hidden");
-        if (this.fullscreenLeftAt == null && this.hasBeenFullscreen) {
-          this.fullscreenLeftAt = Date.now();
-        }
+        this.hasBeenFullscreen = true;
+      } else if (this.fullscreenLeftAt == null && this.hasBeenFullscreen) {
+        this.fullscreenLeftAt = Date.now();
       }
-      if (document.fullscreenElement) this.hasBeenFullscreen = true;
     };
     document.addEventListener("fullscreenchange", this.handleFullscreenChange);
   },
@@ -416,12 +454,11 @@ EngagementHooks.EngagementTracker = {
     document.documentElement.removeEventListener("mouseenter", this.handleMouseEnter);
     window.removeEventListener("resize", this.handleResize);
     clearInterval(this.geometryTimer);
+    clearInterval(this.layoutTimer);
 
     if (this.handleFullscreenChange) {
       document.removeEventListener("fullscreenchange", this.handleFullscreenChange);
     }
-    this.fullscreenOverlay?.remove();
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   },
 
   destroyed() {
@@ -534,34 +571,17 @@ EngagementHooks.AttachmentOpenTracker = {
   },
 };
 
-// Blocks copy/cut/right-click on a question-prompt container (raises the
-// bar against a quick Ctrl+C, not bulletproof - a determined student can
-// still retype, screenshot, or use devtools) and reports the attempts as
-// `copy_attempt`/`cut_attempt`/`right_click_attempt` telemetry. Only ever
-// mounted on exam pages (`quiz_exam`/`ticket_exam`) - see
-// `AthenaWeb.BlockComponents.render_quiz_question/1`. Right-click still
-// gets blocked as a UX deterrent either way, but unlike copy/cut it has
-// ordinary innocent causes (inspecting layout, a misclick), so the server
-// only ever treats it as a cohort-relative behavioral-outlier signal, not
-// hard evidence - see `Athena.Engagement.Proctoring`.
-EngagementHooks.NoCopyGuard = {
+// Observe copying, cutting and the context menu on exam prompts without
+// preventing selection or any native browser action.
+EngagementHooks.ClipboardTracker = {
   mounted() {
     const blockId = this.el.dataset.blockId || this.el.closest("[data-block-id]")?.dataset.blockId;
 
     const report = (eventType) => queueEngagementEvent(blockId, eventType, {}, { flush: true });
 
-    this.onCopy = (e) => {
-      e.preventDefault();
-      report("copy_attempt");
-    };
-    this.onCut = (e) => {
-      e.preventDefault();
-      report("cut_attempt");
-    };
-    this.onContextMenu = (e) => {
-      e.preventDefault();
-      report("right_click_attempt");
-    };
+    this.onCopy = () => report("copy_attempt");
+    this.onCut = () => report("cut_attempt");
+    this.onContextMenu = () => report("right_click_attempt");
 
     this.el.addEventListener("copy", this.onCopy);
     this.el.addEventListener("cut", this.onCut);
@@ -642,6 +662,7 @@ EngagementHooks.MultiTabGuard = {
 
     this.tabId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     this.reported = false;
+    this.seenPeers = new Set();
 
     const report = () => {
       if (this.reported) return;
@@ -651,12 +672,19 @@ EngagementHooks.MultiTabGuard = {
     if (typeof BroadcastChannel !== "undefined") {
       this.channel = new BroadcastChannel(`exam-${submissionId}`);
       this.channel.onmessage = (event) => {
-        if (event.data?.tabId && event.data.tabId !== this.tabId) {
-          report();
-          this.channel.postMessage({ tabId: this.tabId });
+        const peer = event.data;
+        if (!peer?.tabId || peer.tabId === this.tabId || this.seenPeers.has(peer.tabId)) return;
+        if (peer.to && peer.to !== this.tabId) return;
+        if (this.seenPeers.size >= 20) this.seenPeers.delete(this.seenPeers.values().next().value);
+        this.seenPeers.add(peer.tabId);
+        report();
+        // Reply once to an announcement, never to an acknowledgement. Old
+        // cached clients without a kind are bounded by seenPeers too.
+        if (peer.kind !== "ack") {
+          this.channel.postMessage({ kind: "ack", tabId: this.tabId, to: peer.tabId });
         }
       };
-      this.channel.postMessage({ tabId: this.tabId });
+      this.channel.postMessage({ kind: "hello", tabId: this.tabId });
     } else {
       this.storageKey = `exam-tab-${submissionId}`;
       this.handleStorage = (event) => {

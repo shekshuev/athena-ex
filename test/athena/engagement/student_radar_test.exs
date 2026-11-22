@@ -47,6 +47,25 @@ defmodule Athena.Engagement.StudentRadarTest do
     insert(:cohort_membership, account_id: account.id, cohort_id: cohort.id)
   end
 
+  test "ordinary exam clipboard and screenshot events do not turn the radar red", %{
+    course: course,
+    cohort: cohort,
+    section: section
+  } do
+    student = insert(:account)
+    join_cohort(student, cohort)
+    exam = insert(:block, section: section, type: :quiz_exam)
+    now = DateTime.utc_now(:second)
+
+    for event <- [:copy_attempt, :cut_attempt, :printscreen_attempt, :multi_tab_detected] do
+      record(student.id, cohort.id, Ecto.UUID.generate(), exam, event, now)
+    end
+
+    [row] = Metrics.student_radar(cohort.id, course.id, since: DateTime.add(now, -3600, :second))
+    assert row.integrity_index == 0
+    assert row.status == :green
+  end
+
   describe "student_radar/3 - status classification" do
     test "a slacking (\"Ivanov\") profile - fast dwell + heavy paste - comes back red", %{
       course: course,

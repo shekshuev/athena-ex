@@ -45,6 +45,30 @@ defmodule Athena.Engagement.ProctoringTimelineTest do
     ])
   end
 
+  test "history is bounded by the attempt finish and its server-bound id", ctx do
+    record(ctx, ctx.block.id, :copy_attempt, 20, %{"exam_submission_id" => Ecto.UUID.generate()})
+    record(ctx, ctx.block.id, :copy_attempt, 30, %{"exam_submission_id" => ctx.submission.id})
+    record(ctx, ctx.block.id, :copy_attempt, 80)
+
+    sub = %{
+      ctx.submission
+      | content:
+          Map.put(
+            ctx.submission.content,
+            "proctoring_finished_at",
+            DateTime.to_iso8601(DateTime.add(@started_at, 60, :second))
+          )
+    }
+
+    assert [%{offset: 30, at: at, started_at: @started_at}] = ProctoringTimeline.build(sub)
+    assert at == DateTime.add(@started_at, 30, :second)
+  end
+
+  test "reported durations cannot move an interval before the attempt start", ctx do
+    record(ctx, ctx.question.id, :tab_visible, 10, %{"duration_ms" => 3_600_000})
+    assert [%{offset: 0, duration_ms: 10_000}] = ProctoringTimeline.build(ctx.submission)
+  end
+
   test "an absence is placed at the moment it began, using the duration the return event carries",
        ctx do
     record(ctx, ctx.question.id, :tab_visible, 100, %{"duration_ms" => 30_000})
@@ -114,6 +138,59 @@ defmodule Athena.Engagement.ProctoringTimelineTest do
 
     assert [%{type: :silence, offset: 200, duration_ms: 75_000}] =
              ProctoringTimeline.build(submission)
+  end
+
+  test "new monitoring incidents remain visible to the reviewer", ctx do
+    types = ["silence_connected", "concurrent_session", "inert_channel", "clock_skew"]
+
+    incidents =
+      Enum.map(types, fn type ->
+        %{
+          "type" => type,
+          "at" => DateTime.to_iso8601(DateTime.add(@started_at, 200, :second)),
+          "seconds" => 75
+        }
+      end)
+
+    submission = %{
+      ctx.submission
+      | content: Map.put(ctx.submission.content, "incidents", incidents)
+    }
+
+    assert Enum.map(ProctoringTimeline.build(submission), & &1.type) ==
+             [:silence_connected, :concurrent_session, :inert_channel, :clock_skew]
+  end
+
+  test "split intervals keep their cause and duration, and a second display is listed", ctx do
+    incidents = [
+      %{
+        "type" => "split_interval",
+        "cause" => "viewport",
+        "at" => DateTime.to_iso8601(DateTime.add(@started_at, 120, :second)),
+        "seconds" => 90
+      },
+      %{
+        "type" => "extended_display",
+        "at" => DateTime.to_iso8601(DateTime.add(@started_at, 300, :second)),
+        "seconds" => 0
+      },
+      %{
+        "type" => "answer_while_unfocused",
+        "at" => DateTime.to_iso8601(DateTime.add(@started_at, 400, :second)),
+        "seconds" => 0
+      }
+    ]
+
+    submission = %{
+      ctx.submission
+      | content: Map.put(ctx.submission.content, "incidents", incidents)
+    }
+
+    assert [
+             %{type: :split_interval, offset: 120, duration_ms: 90_000, source: "viewport"},
+             %{type: :extended_display, offset: 300},
+             %{type: :answer_while_unfocused, offset: 400}
+           ] = ProctoringTimeline.build(submission)
   end
 
   describe "one absence is one line" do

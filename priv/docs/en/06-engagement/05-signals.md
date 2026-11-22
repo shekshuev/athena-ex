@@ -58,20 +58,9 @@ Coming back to material already covered is not a student signal: it usually indi
 
 ### Integrity
 
-Fire on assessment blocks only.
+Raw browser actions do not automatically classify an integrity violation on engagement dashboards. Copying, cutting, PrintScreen, tab reports, focus changes and paste ratios remain measured values for drilldown; they do not independently create a red integrity cell.
 
-| Signal | Rule |
-|---|---|
-| Screenshot attempt | :ui[Screenshot attempts] > 0 |
-| Copy attempt | :ui[Copy attempts] > 0 |
-| Cut attempt | :ui[Cut attempts] > 0 |
-| Several tabs | :ui[Opened in several tabs] > 0 |
-| Frequently leaving the page | :ui[Left the exam tab] ≥ 3 |
-| Pasted answers | :ui[Share pasted] in the assessment > 0.6 |
-
-In the :ui[Why] column all signals of this category are merged into one :ui[Exam violations] chip.
-
-These are simplified absolute rules for the engagement screens. The risk indicator of a particular attempt, which the teacher acts on when grading, is computed differently – with points and comparison with others taking the same assessment (see [Academic integrity](/docs/grading/academic-integrity)).
+The assessment's instructor-only review priority and the teacher's explicit decision are shown in the grading center and the gradebook. See [Academic integrity](/docs/grading/academic-integrity) for the conservative scoring rules, limitations and event history.
 
 ## Results signals
 

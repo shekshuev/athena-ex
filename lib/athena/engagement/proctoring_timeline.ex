@@ -83,13 +83,27 @@ defmodule Athena.Engagement.ProctoringTimeline do
     |> Kernel.++(incident_entries(submission, started_at))
     |> Enum.sort_by(& &1.offset)
     |> collapse_bursts()
+    |> Enum.map(fn entry ->
+      Map.merge(entry, %{
+        at: DateTime.add(started_at, entry.offset, :second),
+        started_at: started_at
+      })
+    end)
   end
 
   defp fetch_events(submission, block_ids, started_at) do
+    finished_at = finished_at(submission)
+
     Event
     |> where([e], e.account_id == ^submission.account_id and e.block_id in ^block_ids)
     |> where([e], e.event_type in ^(@instant_types ++ @return_types))
     |> where([e], e.occurred_at >= ^DateTime.add(started_at, -1, :second))
+    |> where([e], e.occurred_at <= ^finished_at)
+    |> where(
+      [e],
+      is_nil(fragment("?->>'exam_submission_id'", e.payload)) or
+        fragment("?->>'exam_submission_id'", e.payload) == ^submission.id
+    )
     |> Events.prune_before(DateTime.add(started_at, -1, :second))
     |> order_by([e], asc: e.occurred_at)
     |> limit(^@max_events)
@@ -129,8 +143,12 @@ defmodule Athena.Engagement.ProctoringTimeline do
   defp new_group(start_ms, end_ms, kind, block_id),
     do: %{start_ms: start_ms, end_ms: end_ms, kinds: [kind], block_id: block_id}
 
-  defp interval(%{event_type: type} = event, _started_at) do
-    duration_ms = int(event.payload["duration_ms"])
+  defp interval(%{event_type: type} = event, started_at) do
+    duration_ms =
+      min(
+        int(event.payload["duration_ms"]),
+        max(DateTime.diff(event.occurred_at, started_at, :millisecond), 0)
+      )
 
     if duration_ms > 0 do
       end_ms = DateTime.to_unix(event.occurred_at, :millisecond)
@@ -152,7 +170,8 @@ defmodule Athena.Engagement.ProctoringTimeline do
       split: nil,
       source: nil,
       kinds: group.kinds,
-      block_id: group.block_id
+      block_id: group.block_id,
+      time_source: "estimated"
     }
   end
 
@@ -167,7 +186,11 @@ defmodule Athena.Engagement.ProctoringTimeline do
   end
 
   defp entry(%{event_type: type} = event, started_at) when type in @return_types do
-    duration_ms = int(event.payload["duration_ms"])
+    duration_ms =
+      min(
+        int(event.payload["duration_ms"]),
+        max(DateTime.diff(event.occurred_at, started_at, :millisecond), 0)
+      )
 
     cond do
       duration_ms <= 0 ->
@@ -231,24 +254,41 @@ defmodule Athena.Engagement.ProctoringTimeline do
       split: extra[:split],
       source: extra[:source],
       kinds: [type],
-      block_id: event.block_id
+      block_id: event.block_id,
+      time_source: event.payload["time_source"] || "browser"
     }
   end
 
   defp incident_entries(submission, started_at) do
-    for %{"type" => "silence", "at" => at, "seconds" => seconds} <-
+    types = %{
+      "silence" => :silence,
+      "silence_connected" => :silence_connected,
+      "concurrent_session" => :concurrent_session,
+      "inert_channel" => :inert_channel,
+      "clock_skew" => :clock_skew,
+      "split_interval" => :split_interval,
+      "extended_display" => :extended_display,
+      "answer_while_unfocused" => :answer_while_unfocused
+    }
+
+    for %{"type" => name, "at" => at} = incident <-
           Map.get(submission.content || %{}, "incidents", []),
+        type = types[name],
+        not is_nil(type),
+        is_binary(at),
         {:ok, at, _} <- [DateTime.from_iso8601(at)] do
       %{
         offset: max(DateTime.diff(at, started_at, :second), 0),
-        type: :silence,
+        type: type,
         count: 1,
-        duration_ms: seconds * 1000,
+        duration_ms: if(is_number(incident["seconds"]), do: incident["seconds"] * 1000),
         chars: nil,
         split: nil,
-        source: nil,
-        kinds: [:silence],
-        block_id: nil
+        # For a `split_interval`: what narrowed the view ("window"/"viewport").
+        source: incident["cause"],
+        kinds: [type],
+        block_id: nil,
+        time_source: "server"
       }
     end
   end
@@ -275,6 +315,18 @@ defmodule Athena.Engagement.ProctoringTimeline do
       at
     else
       _ -> to_datetime(submission.inserted_at)
+    end
+  end
+
+  defp finished_at(submission) do
+    with iso when is_binary(iso) <- Map.get(submission.content || %{}, "proctoring_finished_at"),
+         {:ok, at, _} <- DateTime.from_iso8601(iso) do
+      at
+    else
+      _ ->
+        if submission.status in [:pending, :draft],
+          do: DateTime.utc_now(),
+          else: to_datetime(submission.updated_at)
     end
   end
 

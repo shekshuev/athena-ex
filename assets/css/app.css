@@ -900,11 +900,6 @@
   border-left-width: 2px !important;
 }
 
-.no-copy-guard {
-  user-select: none;
-  -webkit-user-select: none;
-}
-
 /* Teacher gradebook (`AthenaWeb.TeachingLive.CohortGradebook`). Kept in
    the components layer so per-use utilities (`w-7!`, `bg-*`) still win. */
 @layer components {

@@ -216,7 +216,7 @@ defmodule Athena.Engagement.StudentAssessmentTest do
   end
 
   test "levels are ranked: integrity beats a low score, a low score beats superficial reading" do
-    integrity = %{key: :copy_attempted, category: :integrity}
+    integrity = %{key: :confirmed_violation, category: :integrity}
     low = %{key: :low_score, category: :performance}
     slack = %{key: :fast_dwell, category: :slacking}
 

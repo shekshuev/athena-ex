@@ -5,7 +5,7 @@ defmodule AthenaWeb.Hooks.Readonly do
   use Gettext, backend: AthenaWeb.Gettext
 
   alias Athena.Content.InteractionPolicy
-  alias Athena.Learning.DraftCache
+  alias Athena.Learning
 
   @read_events ~w(open_course_map close_course_map open_leaderboard close_leaderboard cancel_media_upload engagement_batch engagement_heartbeat)
 
@@ -36,7 +36,7 @@ defmodule AthenaWeb.Hooks.Readonly do
     revision = assigns[:active_upload_draft_revision]
 
     is_binary(revision) and
-      revision != DraftCache.revision(assigns.current_user.id, assigns.team_id, id)
+      revision != Learning.draft_revision(assigns.current_user.id, assigns.team_id, id)
   end
 
   defp stale_upload?(_mode, _id, _assigns), do: false
@@ -53,7 +53,7 @@ defmodule AthenaWeb.Hooks.Readonly do
 
       mode == :player and is_binary(params["draft_revision"]) and
           params["draft_revision"] !=
-            DraftCache.revision(socket.assigns.current_user.id, socket.assigns.team_id, id) ->
+            Learning.draft_revision(socket.assigns.current_user.id, socket.assigns.team_id, id) ->
         send(self(), {:draft_reset, %{block_id: id}})
         {:halt, socket}
 

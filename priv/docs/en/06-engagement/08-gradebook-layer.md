@@ -32,7 +32,7 @@ In :ui[Scores + engagement] mode, cells with a score get markers:
 | Marker | Position | Meaning |
 |---|---|---|
 | Yellow dot | Top right corner | :ui[Theory before the task skipped or skimmed]: the student never opened, or skimmed, at least one theory block before the task |
-| Diamond | Top left corner | :ui[Flagged by the cheating monitor]: yellow – the cheating monitor noticed some violations; red – high risk or a violation confirmed by the teacher |
+| Diamond | Top left corner | :ui[Flagged by the cheating monitor]: yellow – review recommended; red – priority review or a violation explicitly confirmed by the instructor. An automatic colour does not confirm cheating |
 
 The diamond reflects the verdict on the attempt shown. The teacher's decision wins over the automatic rating: after :ui[Reviewed - no violation] the diamond disappears, after :ui[Confirm violation] it turns red. See [Academic integrity](/docs/grading/academic-integrity).
 
@@ -60,7 +60,7 @@ The hint ":ui[Click a cell to see why.]" means that clicking a task cell opens a
 
 1. **Score, :ui[Attempts] and :ui[Group avg]** – the group's average score on the task.
 2. **Verdict** – one sentence on how the result and the theory relate (rules below).
-3. **Violation**, if the cheating monitor has a verdict on the attempt.
+3. **Attempt review**: the automatic review priority or the instructor's decision, if one is available. Open the answer to inspect the scored signals and event history.
 4. **:ui[Theory in front of this task]** – each theory block with its rating and an :ui[Open] link to that block on the :ui[Course Radar] in the student's lens. Without theory it reads ":ui[This task has no theory right before it.]".
 5. **Links**: :ui[Open the answer] – the answer in the grading center; :ui[Student card in group radar] – the student's card on the :ui[Group Radar].
 

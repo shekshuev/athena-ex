@@ -61,4 +61,4 @@ Permissions are assigned to roles in :ui[Admin] › :ui[Roles]. An administrator
 | [Thresholds reference](/docs/engagement/thresholds) | Every configurable threshold |
 | [Interpretation and limitations](/docs/engagement/interpretation) | How to read the numbers, common questions |
 
-Signs of dishonest behaviour during an assessment are described in detail in [Academic integrity](/docs/grading/academic-integrity).
+Assessment observations, review priorities and their limitations are described in detail in [Academic integrity](/docs/grading/academic-integrity).

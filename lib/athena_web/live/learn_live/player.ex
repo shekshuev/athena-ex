@@ -22,7 +22,6 @@ defmodule AthenaWeb.LearnLive.Player do
   alias Athena.Execution
   alias Athena.Identity
   alias Athena.Learning
-  alias Athena.Learning.DraftCache
 
   import AthenaWeb.LeaderboardComponents
   alias Athena.Surveys
@@ -695,7 +694,7 @@ defmodule AthenaWeb.LearnLive.Player do
     do: Learning.get_drafts(user_id, block_ids, team_id)
 
   defp draft_revisions(user_id, team_id, blocks),
-    do: Map.new(blocks, &{&1.id, DraftCache.revision(user_id, team_id, &1.id)})
+    do: Map.new(blocks, &{&1.id, Learning.draft_revision(user_id, team_id, &1.id)})
 
   defp clear_editor(socket, block_id) do
     socket = refresh(socket, :content)
@@ -2258,7 +2257,7 @@ defmodule AthenaWeb.LearnLive.Player do
         socket
       ) do
     current =
-      DraftCache.revision(socket.assigns.current_user.id, socket.assigns.team_id, block_id)
+      Learning.draft_revision(socket.assigns.current_user.id, socket.assigns.team_id, block_id)
 
     stale? = Map.has_key?(update, :revision) and update.revision != current
 

@@ -638,7 +638,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
                   <.review_summary review={@submission.content["proctoring_review"]} />
                   <.legacy_verdict_notice content={@submission.content} />
                   <div class="text-sm text-base-content/70">
-                    {gettext("Direct evidence: %{count}",
+                    {gettext("Scored signals: %{count}",
                       count: proctoring_summary.hard_evidence_count
                     )}
                     <%= if map_size(proctoring_summary.outlier_metrics) > 0 do %>
