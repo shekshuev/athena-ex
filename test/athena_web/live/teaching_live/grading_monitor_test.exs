@@ -59,10 +59,10 @@ defmodule AthenaWeb.TeachingLive.GradingMonitorTest do
       assert html =~ "How this is measured"
 
       assert html =~ "alice_flagged"
-      assert html =~ "High risk"
+      assert html =~ "Priority review"
 
       assert html =~ "carol_clean"
-      assert html =~ "No violations"
+      assert html =~ "No scored signals"
 
       assert html =~ "bob_notstarted"
       assert html =~ "Not started"
@@ -104,7 +104,7 @@ defmodule AthenaWeb.TeachingLive.GradingMonitorTest do
 
       html = render(lv)
       refute html =~ "Not started"
-      assert html =~ "No violations"
+      assert html =~ "No scored signals"
     end
 
     test "clicking Learn more opens the methodology modal with the full per-event breakdown", %{
@@ -141,18 +141,16 @@ defmodule AthenaWeb.TeachingLive.GradingMonitorTest do
         |> render_click()
 
       assert has_element?(lv, "#proctoring-methodology-modal.modal-open")
-      assert html =~ "How the cheating risk indicator is calculated"
-      assert html =~ "Direct evidence"
-      assert html =~ "Behavior compared to the group"
-      assert html =~ "Telemetry silence"
-      assert html =~ "Known blind spots"
+      assert html =~ "How review priority is calculated"
+      assert has_element?(lv, "#proctoring-methodology", "without points")
+      assert has_element?(lv, "#proctoring-methodology", "never blocks answers")
 
       html =
         lv
         |> element("#proctoring-methodology-modal button", "Close")
         |> render_click()
 
-      refute html =~ "How the cheating risk indicator is calculated"
+      refute html =~ "How review priority is calculated"
     end
 
     test "opening a submission from here points back to this monitor page, not the plain list",

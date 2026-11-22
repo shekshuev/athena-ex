@@ -662,6 +662,7 @@ EngagementHooks.MultiTabGuard = {
 
     this.tabId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     this.reported = false;
+    this.seenPeers = new Set();
 
     const report = () => {
       if (this.reported) return;
@@ -671,12 +672,19 @@ EngagementHooks.MultiTabGuard = {
     if (typeof BroadcastChannel !== "undefined") {
       this.channel = new BroadcastChannel(`exam-${submissionId}`);
       this.channel.onmessage = (event) => {
-        if (event.data?.tabId && event.data.tabId !== this.tabId) {
-          report();
-          this.channel.postMessage({ tabId: this.tabId });
+        const peer = event.data;
+        if (!peer?.tabId || peer.tabId === this.tabId || this.seenPeers.has(peer.tabId)) return;
+        if (peer.to && peer.to !== this.tabId) return;
+        if (this.seenPeers.size >= 20) this.seenPeers.delete(this.seenPeers.values().next().value);
+        this.seenPeers.add(peer.tabId);
+        report();
+        // Reply once to an announcement, never to an acknowledgement. Old
+        // cached clients without a kind are bounded by seenPeers too.
+        if (peer.kind !== "ack") {
+          this.channel.postMessage({ kind: "ack", tabId: this.tabId, to: peer.tabId });
         }
       };
-      this.channel.postMessage({ tabId: this.tabId });
+      this.channel.postMessage({ kind: "hello", tabId: this.tabId });
     } else {
       this.storageKey = `exam-tab-${submissionId}`;
       this.handleStorage = (event) => {

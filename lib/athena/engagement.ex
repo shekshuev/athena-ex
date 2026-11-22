@@ -91,6 +91,11 @@ defmodule Athena.Engagement do
   """
   defdelegate purge_raw_events(user, scope, scope_id), to: Purges, as: :request
   defdelegate normalize_event(raw_event, section_id), to: Events
+  defdelegate normalize_exam_event(raw_event, section_id, submission_id), to: Events
+
+  defdelegate normalize_proctoring_layout(samples),
+    to: Athena.Engagement.Layout,
+    as: :sanitize_samples
 
   @doc "The event types the proctoring monitor actually accumulates - used to decide whether a server-originated event is even worth forwarding."
   defdelegate proctoring_tracked_event_types(), to: ProctoringMonitor, as: :tracked_event_types
@@ -140,7 +145,7 @@ defmodule Athena.Engagement do
       |> ProctoringMonitor.finalize()
       |> Proctoring.evaluate(cohort_id, block_id, submission_id: submission_id)
 
-    fields
+    Map.put(fields, "proctoring_finished_at", DateTime.to_iso8601(DateTime.utc_now()))
   end
 
   @doc "Risk-level summary of a submission's proctoring data, or `nil` if it has none."

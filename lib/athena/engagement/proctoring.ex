@@ -1,51 +1,11 @@
 defmodule Athena.Engagement.Proctoring do
   @moduledoc """
-  Turns a `Athena.Engagement.ProctoringMonitor` reading into the
-  `risk_level`/`points`/`signals` fields persisted on `Submission.content`,
-  and the summary/detail read back out of them.
+  Conservative, instructor-only review priorities for exam attempts.
 
-  Every observed signal is worth **points**; the level is just where the
-  total lands (`yellow_points` / `red_points` in config). Three kinds of
-  signal feed it:
-
-  - **Direct violations** (`printscreen_attempt`, `copy_attempt`,
-    `cut_attempt`, `multi_tab_detected`, a single large paste, a bulk
-    insert that bypassed typing) - counted as-is, 2 points each. There is
-    no legitimate reason for any of these during a locked-down question
-    view, so a raw count is already meaningful on its own. The one
-    exception is a large paste: it only counts here (and feeds the
-    `paste_ratio` behavioral outlier below) when it follows a recent
-    absence closely enough to plausibly be its source (see
-    `ProctoringMonitor`'s `recent_away?/2`) - a student moving their own
-    answer from one question to another, with no absence anywhere nearby,
-    is not evidence of anything fetched from outside the exam.
-  - **Absence and connection** - time spent away from the exam (tab hidden,
-    window blurred, fullscreen exited; overlapping absences merged), a
-    stretch where the telemetry channel went quiet or the browser went
-    offline, a suspected split screen. There is deliberately no
-    teacher-set "allowed N times": an absence is judged by how often and
-    how long, not against a number someone picked.
-  - **Behavioral outliers** (focus-loss rate, answer-change rate, paste
-    ratio, right-click rate, time with the mouse outside the window) - a raw
-    count here means nothing by itself (an anxious student revising an
-    answer 50 times looks identical, by the numbers, to one who's
-    cheating), so a rate is judged against the *others sitting this same
-    exam*: it counts when it is clearly above their typical value (see
-    `exceeds_group?/3`). That works from a group of three; the smaller the
-    group, the less the group alone is trusted and the more an absolute
-    limit backs it up (see `group_threshold/3`). With nobody to compare
-    against there is only the absolute limit. Finished students stay in
-    the comparison, so the group does not shrink as people hand in.
-
-  Silence and offline gaps are sticky for the whole attempt: the longest
-  gap is what counts, it never decays. A teacher can review and dismiss a
-  verdict (`content["proctoring_review"]`) but the recorded signals stay.
-
-  Deliberately generic over any submission - a submission with no
-  `risk_level` key in its content (i.e. everything except
-  `quiz_exam`/`ticket_exam`) is simply "no data", not an error, so callers
-  can call `summary/1`/`detail/1` on any submission's content without
-  special-casing the block type.
+  Ordinary clipboard/input actions, technical gaps and sampled focus conflicts
+  are observations, never violations. Repeated observations cannot manufacture
+  a red verdict. Red requires a server-confirmed concurrent session plus an
+  additional scored signal by default; every verdict still needs human review.
   """
 
   alias Athena.Engagement.{ExamIntegrityStats, ProctoringMonitor}
@@ -54,22 +14,8 @@ defmodule Athena.Engagement.Proctoring do
 
   # {metric, points when flagged, per-minute?}. Per-minute rates are
   # withheld until the attempt is old enough for them to be stable.
-  @relative_metrics [
-    {:tab_hidden_per_minute, 1, true},
-    {:paste_ratio, 2, false},
-    {:answer_changed_per_minute, 1, true},
-    {:right_click_per_minute, 1, true},
-    {:mouse_away_seconds_per_minute, 1, true}
-  ]
-
-  @hard_events [
-    :printscreen_attempt,
-    :copy_attempt,
-    :cut_attempt,
-    :multi_tab_detected,
-    :large_paste,
-    :bulk_insert
-  ]
+  @relative_metrics [{:paste_ratio, 2, false}]
+  @hard_events [:large_paste]
 
   @default_floors %{
     tab_hidden_per_minute: 0.2,
@@ -156,32 +102,13 @@ defmodule Athena.Engagement.Proctoring do
     baselines = ExamIntegrityStats.baselines(cohort_id, block_id, opts[:submission_id])
     relative = relative_signals(eligible, baselines, reading.elapsed_minutes, counts, t)
 
-    # Tag each signal by who the server has to trust for it. "server"
-    # signals (silence, connected-silence) are facts the server observes
-    # itself and the client can't fake or withhold; "client" signals
-    # (direct violations, absences, split-screen, typing, behavioral
-    # outliers) ride on what the browser chose to report. The split is
-    # surfaced (`server_points`/`client_points`) and can optionally gate the
-    # top verdict (see `apply_server_corroboration/3`).
-    server_tabs =
-      min(count(counts, :multi_tab_detected), Map.get(reading, :server_multi_tab_detected, 0))
-
-    client_counts =
-      Map.put(counts, :multi_tab_detected, count(counts, :multi_tab_detected) - server_tabs)
+    server_tabs = Map.get(reading, :server_multi_tab_detected, 0)
 
     signals =
-      tag(hard_signals(client_counts), "client") ++
-        tag(hard_signals(%{multi_tab_detected: server_tabs}), "server") ++
+      tag(hard_signals(counts), "client") ++
+        tag(concurrent_session_signals(server_tabs, t), "server") ++
         tag(away_signals(reading, t), "client") ++
-        attributed_silence_signals(reading, t) ++
-        tag(
-          connected_silence_signals(Map.get(reading, :max_connected_silence_seconds, 0), t),
-          "server"
-        ) ++
         tag(split_signals(reading, counts, t), "client") ++
-        tag(unreported_focus_signals(reading, t), "server") ++
-        tag(answer_contradiction_signals(reading, t), "server") ++
-        tag(typing_signals(Map.get(reading, :typing, %{}), t), "client") ++
         tag(relative, "client")
 
     points = signals |> Enum.map(& &1["points"]) |> Enum.sum()
@@ -192,7 +119,8 @@ defmodule Athena.Engagement.Proctoring do
     outlier_metrics = Map.new(relative, fn signal -> {signal["key"], signal["value"]} end)
 
     %{
-      "hard_evidence_count" => Enum.sum(for event <- @hard_events, do: count(counts, event)),
+      "scoring_version" => 2,
+      "hard_evidence_count" => length(signals),
       "outlier_metrics" => outlier_metrics,
       "risk_level" => Atom.to_string(level),
       "points" => points,
@@ -233,100 +161,37 @@ defmodule Athena.Engagement.Proctoring do
     end
   end
 
+  # A repeated paste is still one category of evidence, not independent proof.
   defp hard_signals(counts) do
     for event <- @hard_events, (n = count(counts, event)) > 0 do
-      %{"key" => to_string(event), "points" => 2 * n, "value" => n, "basis" => "count"}
+      %{"key" => to_string(event), "points" => 2, "value" => n, "basis" => "count"}
     end
   end
 
-  # Merged absences, not a teacher-set allowance: one long absence or
-  # several short ones both add up, and `away_red_*` says when it's enough
-  # on its own for red.
+  defp concurrent_session_signals(n, t) when n > 0,
+    do: [
+      %{
+        "key" => "multi_tab_detected",
+        "points" => t.yellow_points,
+        "value" => n,
+        "basis" => "count"
+      }
+    ]
+
+  defp concurrent_session_signals(_, _), do: []
+
+  # Even a long absence can be legitimate: it never earns red on its own.
   defp away_signals(reading, t) do
     incidents = Map.get(reading, :away_incidents, 0)
     total = Map.get(reading, :away_total_seconds, 0)
 
-    cond do
-      incidents >= t.away_red_incidents or total >= t.away_red_seconds ->
-        [
-          %{
-            "key" => "away",
-            "points" => t.red_points,
-            "value" => total,
-            "incidents" => incidents,
-            "basis" => "duration"
-          }
-        ]
-
-      incidents >= 1 ->
-        [
-          %{
-            "key" => "away",
-            "points" => t.yellow_points,
-            "value" => total,
-            "incidents" => incidents,
-            "basis" => "duration"
-          }
-        ]
-
-      true ->
-        []
-    end
-  end
-
-  # Offline duration is browser-reported. Attribute the winning severity to
-  # the server only when its own silence observation supports that severity.
-  defp attributed_silence_signals(reading, t) do
-    observed = Map.get(reading, :max_silence_seconds, 0)
-    reported = Map.get(reading, :max_offline_seconds, 0)
-    server_points = silence_signals(observed, t) |> Enum.map(& &1["points"]) |> Enum.sum()
-
-    Enum.map(silence_signals(max(observed, reported), t), fn signal ->
-      origin = if signal["points"] <= server_points, do: "server", else: "client"
-      Map.put(signal, "origin", origin)
-    end)
-  end
-
-  defp silence_signals(seconds, t) do
-    cond do
-      seconds >= t.heartbeat_silence_red_threshold_seconds ->
-        [
-          %{
-            "key" => "silence",
-            "points" => t.red_points,
-            "value" => seconds,
-            "basis" => "duration"
-          }
-        ]
-
-      seconds >= t.heartbeat_silence_yellow_threshold_seconds ->
-        [
-          %{
-            "key" => "silence",
-            "points" => t.yellow_points,
-            "value" => seconds,
-            "basis" => "duration"
-          }
-        ]
-
-      true ->
-        []
-    end
-  end
-
-  # Silence that elapsed while the exam tab was still connected - not a
-  # network drop already observed by the server. Socket closure can lag a
-  # network failure and browser scheduling can delay heartbeats, so this
-  # is a risk indicator for review, not proof of tampering. Additive
-  # with the general `silence` signal above, so a tampered-dark stretch
-  # scores strictly higher than an equally long honest offline stretch.
-  defp connected_silence_signals(seconds, t) do
-    if seconds >= t.heartbeat_silence_yellow_threshold_seconds do
+    if incidents >= 1 or total >= t.away_red_seconds do
       [
         %{
-          "key" => "silence_connected",
-          "points" => t.red_points,
-          "value" => seconds,
+          "key" => "away",
+          "points" => t.yellow_points,
+          "value" => total,
+          "incidents" => incidents,
           "basis" => "duration"
         }
       ]
@@ -335,121 +200,28 @@ defmodule Athena.Engagement.Proctoring do
     end
   end
 
-  defp split_screen_signals(counts) do
-    case count(counts, :split_screen) do
-      0 -> []
-      1 -> [%{"key" => "split_screen", "points" => 1, "value" => 1, "basis" => "count"}]
-      n -> [%{"key" => "split_screen", "points" => 2, "value" => n, "basis" => "count"}]
-    end
-  end
-
-  # Split screen, judged by how long it lasted (server-measured time of the
-  # layout samples, see `Athena.Engagement.Layout`) instead of how many
-  # times the browser announced it. A narrowed page area (split view) counts
-  # half - a docked DevTools or side panel looks the same. Time alone tops
-  # out at the yellow bar: a small window all exam is not proof, so red
-  # also needs a share of the attempt and the pointer repeatedly leaving
-  # sideways (towards the neighbouring window). The old count-based signal
-  # stays as a floor, so a browser that sends no samples is judged as
-  # before and the same split is never scored twice.
-  defp split_signals(reading, counts, t) do
+  # A narrow viewport may just be DevTools or a sidebar. Only sustained window
+  # sharing with repeated sideways pointer exits adds one contextual point.
+  defp split_signals(reading, _counts, t) do
     window = Map.get(reading, :split_seconds, 0)
-    viewport = Map.get(reading, :viewport_split_seconds, 0)
     peeks = Map.get(reading, :split_peeks, 0)
-    weighted = window + viewport * 0.5
-    elapsed_s = max(Map.get(reading, :elapsed_minutes, 0) * 60.0, 1.0)
-    share = weighted / elapsed_s
 
-    long? = weighted >= t.split_yellow_seconds
-    sizeable? = weighted >= 60 and share >= t.split_yellow_share
-
-    points =
-      cond do
-        weighted >= t.split_red_seconds and share >= t.split_red_share and peeks >= 3 ->
-          t.red_points
-
-        long? or sizeable? ->
-          t.yellow_points
-
-        weighted >= t.split_min_seconds and peeks >= 3 ->
-          t.yellow_points
-
-        weighted >= t.split_min_seconds ->
-          1
-
-        true ->
-          0
-      end
-
-    counted = split_screen_signals(counts)
-    counted_points = counted |> Enum.map(& &1["points"]) |> Enum.sum()
-
-    if points > 0 and points >= counted_points do
+    if window >= t.split_yellow_seconds and peeks >= 3 do
       [
         %{
           "key" => "split_screen",
-          "points" => points,
-          "value" => round(weighted),
+          "points" => 1,
+          "value" => window,
           "window_seconds" => window,
-          "viewport_seconds" => viewport,
+          "viewport_seconds" => Map.get(reading, :viewport_split_seconds, 0),
           "peeks" => peeks,
           "basis" => "duration"
         }
       ]
     else
-      counted
+      []
     end
   end
-
-  # Time the browser's own samples put outside the exam (hidden, or visible
-  # without focus) that none of its absence events accounted for. An honest
-  # browser reports every such stretch as a blur/hide event; a gap means the
-  # listeners were suppressed or the samples are false - the two streams
-  # contradict each other, which the server sees without trusting either.
-  defp unreported_focus_signals(reading, t) do
-    seconds = unreported_unfocused_seconds(reading)
-
-    cond do
-      seconds >= t.unreported_focus_red_seconds ->
-        [unreported_signal(t.red_points, seconds)]
-
-      seconds >= t.unreported_focus_yellow_seconds ->
-        [unreported_signal(t.yellow_points, seconds)]
-
-      true ->
-        []
-    end
-  end
-
-  # Answers the server itself recorded while the browser's own samples said
-  # the page was neither visible nor focused - before, at and after that
-  # moment. A page in that state cannot be answered through its interface;
-  # either the samples are false or the answer was sent around the UI.
-  defp answer_contradiction_signals(reading, t) do
-    n = Map.get(reading, :answer_contradictions, 0)
-
-    cond do
-      n >= t.answer_contradiction_red -> [contradiction_signal(t.red_points, n)]
-      n >= t.answer_contradiction_yellow -> [contradiction_signal(t.yellow_points, n)]
-      true -> []
-    end
-  end
-
-  defp contradiction_signal(points, n),
-    do: %{
-      "key" => "answer_while_unfocused",
-      "points" => points,
-      "value" => n,
-      "basis" => "count"
-    }
-
-  defp unreported_signal(points, seconds),
-    do: %{
-      "key" => "unreported_focus_loss",
-      "points" => points,
-      "value" => seconds,
-      "basis" => "duration"
-    }
 
   defp unreported_unfocused_seconds(reading) do
     max(
@@ -457,26 +229,6 @@ defmodule Athena.Engagement.Proctoring do
         @unfocused_tolerance_seconds,
       0
     )
-  end
-
-  defp typing_signals(typing, t) do
-    keys = Map.get(typing, :keys, 0)
-    typed = Map.get(typing, :chars_typed, 0)
-    deleted = Map.get(typing, :chars_deleted, 0)
-
-    machine =
-      if keys >= t.machine_typing_min_keys and
-           Map.get(typing, :dwell_sum, 0.0) / keys <= t.machine_typing_max_dwell_ms,
-         do: [%{"key" => "machine_typing", "points" => 2, "value" => keys, "basis" => "pattern"}],
-         else: []
-
-    clean =
-      if typed >= t.clean_typing_min_chars and
-           deleted / typed < t.clean_typing_max_correction_ratio,
-         do: [%{"key" => "clean_typing", "points" => 1, "value" => typed, "basis" => "pattern"}],
-         else: []
-
-    machine ++ clean
   end
 
   defp relative_signals(rates, baselines, elapsed, counts, t) do
@@ -613,16 +365,11 @@ defmodule Athena.Engagement.Proctoring do
     |> Enum.sum()
   end
 
-  # p5: lean the top verdict on facts the server observes itself. When
-  # `require_server_corroboration_for_red` is on, a :red total that rests
-  # purely on client-reported signals (server points below the red bar) is
-  # capped to :yellow - still flagged for a human, but not asserted as
-  # strong evidence, since a determined client could have faked those
-  # signals. Off by default: enabling it only ever lowers a verdict, never
-  # raises one, so turn it on once you've seen the server/client split in
-  # practice.
+  # Ordinary client observations cannot establish a red review priority.
+  # A confirmed concurrent session contributes one bounded yellow category;
+  # a second independent category must also bring the total to the red bar.
   defp apply_server_corroboration(:red, server_points, t) do
-    if t.require_server_corroboration_for_red and server_points < t.red_points,
+    if t.require_server_corroboration_for_red and server_points < t.yellow_points,
       do: :yellow,
       else: :red
   end
@@ -639,6 +386,8 @@ defmodule Athena.Engagement.Proctoring do
     config = Application.get_env(:athena, Athena.Engagement, [])
 
     %{
+      concurrent_session_grace_seconds:
+        Keyword.get(config, :exam_concurrent_session_grace_seconds, 10),
       yellow_points: Keyword.get(config, :exam_risk_yellow_points, 2),
       red_points: Keyword.get(config, :exam_risk_red_points, 4),
       min_baseline_peers: Keyword.get(config, :exam_min_baseline_peers, 2),
@@ -667,11 +416,9 @@ defmodule Athena.Engagement.Proctoring do
       clean_typing_min_chars: Keyword.get(config, :exam_clean_typing_min_chars, 500),
       clean_typing_max_correction_ratio:
         Keyword.get(config, :exam_clean_typing_max_correction_ratio, 0.01),
-      # p5: when true, a :red verdict needs server-observed points (silence,
-      # connected-silence) at or above the red bar - client-only evidence is
-      # capped to :yellow. Off by default (no behavior change until enabled).
+      # Red needs server-confirmed parallel sessions by default.
       require_server_corroboration_for_red:
-        Keyword.get(config, :exam_require_server_corroboration_for_red, false),
+        Keyword.get(config, :exam_require_server_corroboration_for_red, true),
       # Split screen by duration (seconds of window-sharing, with a narrowed
       # page counting half) and its share of the attempt.
       split_min_seconds: Keyword.get(config, :exam_split_min_seconds, 30),
@@ -721,6 +468,7 @@ defmodule Athena.Engagement.Proctoring do
 
   # Stored key and the value to read when a submission predates it.
   @detail_fields [
+    scoring_version: {"scoring_version", nil},
     points: {"points", nil},
     hard_evidence_count: {"hard_evidence_count", 0},
     outlier_metrics: {"outlier_metrics", %{}},

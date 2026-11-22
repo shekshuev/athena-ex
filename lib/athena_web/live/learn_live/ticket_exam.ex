@@ -540,19 +540,23 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   end
 
   def handle_event("finish_exam", _, socket) do
-    with {:ok, socket} <- check_time_limit(socket) do
-      {:noreply, submit_and_exit(socket, socket.assigns.submission, :finished)}
-    else
-      {:halt, socket} -> {:noreply, socket}
+    case check_time_limit(socket) do
+      {:ok, socket} ->
+        {:noreply, submit_and_exit(socket, socket.assigns.submission, :finished)}
+
+      {:halt, socket} ->
+        {:noreply, socket}
     end
   end
 
   @impl true
   def handle_event("run_code", %{"block_id" => block_id}, socket) do
-    with {:ok, socket} <- check_time_limit(socket) do
-      execute_run_code(socket, block_id)
-    else
-      {:halt, socket} -> {:noreply, socket}
+    case check_time_limit(socket) do
+      {:ok, socket} ->
+        execute_run_code(socket, block_id)
+
+      {:halt, socket} ->
+        {:noreply, socket}
     end
   end
 
@@ -585,7 +589,7 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   def handle_event("engagement_heartbeat", params, socket) do
     # Raw window-geometry samples ride on the ping; they are bounded here and
     # judged by the server (`Athena.Engagement.Layout`), never by the client.
-    samples = Athena.Engagement.Layout.sanitize_samples(params["layout"])
+    samples = Engagement.normalize_proctoring_layout(params["layout"])
 
     Engagement.report_proctoring_heartbeat(
       socket.assigns.submission.id,
@@ -1101,33 +1105,35 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   end
 
   defp process_exam_answer(params, socket) do
-    with {:ok, socket} <- check_time_limit(socket) do
-      q = socket.assigns.current_question
-      answer = resolve_exam_answer(socket, q, Map.get(params, "answer"))
-      answer_content = normalize_answer(q, answer)
+    case check_time_limit(socket) do
+      {:ok, socket} ->
+        q = socket.assigns.current_question
+        answer = resolve_exam_answer(socket, q, Map.get(params, "answer"))
+        answer_content = normalize_answer(q, answer)
 
-      case Learning.save_question_submission(
-             socket.assigns.submission,
-             socket.assigns.current_user.id,
-             q.id,
-             socket.assigns.team_id,
-             answer_content
-           ) do
-        {:ok, child_sub} ->
-          new_child_subs = Map.put(socket.assigns.child_submissions, q.id, child_sub)
+        case Learning.save_question_submission(
+               socket.assigns.submission,
+               socket.assigns.current_user.id,
+               q.id,
+               socket.assigns.team_id,
+               answer_content
+             ) do
+          {:ok, child_sub} ->
+            new_child_subs = Map.put(socket.assigns.child_submissions, q.id, child_sub)
 
-          socket =
-            socket
-            |> assign(:child_submissions, new_child_subs)
-            |> EngagementSignals.record_quiz_interaction(q)
+            socket =
+              socket
+              |> assign(:child_submissions, new_child_subs)
+              |> EngagementSignals.record_quiz_interaction(q)
 
-          {:noreply, socket}
+            {:noreply, socket}
 
-        {:error, :time_limit_exceeded} ->
-          {:noreply, submit_and_exit(socket, socket.assigns.submission, :time_limit_exceeded)}
-      end
-    else
-      {:halt, socket} -> {:noreply, socket}
+          {:error, :time_limit_exceeded} ->
+            {:noreply, submit_and_exit(socket, socket.assigns.submission, :time_limit_exceeded)}
+        end
+
+      {:halt, socket} ->
+        {:noreply, socket}
     end
   end
 
@@ -1342,10 +1348,12 @@ defmodule AthenaWeb.LearnLive.TicketExam do
   defp hydrate_questions(_), do: []
 
   defp save_exam_file_assignment(socket, block_id, file_urls) do
-    with {:ok, socket} <- check_time_limit(socket) do
-      persist_exam_file_assignment(socket, block_id, file_urls)
-    else
-      {:halt, socket} -> socket
+    case check_time_limit(socket) do
+      {:ok, socket} ->
+        persist_exam_file_assignment(socket, block_id, file_urls)
+
+      {:halt, socket} ->
+        socket
     end
   end
 

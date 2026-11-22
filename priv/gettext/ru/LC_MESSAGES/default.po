@@ -5471,8 +5471,8 @@ msgstr "Невозможно поделиться с владельцем."
 msgid "Check back later for news and updates."
 msgstr "Загляните позже за новостями и обновлениями."
 
-#: lib/athena_web/components/proctoring_components.ex:364
-#: lib/athena_web/components/proctoring_components.ex:548
+#: lib/athena_web/components/proctoring_components.ex:248
+#: lib/athena_web/components/proctoring_components.ex:472
 #: lib/athena_web/components/test_run_components.ex:33
 #: lib/athena_web/live/admin_live/files.ex:322
 #: lib/athena_web/live/search_live.ex:372
@@ -6287,7 +6287,7 @@ msgstr "Хлебные крошки"
 #: lib/athena_web/live/teaching_live/grading_monitor.ex:223
 #, elixir-autogen, elixir-format
 msgid "Cheating Monitor"
-msgstr "Монитор списывания"
+msgstr "Мониторинг тестирования"
 
 #: lib/athena_web/live/teaching_live/grading_monitor.ex:32
 #, elixir-autogen, elixir-format
@@ -6339,7 +6339,7 @@ msgstr "Как это измеряется"
 #: lib/athena_web/live/teaching_live/grading.ex:477
 #, elixir-autogen, elixir-format
 msgid "Monitor this group for cheating"
-msgstr "Отслеживать списывание в этой группе"
+msgstr "Открыть мониторинг тестирования группы"
 
 #: lib/athena_web/components/proctoring_components.ex:876
 #, elixir-autogen, elixir-format
@@ -6467,8 +6467,8 @@ msgstr "Ваша работа отклонена преподавателем."
 msgid "A telemetry-silence red flag can also mean an ordinary crash or lost connection, not tampering - always check in with the student before treating it as a verdict."
 msgstr "Красный флаг по молчанию телеметрии может означать и обычный краш или обрыв связи, а не вмешательство – прежде чем считать это вердиктом, всегда стоит связаться с обучающимся."
 
-#: lib/athena_web/components/proctoring_components.ex:651
-#: lib/athena_web/components/proctoring_components.ex:685
+#: lib/athena_web/components/proctoring_components.ex:597
+#: lib/athena_web/components/proctoring_components.ex:639
 #, elixir-autogen, elixir-format
 msgid "Answer changes (per minute)"
 msgstr "Изменения ответа (в минуту)"
@@ -6520,7 +6520,7 @@ msgstr "Известные слепые зоны"
 msgid "Learn more"
 msgstr "Подробнее"
 
-#: lib/athena_web/components/proctoring_components.ex:514
+#: lib/athena_web/components/proctoring_components.ex:425
 #, elixir-autogen, elixir-format
 msgid "Longest gap with no signal from the browser"
 msgstr "Самый долгий разрыв без сигнала от браузера"
@@ -6530,20 +6530,19 @@ msgstr "Самый долгий разрыв без сигнала от брау
 msgid "Multiple tabs"
 msgstr "Несколько вкладок"
 
-#: lib/athena_web/components/proctoring_components.ex:453
+#: lib/athena_web/components/proctoring_components.ex:337
 #, elixir-autogen, elixir-format
 msgid "Nothing suspicious was observed during this attempt."
 msgstr "За время этой попытки ничего подозрительного не замечено."
 
-#: lib/athena_web/components/proctoring_components.ex:290
-#: lib/athena_web/components/proctoring_components.ex:652
-#: lib/athena_web/components/proctoring_components.ex:686
+#: lib/athena_web/components/proctoring_components.ex:598
+#: lib/athena_web/components/proctoring_components.ex:640
 #, elixir-autogen, elixir-format
 msgid "Pasted text ratio"
 msgstr "Доля вставленного текста"
 
-#: lib/athena_web/components/proctoring_components.ex:653
-#: lib/athena_web/components/proctoring_components.ex:687
+#: lib/athena_web/components/proctoring_components.ex:599
+#: lib/athena_web/components/proctoring_components.ex:641
 #, elixir-autogen, elixir-format
 msgid "Right-clicks (per minute)"
 msgstr "Клики правой кнопкой (в минуту)"
@@ -6553,8 +6552,8 @@ msgstr "Клики правой кнопкой (в минуту)"
 msgid "Right-clicks, per minute"
 msgstr "Клики правой кнопкой, в минуту"
 
-#: lib/athena_web/components/proctoring_components.ex:637
-#: lib/athena_web/components/proctoring_components.ex:673
+#: lib/athena_web/components/proctoring_components.ex:583
+#: lib/athena_web/components/proctoring_components.ex:619
 #, elixir-autogen, elixir-format
 msgid "Same exam opened in multiple tabs"
 msgstr "Тот же экзамен открыт в нескольких вкладках"
@@ -6570,8 +6569,8 @@ msgstr "Попытка скриншота"
 msgid "Screenshot attempts (PrintScreen)"
 msgstr "Попытки скриншота (PrintScreen)"
 
-#: lib/athena_web/components/proctoring_components.ex:650
-#: lib/athena_web/components/proctoring_components.ex:683
+#: lib/athena_web/components/proctoring_components.ex:596
+#: lib/athena_web/components/proctoring_components.ex:637
 #, elixir-autogen, elixir-format
 msgid "Tab switches / lost focus (per minute)"
 msgstr "Переключения вкладки / потеря фокуса (в минуту)"
@@ -6591,7 +6590,7 @@ msgstr "Почему этот ответ был отмечен"
 msgid "a copy or cut was attempted inside the question text, which is blocked - this means the student tried, not that any text was actually captured."
 msgstr "была предпринята попытка скопировать или вырезать текст вопроса, что заблокировано – это значит, что обучающийся пытался, а не то, что текст реально был получен."
 
-#: lib/athena_web/components/proctoring_components.ex:439
+#: lib/athena_web/components/proctoring_components.ex:323
 #, elixir-autogen, elixir-format
 msgid "over %{minutes} min"
 msgstr "за %{minutes} мин"
@@ -6601,17 +6600,17 @@ msgstr "за %{minutes} мин"
 msgid "the same exam attempt was detected open in more than one browser tab or window at once."
 msgstr "обнаружено, что эта же попытка экзамена открыта одновременно в нескольких вкладках или окнах браузера."
 
-#: lib/athena_web/components/proctoring_components.ex:762
+#: lib/athena_web/components/proctoring_components.ex:764
 #, elixir-autogen, elixir-format
 msgid " (drag and drop)"
 msgstr " (перетаскиванием)"
 
-#: lib/athena_web/components/proctoring_components.ex:506
+#: lib/athena_web/components/proctoring_components.ex:396
 #, elixir-autogen, elixir-format
 msgid "%{n} absences of %{sec}+ s"
 msgstr "отлучек от %{sec} с: %{n}"
 
-#: lib/athena_web/components/proctoring_components.ex:529
+#: lib/athena_web/components/proctoring_components.ex:453
 #, elixir-autogen, elixir-format
 msgid "%{n} characters"
 msgstr "%{n} симв."
@@ -6621,27 +6620,27 @@ msgstr "%{n} симв."
 msgid "%{n} characters appeared without typing"
 msgstr "%{n} симв. появились без набора"
 
-#: lib/athena_web/components/proctoring_components.ex:439
+#: lib/athena_web/components/proctoring_components.ex:323
 #, elixir-autogen, elixir-format
 msgid "%{points} points"
 msgstr "очков: %{points}"
 
-#: lib/athena_web/components/proctoring_components.ex:729
+#: lib/athena_web/components/proctoring_components.ex:701
 #, elixir-autogen, elixir-format
 msgid "%{p}th percentile among peers"
 msgstr "%{p}-й перцентиль среди группы"
 
-#: lib/athena_web/components/proctoring_components.ex:696
+#: lib/athena_web/components/proctoring_components.ex:650
 #, elixir-autogen, elixir-format
 msgid "%{total}s in total, %{n} absences of %{sec}+ s"
 msgstr "всего %{total} с, отлучек от %{sec} с: %{n}"
 
-#: lib/athena_web/components/proctoring_components.ex:750
+#: lib/athena_web/components/proctoring_components.ex:722
 #, elixir-autogen, elixir-format
 msgid "Browser was offline for %{sec}s"
 msgstr "Браузер был без связи %{sec} с"
 
-#: lib/athena_web/components/proctoring_components.ex:620
+#: lib/athena_web/components/proctoring_components.ex:566
 #, elixir-autogen, elixir-format
 msgid "Confirm violation"
 msgstr "Подтвердить нарушение"
@@ -6662,7 +6661,7 @@ msgstr "Перейти в полноэкранный режим"
 msgid "Every signal below is worth points. %{yellow} points is yellow, %{red} or more is red. Several weak signals can add up, and one strong signal can be enough on its own."
 msgstr "Каждый из сигналов ниже даёт очки. %{yellow} очка – жёлтый, %{red} и больше – красный. Несколько слабых сигналов могут сложиться, а один сильный может быть достаточен сам по себе."
 
-#: lib/athena_web/components/proctoring_components.ex:470
+#: lib/athena_web/components/proctoring_components.ex:360
 #, elixir-autogen, elixir-format
 msgid "Everything measured"
 msgstr "Все измерения"
@@ -6688,53 +6687,53 @@ msgstr "Если браузер перестаёт присылать данны
 msgid "Large paste"
 msgstr "Крупная вставка"
 
-#: lib/athena_web/components/proctoring_components.ex:638
-#: lib/athena_web/components/proctoring_components.ex:674
+#: lib/athena_web/components/proctoring_components.ex:584
+#: lib/athena_web/components/proctoring_components.ex:620
 #, elixir-autogen, elixir-format
 msgid "Large pastes"
 msgstr "Крупные вставки"
 
-#: lib/athena_web/components/proctoring_components.ex:747
+#: lib/athena_web/components/proctoring_components.ex:719
 #, elixir-autogen, elixir-format
 msgid "Left fullscreen for %{sec}s"
 msgstr "Выходил из полноэкранного режима на %{sec} с"
 
-#: lib/athena_web/components/proctoring_components.ex:741
+#: lib/athena_web/components/proctoring_components.ex:713
 #, elixir-autogen, elixir-format
 msgid "Left the tab for %{sec}s"
 msgstr "Покидал вкладку на %{sec} с"
 
-#: lib/athena_web/components/proctoring_components.ex:680
+#: lib/athena_web/components/proctoring_components.ex:634
 #, elixir-autogen, elixir-format
 msgid "Long answer typed without any correction"
 msgstr "Длинный ответ набран без единой правки"
 
-#: lib/athena_web/components/proctoring_components.ex:527
+#: lib/athena_web/components/proctoring_components.ex:451
 #, elixir-autogen, elixir-format
 msgid "Longest single paste"
 msgstr "Самая длинная разовая вставка"
 
-#: lib/athena_web/components/proctoring_components.ex:679
+#: lib/athena_web/components/proctoring_components.ex:633
 #, elixir-autogen, elixir-format
 msgid "Machine-like typing rhythm"
 msgstr "Машинный ритм набора"
 
-#: lib/athena_web/components/proctoring_components.ex:560
+#: lib/athena_web/components/proctoring_components.ex:484
 #, elixir-autogen, elixir-format
 msgid "No notable activity was recorded for this attempt."
 msgstr "За эту попытку заметных действий не зафиксировано."
 
-#: lib/athena_web/components/proctoring_components.ex:677
+#: lib/athena_web/components/proctoring_components.ex:624
 #, elixir-autogen, elixir-format
 msgid "No signal from the browser"
 msgstr "Нет сигнала от браузера"
 
-#: lib/athena_web/components/proctoring_components.ex:756
+#: lib/athena_web/components/proctoring_components.ex:728
 #, elixir-autogen, elixir-format
 msgid "No signal from the browser for %{sec}s"
 msgstr "Нет сигнала от браузера %{sec} с"
 
-#: lib/athena_web/components/proctoring_components.ex:601
+#: lib/athena_web/components/proctoring_components.ex:547
 #, elixir-autogen, elixir-format
 msgid "Note (optional)"
 msgstr "Примечание (необязательно)"
@@ -6744,7 +6743,7 @@ msgstr "Примечание (необязательно)"
 msgid "Only totals are collected - never which keys were pressed or when each one was pressed. Typing with almost no key-hold time (a macro or a keystroke emulator) is 2 points, and a long answer typed without a single correction is 1 point. On-screen keyboards, dictation and other composition input are excluded."
 msgstr "Собираются только итоговые числа – какие клавиши нажимались и когда именно, не сохраняется. Набор почти без удержания клавиш (макрос или эмулятор клавиатуры) даёт 2 очка, а длинный ответ без единой правки – 1 очко. Экранные клавиатуры, диктовка и другой составной ввод не учитываются."
 
-#: lib/athena_web/components/proctoring_components.ex:760
+#: lib/athena_web/components/proctoring_components.ex:762
 #, elixir-autogen, elixir-format
 msgid "Pasted %{n} characters%{how}"
 msgstr "Вставлено символов: %{n}%{how}"
@@ -6754,13 +6753,13 @@ msgstr "Вставлено символов: %{n}%{how}"
 msgid "Pointer outside the window"
 msgstr "Указатель вне окна"
 
-#: lib/athena_web/components/proctoring_components.ex:655
-#: lib/athena_web/components/proctoring_components.ex:690
+#: lib/athena_web/components/proctoring_components.ex:601
+#: lib/athena_web/components/proctoring_components.ex:644
 #, elixir-autogen, elixir-format
 msgid "Pointer outside the window (seconds per minute)"
 msgstr "Указатель вне окна (секунд в минуту)"
 
-#: lib/athena_web/components/proctoring_components.ex:753
+#: lib/athena_web/components/proctoring_components.ex:725
 #, elixir-autogen, elixir-format
 msgid "Pointer outside the window for %{sec}s"
 msgstr "Указатель вне окна %{sec} с"
@@ -6782,18 +6781,18 @@ msgstr "Вопросы скрыты, пока обучающийся не пер
 msgid "Require fullscreen"
 msgstr "Требовать полноэкранный режим"
 
-#: lib/athena_web/components/proctoring_components.ex:611
-#: lib/athena_web/components/proctoring_components.ex:840
+#: lib/athena_web/components/proctoring_components.ex:557
+#: lib/athena_web/components/proctoring_components.ex:849
 #, elixir-autogen, elixir-format
 msgid "Reviewed - no violation"
 msgstr "Проверено – нарушения нет"
 
-#: lib/athena_web/components/proctoring_components.ex:784
+#: lib/athena_web/components/proctoring_components.ex:790
 #, elixir-autogen, elixir-format
 msgid "Right-clicked the question"
 msgstr "Кликнул правой кнопкой по вопросу"
 
-#: lib/athena_web/components/proctoring_components.ex:415
+#: lib/athena_web/components/proctoring_components.ex:299
 #, elixir-autogen, elixir-format
 msgid "Summary"
 msgstr "Итог"
@@ -6808,7 +6807,7 @@ msgstr "Уходы из окна, в минуту"
 msgid "Switching tabs, losing window focus and leaving fullscreen are measured by how long and how often, not against an allowed number. Overlapping absences count once. One absence of %{sec}+ seconds is yellow; %{n} such absences, or %{total}+ seconds in total, is red."
 msgstr "Переключение вкладок, потеря фокуса окна и выход из полноэкранного режима оцениваются по длительности и частоте, а не по «допустимому числу». Пересекающиеся отлучки считаются один раз. Одна отлучка от %{sec} секунд – жёлтый; %{n} таких отлучек или от %{total} секунд суммарно – красный."
 
-#: lib/athena_web/components/proctoring_components.ex:586
+#: lib/athena_web/components/proctoring_components.ex:532
 #, elixir-autogen, elixir-format
 msgid "Teacher review"
 msgstr "Проверка преподавателем"
@@ -6841,17 +6840,16 @@ msgstr "Это задание проходит только в полноэкр�
 msgid "This only detects what a browser can observe. It cannot see a second device (e.g. a phone), and it cannot catch screenshot tools or macOS shortcuts, which happen entirely outside the browser."
 msgstr "Это отслеживает только то, что может увидеть браузер. Оно не видит второе устройство (например, телефон) и не фиксирует программы для скриншотов и горячие клавиши macOS – это происходит полностью вне браузера."
 
-#: lib/athena_web/components/proctoring_components.ex:246
-#: lib/athena_web/components/proctoring_components.ex:504
-#: lib/athena_web/components/proctoring_components.ex:676
+#: lib/athena_web/components/proctoring_components.ex:394
+#: lib/athena_web/components/proctoring_components.ex:622
 #, elixir-autogen, elixir-format
 msgid "Time away from the exam"
 msgstr "Время вне экзамена"
 
-#: lib/athena_web/components/proctoring_components.ex:425
+#: lib/athena_web/components/proctoring_components.ex:309
 #, elixir-autogen, elixir-format
 msgid "Timeline"
-msgstr "Хронология"
+msgstr "История событий"
 
 #: lib/athena_web/components/proctoring_components.ex:778
 #, elixir-autogen, elixir-format
@@ -6863,7 +6861,7 @@ msgstr "Пытался скопировать вопрос"
 msgid "Tried to cut question text"
 msgstr "Пытался вырезать текст вопроса"
 
-#: lib/athena_web/components/proctoring_components.ex:536
+#: lib/athena_web/components/proctoring_components.ex:460
 #, elixir-autogen, elixir-format
 msgid "Typed / deleted characters"
 msgstr "Набрано / удалено символов"
@@ -6873,18 +6871,18 @@ msgstr "Набрано / удалено символов"
 msgid "Typing patterns"
 msgstr "Особенности набора"
 
-#: lib/athena_web/components/proctoring_components.ex:839
+#: lib/athena_web/components/proctoring_components.ex:848
 #, elixir-autogen, elixir-format
 msgid "Violation confirmed"
 msgstr "Нарушение подтверждено"
 
-#: lib/athena_web/components/proctoring_components.ex:451
+#: lib/athena_web/components/proctoring_components.ex:335
 #: lib/athena_web/live/teaching_live/group_radar_components.ex:327
 #, elixir-autogen, elixir-format
 msgid "What counted"
 msgstr "Что учтено"
 
-#: lib/athena_web/components/proctoring_components.ex:772
+#: lib/athena_web/components/proctoring_components.ex:778
 #, elixir-autogen, elixir-format
 msgid "Window back to full size"
 msgstr "Окно снова во весь размер"
@@ -6894,12 +6892,12 @@ msgstr "Окно снова во весь размер"
 msgid "Window now shares the screen with another window"
 msgstr "Окно теперь делит экран с другим окном"
 
-#: lib/athena_web/components/proctoring_components.ex:744
+#: lib/athena_web/components/proctoring_components.ex:716
 #, elixir-autogen, elixir-format
 msgid "Window out of focus for %{sec}s"
 msgstr "Окно было не в фокусе %{sec} с"
 
-#: lib/athena_web/components/proctoring_components.ex:678
+#: lib/athena_web/components/proctoring_components.ex:625
 #, elixir-autogen, elixir-format
 msgid "Window sharing the screen with another window"
 msgstr "Окно делит экран с другим окном"
@@ -6909,7 +6907,7 @@ msgstr "Окно делит экран с другим окном"
 msgid "a large block of text appeared in an answer without keyboard input, paste or drop, for example written straight into the page by a browser extension."
 msgstr "в ответе появился крупный блок текста без ввода с клавиатуры, вставки или перетаскивания – например, записанный прямо в страницу расширением браузера."
 
-#: lib/athena_web/components/proctoring_components.ex:736
+#: lib/athena_web/components/proctoring_components.ex:708
 #, elixir-autogen, elixir-format
 msgid "a pattern across the whole answer"
 msgstr "закономерность по всему ответу"
@@ -6919,7 +6917,7 @@ msgstr "закономерность по всему ответу"
 msgid "a single paste or drag-and-drop of %{n} or more characters into an answer."
 msgstr "разовая вставка или перетаскивание в ответ %{n} и более символов."
 
-#: lib/athena_web/components/proctoring_components.ex:734
+#: lib/athena_web/components/proctoring_components.ex:706
 #, elixir-autogen, elixir-format
 msgid "above the absolute limit (too few peers to compare against)"
 msgstr "выше фиксированного предела (мало участников для сравнения)"
@@ -6929,12 +6927,12 @@ msgstr "выше фиксированного предела (мало учас�
 msgid "how often an answer was revised after first being picked (1 point)."
 msgstr "как часто ответ менялся после первого выбора (1 очко)."
 
-#: lib/athena_web/components/proctoring_components.ex:703
+#: lib/athena_web/components/proctoring_components.ex:675
 #, elixir-autogen, elixir-format
 msgid "longest gap: %{n}s"
 msgstr "самый долгий разрыв: %{n} с"
 
-#: lib/athena_web/components/proctoring_components.ex:737
+#: lib/athena_web/components/proctoring_components.ex:709
 #, elixir-autogen, elixir-format
 msgid "occurrences: %{n}"
 msgstr "случаев: %{n}"
@@ -6979,7 +6977,7 @@ msgstr "Автоматический вердикт: %{label}"
 msgid "This verdict was calculated by an earlier version of the check, which did not count pastes or time away. The counters here may read zero even though the timeline shows activity - rely on the timeline."
 msgstr "Этот вердикт рассчитан прежней версией проверки, которая не учитывала вставки и время вне экзамена. Счётчики здесь могут показывать ноль, хотя в хронологии есть активность – ориентируйтесь на хронологию."
 
-#: lib/athena_web/components/proctoring_components.ex:799
+#: lib/athena_web/components/proctoring_components.ex:805
 #, elixir-autogen, elixir-format
 msgid "(fullscreen was also exited)"
 msgstr "(также выходил из полноэкранного режима)"
@@ -6994,12 +6992,12 @@ msgstr "Сырой счётчик сам по себе ничего не зна�
 msgid "This works from a group of %{n}. In a small group (fewer than %{trusted} others) the others are a weak witness of what is normal, so they can only raise the bar, never lower it below half of the fixed upper limit. With nobody to compare against, only the fixed upper limit applies. A rate of twice that limit counts whatever the group does. Students who already handed in stay in the comparison."
 msgstr "Сравнение работает начиная с группы из %{n} человек. В малой группе (меньше %{trusted} остальных) остальные – слабое свидетельство того, что считать нормой, поэтому они могут только поднять планку, но не опустить её ниже половины фиксированного верхнего предела. Если сравнивать не с кем, действует только фиксированный верхний предел. Показатель, вдвое превышающий этот предел, засчитывается независимо от поведения группы. Уже сдавшие работу остаются в сравнении."
 
-#: lib/athena_web/components/proctoring_components.ex:721
+#: lib/athena_web/components/proctoring_components.ex:693
 #, elixir-autogen, elixir-format
 msgid "above the fixed limit of %{bar} (nobody to compare with)"
 msgstr "выше фиксированного предела %{bar} (сравнивать не с кем)"
 
-#: lib/athena_web/components/proctoring_components.ex:717
+#: lib/athena_web/components/proctoring_components.ex:689
 #, elixir-autogen, elixir-format
 msgid "above the fixed limit of %{bar}, whatever the others do"
 msgstr "выше фиксированного предела %{bar} независимо от остальных"
@@ -7009,17 +7007,17 @@ msgstr "выше фиксированного предела %{bar} незави
 msgid "how often the tab or window lost focus (1 point)."
 msgstr "как часто вкладка или окно теряли фокус (1 очко)."
 
-#: lib/athena_web/components/proctoring_components.ex:497
+#: lib/athena_web/components/proctoring_components.ex:387
 #, elixir-autogen, elixir-format
 msgid "nobody to compare with"
 msgstr "сравнивать не с кем"
 
-#: lib/athena_web/components/proctoring_components.ex:494
+#: lib/athena_web/components/proctoring_components.ex:384
 #, elixir-autogen, elixir-format
 msgid "others usually: %{v} (%{n} compared)"
 msgstr "у остальных обычно: %{v} (сравнивали с %{n})"
 
-#: lib/athena_web/components/proctoring_components.ex:707
+#: lib/athena_web/components/proctoring_components.ex:679
 #, elixir-autogen, elixir-format
 msgid "others usually: %{v}, the bar was %{bar} (%{n} compared)"
 msgstr "у остальных обычно: %{v}, планка была %{bar} (сравнивали с %{n})"
@@ -11331,41 +11329,280 @@ msgstr "Документы, код, архивы (включая 7z), изобр
 msgid "This exam has to stay in fullscreen. Go back to fullscreen and your answers can be saved again."
 msgstr "Экзамен должен проходить в полноэкранном режиме. Вернитесь в полноэкранный режим, и ответы снова будут сохраняться."
 
+#: lib/athena_web/components/proctoring_components.ex:631
+#, elixir-autogen
 msgid "Time out of focus that the browser did not report"
 msgstr "Время вне фокуса, о котором браузер не сообщил"
 
+#: lib/athena_web/components/proctoring_components.ex:658
+#, elixir-autogen
 msgid "%{win}s with the window sharing the screen, %{vp}s with a narrowed page, pointer left sideways %{n} times"
 msgstr "окно делило экран %{win} с, область страницы была сужена %{vp} с, указатель уходил вбок %{n} раз"
 
+#: lib/athena_web/components/proctoring_components.ex:672
+#, elixir-autogen
 msgid "%{n}s out of focus that no reported absence accounts for"
 msgstr "%{n} с вне фокуса, которые не объясняются сообщёнными отлучками"
 
+#: lib/athena_web/components/proctoring_components.ex:734
+#, elixir-autogen
 msgid "Page area narrowed (split view or side panel) for %{sec}s"
 msgstr "Область страницы была сужена (разделение вкладок или боковая панель) на %{sec} с"
 
 msgid "Window shared the screen with another window for %{sec}s"
 msgstr "Окно делило экран с другим окном %{sec} с"
 
+#: lib/athena_web/components/proctoring_components.ex:749
+#, elixir-autogen
 msgid "A second display is connected"
 msgstr "Подключён второй экран"
 
 msgid "Screen shared with another window"
 msgstr "Экран разделён с другим окном"
 
+#: lib/athena_web/components/proctoring_components.ex:410
+#, elixir-autogen
 msgid "%{win}s window · %{vp}s narrowed page"
 msgstr "окно: %{win} с · суженная страница: %{vp} с"
 
+#: lib/athena_web/components/proctoring_components.ex:420
+#, elixir-autogen
 msgid "Second display"
 msgstr "Второй экран"
 
+#: lib/athena_web/components/proctoring_components.ex:421
+#, elixir-autogen
 msgid "connected"
 msgstr "подключён"
 
+#: lib/athena_web/components/proctoring_components.ex:628
+#, elixir-autogen
 msgid "Answers recorded while the page was reported out of focus"
 msgstr "Ответы, записанные, когда страница по данным браузера была вне фокуса"
 
+#: lib/athena_web/components/proctoring_components.ex:667
+#, elixir-autogen
 msgid "%{n} answers recorded while the browser reported the page out of focus"
 msgstr "%{n} ответов записано, когда браузер сообщал, что страница вне фокуса"
 
 msgid "An answer was recorded while the page was reported out of focus"
 msgstr "Ответ записан, когда страница по данным браузера была вне фокуса"
+
+#: lib/athena_web/components/proctoring_components.ex:769
+#, elixir-autogen, elixir-format
+msgid "%{n} characters appeared without a recent input event; autofill or assistive input is possible"
+msgstr "Появилось %{n} символов без недавнего события ввода; возможны автозаполнение или вспомогательные средства ввода"
+
+#: lib/athena_web/components/proctoring_components.ex:744
+#, elixir-autogen, elixir-format
+msgid "Answer save or code run received near unfocused browser samples; delayed autosave is possible"
+msgstr "Сохранение ответа или запуск кода получены рядом с замерами без фокуса; возможно отложенное автосохранение"
+
+#: lib/athena_web/components/proctoring_components.ex:286
+#, elixir-autogen, elixir-format
+msgid "Attempt monitoring and event history"
+msgstr "Наблюдения и история событий попытки"
+
+#: lib/athena_web/components/proctoring_components.ex:488
+#, elixir-autogen, elixir-format
+msgid "Attempt started: %{at}. Elapsed time is +HH:MM:SS from this start; clock times use %{zone}."
+msgstr "Начало попытки: %{at}. Смещение +ЧЧ:ММ:СС отсчитывается от этого момента. Дата и время указаны в часовом поясе %{zone}."
+
+#: lib/athena_web/components/proctoring_components.ex:35
+#, elixir-autogen, elixir-format
+msgid "Automatic review priority: %{label}"
+msgstr "Автоматический приоритет проверки: %{label}"
+
+#: lib/athena_web/components/proctoring_components.ex:623
+#, elixir-autogen, elixir-format
+msgid "Browser connected but monitoring silent"
+msgstr "Соединение активно, но телеметрия не поступает"
+
+#: lib/athena_web/components/proctoring_components.ex:731
+#, elixir-autogen, elixir-format
+msgid "Browser connected but monitoring silent for %{sec}s"
+msgstr "При активном соединении телеметрия не поступала %{sec} с; возможен технический сбой"
+
+#: lib/athena_web/components/proctoring_components.ex:758
+#, elixir-autogen, elixir-format
+msgid "Browser event timestamps differ from server time"
+msgstr "Время событий браузера отличается от часов сервера"
+
+#: lib/athena_web/components/proctoring_components.ex:495
+#, elixir-autogen, elixir-format
+msgid "Browser events are shown when received by the server. Interval starts are estimated from reported durations. Older events may use the browser clock. An event is not a confirmed violation."
+msgstr "Для новых событий показано время получения сервером. Начало интервалов оценено по сообщённой длительности. Старые события могут использовать часы браузера. Запись события не подтверждает нарушение."
+
+#: lib/athena_web/components/proctoring_components.ex:793
+#, elixir-autogen, elixir-format
+msgid "Browser reported another exam tab (not server-confirmed)"
+msgstr "Браузер сообщил о другой вкладке тестирования; сервером не подтверждено"
+
+#: lib/athena_web/components/proctoring_components.ex:752
+#, elixir-autogen, elixir-format
+msgid "Concurrent exam sessions confirmed by the server after the grace period"
+msgstr "Сервер подтвердил параллельные сессии после периода ожидания"
+
+#: lib/athena_web/components/proctoring_components.ex:438
+#, elixir-autogen, elixir-format
+msgid "Context only, without points: %{seconds} seconds outside focus and %{saves} saves or code runs near unfocused samples. Delayed autosaves and ordinary focus changes are possible."
+msgstr "Справочно, без баллов: %{seconds} с без фокуса и %{saves} сохранений или запусков кода рядом с такими замерами. Возможны отложенное автосохранение и обычные переключения фокуса."
+
+#: lib/athena_web/components/proctoring_components.ex:784
+#, elixir-autogen, elixir-format
+msgid "Copied question text"
+msgstr "Копирование текста вопроса"
+
+#: lib/athena_web/components/proctoring_components.ex:581
+#: lib/athena_web/components/proctoring_components.ex:617
+#, elixir-autogen, elixir-format
+msgid "Copy events on the question"
+msgstr "События копирования текста вопроса"
+
+#: lib/athena_web/components/proctoring_components.ex:230
+#, elixir-autogen, elixir-format
+msgid "Copying, cutting, PrintScreen, input patterns, frequent revisions, right-clicks, network gaps and sampled focus conflicts are recorded for context without points. They have ordinary legitimate causes."
+msgstr "Копирование, вырезание, PrintScreen, особенности ввода, частые правки, контекстное меню, разрывы связи и расхождения замеров фокуса записываются справочно, без баллов. У них могут быть обычные причины."
+
+#: lib/athena_web/components/proctoring_components.ex:582
+#: lib/athena_web/components/proctoring_components.ex:618
+#, elixir-autogen, elixir-format
+msgid "Cut events on the question"
+msgstr "События вырезания текста вопроса"
+
+#: lib/athena_web/components/proctoring_components.ex:787
+#, elixir-autogen, elixir-format
+msgid "Cut question text"
+msgstr "Вырезание текста вопроса"
+
+#: lib/athena_web/components/proctoring_components.ex:235
+#, elixir-autogen, elixir-format
+msgid "Geometry and focus are reported by the browser and can be inaccurate or modified. Brief focus changes and delayed autosaves can explain an answer arriving near unfocused samples. A second display does not prove its use."
+msgstr "Геометрию и фокус сообщает браузер: данные могут быть неточными или изменёнными. Сохранение рядом с замерами без фокуса может объясняться кратким переключением или отложенным автосохранением. Подключение второго экрана не доказывает его использование."
+
+#: lib/athena_web/components/proctoring_components.ex:192
+#, elixir-autogen, elixir-format
+msgid "Green means no scored signals; yellow means review recommended; red means priority review, not a confirmed violation. Yellow starts at %{yellow} points and red at %{red} points."
+msgstr "Зелёный – нет признаков с баллами; жёлтый – рекомендуется проверить; красный – проверить в первую очередь, а не подтверждённое нарушение. Жёлтый начинается с %{yellow} баллов, красный – с %{red}."
+
+#: lib/athena_web/components/proctoring_components.ex:181
+#, elixir-autogen, elixir-format
+msgid "How review priority is calculated"
+msgstr "Как определяется приоритет проверки"
+
+#: lib/athena_web/components/proctoring_components.ex:187
+#, elixir-autogen, elixir-format
+msgid "Monitoring is visible only to instructors. It never blocks answers, code execution or submission, and never changes a grade."
+msgstr "Наблюдения доступны только преподавателям. Мониторинг не блокирует ответы, запуск кода и сдачу работы и не меняет оценку."
+
+#: lib/athena_web/components/proctoring_components.ex:200
+#, elixir-autogen, elixir-format
+msgid "Multiple sessions: 2 points only after distinct server sessions overlap for at least %{seconds} seconds. Browser tab reports and repeated detections do not add extra points."
+msgstr "Параллельные сессии: 2 балла только после одновременного существования разных серверных сессий не меньше %{seconds} с. Сообщения браузера о вкладках и повторные обнаружения не добавляют баллов."
+
+#: lib/athena_web/components/proctoring_components.ex:894
+#, elixir-autogen, elixir-format
+msgid "No scored signals"
+msgstr "Нет признаков с баллами"
+
+#: lib/athena_web/components/proctoring_components.ex:348
+#, elixir-autogen, elixir-format
+msgid "Observed by the server"
+msgstr "Зафиксировано сервером"
+
+#: lib/athena_web/components/proctoring_components.ex:755
+#, elixir-autogen, elixir-format
+msgid "Only monitoring pings for %{sec}s; the student may be reading"
+msgstr "В течение %{sec} с поступали только контрольные сообщения; обучающийся мог читать"
+
+#: lib/athena_web/components/proctoring_components.ex:211
+#, elixir-autogen, elixir-format
+msgid "Pasting after returning: at most 2 points for large pastes or an unusually high paste ratio. A large paste starts at %{chars} characters within %{seconds} seconds of returning. The two paste measures never add together."
+msgstr "Вставки после возвращения: не больше 2 баллов за крупные вставки или необычно высокую их долю. Крупная вставка – от %{chars} символов в течение %{seconds} с после возвращения. Эти два показателя не суммируются."
+
+#: lib/athena_web/components/proctoring_components.ex:781
+#, elixir-autogen, elixir-format
+msgid "Pressed PrintScreen (screenshot not confirmed)"
+msgstr "Нажата PrintScreen; создание снимка не подтверждено"
+
+#: lib/athena_web/components/proctoring_components.ex:580
+#: lib/athena_web/components/proctoring_components.ex:616
+#, elixir-autogen, elixir-format
+msgid "PrintScreen key events"
+msgstr "Нажатия клавиши PrintScreen"
+
+#: lib/athena_web/components/proctoring_components.ex:896
+#, elixir-autogen, elixir-format
+msgid "Priority review"
+msgstr "Проверить в первую очередь"
+
+#: lib/athena_web/components/proctoring_components.ex:445
+#, elixir-autogen, elixir-format
+msgid "Recorded events and technical gaps do not automatically mean a violation. The student receives no monitoring messages."
+msgstr "Записанные события и технические разрывы сами по себе не означают нарушение. Обучающийся не получает сообщений о мониторинге."
+
+#: lib/athena_web/components/proctoring_components.ex:225
+#, elixir-autogen, elixir-format
+msgid "Red also requires a server-confirmed concurrent session. Client-only signals are capped at yellow."
+msgstr "Для красного также нужны параллельные сессии, подтверждённые сервером. Признаки только от браузера ограничиваются жёлтым."
+
+#: lib/athena_web/components/proctoring_components.ex:351
+#, elixir-autogen, elixir-format
+msgid "Reported by the browser"
+msgstr "Сообщено браузером"
+
+#: lib/athena_web/components/proctoring_components.ex:895
+#, elixir-autogen, elixir-format
+msgid "Review recommended"
+msgstr "Рекомендуется проверить"
+
+#: lib/athena_web/live/teaching_live/grading_detail.ex:641
+#, elixir-autogen, elixir-format
+msgid "Scored signals: %{count}"
+msgstr "Признаков с баллами: %{count}"
+
+#: lib/athena_web/components/proctoring_components.ex:585
+#: lib/athena_web/components/proctoring_components.ex:621
+#, elixir-autogen, elixir-format
+msgid "Text added without a recent input event"
+msgstr "Текст появился без недавнего события ввода"
+
+#: lib/athena_web/components/proctoring_components.ex:240
+#, elixir-autogen, elixir-format
+msgid "The browser cannot observe another device or all operating-system screenshot tools. Review the timeline and the student's work before making a decision."
+msgstr "Браузер не видит другое устройство и все средства снимков экрана операционной системы. Прежде чем принимать решение, изучите историю событий и работу обучающегося."
+
+#: lib/athena_web/components/proctoring_components.ex:134
+#, elixir-autogen, elixir-format
+msgid "These observations help instructors review an attempt. Colours indicate review priority, not proof of cheating. Ordinary browser actions and technical problems are recorded without penalty; students receive no monitoring warnings or restrictions."
+msgstr "Наблюдения помогают преподавателю разобрать попытку. Цвет обозначает приоритет проверки, а не доказанное списывание. Обычные действия браузера и технические проблемы записываются без штрафа; обучающийся не получает предупреждений и ограничений мониторинга."
+
+#: lib/athena_web/components/proctoring_components.ex:72
+#, elixir-autogen, elixir-format
+msgid "This result uses earlier scoring rules. It has not been recalculated under the current, more conservative policy. Use the event history and your own review."
+msgstr "Результат рассчитан по прежним правилам и не пересчитан по текущей, более осторожной методике. Ориентируйтесь на историю событий и собственный разбор."
+
+#: lib/athena_web/components/proctoring_components.ex:206
+#, elixir-autogen, elixir-format
+msgid "Time away: at most 2 points, including long or repeated absences. Overlapping absences count once."
+msgstr "Время вне тестирования: не больше 2 баллов, в том числе при длительных или повторных отлучках. Перекрывающиеся интервалы считаются один раз."
+
+#: lib/athena_web/components/proctoring_components.ex:407
+#, elixir-autogen, elixir-format
+msgid "Window layout observations"
+msgstr "Наблюдения за размером окна"
+
+#: lib/athena_web/components/proctoring_components.ex:218
+#, elixir-autogen, elixir-format
+msgid "Window layout: at most 1 point after %{seconds} seconds in a small window and at least 3 sideways pointer exits. A narrowed page alone earns no points; it may be a sidebar or developer tools."
+msgstr "Раскладка окна: не больше 1 балла после %{seconds} с в небольшом окне и не меньше 3 боковых уходов указателя. Одно сужение страницы баллов не даёт: это может быть боковая панель или инструменты разработчика."
+
+#: lib/athena_web/components/proctoring_components.ex:775
+#, elixir-autogen, elixir-format
+msgid "Window now occupies part of the screen"
+msgstr "Окно теперь занимает часть экрана"
+
+#: lib/athena_web/components/proctoring_components.ex:738
+#, elixir-autogen, elixir-format
+msgid "Window occupied part of the screen for %{sec}s; another window is not confirmed"
+msgstr "Окно занимало часть экрана %{sec} с; наличие соседнего окна не подтверждено"

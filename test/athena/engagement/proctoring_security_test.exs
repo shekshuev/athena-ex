@@ -39,15 +39,59 @@ defmodule Athena.Engagement.ProctoringSecurityTest do
     assert ProctoringMonitor.snapshot(sid).max_connected_silence_seconds == 0
   end
 
-  test "two live sessions are detected immediately and deduplicated", %{sid: sid, pid: pid} do
+  test "two live sessions are confirmed only after the grace period and deduplicated", %{
+    sid: sid,
+    pid: pid
+  } do
     ProctoringMonitor.connection(sid, nil, nil, true)
     other = start_supervised!({Agent, fn -> nil end})
     Agent.get(other, fn _ -> ProctoringMonitor.connection(sid, nil, nil, true) end)
+    assert ProctoringMonitor.snapshot(sid).server_multi_tab_detected == 0
+
+    :sys.replace_state(
+      pid,
+      &%{&1 | concurrent_since_ms: System.monotonic_time(:millisecond) - 11_000}
+    )
+
+    # Merely living processes are still insufficient after the grace period.
+    assert ProctoringMonitor.snapshot(sid).server_multi_tab_detected == 0
+    ProctoringMonitor.heartbeat(sid, nil, nil)
+    Agent.get(other, fn _ -> ProctoringMonitor.heartbeat(sid, nil, nil) end)
+    _ = :sys.get_state(pid)
+
+    :sys.replace_state(pid, fn state ->
+      activity =
+        Map.new(state.session_activity, fn {session, pulse} ->
+          {session, %{pulse | first: pulse.first - 11_000}}
+        end)
+
+      %{state | session_activity: activity}
+    end)
+
+    ProctoringMonitor.heartbeat(sid, nil, nil)
+    Agent.get(other, fn _ -> ProctoringMonitor.heartbeat(sid, nil, nil) end)
     reading = ProctoringMonitor.snapshot(sid)
     assert reading.counts.multi_tab_detected == 1
     assert Enum.any?(reading.incidents, &(&1["type"] == "concurrent_session"))
     send(pid, :check_idle)
     assert ProctoringMonitor.snapshot(sid).counts.multi_tab_detected == 1
+  end
+
+  test "a reconnect overlap that ends within the grace period is not a concurrent sitting", %{
+    sid: sid,
+    pid: pid
+  } do
+    ProctoringMonitor.connection(sid, nil, nil, true)
+    other = start_supervised!({Agent, fn -> nil end})
+    Agent.get(other, fn _ -> ProctoringMonitor.connection(sid, nil, nil, true) end)
+    assert ProctoringMonitor.snapshot(sid).server_multi_tab_detected == 0
+    ref = Process.monitor(other)
+    stop_supervised!(Agent)
+    assert_receive {:DOWN, ^ref, :process, ^other, _}
+    send(pid, :check_concurrency)
+    reading = ProctoringMonitor.snapshot(sid)
+    assert reading.server_multi_tab_detected == 0
+    refute Enum.any?(reading.incidents, &(&1["type"] == "concurrent_session"))
   end
 
   test "heartbeat-only channel produces a review incident once", %{sid: sid, pid: pid} do
@@ -119,6 +163,31 @@ defmodule Athena.Engagement.ProctoringSecurityTest do
     stop_supervised!({ProctoringMonitor, sid})
     assert ProctoringMonitor.finalize(sid).counts.copy_attempt == 1
     assert ProctoringCheckpoint.load(sid) == nil
+  end
+
+  test "legacy checkpoint observations cannot become newly confirmed evidence", %{
+    sid: sid,
+    pid: pid
+  } do
+    :sys.replace_state(pid, fn state ->
+      %{
+        state
+        | server_multi_tab_detected: 1,
+          counts: %{state.counts | copy_attempt: 3},
+          layout: %{state.layout | window_s: 600.0}
+      }
+    end)
+
+    send(pid, :check_idle)
+    _ = :sys.get_state(pid)
+    checkpoint = ProctoringCheckpoint.load(sid)
+    ProctoringCheckpoint.save(sid, Map.delete(checkpoint, :scoring_version))
+    stop_supervised!({ProctoringMonitor, sid})
+    start_supervised!({ProctoringMonitor, {sid, nil, nil}})
+    reading = ProctoringMonitor.snapshot(sid)
+    assert reading.counts.copy_attempt == 3
+    assert reading.server_multi_tab_detected == 0
+    assert reading.split_seconds == 0
   end
 
   test "incompatible and corrupt checkpoints are ignored", %{sid: sid} do

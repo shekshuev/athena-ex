@@ -133,7 +133,7 @@ defmodule Athena.Engagement.ProctoringMonitor do
   def tracked_event_types, do: @tracked_event_types
 
   @doc "Looks up (or lazily starts) the process for this submission and returns its pid."
-  @spec get_or_start(binary(), binary() | nil, binary()) :: {:ok, pid()}
+  @spec get_or_start(binary(), binary() | nil, binary() | nil) :: {:ok, pid()}
   def get_or_start(submission_id, cohort_id, block_id) do
     case lookup_monitor(submission_id) do
       [{pid, _}] ->
@@ -177,7 +177,7 @@ defmodule Athena.Engagement.ProctoringMonitor do
     # `layout_samples` are the raw window-geometry samples the browser
     # attached to this ping; `Athena.Engagement.Layout` bounds and judges
     # them. An empty list is a plain liveness ping.
-    GenServer.cast(pid, {:heartbeat, layout_samples})
+    GenServer.cast(pid, {:heartbeat, self(), layout_samples})
   end
 
   @doc """
@@ -287,7 +287,9 @@ defmodule Athena.Engagement.ProctoringMonitor do
       # server-side concurrent-tab detection; `connected` is derived from it.
       sessions: MapSet.new(),
       session_monitors: %{},
+      session_activity: %{},
       concurrent_flagged: false,
+      concurrent_since_ms: nil,
       server_multi_tab_detected: 0,
       # Time of the last real (non-heartbeat) engagement event, for the
       # "channel alive but inert" check; `inert_flagged` dedups the incident.
@@ -348,6 +350,19 @@ defmodule Athena.Engagement.ProctoringMonitor do
   end
 
   @impl true
+  def handle_cast({:heartbeat, session, samples}, state) do
+    state =
+      state
+      |> note_session_heartbeat(session)
+      |> note_activity()
+      |> detect_concurrent_sessions()
+      |> ingest_layout(samples)
+
+    broadcast_updated(state)
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_cast({:heartbeat, layout_samples}, state) do
     state = state |> note_activity() |> ingest_layout(layout_samples)
     broadcast_updated(state)
@@ -391,6 +406,13 @@ defmodule Athena.Engagement.ProctoringMonitor do
   end
 
   @impl true
+  def handle_info(:check_concurrency, state) do
+    state = detect_concurrent_sessions(state)
+    broadcast_updated(state)
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_info(:check_idle, state) do
     idle_for_ms = DateTime.diff(DateTime.utc_now(), state.last_event_at, :millisecond)
 
@@ -418,10 +440,35 @@ defmodule Athena.Engagement.ProctoringMonitor do
     end
   end
 
+  defp note_session_heartbeat(state, session) do
+    if MapSet.member?(state.sessions, session) do
+      now = System.monotonic_time(:millisecond)
+      activity = Map.get(state.session_activity, session, %{first: now, last: now, count: 0})
+
+      %{
+        state
+        | session_activity:
+            Map.put(state.session_activity, session, %{
+              activity
+              | last: now,
+                count: activity.count + 1
+            })
+      }
+    else
+      state
+    end
+  end
+
   defp remove_session(state, pid) do
     {monitor_ref, monitors} = Map.pop(state.session_monitors, pid)
     if monitor_ref, do: Process.demonitor(monitor_ref, [:flush])
-    %{state | sessions: MapSet.delete(state.sessions, pid), session_monitors: monitors}
+
+    %{
+      state
+      | sessions: MapSet.delete(state.sessions, pid),
+        session_monitors: monitors,
+        session_activity: Map.delete(state.session_activity, pid)
+    }
   end
 
   # Registry cleanup is asynchronous: a stopped process can still have an
@@ -544,7 +591,13 @@ defmodule Athena.Engagement.ProctoringMonitor do
   # Folds a heartbeat's layout samples into the layout state (time measured
   # by the server's own clock) and stores any finished-interval incidents.
   defp ingest_layout(state, samples) do
-    {layout, incidents} = Layout.ingest(state.layout, samples, DateTime.utc_now())
+    {layout, incidents} =
+      Layout.ingest(
+        state.layout,
+        samples,
+        DateTime.utc_now(),
+        System.monotonic_time(:millisecond)
+      )
 
     %{
       state
@@ -644,7 +697,8 @@ defmodule Athena.Engagement.ProctoringMonitor do
     recv_ms = DateTime.to_unix(received_at, :millisecond)
 
     Enum.reduce(events, 0, fn
-      %{occurred_at: %DateTime{} = at}, acc ->
+      %{occurred_at: %DateTime{} = at} = event, acc ->
+        at = Map.get(event, :client_occurred_at, at)
         max(acc, abs(recv_ms - DateTime.to_unix(at, :millisecond)))
 
       _event, acc ->
@@ -895,13 +949,13 @@ defmodule Athena.Engagement.ProctoringMonitor do
   # leaves the fresh state untouched, so this can never crash init.
   defp restore_from_checkpoint(state) do
     case ProctoringCheckpoint.load(state.submission_id) do
-      %{version: 1, state: saved} when is_map(saved) ->
+      %{version: 1, state: saved} = checkpoint when is_map(saved) ->
         if valid_checkpoint?(saved, state) do
           # Visibility is session-local; a reloaded page starts visible.
           state
           |> Map.merge(Map.take(saved, @checkpointable_keys))
           |> Map.put(:tab_hidden, false)
-          |> restore_layout(saved)
+          |> restore_scoring_checkpoint(saved, checkpoint)
         else
           state
         end
@@ -911,13 +965,23 @@ defmodule Athena.Engagement.ProctoringMonitor do
     end
   end
 
+  # Previous releases confirmed concurrency immediately and attributed layout
+  # time differently. Keep their raw observations, but never promote those
+  # aggregates to evidence under the current rules after a deployment.
+  defp restore_scoring_checkpoint(state, saved, %{scoring_version: 2}),
+    do: restore_layout(state, saved)
+
+  defp restore_scoring_checkpoint(state, _saved, _checkpoint),
+    do: %{state | server_multi_tab_detected: 0}
+
   # The layout state is checkpointed beside the required keys but is
   # optional on restore, so a checkpoint written before it existed (or one
   # whose layout fails validation) still restores everything else.
   defp restore_layout(state, %{layout: layout}) do
     if Layout.valid?(layout) do
       # Downtime must not be charged as time in any layout state.
-      %{state | layout: %{layout | last_at_ms: nil, unfocused_run_s: 0.0}}
+      incidents = state.incidents ++ List.wrap(Layout.open_incident(layout))
+      %{state | layout: Layout.resume(layout), incidents: Enum.take(incidents, -@max_incidents)}
     else
       state
     end
@@ -928,6 +992,7 @@ defmodule Athena.Engagement.ProctoringMonitor do
   defp persist_checkpoint(state) do
     ProctoringCheckpoint.save(state.submission_id, %{
       version: 1,
+      scoring_version: 2,
       state: state |> Map.take(@checkpointable_keys) |> Map.put(:layout, state.layout)
     })
   end
@@ -977,14 +1042,9 @@ defmodule Athena.Engagement.ProctoringMonitor do
 
   defp valid_checkpoint_value?(_, _, _), do: false
 
-  # Server-authoritative concurrent-session check, run on the idle tick. Two
-  # or more live exam sessions (distinct LiveView pids) for one attempt means
-  # it is open in more than one place - a second browser, profile or
-  # incognito window the client-side MultiTabGuard cannot see. Dead pids are
-  # pruned first, so a reconnect's brief overlap (old process not yet reaped)
-  # never trips it; only concurrency still present at this tick is flagged,
-  # once, feeding the existing `multi_tab_detected` signal plus a
-  # `concurrent_session` incident on the teacher's timeline.
+  # Distinct live processes must overlap for a grace period. A brief reconnect
+  # is not a second sitting. Client reports remain raw observations and are
+  # never added to this server confirmation for scoring.
   defp detect_concurrent_sessions(state) do
     alive =
       state.sessions
@@ -992,13 +1052,24 @@ defmodule Athena.Engagement.ProctoringMonitor do
       |> MapSet.new()
 
     state = %{state | sessions: alive, connected: MapSet.size(alive) > 0}
+    now = System.monotonic_time(:millisecond)
+    grace_ms = Keyword.get(config(), :exam_concurrent_session_grace_seconds, 10) * 1000
 
     cond do
-      MapSet.size(alive) > 1 and not state.concurrent_flagged ->
+      MapSet.size(alive) <= 1 ->
+        %{state | concurrent_flagged: false, concurrent_since_ms: nil}
+
+      is_nil(state.concurrent_since_ms) ->
+        Process.send_after(self(), :check_concurrency, grace_ms)
+        %{state | concurrent_since_ms: now, session_activity: %{}}
+
+      not state.concurrent_flagged and now - state.concurrent_since_ms >= grace_ms and
+          sessions_active?(state, now, grace_ms) ->
         incident = %{
           "type" => "concurrent_session",
           "at" => DateTime.to_iso8601(DateTime.utc_now()),
-          "sessions" => MapSet.size(alive)
+          "sessions" => MapSet.size(alive),
+          "seconds" => div(now - state.concurrent_since_ms, 1000)
         }
 
         %{
@@ -1009,12 +1080,24 @@ defmodule Athena.Engagement.ProctoringMonitor do
             incidents: Enum.take(state.incidents ++ [incident], -@max_incidents)
         }
 
-      MapSet.size(alive) <= 1 ->
-        %{state | concurrent_flagged: false}
-
       true ->
         state
     end
+  end
+
+  # A living process can outlast its transport. Each overlapping session must
+  # actually deliver repeated heartbeats over the grace period; a dormant old
+  # LiveView left behind by a reconnect is not a second active sitting.
+  defp sessions_active?(state, now, grace_ms) do
+    Enum.all?(state.sessions, fn session ->
+      case Map.get(state.session_activity, session) do
+        %{first: first, last: last, count: n} ->
+          n >= 2 and last - first >= grace_ms and now - last <= 25_000
+
+        _ ->
+          false
+      end
+    end)
   end
 
   # "Channel alive but inert": heartbeats are still arriving (the socket is

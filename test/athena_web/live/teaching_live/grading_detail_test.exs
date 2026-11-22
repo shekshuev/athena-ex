@@ -134,8 +134,8 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
       assert html =~ "Assessment Session"
       assert html =~ "I don&#39;t know"
       assert html =~ "Academic Integrity"
-      assert html =~ "Direct evidence: 2"
-      assert html =~ "High risk"
+      assert html =~ "Scored signals: 2"
+      assert html =~ "Priority review"
       assert html =~ "Manual Review"
     end
 
@@ -160,7 +160,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
       {:ok, _lv, html} = live(conn, ~p"/teaching/grading/#{sub.id}")
 
       assert html =~ "Academic Integrity"
-      assert html =~ "No violations"
+      assert html =~ "No scored signals"
     end
 
     test "clicking Learn more shows the points, what counted and the measurements", %{
@@ -211,10 +211,10 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
         |> render_click()
 
       assert has_element?(lv, "#proctoring-detail-modal.modal-open")
-      assert html =~ "Why this submission was flagged"
+      assert html =~ "Attempt monitoring and event history"
       assert html =~ "What counted"
       assert html =~ "4 points"
-      assert html =~ "Copy attempts on the question"
+      assert html =~ "Copy events on the question"
       assert html =~ "95th percentile"
 
       html =
@@ -222,7 +222,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
         |> element("#proctoring-detail-modal button", "Close")
         |> render_click()
 
-      refute html =~ "Why this submission was flagged"
+      refute html =~ "Attempt monitoring and event history"
     end
 
     test "the Timeline tab lists what the student actually did", %{conn: conn} do
@@ -262,7 +262,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
 
       assert has_element?(lv, "#proctoring-timeline")
       assert html =~ "Left the tab for 45s"
-      assert html =~ "04:15"
+      assert html =~ "+00:04:15"
     end
 
     test "a teacher can record a review that stays on the submission", %{conn: conn} do
@@ -319,6 +319,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetailTest do
             "risk_level" => "green",
             "points" => 0,
             "signals" => [],
+            "scoring_version" => 2,
             "questions" => []
           },
           status: :needs_review

@@ -32,7 +32,7 @@ defmodule AthenaWeb.ProctoringComponents do
       <span
         :if={@review}
         class="proctoring-review-badge"
-        title={gettext("Automatic verdict: %{label}", label: risk_label(@summary.risk_level))}
+        title={gettext("Automatic review priority: %{label}", label: risk_label(@summary.risk_level))}
       >
         <.badge tone={review_tone(@review["status"])} class="tracking-wide gap-1">
           <.icon name={review_icon(@review["status"])} class="size-3.5" />
@@ -70,14 +70,14 @@ defmodule AthenaWeb.ProctoringComponents do
       class="rounded-sm border border-warning/40 bg-warning/10 p-3 text-xs text-base-content/80"
     >
       {gettext(
-        "This verdict was calculated by an earlier version of the check, which did not count pastes or time away. The counters here may read zero even though the timeline shows activity - rely on the timeline."
+        "This result uses earlier scoring rules. It has not been recalculated under the current, more conservative policy. Use the event history and your own review."
       )}
     </div>
     """
   end
 
   defp legacy_verdict?(%{"risk_level" => level} = content) when not is_nil(level),
-    do: not Map.has_key?(content, "signals")
+    do: content["scoring_version"] != 2
 
   defp legacy_verdict?(_content), do: false
 
@@ -132,7 +132,7 @@ defmodule AthenaWeb.ProctoringComponents do
       </div>
       <p>
         {gettext(
-          "While a timed assessment is in progress, we track several kinds of suspicious browser activity - things like switching tabs or apps, attempting to screenshot or copy the question, and opening the same assessment in more than one tab. Green means nothing suspicious. Yellow means something worth a closer look. Red means it's worth checking in with the student directly."
+          "These observations help instructors review an attempt. Colours indicate review priority, not proof of cheating. Ordinary browser actions and technical problems are recorded without penalty; students receive no monitoring warnings or restrictions."
         )}
       </p>
       <p class="text-xs italic">
@@ -178,185 +178,69 @@ defmodule AthenaWeb.ProctoringComponents do
       :if={@show}
       id={@id}
       show={true}
-      title={gettext("How the cheating risk indicator is calculated")}
+      title={gettext("How review priority is calculated")}
       on_cancel={@on_cancel}
       box_class="max-w-2xl"
     >
-      <div class="space-y-5 text-sm text-base-content/80 max-h-[65vh] overflow-y-auto pr-1 -mr-1">
-        <section class="space-y-2">
-          <p class="text-base-content/70">
+      <div id="proctoring-methodology" class="space-y-4 text-sm text-base-content/80">
+        <p>
+          {gettext(
+            "Monitoring is visible only to instructors. It never blocks answers, code execution or submission, and never changes a grade."
+          )}
+        </p>
+        <p>
+          {gettext(
+            "Green means no scored signals; yellow means review recommended; red means priority review, not a confirmed violation. Yellow starts at %{yellow} points and red at %{red} points.",
+            yellow: @t.yellow_points,
+            red: @t.red_points
+          )}
+        </p>
+        <ul class="list-disc list-inside space-y-2">
+          <li>
             {gettext(
-              "Every signal below is worth points. %{yellow} points is yellow, %{red} or more is red. Several weak signals can add up, and one strong signal can be enough on its own.",
-              yellow: @t.yellow_points,
-              red: @t.red_points
+              "Multiple sessions: 2 points only after distinct server sessions overlap for at least %{seconds} seconds. Browser tab reports and repeated detections do not add extra points.",
+              seconds: @t.concurrent_session_grace_seconds
             )}
-          </p>
-        </section>
-
-        <section class="space-y-2">
-          <h4 class="font-bold text-base-content flex items-center gap-2">
-            <.icon name="hero-exclamation-circle" class="size-4 text-error" />
-            {gettext("Direct evidence")}
-          </h4>
-          <p class="text-base-content/70">
+          </li>
+          <li>
             {gettext(
-              "Counted as-is, 2 points each, with no comparison to other students - there is no legitimate reason for any of them to happen during a locked-down question view."
+              "Time away: at most 2 points, including long or repeated absences. Overlapping absences count once."
             )}
-          </p>
-          <ul class="space-y-1.5 list-disc list-inside">
-            <li>
-              <span class="font-semibold">{gettext("Screenshot attempt")}</span>
-              - {gettext(
-                "the PrintScreen key was pressed. Windows only - Win+Shift+S, screenshot tools and macOS shortcuts happen outside the browser and cannot be detected."
-              )}
-            </li>
-            <li>
-              <span class="font-semibold">{gettext("Copy / cut attempt")}</span>
-              - {gettext(
-                "a copy or cut was attempted inside the question text, which is blocked - this means the student tried, not that any text was actually captured."
-              )}
-            </li>
-            <li>
-              <span class="font-semibold">{gettext("Multiple tabs")}</span>
-              - {gettext(
-                "the same exam attempt was detected open in more than one browser tab or window at once."
-              )}
-            </li>
-            <li>
-              <span class="font-semibold">{gettext("Large paste")}</span>
-              - {gettext(
-                "a single paste or drag-and-drop of %{n} or more characters into an answer.",
-                n: @t.large_paste_chars
-              )}
-            </li>
-            <li>
-              <span class="font-semibold">{gettext("Text inserted without typing")}</span>
-              - {gettext(
-                "a large block of text appeared in an answer without keyboard input, paste or drop, for example written straight into the page by a browser extension."
-              )}
-            </li>
-          </ul>
-        </section>
-
-        <div class="divider my-1"></div>
-
-        <section class="space-y-2">
-          <h4 class="font-bold text-base-content flex items-center gap-2">
-            <.icon name="hero-arrow-top-right-on-square" class="size-4 text-warning" />
-            {gettext("Time away from the exam")}
-          </h4>
-          <p class="text-base-content/70">
+          </li>
+          <li>
             {gettext(
-              "Switching tabs, losing window focus and leaving fullscreen are measured by how long and how often, not against an allowed number. Overlapping absences count once. One absence of %{sec}+ seconds is yellow; %{n} such absences, or %{total}+ seconds in total, is red.",
-              sec: @t.away_incident_min_seconds,
-              n: @t.away_red_incidents,
-              total: @t.away_red_seconds
+              "Pasting after returning: at most 2 points for large pastes or an unusually high paste ratio. A large paste starts at %{chars} characters within %{seconds} seconds of returning. The two paste measures never add together.",
+              chars: @t.large_paste_chars,
+              seconds: @t.paste_away_window_seconds
             )}
-          </p>
-          <p class="text-base-content/70">
+          </li>
+          <li>
             {gettext(
-              "The pointer leaving the window and a window that shares the screen with another one are also recorded: they catch reading a neighbouring window, which never changes focus."
+              "Window layout: at most 1 point after %{seconds} seconds in a small window and at least 3 sideways pointer exits. A narrowed page alone earns no points; it may be a sidebar or developer tools.",
+              seconds: @t.split_yellow_seconds
             )}
-          </p>
-        </section>
-
-        <div class="divider my-1"></div>
-
-        <section class="space-y-2">
-          <h4 class="font-bold text-base-content flex items-center gap-2">
-            <.icon name="hero-chart-bar" class="size-4 text-warning" />
-            {gettext("Behavior compared to the group")}
-          </h4>
-          <p class="text-base-content/70">
-            {gettext(
-              "A raw count here means nothing by itself - an anxious student revising an answer many times can look identical, by the numbers, to a student who's cheating. So a rate is compared with what the other students taking this same exam do, and only counts when it is clearly higher: at least %{ratio} times their typical value, and never below a minimum absolute level. Rates per minute are not judged during the first %{min} minutes, and need a few actual events behind them.",
-              ratio: @t.baseline_ratio,
-              min: @t.min_minutes_for_rates
-            )}
-          </p>
-          <p class="text-base-content/70">
-            {gettext(
-              "This works from a group of %{n}. In a small group (fewer than %{trusted} others) the others are a weak witness of what is normal, so they can only raise the bar, never lower it below half of the fixed upper limit. With nobody to compare against, only the fixed upper limit applies. A rate of twice that limit counts whatever the group does. Students who already handed in stay in the comparison.",
-              n: @t.min_baseline_peers + 1,
-              trusted: @t.trusted_group_peers
-            )}
-          </p>
-          <ul class="space-y-1.5 list-disc list-inside">
-            <li>
-              <span class="font-semibold">{gettext("Switching away, per minute")}</span>
-              - {gettext("how often the tab or window lost focus (1 point).")}
-            </li>
-            <li>
-              <span class="font-semibold">{gettext("Pasted text ratio")}</span>
-              - {gettext(
-                "what share of the typed answer arrived via paste or drop rather than typing (2 points)."
-              )}
-            </li>
-            <li>
-              <span class="font-semibold">{gettext("Answer changes, per minute")}</span>
-              - {gettext("how often an answer was revised after first being picked (1 point).")}
-            </li>
-            <li>
-              <span class="font-semibold">{gettext("Right-clicks, per minute")}</span>
-              - {gettext(
-                "right-clicking the question has innocent causes, so only an unusually high rate counts (1 point)."
-              )}
-            </li>
-            <li>
-              <span class="font-semibold">{gettext("Pointer outside the window")}</span>
-              - {gettext("seconds per minute with the mouse outside the browser window (1 point).")}
-            </li>
-          </ul>
-        </section>
-
-        <div class="divider my-1"></div>
-
-        <section class="space-y-2">
-          <h4 class="font-bold text-base-content flex items-center gap-2">
-            <.icon name="hero-finger-print" class="size-4 text-warning" />
-            {gettext("Typing patterns")}
-          </h4>
-          <p class="text-base-content/70">
-            {gettext(
-              "Only totals are collected - never which keys were pressed or when each one was pressed. Typing with almost no key-hold time (a macro or a keystroke emulator) is 2 points, and a long answer typed without a single correction is 1 point. On-screen keyboards, dictation and other composition input are excluded."
-            )}
-          </p>
-        </section>
-
-        <div class="divider my-1"></div>
-
-        <section class="space-y-2">
-          <h4 class="font-bold text-base-content flex items-center gap-2">
-            <.icon name="hero-signal-slash" class="size-4 text-warning" />
-            {gettext("Telemetry silence")}
-          </h4>
-          <p class="text-base-content/70">
-            {gettext(
-              "If the browser stops reporting for longer than expected, or reports being offline, that gap is itself suspicious - it can mean the tracking was disabled or tampered with, or that the connection was cut. A gap of %{yellow}+ seconds is yellow, %{red}+ seconds is red. The longest gap stays on the record for the whole attempt; it does not clear when reporting resumes. Only a teacher can mark it as reviewed.",
-              yellow: @t.heartbeat_silence_yellow_threshold_seconds,
-              red: @t.heartbeat_silence_red_threshold_seconds
-            )}
-          </p>
-        </section>
-
-        <div class="divider my-1"></div>
-
-        <section class="space-y-1">
-          <h4 class="font-bold text-base-content flex items-center gap-2">
-            <.icon name="hero-eye-slash" class="size-4 text-base-content/50" />
-            {gettext("Known blind spots")}
-          </h4>
-          <p class="text-xs italic text-base-content/60">
-            {gettext(
-              "This only detects what a browser can observe. It cannot see a second device (e.g. a phone), and it cannot catch screenshot tools or macOS shortcuts, which happen entirely outside the browser."
-            )}
-          </p>
-          <p class="text-xs italic text-base-content/60">
-            {gettext(
-              "A telemetry-silence red flag can also mean an ordinary crash or lost connection, not tampering - always check in with the student before treating it as a verdict."
-            )}
-          </p>
-        </section>
+          </li>
+        </ul>
+        <p :if={@t.require_server_corroboration_for_red}>
+          {gettext(
+            "Red also requires a server-confirmed concurrent session. Client-only signals are capped at yellow."
+          )}
+        </p>
+        <p>
+          {gettext(
+            "Copying, cutting, PrintScreen, input patterns, frequent revisions, right-clicks, network gaps and sampled focus conflicts are recorded for context without points. They have ordinary legitimate causes."
+          )}
+        </p>
+        <p>
+          {gettext(
+            "Geometry and focus are reported by the browser and can be inaccurate or modified. Brief focus changes and delayed autosaves can explain an answer arriving near unfocused samples. A second display does not prove its use."
+          )}
+        </p>
+        <p>
+          {gettext(
+            "The browser cannot observe another device or all operating-system screenshot tools. Review the timeline and the student's work before making a decision."
+          )}
+        </p>
       </div>
 
       <div class="modal-action">
@@ -399,7 +283,7 @@ defmodule AthenaWeb.ProctoringComponents do
       :if={@show}
       id={@id}
       show={true}
-      title={gettext("Why this submission was flagged")}
+      title={gettext("Attempt monitoring and event history")}
       on_cancel={@on_cancel}
       box_class="max-w-3xl"
     >
@@ -480,7 +364,7 @@ defmodule AthenaWeb.ProctoringComponents do
                 class="flex items-center justify-between py-1.5"
               >
                 <span class="text-base-content/70">{row.label}</span>
-                <span class={["font-mono font-bold", row.value > 0 && "text-error"]}>
+                <span class="font-mono">
                   {row.value}
                 </span>
               </div>
@@ -520,7 +404,7 @@ defmodule AthenaWeb.ProctoringComponents do
                 class="flex items-center justify-between py-1.5"
               >
                 <span class="text-base-content/70">
-                  {gettext("Screen shared with another window")}
+                  {gettext("Window layout observations")}
                 </span>
                 <span class="font-mono">
                   {gettext("%{win}s window · %{vp}s narrowed page",
@@ -541,14 +425,27 @@ defmodule AthenaWeb.ProctoringComponents do
                   {gettext("Longest gap with no signal from the browser")}
                 </span>
                 <span class={[
-                  "font-mono font-bold",
-                  (@detail[:heartbeat_silence_seconds] || 0) >=
-                    @t.heartbeat_silence_yellow_threshold_seconds && "text-warning",
-                  (@detail[:heartbeat_silence_seconds] || 0) >=
-                    @t.heartbeat_silence_red_threshold_seconds && "text-error"
+                  "font-mono"
                 ]}>
                   {@detail[:heartbeat_silence_seconds] || 0}s
                 </span>
+              </div>
+              <div
+                id="proctoring-context-observations"
+                class="space-y-2 py-2 text-xs text-base-content/70"
+              >
+                <p>
+                  {gettext(
+                    "Context only, without points: %{seconds} seconds outside focus and %{saves} saves or code runs near unfocused samples. Delayed autosaves and ordinary focus changes are possible.",
+                    seconds: @detail[:unfocused_seconds] || 0,
+                    saves: @detail[:answer_contradictions] || 0
+                  )}
+                </p>
+                <p>
+                  {gettext(
+                    "Recorded events and technical gaps do not automatically mean a violation. The student receives no monitoring messages."
+                  )}
+                </p>
               </div>
               <div class="flex items-center justify-between py-1.5">
                 <span class="text-base-content/70">{gettext("Longest single paste")}</span>
@@ -586,18 +483,40 @@ defmodule AthenaWeb.ProctoringComponents do
     <p :if={@entries == []} class="text-base-content/70">
       {gettext("No notable activity was recorded for this attempt.")}
     </p>
-    <ol :if={@entries != []} id="proctoring-timeline" class="space-y-1">
-      <li
-        :for={entry <- @entries}
-        class="flex items-start gap-3 py-1.5 border-b border-base-200 last:border-0"
-      >
-        <span class="font-mono text-xs text-base-content/50 w-12 shrink-0 pt-0.5">
-          {format_offset(entry.offset)}
-        </span>
-        <.icon name={timeline_icon(entry.type)} class="size-4 shrink-0 mt-0.5 text-warning" />
-        <span class="text-base-content/80">{timeline_label(entry)}</span>
-      </li>
-    </ol>
+    <div :if={@entries != []} class="space-y-2">
+      <p id="proctoring-timeline-origin" class="text-xs text-base-content/70">
+        {gettext(
+          "Attempt started: %{at}. Elapsed time is +HH:MM:SS from this start; clock times use %{zone}.",
+          at: timeline_start(@entries),
+          zone: TimeZones.user_timezone()
+        )}
+      </p>
+      <p class="text-xs text-base-content/60">
+        {gettext(
+          "Browser events are shown when received by the server. Interval starts are estimated from reported durations. Older events may use the browser clock. An event is not a confirmed violation."
+        )}
+      </p>
+      <ol id="proctoring-timeline" class="space-y-1">
+        <li
+          :for={{entry, index} <- Enum.with_index(@entries)}
+          id={"proctoring-event-#{index}"}
+          class="flex flex-wrap items-start gap-3 py-2 border-b border-base-200 last:border-0"
+        >
+          <div class="font-mono text-xs text-base-content/60 w-36 shrink-0">
+            <span class="block font-bold">{format_offset(entry.offset)}</span>
+            <time
+              :if={entry[:at]}
+              datetime={DateTime.to_iso8601(entry.at)}
+              title={DateTime.to_iso8601(entry.at)}
+            >
+              {TimeZones.format(entry.at, "%d.%m.%Y %H:%M:%S")}
+            </time>
+          </div>
+          <.icon name={timeline_icon(entry.type)} class="size-4 shrink-0 mt-0.5 text-base-content/50" />
+          <span class="text-base-content/80 flex-1 min-w-40">{timeline_label(entry)}</span>
+        </li>
+      </ol>
+    </div>
     """
   end
 
@@ -658,12 +577,12 @@ defmodule AthenaWeb.ProctoringComponents do
     counts = detail[:event_counts] || %{}
 
     [
-      {gettext("Screenshot attempts (PrintScreen)"), "printscreen_attempt"},
-      {gettext("Copy attempts on the question"), "copy_attempt"},
-      {gettext("Cut attempts on the question"), "cut_attempt"},
+      {gettext("PrintScreen key events"), "printscreen_attempt"},
+      {gettext("Copy events on the question"), "copy_attempt"},
+      {gettext("Cut events on the question"), "cut_attempt"},
       {gettext("Same exam opened in multiple tabs"), "multi_tab_detected"},
       {gettext("Large pastes"), "large_paste"},
-      {gettext("Text inserted without typing"), "bulk_insert"}
+      {gettext("Text added without a recent input event"), "bulk_insert"}
     ]
     |> Enum.map(fn {label, key} -> %{label: label, value: counts[key] || 0} end)
   end
@@ -694,12 +613,12 @@ defmodule AthenaWeb.ProctoringComponents do
 
   # Labels
 
-  defp signal_label("printscreen_attempt"), do: gettext("Screenshot attempts (PrintScreen)")
-  defp signal_label("copy_attempt"), do: gettext("Copy attempts on the question")
-  defp signal_label("cut_attempt"), do: gettext("Cut attempts on the question")
+  defp signal_label("printscreen_attempt"), do: gettext("PrintScreen key events")
+  defp signal_label("copy_attempt"), do: gettext("Copy events on the question")
+  defp signal_label("cut_attempt"), do: gettext("Cut events on the question")
   defp signal_label("multi_tab_detected"), do: gettext("Same exam opened in multiple tabs")
   defp signal_label("large_paste"), do: gettext("Large pastes")
-  defp signal_label("bulk_insert"), do: gettext("Text inserted without typing")
+  defp signal_label("bulk_insert"), do: gettext("Text added without a recent input event")
   defp signal_label("away"), do: gettext("Time away from the exam")
   defp signal_label("silence_connected"), do: gettext("Browser connected but monitoring silent")
   defp signal_label("silence"), do: gettext("No signal from the browser")
@@ -815,19 +734,25 @@ defmodule AthenaWeb.ProctoringComponents do
     do: gettext("Page area narrowed (split view or side panel) for %{sec}s", sec: seconds(ms))
 
   defp timeline_label(%{type: :split_interval, duration_ms: ms}),
-    do: gettext("Window shared the screen with another window for %{sec}s", sec: seconds(ms))
+    do:
+      gettext("Window occupied part of the screen for %{sec}s; another window is not confirmed",
+        sec: seconds(ms)
+      )
 
   defp timeline_label(%{type: :answer_while_unfocused}),
-    do: gettext("An answer was recorded while the page was reported out of focus")
+    do:
+      gettext(
+        "Answer save or code run received near unfocused browser samples; delayed autosave is possible"
+      )
 
   defp timeline_label(%{type: :extended_display}),
     do: gettext("A second display is connected")
 
   defp timeline_label(%{type: :concurrent_session}),
-    do: gettext("Multiple exam sessions observed by the server")
+    do: gettext("Concurrent exam sessions confirmed by the server after the grace period")
 
   defp timeline_label(%{type: :inert_channel, duration_ms: ms}),
-    do: gettext("Only monitoring pings for %{sec}s; review needed", sec: seconds(ms))
+    do: gettext("Only monitoring pings for %{sec}s; the student may be reading", sec: seconds(ms))
 
   defp timeline_label(%{type: :clock_skew}),
     do: gettext("Browser event timestamps differ from server time")
@@ -840,28 +765,32 @@ defmodule AthenaWeb.ProctoringComponents do
       )
 
   defp timeline_label(%{type: :bulk_insert, chars: chars}),
-    do: gettext("%{n} characters appeared without typing", n: chars || 0)
+    do:
+      gettext(
+        "%{n} characters appeared without a recent input event; autofill or assistive input is possible",
+        n: chars || 0
+      )
 
   defp timeline_label(%{type: :window_geometry_changed, split: true}),
-    do: gettext("Window now shares the screen with another window")
+    do: gettext("Window now occupies part of the screen")
 
   defp timeline_label(%{type: :window_geometry_changed}),
     do: gettext("Window back to full size")
 
   defp timeline_label(%{type: :printscreen_attempt} = e),
-    do: with_count(gettext("Pressed PrintScreen"), e)
+    do: with_count(gettext("Pressed PrintScreen (screenshot not confirmed)"), e)
 
   defp timeline_label(%{type: :copy_attempt} = e),
-    do: with_count(gettext("Tried to copy the question"), e)
+    do: with_count(gettext("Copied question text"), e)
 
   defp timeline_label(%{type: :cut_attempt} = e),
-    do: with_count(gettext("Tried to cut question text"), e)
+    do: with_count(gettext("Cut question text"), e)
 
   defp timeline_label(%{type: :right_click_attempt} = e),
     do: with_count(gettext("Right-clicked the question"), e)
 
   defp timeline_label(%{type: :multi_tab_detected}),
-    do: gettext("The same exam was opened in another tab")
+    do: gettext("Browser reported another exam tab (not server-confirmed)")
 
   defp timeline_label(%{type: type}), do: to_string(type)
 
@@ -919,11 +848,20 @@ defmodule AthenaWeb.ProctoringComponents do
   defp review_label("confirmed"), do: gettext("Violation confirmed")
   defp review_label(_status), do: gettext("Reviewed - no violation")
 
+  defp timeline_start([%{started_at: at} | _]), do: TimeZones.format(at, "%d.%m.%Y %H:%M:%S")
+  defp timeline_start(_), do: "–"
+
   defp format_offset(seconds) do
-    minutes = div(seconds, 60)
+    hours = div(seconds, 3600)
+    minutes = div(rem(seconds, 3600), 60)
     rest = rem(seconds, 60)
 
-    "#{String.pad_leading(Integer.to_string(minutes), 2, "0")}:#{String.pad_leading(Integer.to_string(rest), 2, "0")}"
+    "+" <>
+      Enum.map_join(
+        [hours, minutes, rest],
+        ":",
+        &String.pad_leading(Integer.to_string(&1), 2, "0")
+      )
   end
 
   defp format_metric(nil, _kind), do: "0"
@@ -953,7 +891,7 @@ defmodule AthenaWeb.ProctoringComponents do
   defp risk_icon(:yellow), do: "hero-exclamation-triangle"
   defp risk_icon(:red), do: "hero-x-circle"
 
-  defp risk_label(:green), do: gettext("No violations")
-  defp risk_label(:yellow), do: gettext("Some violations")
-  defp risk_label(:red), do: gettext("High risk")
+  defp risk_label(:green), do: gettext("No scored signals")
+  defp risk_label(:yellow), do: gettext("Review recommended")
+  defp risk_label(:red), do: gettext("Priority review")
 end

@@ -287,6 +287,9 @@ defmodule Athena.Learning do
   defdelegate set_override(user, cohort, course, attrs), to: Schedules
   defdelegate clear_override(user, cohort, course, resource_type, resource_id), to: Schedules
 
+  @doc "Returns the shared editor revision for one account/team and block."
+  defdelegate draft_revision(account_id, cohort_id, block_id), to: DraftCache, as: :revision
+
   defdelegate subscribe_to_draft_updates(cohort_id, block_id), to: DraftCache
 
   defdelegate start_test_run(instructor, course_id, section_id), to: TestRuns, as: :start

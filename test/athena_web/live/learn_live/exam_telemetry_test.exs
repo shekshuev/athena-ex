@@ -10,7 +10,13 @@ defmodule AthenaWeb.LearnLive.ExamTelemetryTest do
 
   test "batches are bounded, scoped to this paper and cannot inject server events" do
     block = %{id: Ecto.UUID.generate(), section_id: Ecto.UUID.generate()}
-    socket = Phoenix.Component.assign(%Phoenix.LiveView.Socket{}, block: block, questions: [])
+
+    socket =
+      Phoenix.Component.assign(%Phoenix.LiveView.Socket{},
+        block: block,
+        questions: [],
+        submission: %{id: Ecto.UUID.generate()}
+      )
 
     event = %{
       "block_id" => block.id,
@@ -51,6 +57,31 @@ defmodule AthenaWeb.LearnLive.ExamTelemetryTest do
       )
 
     assert {[_], _} = ExamTelemetry.normalize_batch([event], socket)
+  end
+
+  test "exam timestamps and attempt identity are attached by the server" do
+    id = Ecto.UUID.generate()
+    block = %{id: Ecto.UUID.generate(), section_id: Ecto.UUID.generate()}
+
+    socket =
+      Phoenix.Component.assign(%Phoenix.LiveView.Socket{},
+        block: block,
+        questions: [],
+        submission: %{id: id}
+      )
+
+    event = %{
+      "block_id" => block.id,
+      "event_type" => "copy_attempt",
+      "occurred_at" => "2000-01-01T00:00:00Z",
+      "payload" => %{"exam_submission_id" => Ecto.UUID.generate(), "time_source" => "fake"}
+    }
+
+    {[accepted], _} = ExamTelemetry.normalize_batch([event], socket)
+    assert abs(DateTime.diff(accepted.occurred_at, DateTime.utc_now(), :second)) <= 1
+    assert accepted.payload["exam_submission_id"] == id
+    assert accepted.payload["time_source"] == "server_receipt"
+    assert accepted.client_occurred_at == ~U[2000-01-01 00:00:00Z]
   end
 
   for {kind, route} <- [{:quiz_exam, "exam"}, {:ticket_exam, "ticket"}] do
@@ -99,6 +130,52 @@ defmodule AthenaWeb.LearnLive.ExamTelemetryTest do
       render_click(view, "finish_exam")
       assert_redirect(view)
       assert Repo.get!(Submission, submission.id).status == :graded
+    end
+
+    test "#{kind}: even a red instructor review priority never reaches the student", %{conn: conn} do
+      question_id = Ecto.UUID.generate()
+
+      question = %{
+        "id" => question_id,
+        "type" => "quiz_question",
+        "content" => %{"question_type" => "exact_match", "body" => %{}, "correct_answer" => "ok"}
+      }
+
+      {view, submission} = mount_exam(conn, @kind, @route, question)
+
+      {:ok, monitor} =
+        Athena.Engagement.ProctoringMonitor.get_or_start(submission.id, nil, submission.block_id)
+
+      :sys.replace_state(monitor, fn state ->
+        %{state | server_multi_tab_detected: 1, counts: Map.put(state.counts, :large_paste, 1)}
+      end)
+
+      assert Athena.Engagement.evaluate_live_proctoring(submission.id, nil, submission.block_id)[
+               "risk_level"
+             ] == "red"
+
+      expire_telemetry(view)
+
+      render_hook(element(view, "#engagement-tracker"), "engagement_batch", %{
+        "events" => [
+          %{
+            "block_id" => submission.block_id,
+            "event_type" => "copy_attempt",
+            "occurred_at" => DateTime.to_iso8601(DateTime.utc_now())
+          }
+        ]
+      })
+
+      view |> form("##{@route}-quiz-#{question_id}", %{"answer" => "ok"}) |> render_change()
+
+      assert Repo.get_by!(Submission, parent_submission_id: submission.id).content["text_answer"] ==
+               "ok"
+
+      refute has_element?(view, ".proctoring-risk-badge")
+      refute has_element?(view, "#proctoring-detail-modal")
+      refute has_element?(view, "#fullscreen-gate")
+      refute has_element?(view, "#flash-error")
+      refute has_element?(view, "#flash-info")
     end
 
     test "#{kind}: silent monitoring never blocks saving code or enqueuing execution", %{

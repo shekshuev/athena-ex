@@ -45,6 +45,30 @@ defmodule Athena.Engagement.ProctoringTimelineTest do
     ])
   end
 
+  test "history is bounded by the attempt finish and its server-bound id", ctx do
+    record(ctx, ctx.block.id, :copy_attempt, 20, %{"exam_submission_id" => Ecto.UUID.generate()})
+    record(ctx, ctx.block.id, :copy_attempt, 30, %{"exam_submission_id" => ctx.submission.id})
+    record(ctx, ctx.block.id, :copy_attempt, 80)
+
+    sub = %{
+      ctx.submission
+      | content:
+          Map.put(
+            ctx.submission.content,
+            "proctoring_finished_at",
+            DateTime.to_iso8601(DateTime.add(@started_at, 60, :second))
+          )
+    }
+
+    assert [%{offset: 30, at: at, started_at: @started_at}] = ProctoringTimeline.build(sub)
+    assert at == DateTime.add(@started_at, 30, :second)
+  end
+
+  test "reported durations cannot move an interval before the attempt start", ctx do
+    record(ctx, ctx.question.id, :tab_visible, 10, %{"duration_ms" => 3_600_000})
+    assert [%{offset: 0, duration_ms: 10_000}] = ProctoringTimeline.build(ctx.submission)
+  end
+
   test "an absence is placed at the moment it began, using the duration the return event carries",
        ctx do
     record(ctx, ctx.question.id, :tab_visible, 100, %{"duration_ms" => 30_000})

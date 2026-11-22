@@ -157,6 +157,30 @@ defmodule Athena.Engagement.Events do
     end
   end
 
+  @doc "Normalizes exam events on the server receipt clock and binds them to one attempt."
+  def normalize_exam_event(event, section_id, submission_id) do
+    case normalize_event(event, section_id) do
+      nil ->
+        nil
+
+      normalized ->
+        now = DateTime.utc_now(:second)
+        {:ok, client_at, _} = DateTime.from_iso8601(event["occurred_at"])
+
+        payload =
+          if :erlang.external_size(normalized.payload) > 1_700, do: %{}, else: normalized.payload
+
+        payload =
+          payload
+          |> Map.put("exam_submission_id", submission_id)
+          |> Map.put("client_occurred_at", DateTime.to_iso8601(client_at))
+          |> Map.put("time_source", "server_receipt")
+
+        %{normalized | payload: payload, occurred_at: now}
+        |> Map.put(:client_occurred_at, client_at)
+    end
+  end
+
   defp parse_event_type(type) when is_binary(type) do
     Event.event_types()
     |> Enum.find(&(Atom.to_string(&1) == type))

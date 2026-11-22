@@ -1586,37 +1586,11 @@ defmodule Athena.Engagement.Metrics do
     |> add_if_true(metrics[:panic_debugging?] == true, :panic_debugging)
   end
 
-  # Only ever fires on `exam_metrics/1`'s output (`quiz_exam`/`ticket_exam`
-  # blocks) - every key read here is exam-prefixed or exam-exclusive (see
-  # the comment on `exam_metrics/1`), so this silently no-ops (via `add_if`'s
-  # `nil` clause) for every other block type's metrics map. Deliberately
-  # simple absolute thresholds, same idiom as every other flag in this
-  # module - this feeds the *dashboard* (student radar, course-wide flag
-  # rates), a lightweight "worth a look" indicator for any teacher browsing
-  # engagement analytics. It is not the same decision that drives the live
-  # per-attempt risk badge a grader acts on (reject, zero the score) - that
-  # one needs the cohort-relative, percentile-normalized comparison in
-  # `Athena.Engagement.Proctoring`/`ExamIntegrityStats`, precisely because a
-  # single absolute threshold here would flag an anxious student who
-  # revised their answer a lot exactly like it would flag someone who
-  # actually tried to cheat.
-  defp integrity_flags(metrics, config) do
-    []
-    |> add_if(metrics[:printscreen_count], &(&1 > 0), :printscreen_attempted)
-    |> add_if(metrics[:copy_attempt_count], &(&1 > 0), :copy_attempted)
-    |> add_if(metrics[:cut_attempt_count], &(&1 > 0), :cut_attempted)
-    |> add_if(metrics[:multi_tab_count], &(&1 > 0), :multi_tab_detected)
-    |> add_if(
-      metrics[:focus_loss_count],
-      &(&1 >= Keyword.get(config, :exam_focus_loss_threshold, 3)),
-      :excessive_tab_switching
-    )
-    |> add_if(
-      metrics[:exam_paste_ratio],
-      &(&1 > Keyword.get(config, :exam_paste_ratio_threshold, 0.6)),
-      :heavy_paste_on_exam
-    )
-  end
+  # Raw browsing metrics cannot establish an integrity violation. The graded
+  # attempt's conservative Proctoring result and the instructor's explicit
+  # review own that decision. Keep the raw measurements available for drilldown
+  # without independently turning a radar cell red for an ordinary action.
+  defp integrity_flags(_metrics, _config), do: []
 
   # Time on a block is judged against the teacher's own expectation when the
   # block has one (`expected_seconds`), otherwise against the cohort's

@@ -1,43 +1,16 @@
 defmodule Athena.Engagement.Layout do
   @moduledoc """
-  Server-side reading of the exam window's layout, built from raw geometry
-  samples the browser attaches to each heartbeat.
-
-  The browser used to decide for itself that "the window shares the screen"
-  and send only that verdict, which a modified client can simply never send.
-  Now it sends raw numbers (outer/inner size, screen size, DPR, focus,
-  visibility, fullscreen) every couple of seconds, and the *server*:
-
-    * classifies each sample (see `classify/2`);
-    * measures how long each state lasted using its own receipt times, so
-      the client can neither inflate nor hide durations - the time covered
-      by one heartbeat is capped by the real time since the previous one;
-    * keeps the intervals (they reach the teacher's timeline as
-      `split_interval` incidents);
-    * cross-checks "visible but not focused" time against the absences the
-      same browser reported through its events (see
-      `Athena.Engagement.Proctoring`), which exposes suppressed
-      blur/focus listeners.
-
-  Causes of a split:
-
-    * `"window"` - the browser window itself occupies only part of the
-      screen (snapped/tiled next to another window);
-    * `"viewport"` - the window is full size but the page area was narrowed
-      (split view / side-by-side tabs, a side panel). Measured against the
-      widest viewport seen so far, normalised by zoom. A docked DevTools
-      narrows the viewport the same way, so this cause is weighed at half.
-
-  Everything the browser sends is still self-reported; the server-observed
-  part is the time accounting and the cross-checks. State is plain data so
-  it can be checkpointed with the rest of the monitor.
+  Best-effort layout observations for instructor review, never proof of cheating.
+  Millisecond intervals are bounded by server monotonic receipt times. The
+  first batch and gaps without coverage establish a baseline without charging
+  time. Browser geometry/focus remain client-reported. Past time is never
+  reclassified after a wider viewport or a different screen is seen.
   """
 
   @max_samples 10
   @max_dim 20_000
-  @sample_interval_s 2
   @max_delta_s 30
-  @sample_ms @sample_interval_s * 1000
+  @stable_seconds 3
   @max_pending 20
   @max_contradiction_incidents 3
   @min_interval_s 5
@@ -47,6 +20,9 @@ defmodule Athena.Engagement.Layout do
   @type t :: %{
           baseline: float() | nil,
           baseline_aw: non_neg_integer() | nil,
+          baseline_ah: non_neg_integer() | nil,
+          baseline_dpr: number() | nil,
+          last_mono_ms: integer() | nil,
           mode: String.t(),
           run_started_ms: integer() | nil,
           run_seconds: float(),
@@ -73,6 +49,9 @@ defmodule Athena.Engagement.Layout do
     %{
       baseline: nil,
       baseline_aw: nil,
+      baseline_ah: nil,
+      baseline_dpr: nil,
+      last_mono_ms: nil,
       mode: "normal",
       run_started_ms: nil,
       run_seconds: 0.0,
@@ -85,9 +64,8 @@ defmodule Athena.Engagement.Layout do
       samples: 0,
       extended: false,
       last_fs: nil,
-      # Normal-looking seconds under the current baseline, kept so they can
-      # be re-judged if the page later turns out to have been narrow all
-      # along (see `maybe_retro/2`).
+      # Legacy checkpoint fields retained for compatibility; normal-looking
+      # time is never reclassified retrospectively.
       normal_s: 0.0,
       retro_base: nil,
       baseline_since_ms: nil,
@@ -108,31 +86,51 @@ defmodule Athena.Engagement.Layout do
   def valid?(%{} = layout) do
     template = new()
 
-    Enum.sort(Map.keys(layout)) == Enum.sort(Map.keys(template)) and
-      layout.mode in @modes and
-      Enum.all?(
-        [:run_seconds, :window_s, :viewport_s, :unfocused_s, :unfocused_run_s],
-        &(is_number(layout[&1]) and layout[&1] >= 0)
-      ) and
-      Enum.all?(
-        [:peeks, :samples, :contradictions],
-        &(is_integer(layout[&1]) and layout[&1] >= 0)
-      ) and
-      is_number(layout.normal_s) and layout.normal_s >= 0 and
-      (is_nil(layout.retro_base) or is_number(layout.retro_base)) and
-      (is_nil(layout.baseline_since_ms) or is_integer(layout.baseline_since_ms)) and
-      is_list(layout.pending) and length(layout.pending) <= @max_pending and
-      Enum.all?(layout.pending, &is_integer/1) and
-      (is_nil(layout.last_engaged) or is_boolean(layout.last_engaged)) and
-      is_boolean(layout.extended) and
-      (is_nil(layout.baseline) or is_number(layout.baseline)) and
-      (is_nil(layout.baseline_aw) or is_integer(layout.baseline_aw)) and
-      (is_nil(layout.run_started_ms) or is_integer(layout.run_started_ms)) and
-      (is_nil(layout.last_at_ms) or is_integer(layout.last_at_ms)) and
-      (is_nil(layout.last_fs) or is_boolean(layout.last_fs))
+    required = Map.keys(template) -- [:baseline_ah, :baseline_dpr, :last_mono_ms]
+
+    shape? =
+      Enum.all?(required, &Map.has_key?(layout, &1)) and
+        Enum.all?(Map.keys(layout), &Map.has_key?(template, &1))
+
+    shape? and valid_fields?(Map.merge(template, layout))
   end
 
   def valid?(_), do: false
+
+  defp valid_fields?(layout) do
+    groups = [
+      {[:run_seconds, :window_s, :viewport_s, :unfocused_s, :unfocused_run_s, :normal_s],
+       &non_negative_number?/1},
+      {[:peeks, :samples, :contradictions], &non_negative_integer?/1},
+      {[
+         :baseline_ah,
+         :last_mono_ms,
+         :baseline_since_ms,
+         :baseline_aw,
+         :run_started_ms,
+         :last_at_ms
+       ], &optional_integer?/1},
+      {[:baseline_dpr, :retro_base, :baseline], &optional_number?/1},
+      {[:last_engaged, :last_fs], &optional_boolean?/1},
+      {[:extended], &is_boolean/1}
+    ]
+
+    layout.mode in @modes and valid_pending?(layout.pending) and
+      Enum.all?(groups, fn {fields, validator} ->
+        Enum.all?(fields, &validator.(Map.fetch!(layout, &1)))
+      end)
+  end
+
+  defp non_negative_number?(value), do: is_number(value) and value >= 0
+  defp non_negative_integer?(value), do: is_integer(value) and value >= 0
+  defp optional_integer?(value), do: is_nil(value) or is_integer(value)
+  defp optional_number?(value), do: is_nil(value) or is_number(value)
+  defp optional_boolean?(value), do: is_nil(value) or is_boolean(value)
+
+  defp valid_pending?(pending) when is_list(pending),
+    do: length(pending) <= @max_pending and Enum.all?(pending, &is_integer/1)
+
+  defp valid_pending?(_), do: false
 
   @doc """
   Bounds and types untrusted samples from the client. Anything that is not
@@ -235,44 +233,92 @@ defmodule Athena.Engagement.Layout do
   def viewport_ratio(_), do: nil
 
   @doc """
-  Folds the samples that arrived with one heartbeat into the layout state.
-
-  Returns `{layout, incidents}`; `incidents` are new, ready-to-store
-  incident maps (a finished split interval, a first sighting of an extended
-  display). The time a heartbeat covers is the real time since the previous
-  one (at most #{@max_delta_s}s), shared equally among its samples.
+  Receives one bounded batch. With no previous receipt there is no elapsed
+  time to charge. Production callers supply a monotonic clock; tests may use
+  their explicit server timestamps. Missing or delayed batches break coverage.
   """
-  @spec ingest(t(), term(), DateTime.t()) :: {t(), [map()]}
-  def ingest(layout, raw_samples, %DateTime{} = now) do
+  def ingest(layout, raw_samples, %DateTime{} = now, monotonic_ms \\ nil) do
+    layout = Map.merge(new(), layout)
     samples = sanitize_samples(raw_samples)
     now_ms = DateTime.to_unix(now, :millisecond)
+    clock_ms = monotonic_ms || now_ms
+    previous_clock = layout.last_mono_ms
+    delta_ms = if is_integer(previous_clock), do: max(clock_ms - previous_clock, 0), else: 0
+    covered? = is_integer(previous_clock) and delta_ms <= @max_delta_s * 1000
+
+    {layout, closed} = prepare_coverage(layout, samples, covered?, now_ms)
 
     case samples do
       [] ->
-        {%{layout | last_at_ms: now_ms}, []}
+        {%{layout | last_at_ms: nil, last_mono_ms: nil, pending: []}, closed}
 
       _ ->
-        n = length(samples)
-
-        delta_s =
-          case layout.last_at_ms do
-            nil -> min(n * @sample_interval_s, @max_delta_s)
-            prev -> (now_ms - prev) |> div(1000) |> max(0) |> min(@max_delta_s)
-          end
-
-        run_ref_ms = layout.last_at_ms || now_ms - delta_s * 1000
-        per = delta_s / n
-
-        {layout, contradictions} = check_interactions(layout, samples, now_ms)
+        elapsed_ms = if covered?, do: delta_ms, else: 0
+        per = elapsed_ms / length(samples) / 1000
+        start_ms = now_ms - elapsed_ms
+        {layout, observations} = check_interactions(layout, samples, now_ms)
 
         {layout, incidents} =
-          Enum.reduce(samples, {layout, contradictions}, fn sample, {l, inc} ->
-            {l, new} = step(l, sample, per, run_ref_ms)
-            {l, inc ++ new}
+          samples
+          |> Enum.with_index()
+          |> Enum.reduce({layout, closed ++ observations}, fn {sample, index}, {l, acc} ->
+            at_ms = start_ms + round(index * per * 1000)
+            {l, added} = step(l, sample, per, at_ms)
+            {l, acc ++ added}
           end)
 
-        {%{layout | last_at_ms: now_ms, pending: [], last_engaged: engaged?(List.last(samples))},
-         incidents}
+        {%{
+           layout
+           | last_at_ms: now_ms,
+             last_mono_ms: clock_ms,
+             pending: [],
+             last_engaged: engaged?(List.last(samples))
+         }, incidents}
+    end
+  end
+
+  defp prepare_coverage(layout, samples, covered?, now_ms) do
+    if samples == [] or not covered? do
+      {fresh, incidents} = switch_mode(layout, "normal", layout.last_at_ms || now_ms)
+
+      {%{
+         fresh
+         | unfocused_s: max(fresh.unfocused_s - fresh.unfocused_run_s, 0),
+           unfocused_run_s: 0.0,
+           last_engaged: nil,
+           pending: []
+       }, incidents}
+    else
+      {layout, []}
+    end
+  end
+
+  @doc "Restores totals while discarding transient layout/focus and downtime."
+  def resume(saved) do
+    if valid?(saved) do
+      saved = Map.merge(new(), saved)
+
+      %{
+        saved
+        | last_at_ms: nil,
+          last_mono_ms: nil,
+          mode: "normal",
+          run_seconds: 0.0,
+          run_started_ms: nil,
+          baseline: nil,
+          baseline_aw: nil,
+          baseline_ah: nil,
+          baseline_dpr: nil,
+          retro_base: nil,
+          normal_s: 0.0,
+          baseline_since_ms: nil,
+          unfocused_s: max(saved.unfocused_s - saved.unfocused_run_s, 0),
+          unfocused_run_s: 0.0,
+          last_engaged: nil,
+          pending: []
+      }
+    else
+      new()
     end
   end
 
@@ -286,74 +332,34 @@ defmodule Athena.Engagement.Layout do
     layout =
       layout
       |> account_mode(mode, per)
-      |> account_normal(mode, sample, per)
       |> account_focus(sample, per)
 
     note_extended(layout, sample, retro ++ incidents, run_ref_ms)
   end
 
-  # A changed screen (another monitor, different resolution) invalidates the
-  # baseline - the ratio is only comparable on one screen.
-  defp update_baseline(layout, %{aw: aw} = sample, run_ref_ms) do
-    layout =
-      if layout.baseline_aw not in [nil, aw],
-        do: %{layout | baseline: nil, retro_base: nil, normal_s: 0.0, baseline_since_ms: nil},
-        else: layout
+  # A changed display scale or resolution invalidates the viewport baseline.
+  # Reset conservatively on DPR changes too: zoom must not create a violation.
+  defp update_baseline(layout, sample, _at_ms) do
+    changed? =
+      layout.baseline_aw not in [nil, sample.aw] or
+        layout.baseline_ah not in [nil, sample.ah] or
+        layout.baseline_dpr not in [nil, sample.dpr]
 
-    layout = %{layout | baseline_aw: aw}
+    baseline = if changed?, do: nil, else: layout.baseline
+    ratio = if sample.fs == true, do: nil, else: viewport_ratio(sample)
+    baseline = if is_number(ratio), do: max(baseline || 0.0, ratio), else: baseline
 
-    # Fullscreen samples are left out of the baseline: going fullscreen
-    # (which an exam may require) widens the page without that meaning the
-    # time before it was spent narrowed.
-    case if(sample.fs == true, do: nil, else: viewport_ratio(sample)) do
-      nil ->
-        {layout, []}
-
-      ratio ->
-        maybe_retro(%{layout | baseline: max(layout.baseline || 0.0, ratio)}, run_ref_ms)
-    end
+    {%{
+       layout
+       | baseline: baseline,
+         baseline_aw: sample.aw,
+         baseline_ah: sample.ah,
+         baseline_dpr: sample.dpr,
+         normal_s: 0.0,
+         retro_base: nil,
+         baseline_since_ms: nil
+     }, []}
   end
-
-  # The baseline is the widest page seen, so a page that was narrow from the
-  # very first sample looked "normal" to itself. When it later turns out much
-  # wider, the time spent under the narrower baseline is re-judged as a
-  # narrowed page (same threshold as a live detection) and reported once.
-  defp maybe_retro(%{retro_base: nil} = layout, run_ref_ms),
-    do: {%{layout | retro_base: layout.baseline, baseline_since_ms: run_ref_ms}, []}
-
-  defp maybe_retro(layout, run_ref_ms) do
-    if layout.retro_base / layout.baseline < thresholds().viewport_ratio do
-      incidents =
-        if layout.normal_s >= @min_interval_s do
-          [
-            %{
-              "type" => "split_interval",
-              "cause" => "viewport",
-              "at" => iso(layout.baseline_since_ms),
-              "seconds" => round(layout.normal_s),
-              "retroactive" => true
-            }
-          ]
-        else
-          []
-        end
-
-      {%{
-         layout
-         | viewport_s: layout.viewport_s + layout.normal_s,
-           normal_s: 0.0,
-           retro_base: layout.baseline,
-           baseline_since_ms: run_ref_ms
-       }, incidents}
-    else
-      {layout, []}
-    end
-  end
-
-  defp account_normal(layout, "normal", %{fs: fs}, per) when fs != true,
-    do: %{layout | normal_s: layout.normal_s + per}
-
-  defp account_normal(layout, _mode, _sample, _per), do: layout
 
   defp switch_mode(%{mode: mode} = layout, mode, _run_ref_ms), do: {layout, []}
 
@@ -369,11 +375,19 @@ defmodule Athena.Engagement.Layout do
 
   defp account_mode(layout, "normal", _per), do: layout
 
-  defp account_mode(layout, "window", per),
-    do: %{layout | run_seconds: layout.run_seconds + per, window_s: layout.window_s + per}
+  defp account_mode(layout, mode, per) do
+    total = layout.run_seconds + per
 
-  defp account_mode(layout, "viewport", per),
-    do: %{layout | run_seconds: layout.run_seconds + per, viewport_s: layout.viewport_s + per}
+    credited =
+      cond do
+        total < @stable_seconds -> 0.0
+        layout.run_seconds < @stable_seconds -> total
+        true -> per
+      end
+
+    key = if mode == "window", do: :window_s, else: :viewport_s
+    layout |> Map.put(:run_seconds, total) |> Map.update!(key, &(&1 + credited))
+  end
 
   # "Not looking at the exam": hidden, or visible but without input focus.
   # The open run is tracked separately so a blur still in progress (whose
@@ -402,11 +416,9 @@ defmodule Athena.Engagement.Layout do
   defp note_extended(layout, _sample, incidents, _run_ref_ms), do: {layout, incidents}
 
   @doc """
-  Notes an answer interaction the server itself observed (an answer saved, a
-  code run) at `at_ms`. It is checked against the focus samples of the next
-  heartbeat: nobody can answer in a page that was neither visible nor
-  focused before, around and after the moment, so such an interaction means
-  the samples are false or the answer did not come from the page's UI.
+  Notes receipt of an answer save or code run. Surrounding focus samples
+  provide context only: brief focus changes and delayed autosaves are normal.
+  These observations never earn risk points.
   """
   @spec note_interaction(t(), integer()) :: t()
   def note_interaction(layout, at_ms) when is_integer(at_ms),
@@ -427,12 +439,9 @@ defmodule Athena.Engagement.Layout do
 
     hits =
       layout.pending
-      |> Enum.filter(&(&1 >= prev and &1 <= now_ms))
       |> Enum.filter(fn at_ms ->
-        index = (at_ms - prev) |> div(@sample_ms) |> min(count - 1)
-        around = for k <- (index - 1)..(index + 1)//1, k >= 0 and k < count, do: Enum.at(flags, k)
-        around = if index - 1 < 0, do: [layout.last_engaged != false | around], else: around
-        around != [] and Enum.all?(around, &(&1 == false))
+        at_ms >= prev and at_ms <= now_ms and
+          unfocused_near?(layout, flags, count, prev, now_ms, at_ms)
       end)
 
     new_total = layout.contradictions + length(hits)
@@ -445,6 +454,13 @@ defmodule Athena.Engagement.Layout do
       |> Enum.map(&%{"type" => "answer_while_unfocused", "at" => iso(&1), "seconds" => 0})
 
     {%{layout | contradictions: new_total}, incidents}
+  end
+
+  defp unfocused_near?(layout, flags, count, prev, now_ms, at_ms) do
+    index = min(div((at_ms - prev) * count, max(now_ms - prev, 1)), count - 1)
+    around = for k <- (index - 1)..(index + 1)//1, k >= 0 and k < count, do: Enum.at(flags, k)
+    around = if index - 1 < 0, do: [layout.last_engaged != false | around], else: around
+    around != [] and Enum.all?(around, &(&1 == false))
   end
 
   defp engaged?(%{vis: vis, f: f}), do: not (vis == false or f == false)

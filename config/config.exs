@@ -193,6 +193,10 @@ config :athena, Athena.Engagement,
   exam_paste_ratio_threshold: 0.6,
   exam_risk_yellow_points: 2,
   exam_risk_red_points: 4,
+  # A red review priority needs independently confirmed parallel sessions.
+  # Technical gaps and ordinary input actions are context, never scored.
+  exam_require_server_corroboration_for_red: true,
+  exam_concurrent_session_grace_seconds: 10,
   # How a rate is judged against the others sitting the same exam: from
   # `min_baseline_peers` others on, it counts when it clears
   # max(floor, ratio * median, median + spread_k * spread); below

@@ -514,10 +514,13 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
       cohort = Ecto.UUID.generate()
 
       ProctoringMonitor.heartbeat(sid, cohort, "block", List.duplicate(half_window(), 5))
+      assert ProctoringMonitor.snapshot(sid).split_seconds == 0
+      age_layout(sid)
+      ProctoringMonitor.heartbeat(sid, cohort, "block", List.duplicate(half_window(), 5))
 
       reading = ProctoringMonitor.snapshot(sid)
       assert reading.split_seconds == 10
-      assert reading.layout_samples == 5
+      assert reading.layout_samples == 10
     end
 
     test "a plain heartbeat leaves the layout untouched" do
@@ -541,6 +544,9 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
       sid = Ecto.UUID.generate()
       cohort = Ecto.UUID.generate()
 
+      ProctoringMonitor.heartbeat(sid, cohort, "block", List.duplicate(half_window(), 5))
+      _ = ProctoringMonitor.snapshot(sid)
+      age_layout(sid)
       ProctoringMonitor.heartbeat(sid, cohort, "block", List.duplicate(half_window(), 5))
 
       assert Enum.any?(
@@ -614,6 +620,21 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
 
       assert ProctoringMonitor.snapshot(sid).split_peeks == 0
     end
+  end
+
+  defp age_layout(sid) do
+    {:ok, pid} = ProctoringMonitor.get_or_start(sid, nil, nil)
+
+    :sys.replace_state(pid, fn state ->
+      %{
+        state
+        | layout: %{
+            state.layout
+            | last_mono_ms: System.monotonic_time(:millisecond) - 10_000,
+              last_at_ms: System.system_time(:millisecond) - 10_000
+          }
+      }
+    end)
   end
 
   defp age_attempt(sid) do

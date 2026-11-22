@@ -72,3 +72,29 @@ test("fullscreen is observed without overlays, requests or forced exits", (t) =>
   assert.equal(events.at(-1).payload.events[0].event_type, "fullscreen_exit");
   tracker.destroyed();
 });
+
+test("tab announcements are acknowledged once without an echo loop, including cached clients", (t) => {
+  const { tracker, events } = mountTracker(t);
+  const sent = [];
+  const old = Object.getOwnPropertyDescriptor(globalThis, "BroadcastChannel");
+  class Channel {
+    postMessage(message) { sent.push(message); }
+    close() {}
+  }
+  Object.defineProperty(globalThis, "BroadcastChannel", { configurable: true, value: Channel });
+  t.after(() => Object.defineProperty(globalThis, "BroadcastChannel", old));
+  const hook = Object.assign({}, EngagementHooks.MultiTabGuard, {
+    el: { dataset: { submissionId: "attempt", blockId: "question" } },
+  });
+  hook.mounted();
+  assert.equal(sent[0].kind, "hello");
+  for (let i = 0; i < 20; i++) hook.channel.onmessage({ data: { tabId: "cached-peer" } });
+  assert.equal(sent.length, 2);
+  assert.equal(sent[1].kind, "ack");
+  assert.equal(events.length, 1);
+  hook.channel.onmessage({ data: { tabId: "another-peer", kind: "ack", to: hook.tabId } });
+  assert.equal(sent.length, 2);
+  assert.equal(events.length, 1);
+  hook.destroyed();
+  tracker.destroyed();
+});

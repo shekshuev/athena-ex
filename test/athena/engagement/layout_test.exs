@@ -1,9 +1,8 @@
 defmodule Athena.Engagement.LayoutTest do
   use ExUnit.Case, async: true
-
   alias Athena.Engagement.Layout
 
-  # A maximized 1920x1080 window, focused and visible.
+  @t0 ~U[2026-11-17 10:00:00Z]
   defp sample(overrides \\ %{}) do
     Map.merge(
       %{
@@ -23,309 +22,192 @@ defmodule Athena.Engagement.LayoutTest do
     )
   end
 
-  defp half_window, do: sample(%{"ow" => 960, "iw" => 945})
+  defp half, do: sample(%{"ow" => 960, "iw" => 945})
+  defp at(ms), do: DateTime.add(@t0, ms, :millisecond)
+  defp ingest(l, samples, ms), do: Layout.ingest(l, samples, at(ms))
 
-  defp ingest(layout, samples, at), do: Layout.ingest(layout, samples, at)
+  test "normalization bounds hostile samples and tolerates missing APIs" do
+    assert Layout.sanitize_samples(nil) == []
+    assert Layout.sanitize_samples([1, nil, "x"]) == []
+    assert length(Layout.sanitize_samples(List.duplicate(sample(), 100))) == 10
 
-  @t0 ~U[2026-11-17 10:00:00Z]
+    [s] =
+      Layout.sanitize_samples([sample(%{"ow" => Integer.pow(10, 400), "iw" => -1, "f" => "yes"})])
 
-  describe "sanitize_samples/1" do
-    test "drops anything that is not a list of maps" do
-      assert Layout.sanitize_samples(nil) == []
-      assert Layout.sanitize_samples("x") == []
-      assert Layout.sanitize_samples([1, "a", nil]) == []
-    end
-
-    test "keeps at most ten samples" do
-      assert length(Layout.sanitize_samples(List.duplicate(sample(), 40))) == 10
-    end
-
-    test "clamps absurd numbers and turns unknown flags into nil" do
-      [s] = Layout.sanitize_samples([sample(%{"ow" => 1.0e12, "iw" => -5, "f" => "yes"})])
-
-      assert s.ow == 20_000
-      assert s.iw == 0
-      assert s.f == nil
-    end
+    assert s.ow == 20_000
+    assert s.iw == 0
+    assert s.f == nil
   end
 
-  describe "classify/2" do
-    test "a maximized window is normal" do
-      [s] = Layout.sanitize_samples([sample()])
-      assert Layout.classify(s, Layout.viewport_ratio(s)) == :normal
-    end
-
-    test "a half-width window is a window split" do
-      [s] = Layout.sanitize_samples([half_window()])
-      assert Layout.classify(s, nil) == :window
-    end
-
-    test "a half-height window is a window split" do
-      [s] = Layout.sanitize_samples([sample(%{"oh" => 500, "ih" => 420})])
-      assert Layout.classify(s, nil) == :window
-    end
-
-    test "fullscreen is never a split" do
-      [s] = Layout.sanitize_samples([Map.put(half_window(), "fs", true)])
-      assert Layout.classify(s, nil) == :normal
-    end
-
-    test "small screens are ignored" do
-      [s] = Layout.sanitize_samples([sample(%{"aw" => 800, "ow" => 300, "iw" => 290})])
-      assert Layout.classify(s, nil) == :normal
-    end
-
-    test "a narrowed page in a full-size window is a viewport split" do
-      [full] = Layout.sanitize_samples([sample()])
-      [narrow] = Layout.sanitize_samples([sample(%{"iw" => 950})])
-
-      assert Layout.classify(narrow, Layout.viewport_ratio(full)) == :viewport
-    end
-
-    test "browser zoom does not look like a narrowed page" do
-      [full] = Layout.sanitize_samples([sample()])
-      # 150% zoom: fewer CSS pixels, proportionally more device pixels each.
-      [zoomed] = Layout.sanitize_samples([sample(%{"iw" => 1270, "dpr" => 1.5})])
-
-      assert Layout.classify(zoomed, Layout.viewport_ratio(full)) == :normal
-    end
+  test "classification distinguishes window sharing and a narrowed viewport" do
+    [full, narrow, h] = Layout.sanitize_samples([sample(), sample(%{"iw" => 950}), half()])
+    assert Layout.classify(full, nil) == :normal
+    assert Layout.classify(h, nil) == :window
+    assert Layout.classify(narrow, Layout.viewport_ratio(full)) == :viewport
+    [vertical] = Layout.sanitize_samples([sample(%{"oh" => 500})])
+    assert Layout.classify(vertical, nil) == :window
+    [fullscreen] = Layout.sanitize_samples([Map.put(half(), "fs", true)])
+    assert Layout.classify(fullscreen, nil) == :normal
+    [small] = Layout.sanitize_samples([sample(%{"aw" => 800, "ow" => 300})])
+    assert Layout.classify(small, nil) == :normal
   end
 
-  describe "ingest/3 - time is measured by the server" do
-    test "the first heartbeat covers two seconds per sample" do
-      {layout, _} = ingest(Layout.new(), List.duplicate(half_window(), 5), @t0)
-
-      assert Layout.summary(layout).split_seconds == 10
-    end
-
-    test "later heartbeats cover the real time since the previous one" do
-      {layout, _} = ingest(Layout.new(), [sample()], @t0)
-      {layout, _} = ingest(layout, List.duplicate(half_window(), 5), DateTime.add(@t0, 10))
-
-      assert Layout.summary(layout).split_seconds == 10
-    end
-
-    test "a client cannot inflate time by sending many samples in a short ping" do
-      {layout, _} = ingest(Layout.new(), [sample()], @t0)
-      {layout, _} = ingest(layout, List.duplicate(half_window(), 10), DateTime.add(@t0, 1))
-
-      assert Layout.summary(layout).split_seconds == 1
-    end
-
-    test "a long pause between pings is capped" do
-      {layout, _} = ingest(Layout.new(), [sample()], @t0)
-      {layout, _} = ingest(layout, [half_window()], DateTime.add(@t0, 3_600))
-
-      assert Layout.summary(layout).split_seconds == 30
-    end
-
-    test "a ping without samples adds nothing" do
-      {layout, incidents} = ingest(Layout.new(), [], @t0)
-
-      assert incidents == []
-      assert Layout.summary(layout).layout_samples == 0
-    end
-
-    test "a narrowed page counts as viewport time, not window time" do
-      {layout, _} = ingest(Layout.new(), [sample()], @t0)
-      narrow = sample(%{"iw" => 950})
-      {layout, _} = ingest(layout, List.duplicate(narrow, 5), DateTime.add(@t0, 10))
-
-      summary = Layout.summary(layout)
-      assert summary.viewport_split_seconds == 10
-      assert summary.split_seconds == 0
-    end
-
-    test "a changed screen resets the viewport baseline" do
-      {layout, _} = ingest(Layout.new(), [sample()], @t0)
-      other_screen = sample(%{"aw" => 2560, "ow" => 2560, "iw" => 1280})
-      {layout, _} = ingest(layout, [other_screen], DateTime.add(@t0, 2))
-
-      assert Layout.summary(layout).viewport_split_seconds == 0
-    end
+  test "the first heartbeat cannot invent time, regardless of sample count" do
+    {layout, []} = ingest(Layout.new(), List.duplicate(half(), 10), 0)
+    assert Layout.summary(layout).split_seconds == 0
+    assert Layout.open_incident(layout) == nil
+    assert Layout.summary(layout).layout_samples == 10
   end
 
-  describe "ingest/3 - intervals" do
-    test "a finished split becomes a split_interval incident" do
-      {layout, []} = ingest(Layout.new(), List.duplicate(half_window(), 5), @t0)
-      {layout, incidents} = ingest(layout, [sample()], DateTime.add(@t0, 10))
+  test "frequent heartbeats retain fractional seconds rather than rounding them away" do
+    {layout, _} = ingest(Layout.new(), [half()], 0)
 
-      assert [%{"type" => "split_interval", "cause" => "window", "seconds" => 10}] = incidents
-      assert layout.mode == "normal"
-    end
+    {layout, _} =
+      Enum.reduce(1..20, {layout, []}, fn i, {l, _} -> ingest(l, [half()], i * 500) end)
 
-    test "a split that is still going on is available as an open incident" do
-      {layout, _} = ingest(Layout.new(), List.duplicate(half_window(), 5), @t0)
-
-      assert %{"type" => "split_interval", "cause" => "window"} = Layout.open_incident(layout)
-    end
-
-    test "a blink of a split is not worth an incident" do
-      {layout, _} = ingest(Layout.new(), [half_window()], @t0)
-      {_layout, incidents} = ingest(layout, [sample()], DateTime.add(@t0, 2))
-
-      assert incidents == []
-    end
-
-    test "an extended display is noted once" do
-      {layout, [incident]} = ingest(Layout.new(), [sample(%{"ext" => true})], @t0)
-      {_layout, again} = ingest(layout, [sample(%{"ext" => true})], DateTime.add(@t0, 2))
-
-      assert incident["type"] == "extended_display"
-      assert again == []
-    end
+    assert Layout.summary(layout).split_seconds == 10
   end
 
-  describe "a page that was narrow from the start" do
-    defp narrow, do: sample(%{"iw" => 950})
-
-    test "time under the narrow baseline is re-judged once the page turns out wider" do
-      {layout, _} = ingest(Layout.new(), List.duplicate(narrow(), 5), @t0)
-      assert Layout.summary(layout).viewport_split_seconds == 0
-
-      {layout, incidents} = ingest(layout, [sample()], DateTime.add(@t0, 2))
-
-      assert Layout.summary(layout).viewport_split_seconds == 10
-
-      assert [%{"type" => "split_interval", "cause" => "viewport", "seconds" => 10}] =
-               incidents
-
-      assert hd(incidents)["retroactive"] == true
-    end
-
-    test "is reported once, not again on every later sample" do
-      {layout, _} = ingest(Layout.new(), List.duplicate(narrow(), 5), @t0)
-      {layout, _} = ingest(layout, [sample()], DateTime.add(@t0, 2))
-      {layout, incidents} = ingest(layout, [sample()], DateTime.add(@t0, 4))
-
-      assert incidents == []
-      assert Layout.summary(layout).viewport_split_seconds == 10
-    end
-
-    test "going fullscreen does not re-judge the time before it" do
-      {layout, _} = ingest(Layout.new(), List.duplicate(narrow(), 5), @t0)
-      fullscreen = sample(%{"fs" => true, "iw" => 1920})
-      {layout, incidents} = ingest(layout, [fullscreen], DateTime.add(@t0, 2))
-
-      assert incidents == []
-      assert Layout.summary(layout).viewport_split_seconds == 0
-    end
-
-    test "a small widening is not a retroactive split" do
-      {layout, _} = ingest(Layout.new(), List.duplicate(sample(%{"iw" => 1700}), 5), @t0)
-      {layout, incidents} = ingest(layout, [sample()], DateTime.add(@t0, 2))
-
-      assert incidents == []
-      assert Layout.summary(layout).viewport_split_seconds == 0
-    end
+  test "production intervals use the monotonic clock even when the wall clock jumps" do
+    {layout, _} = Layout.ingest(Layout.new(), [half()], @t0, 1000)
+    {layout, _} = Layout.ingest(layout, [half()], at(3_600_000), 11_000)
+    assert Layout.summary(layout).split_seconds == 10
   end
 
-  describe "answers against focus samples" do
-    defp unfocused, do: sample(%{"f" => false})
-
-    # Heartbeat at @t0, an answer 3s later, heartbeat at +10s.
-    defp answered(first, second) do
-      {layout, _} = ingest(Layout.new(), first, @t0)
-      layout = Layout.note_interaction(layout, DateTime.to_unix(@t0, :millisecond) + 3_000)
-      ingest(layout, second, DateTime.add(@t0, 10))
-    end
-
-    test "an answer while the samples around it show an unfocused page is a contradiction" do
-      {layout, [incident]} = answered([unfocused()], List.duplicate(unfocused(), 5))
-
-      assert Layout.summary(layout).answer_contradictions == 1
-      assert incident["type"] == "answer_while_unfocused"
-    end
-
-    test "a hidden page counts the same as an unfocused one" do
-      hidden = sample(%{"vis" => false})
-      {layout, _} = answered([hidden], List.duplicate(hidden, 5))
-
-      assert Layout.summary(layout).answer_contradictions == 1
-    end
-
-    test "one engaged sample around the answer is enough to clear it" do
-      second = [unfocused(), unfocused(), sample(), unfocused(), unfocused()]
-      {layout, incidents} = answered([unfocused()], second)
-
-      assert Layout.summary(layout).answer_contradictions == 0
-      assert incidents == []
-    end
-
-    test "an engaged page before the answer clears an answer in the first slot" do
-      {layout, layout_incidents} = ingest(Layout.new(), [sample()], @t0)
-      assert layout_incidents == []
-
-      layout = Layout.note_interaction(layout, DateTime.to_unix(@t0, :millisecond) + 500)
-      {layout, _} = ingest(layout, List.duplicate(unfocused(), 5), DateTime.add(@t0, 10))
-
-      assert Layout.summary(layout).answer_contradictions == 0
-    end
-
-    test "an answer older than the previous heartbeat has no samples to be judged by" do
-      {layout, _} = ingest(Layout.new(), [unfocused()], @t0)
-      layout = Layout.note_interaction(layout, DateTime.to_unix(@t0, :millisecond) - 5_000)
-      {layout, _} = ingest(layout, List.duplicate(unfocused(), 5), DateTime.add(@t0, 10))
-
-      assert Layout.summary(layout).answer_contradictions == 0
-    end
-
-    test "only the first few are written as incidents, all are counted" do
-      {layout, _} = ingest(Layout.new(), [unfocused()], @t0)
-      base = DateTime.to_unix(@t0, :millisecond)
-
-      layout =
-        Enum.reduce(1..6, layout, fn i, l -> Layout.note_interaction(l, base + i * 1_000) end)
-
-      {layout, incidents} = ingest(layout, List.duplicate(unfocused(), 5), DateTime.add(@t0, 10))
-
-      assert Layout.summary(layout).answer_contradictions == 6
-      assert length(incidents) == 3
-    end
+  test "each sample's interval starts at its own position within a batch" do
+    {layout, _} = ingest(Layout.new(), [sample()], 0)
+    {layout, _} = ingest(layout, [sample(), sample(), half(), half(), half()], 10_000)
+    assert %{"at" => "2026-11-17T10:00:04.000Z", "seconds" => 6} = Layout.open_incident(layout)
+    {_, incidents} = ingest(layout, [sample()], 12_000)
+    assert [%{"at" => "2026-11-17T10:00:04.000Z", "seconds" => 6}] = incidents
   end
 
-  describe "focus time" do
-    test "time still out of focus is not counted until the focus is back" do
-      {layout, _} = ingest(Layout.new(), List.duplicate(sample(%{"f" => false}), 5), @t0)
-      assert Layout.summary(layout).unfocused_seconds == 0
-
-      {layout, _} = ingest(layout, [sample()], DateTime.add(@t0, 2))
-      assert Layout.summary(layout).unfocused_seconds == 10
-    end
-
-    test "a hidden page counts as out of focus" do
-      {layout, _} = ingest(Layout.new(), List.duplicate(sample(%{"vis" => false}), 5), @t0)
-      {layout, _} = ingest(layout, [sample()], DateTime.add(@t0, 2))
-
-      assert Layout.summary(layout).unfocused_seconds == 10
-    end
+  test "short resize jitter is not accumulated as split time" do
+    {layout, _} = ingest(Layout.new(), [sample()], 0)
+    {layout, _} = ingest(layout, [half()], 1000)
+    {layout, incidents} = ingest(layout, [sample()], 2000)
+    assert Layout.summary(layout).split_seconds == 0
+    assert incidents == []
   end
 
-  describe "note_mouse_exit/2" do
-    test "counts sideways exits while the window shares the screen" do
-      {layout, _} = ingest(Layout.new(), [half_window()], @t0)
-
-      layout = layout |> Layout.note_mouse_exit("left") |> Layout.note_mouse_exit("right")
-      assert Layout.summary(layout).split_peeks == 2
-    end
-
-    test "ignores top and bottom exits and exits in a normal layout" do
-      {split, _} = ingest(Layout.new(), [half_window()], @t0)
-      assert Layout.summary(Layout.note_mouse_exit(split, "top")).split_peeks == 0
-
-      {normal, _} = ingest(Layout.new(), [sample()], @t0)
-      assert Layout.summary(Layout.note_mouse_exit(normal, "left")).split_peeks == 0
-    end
+  test "long pauses break coverage instead of attributing missing time to a layout" do
+    {layout, _} = ingest(Layout.new(), [half()], 0)
+    {layout, _} = ingest(layout, [half()], 10_000)
+    {layout, incidents} = ingest(layout, [half()], 3_600_000)
+    assert Layout.summary(layout).split_seconds == 10
+    assert [%{"seconds" => 10}] = incidents
+    assert Layout.open_incident(layout) == nil
   end
 
-  describe "valid?/1" do
-    test "accepts a layout and rejects tampered shapes" do
-      assert Layout.valid?(Layout.new())
-      refute Layout.valid?(%{})
-      refute Layout.valid?(nil)
-      refute Layout.valid?(%{Layout.new() | mode: "elsewhere"})
-      refute Layout.valid?(%{Layout.new() | window_s: -1.0})
-      refute Layout.valid?(Map.put(Layout.new(), :extra, 1))
-    end
+  test "missing samples break coverage and do not let the next sample fill the gap" do
+    {layout, _} = ingest(Layout.new(), [sample()], 0)
+    {layout, _} = ingest(layout, [], 10_000)
+    {layout, _} = ingest(layout, [half()], 20_000)
+    assert Layout.summary(layout).split_seconds == 0
+  end
+
+  test "a later wider viewport never retroactively labels earlier time as split" do
+    narrow = sample(%{"iw" => 950})
+    {layout, _} = ingest(Layout.new(), [narrow], 0)
+    {layout, _} = ingest(layout, [narrow], 10_000)
+    {layout, incidents} = ingest(layout, [sample()], 20_000)
+    assert Layout.summary(layout).viewport_split_seconds == 0
+    assert incidents == []
+  end
+
+  test "normal zoom and display-scale changes reset the viewport baseline" do
+    {layout, _} = ingest(Layout.new(), [sample()], 0)
+    zoom = sample(%{"iw" => 1270, "dpr" => 1.5})
+    {layout, _} = ingest(layout, [zoom], 10_000)
+    {layout, _} = ingest(layout, [sample()], 20_000)
+    assert Layout.summary(layout).viewport_split_seconds == 0
+    other = sample(%{"aw" => 2560, "ow" => 2560, "iw" => 1280})
+    {layout, _} = ingest(layout, [other], 30_000)
+    assert Layout.summary(layout).viewport_split_seconds == 0
+  end
+
+  test "a sustained viewport reduction is measured without counting it as a window" do
+    {layout, _} = ingest(Layout.new(), [sample()], 0)
+    {layout, _} = ingest(layout, [sample(%{"iw" => 950})], 10_000)
+    assert Layout.summary(layout).viewport_split_seconds == 10
+    assert Layout.summary(layout).split_seconds == 0
+  end
+
+  test "a second display is reported once without inventing an interval" do
+    {layout, [incident]} = ingest(Layout.new(), [sample(%{"ext" => true})], 0)
+    {layout, []} = ingest(layout, [sample(%{"ext" => true})], 10_000)
+    assert incident["type"] == "extended_display"
+    assert {:ok, observed_at, 0} = DateTime.from_iso8601(incident["at"])
+    assert DateTime.compare(observed_at, @t0) == :eq
+    assert Layout.summary(layout).extended_display
+  end
+
+  test "open focus loss is excluded until a later sample reports focus" do
+    unfocused = sample(%{"f" => false})
+    {layout, _} = ingest(Layout.new(), [unfocused], 0)
+    {layout, _} = ingest(layout, [unfocused], 10_000)
+    assert Layout.summary(layout).unfocused_seconds == 0
+    {layout, _} = ingest(layout, [sample()], 12_000)
+    assert Layout.summary(layout).unfocused_seconds == 10
+  end
+
+  test "focus observations are approximate and retain surrounding engaged samples" do
+    unfocused = sample(%{"f" => false})
+    {layout, _} = ingest(Layout.new(), [unfocused], 0)
+    layout = Layout.note_interaction(layout, DateTime.to_unix(at(3000), :millisecond))
+
+    {layout, incidents} =
+      ingest(layout, [unfocused, sample(), unfocused, unfocused, unfocused], 10_000)
+
+    assert Layout.summary(layout).answer_contradictions == 0
+    assert incidents == []
+  end
+
+  test "an all-unfocused batch records context without declaring a violation" do
+    unfocused = sample(%{"f" => false})
+    {layout, _} = ingest(Layout.new(), [unfocused], 0)
+    layout = Layout.note_interaction(layout, DateTime.to_unix(at(3000), :millisecond))
+
+    {layout, [%{"type" => "answer_while_unfocused"}]} =
+      ingest(layout, List.duplicate(unfocused, 5), 10_000)
+
+    assert Layout.summary(layout).answer_contradictions == 1
+  end
+
+  test "resume preserves totals without promoting unfinished focus loss or downtime" do
+    unfocused = Map.put(half(), "f", false)
+    {layout, _} = ingest(Layout.new(), [unfocused], 0)
+    {layout, _} = ingest(layout, [unfocused], 10_000)
+    resumed = Layout.resume(layout)
+    assert Layout.summary(resumed).split_seconds == 10
+    assert Layout.summary(resumed).unfocused_seconds == 0
+    assert resumed.pending == []
+    assert resumed.baseline == nil
+    {resumed, _} = ingest(resumed, [unfocused], 3_600_000)
+    assert Layout.summary(resumed).split_seconds == 10
+  end
+
+  test "old checkpoints are accepted, malformed checkpoints are rejected" do
+    old = Map.drop(Layout.new(), [:baseline_ah, :baseline_dpr, :last_mono_ms])
+    assert Layout.valid?(old)
+    assert Layout.valid?(Layout.resume(old))
+    refute Layout.valid?(%{})
+    refute Layout.valid?(nil)
+    refute Layout.valid?(Map.put(Layout.new(), :extra, 1))
+    refute Layout.valid?(%{Layout.new() | window_s: -1})
+    assert Layout.resume(%{}) == Layout.new()
+  end
+
+  test "pointer exits are contextual and only sideways exits are counted" do
+    {layout, _} = ingest(Layout.new(), [half()], 0)
+
+    layout =
+      layout
+      |> Layout.note_mouse_exit("left")
+      |> Layout.note_mouse_exit("right")
+      |> Layout.note_mouse_exit("top")
+
+    assert Layout.summary(layout).split_peeks == 2
+    assert Layout.summary(Layout.note_mouse_exit(Layout.new(), "left")).split_peeks == 0
   end
 end
