@@ -100,6 +100,13 @@ defmodule Athena.Engagement.ProctoringTest do
                away_incidents: 0,
                away_total_seconds: 0,
                mouse_away_seconds: 0,
+               split_seconds: 0,
+               viewport_split_seconds: 0,
+               unfocused_seconds: 0,
+               unreported_unfocused_seconds: 0,
+               split_peeks: 0,
+               answer_contradictions: 0,
+               extended_display: false,
                max_paste_chars: 0,
                typing: %{},
                incidents: [],
@@ -598,6 +605,131 @@ defmodule Athena.Engagement.ProctoringTest do
     assert fields["server_points"] == 2
     assert fields["client_points"] == 2
     assert fields["points"] == 4
+  end
+
+  describe "evaluate/3 - split screen by duration" do
+    defp split_signal(fields), do: Enum.find(fields["signals"], &(&1["key"] == "split_screen"))
+
+    test "a short split is a single point, scored on the client side" do
+      fields = evaluate(reading(%{}, %{split_seconds: 40}))
+
+      assert %{"points" => 1, "basis" => "duration", "origin" => "client"} = split_signal(fields)
+    end
+
+    test "below the minimum nothing is scored" do
+      assert split_signal(evaluate(reading(%{}, %{split_seconds: 20}))) == nil
+    end
+
+    test "a long split reaches yellow on its own but never red" do
+      fields = evaluate(reading(%{}, %{split_seconds: 590}))
+
+      assert split_signal(fields)["points"] == 2
+      assert fields["risk_level"] == "yellow"
+    end
+
+    test "red also needs a large share of the attempt and sideways pointer exits" do
+      long = %{split_seconds: 500, viewport_split_seconds: 200}
+
+      assert split_signal(evaluate(reading(%{}, long)))["points"] == 2
+
+      fields = evaluate(reading(%{}, Map.put(long, :split_peeks, 3)))
+      assert split_signal(fields)["points"] == 4
+      assert fields["risk_level"] == "red"
+    end
+
+    test "a narrowed page counts half" do
+      assert split_signal(evaluate(reading(%{}, %{viewport_split_seconds: 40}))) == nil
+
+      assert split_signal(evaluate(reading(%{}, %{viewport_split_seconds: 70})))["points"] == 1
+    end
+
+    test "sideways exits make a split matter sooner" do
+      fields = evaluate(reading(%{}, %{split_seconds: 40, split_peeks: 3}))
+      assert split_signal(fields)["points"] == 2
+    end
+
+    test "the announced-count signal still applies when no samples were sent" do
+      fields = evaluate(reading(%{split_screen: 2}))
+
+      assert %{"points" => 2, "basis" => "count"} = split_signal(fields)
+    end
+
+    test "one split reported both ways is scored once" do
+      fields = evaluate(reading(%{split_screen: 1}, %{split_seconds: 40}))
+
+      assert [%{"points" => 1}] = Enum.filter(fields["signals"], &(&1["key"] == "split_screen"))
+    end
+
+    test "the stored breakdown carries the layout figures" do
+      fields =
+        evaluate(
+          reading(%{}, %{
+            split_seconds: 40,
+            viewport_split_seconds: 5,
+            split_peeks: 2,
+            extended_display: true
+          })
+        )
+
+      assert fields["split_seconds"] == 40
+      assert fields["viewport_split_seconds"] == 5
+      assert fields["split_peeks"] == 2
+      assert fields["extended_display"] == true
+    end
+  end
+
+  describe "evaluate/3 - answers recorded while the page was unfocused" do
+    defp contradiction(fields),
+      do: Enum.find(fields["signals"], &(&1["key"] == "answer_while_unfocused"))
+
+    test "a single one is tolerated" do
+      assert contradiction(evaluate(reading(%{}, %{answer_contradictions: 1}))) == nil
+    end
+
+    test "a few are a server-side yellow" do
+      fields = evaluate(reading(%{}, %{answer_contradictions: 2}))
+
+      assert %{"points" => 2, "origin" => "server", "value" => 2} = contradiction(fields)
+      assert fields["server_points"] == 2
+      assert fields["answer_contradictions"] == 2
+    end
+
+    test "many are red" do
+      fields = evaluate(reading(%{}, %{answer_contradictions: 5}))
+
+      assert contradiction(fields)["points"] == 4
+      assert fields["risk_level"] == "red"
+    end
+  end
+
+  describe "evaluate/3 - focus time the browser did not report" do
+    defp unreported(fields),
+      do: Enum.find(fields["signals"], &(&1["key"] == "unreported_focus_loss"))
+
+    test "time out of focus that reported absences explain is fine" do
+      fields = evaluate(reading(%{}, %{unfocused_seconds: 100, away_total_seconds: 90}))
+
+      assert unreported(fields) == nil
+      assert fields["unreported_unfocused_seconds"] == 0
+    end
+
+    test "small differences stay within tolerance" do
+      assert unreported(evaluate(reading(%{}, %{unfocused_seconds: 60}))) == nil
+    end
+
+    test "unexplained focus loss is a server-side yellow" do
+      fields = evaluate(reading(%{}, %{unfocused_seconds: 100, away_total_seconds: 10}))
+
+      assert %{"points" => 2, "origin" => "server", "value" => 70} = unreported(fields)
+      assert fields["server_points"] == 2
+    end
+
+    test "a lot of unexplained focus loss is red" do
+      fields = evaluate(reading(%{}, %{unfocused_seconds: 300}))
+
+      assert unreported(fields)["points"] == 4
+      assert fields["risk_level"] == "red"
+    end
   end
 
   # Runs `fun` with the (normally off) p5 "red needs server corroboration"

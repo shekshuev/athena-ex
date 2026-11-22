@@ -137,6 +137,38 @@ defmodule Athena.Engagement.ProctoringTimelineTest do
              [:silence_connected, :concurrent_session, :inert_channel, :clock_skew]
   end
 
+  test "split intervals keep their cause and duration, and a second display is listed", ctx do
+    incidents = [
+      %{
+        "type" => "split_interval",
+        "cause" => "viewport",
+        "at" => DateTime.to_iso8601(DateTime.add(@started_at, 120, :second)),
+        "seconds" => 90
+      },
+      %{
+        "type" => "extended_display",
+        "at" => DateTime.to_iso8601(DateTime.add(@started_at, 300, :second)),
+        "seconds" => 0
+      },
+      %{
+        "type" => "answer_while_unfocused",
+        "at" => DateTime.to_iso8601(DateTime.add(@started_at, 400, :second)),
+        "seconds" => 0
+      }
+    ]
+
+    submission = %{
+      ctx.submission
+      | content: Map.put(ctx.submission.content, "incidents", incidents)
+    }
+
+    assert [
+             %{type: :split_interval, offset: 120, duration_ms: 90_000, source: "viewport"},
+             %{type: :extended_display, offset: 300},
+             %{type: :answer_while_unfocused, offset: 400}
+           ] = ProctoringTimeline.build(submission)
+  end
+
   describe "one absence is one line" do
     test "an Alt-Tab that fired both tab_visible and window_focus is a single entry", ctx do
       record(ctx, ctx.block.id, :window_focus, 100, %{"duration_ms" => 20_000})

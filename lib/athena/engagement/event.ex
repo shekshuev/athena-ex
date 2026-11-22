@@ -116,23 +116,15 @@ defmodule Athena.Engagement.Event do
     # `printscreen_attempt` fires on a `keydown` for the Windows
     # `PrintScreen` key - macOS screenshot shortcuts (Cmd+Shift+3/4/5) are
     # OS-level and invisible to any web page, so this only ever catches the
-    # Windows case. `copy_attempt`/`cut_attempt` fire on a native
-    # `copy`/`cut` DOM event inside a container explicitly marked
-    # no-copy (the question prompt) - the container also blocks the native
-    # action, so these mean "the student tried anyway", not that any text
-    # was actually captured. See `Athena.Engagement.ProctoringMonitor` for
-    # how these get turned into a live risk indicator during an attempt.
+    # Windows case. `copy_attempt`/`cut_attempt` observe native clipboard
+    # events on exam prompts without blocking the browser action.
+    # See `Athena.Engagement.ProctoringMonitor` for the instructor's risk view.
     :printscreen_attempt,
     :copy_attempt,
     :cut_attempt,
 
-    # Right-click (`contextmenu`) inside a question-prompt container marked
-    # no-copy, `quiz_exam`/`ticket_exam` only - see `NoCopyGuard`. Unlike
-    # copy/cut, right-clicking has ordinary innocent causes (inspecting
-    # layout, a misclick, unfamiliarity with the block), so a raw count
-    # isn't damning the way an actual clipboard event is; this is a
-    # cohort-relative behavioral-outlier signal, not hard evidence - see
-    # `Athena.Engagement.Proctoring`.
+    # Native context-menu use on an exam prompt, observed by `ClipboardTracker`.
+    # The menu is never blocked. This is a behavioral signal for the instructor.
     :right_click_attempt,
 
     # Complements `tab_hidden`/`tab_visible` - the window losing/gaining OS
@@ -175,18 +167,20 @@ defmodule Athena.Engagement.Event do
     :offline_period,
 
     # The pointer left the browser window and came back. Payload
-    # `{duration_ms}`. Catches reading a neighbouring window by hovering it
+    # `{duration_ms, edge}` (`edge`: the side of the page it left through). Catches reading a neighbouring window by hovering it
     # (scrolling works without a click), which never fires blur or
     # visibilitychange.
     :mouse_left,
 
     # The window's outer size relative to the screen changed class
     # (maximized vs. tiled/half). Payload `{ratio, split}`. Uses outer
-    # dimensions so browser zoom and docked DevTools do not trigger it.
+    # dimensions so browser zoom and docked DevTools do not trigger it. The
+    # server's own, duration-based reading of the layout does not rely on
+    # this event - see `Athena.Engagement.Layout`.
     :window_geometry_changed,
 
-    # Left fullscreen during an exam that requires it, emitted on return
-    # with `{duration_ms}`. Only exams with `require_fullscreen` emit it.
+    # Left voluntarily entered fullscreen, emitted on return with `{duration_ms}`.
+    # Fullscreen is observed, never required or requested by the exam.
     :fullscreen_exit
   ]
 

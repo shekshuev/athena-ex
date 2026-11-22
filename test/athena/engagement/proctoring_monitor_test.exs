@@ -487,6 +487,135 @@ defmodule Athena.Engagement.ProctoringMonitorTest do
     end
   end
 
+  describe "layout samples on heartbeats" do
+    defp layout_sample(overrides \\ %{}) do
+      Map.merge(
+        %{
+          "ow" => 1920,
+          "oh" => 1040,
+          "iw" => 1905,
+          "ih" => 950,
+          "aw" => 1920,
+          "ah" => 1040,
+          "dpr" => 1.0,
+          "f" => true,
+          "vis" => true,
+          "ext" => false,
+          "fs" => false
+        },
+        overrides
+      )
+    end
+
+    defp half_window, do: layout_sample(%{"ow" => 960, "iw" => 945})
+
+    test "split time is measured from the samples" do
+      sid = Ecto.UUID.generate()
+      cohort = Ecto.UUID.generate()
+
+      ProctoringMonitor.heartbeat(sid, cohort, "block", List.duplicate(half_window(), 5))
+
+      reading = ProctoringMonitor.snapshot(sid)
+      assert reading.split_seconds == 10
+      assert reading.layout_samples == 5
+    end
+
+    test "a plain heartbeat leaves the layout untouched" do
+      sid = Ecto.UUID.generate()
+
+      ProctoringMonitor.heartbeat(sid, Ecto.UUID.generate(), "block")
+
+      assert ProctoringMonitor.snapshot(sid).layout_samples == 0
+    end
+
+    test "garbage samples are ignored" do
+      sid = Ecto.UUID.generate()
+
+      ProctoringMonitor.heartbeat(sid, Ecto.UUID.generate(), "block", "nope")
+      ProctoringMonitor.heartbeat(sid, Ecto.UUID.generate(), "block", [1, nil, "x"])
+
+      assert ProctoringMonitor.snapshot(sid).layout_samples == 0
+    end
+
+    test "a finished split lands in the incidents, and so does one still going" do
+      sid = Ecto.UUID.generate()
+      cohort = Ecto.UUID.generate()
+
+      ProctoringMonitor.heartbeat(sid, cohort, "block", List.duplicate(half_window(), 5))
+
+      assert Enum.any?(
+               ProctoringMonitor.snapshot(sid).incidents,
+               &(&1["type"] == "split_interval")
+             )
+
+      ProctoringMonitor.heartbeat(sid, cohort, "block", [layout_sample()])
+      incidents = ProctoringMonitor.snapshot(sid).incidents
+
+      assert [%{"cause" => "window", "seconds" => 10}] =
+               Enum.filter(incidents, &(&1["type"] == "split_interval"))
+    end
+
+    test "the pointer leaving sideways during a split is counted" do
+      sid = Ecto.UUID.generate()
+      cohort = Ecto.UUID.generate()
+
+      ProctoringMonitor.heartbeat(sid, cohort, "block", [half_window()])
+
+      ProctoringMonitor.report_events(sid, cohort, "block", [
+        %{event_type: :mouse_left, payload: %{"duration_ms" => 3_000, "edge" => "right"}},
+        %{event_type: :mouse_left, payload: %{"duration_ms" => 3_000, "edge" => "top"}}
+      ])
+
+      assert ProctoringMonitor.snapshot(sid).split_peeks == 1
+    end
+
+    test "an answer recorded while the samples say the page was unfocused is counted" do
+      sid = Ecto.UUID.generate()
+      cohort = Ecto.UUID.generate()
+      unfocused = layout_sample(%{"f" => false})
+
+      ProctoringMonitor.heartbeat(sid, cohort, "block", [unfocused])
+
+      ProctoringMonitor.report_events(sid, cohort, "block", [
+        %{event_type: :answer_changed, payload: %{}}
+      ])
+
+      ProctoringMonitor.heartbeat(sid, cohort, "block", List.duplicate(unfocused, 5))
+
+      reading = ProctoringMonitor.snapshot(sid)
+      assert reading.answer_contradictions == 1
+      assert Enum.any?(reading.incidents, &(&1["type"] == "answer_while_unfocused"))
+    end
+
+    test "an answer on a focused page is not a contradiction" do
+      sid = Ecto.UUID.generate()
+      cohort = Ecto.UUID.generate()
+
+      ProctoringMonitor.heartbeat(sid, cohort, "block", [layout_sample()])
+
+      ProctoringMonitor.report_events(sid, cohort, "block", [
+        %{event_type: :answer_changed, payload: %{}}
+      ])
+
+      ProctoringMonitor.heartbeat(sid, cohort, "block", [layout_sample()])
+
+      assert ProctoringMonitor.snapshot(sid).answer_contradictions == 0
+    end
+
+    test "the pointer leaving sideways in a normal layout is not counted" do
+      sid = Ecto.UUID.generate()
+      cohort = Ecto.UUID.generate()
+
+      ProctoringMonitor.heartbeat(sid, cohort, "block", [layout_sample()])
+
+      ProctoringMonitor.report_events(sid, cohort, "block", [
+        %{event_type: :mouse_left, payload: %{"duration_ms" => 3_000, "edge" => "left"}}
+      ])
+
+      assert ProctoringMonitor.snapshot(sid).split_peeks == 0
+    end
+  end
+
   defp age_attempt(sid) do
     pid = start_supervised!({ProctoringMonitor, {sid, nil, "block"}})
 

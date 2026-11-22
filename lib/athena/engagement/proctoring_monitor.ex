@@ -35,7 +35,7 @@ defmodule Athena.Engagement.ProctoringMonitor do
 
   use GenServer
 
-  alias Athena.Engagement.{ExamIntegrityStats, Proctoring, ProctoringCheckpoint}
+  alias Athena.Engagement.{ExamIntegrityStats, Layout, Proctoring, ProctoringCheckpoint}
 
   @registry Athena.Engagement.ProctoringMonitorRegistry
   @supervisor Athena.Engagement.ProctoringMonitorSupervisor
@@ -171,10 +171,13 @@ defmodule Athena.Engagement.ProctoringMonitor do
   interesting happened, so a gap between two of these is itself a signal
   (see `Athena.Engagement.Proctoring` for how it factors into risk level).
   """
-  @spec heartbeat(binary(), binary() | nil, binary()) :: :ok
-  def heartbeat(submission_id, cohort_id, block_id) do
+  @spec heartbeat(binary(), binary() | nil, binary(), list()) :: :ok
+  def heartbeat(submission_id, cohort_id, block_id, layout_samples \\ []) do
     {:ok, pid} = get_or_start(submission_id, cohort_id, block_id)
-    GenServer.cast(pid, :heartbeat)
+    # `layout_samples` are the raw window-geometry samples the browser
+    # attached to this ping; `Athena.Engagement.Layout` bounds and judges
+    # them. An empty list is a plain liveness ping.
+    GenServer.cast(pid, {:heartbeat, layout_samples})
   end
 
   @doc """
@@ -290,6 +293,9 @@ defmodule Athena.Engagement.ProctoringMonitor do
       # "channel alive but inert" check; `inert_flagged` dedups the incident.
       last_signal_at: now,
       inert_flagged: false,
+      # Server-side reading of the window layout (split screen, focus time),
+      # built from samples riding on heartbeats - see `Athena.Engagement.Layout`.
+      layout: Layout.new(),
       max_connected_silence_seconds: 0,
       incidents: [],
       away_intervals: [],
@@ -336,6 +342,14 @@ defmodule Athena.Engagement.ProctoringMonitor do
   @impl true
   def handle_cast(:heartbeat, state) do
     state = note_activity(state)
+    broadcast_updated(state)
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast({:heartbeat, layout_samples}, state) do
+    state = state |> note_activity() |> ingest_layout(layout_samples)
     broadcast_updated(state)
 
     {:noreply, state}
@@ -499,6 +513,17 @@ defmodule Athena.Engagement.ProctoringMonitor do
     state
     |> bump(:mouse_left)
     |> Map.update!(:mouse_away_ms, &(&1 + sane_duration_ms(event, state)))
+    |> note_mouse_exit(event)
+  end
+
+  # An answer interaction the server itself saw (these two arrive from the
+  # exam LiveView, never from the browser's batch). It is also checked
+  # against the focus samples of the next heartbeat - see `Layout`.
+  defp apply_event(%{event_type: type} = event, state)
+       when type in [:answer_changed, :code_run_attempt] do
+    state
+    |> bump(type)
+    |> note_interaction(event)
   end
 
   defp apply_event(%{event_type: type}, state) when type in @counted_event_types,
@@ -507,6 +532,26 @@ defmodule Athena.Engagement.ProctoringMonitor do
   defp apply_event(_event, state), do: state
 
   defp bump(state, key), do: %{state | counts: Map.update!(state.counts, key, &(&1 + 1))}
+
+  # The pointer leaving sideways while the window shares the screen is the
+  # pointer going to the neighbouring window; the layout state decides.
+  defp note_interaction(state, event),
+    do: %{state | layout: Layout.note_interaction(state.layout, finished_at_ms(event))}
+
+  defp note_mouse_exit(state, event),
+    do: %{state | layout: Layout.note_mouse_exit(state.layout, payload(event)["edge"])}
+
+  # Folds a heartbeat's layout samples into the layout state (time measured
+  # by the server's own clock) and stores any finished-interval incidents.
+  defp ingest_layout(state, samples) do
+    {layout, incidents} = Layout.ingest(state.layout, samples, DateTime.utc_now())
+
+    %{
+      state
+      | layout: layout,
+        incidents: Enum.take(state.incidents ++ incidents, -@max_incidents)
+    }
+  end
 
   # The interval ends when the server received the "back" event and began
   # `duration_ms` earlier; overlapping intervals (Alt+Tab fires both
@@ -702,8 +747,10 @@ defmodule Athena.Engagement.ProctoringMonitor do
       mouse_away_seconds: div(state.mouse_away_ms, 1000),
       max_paste_chars: state.max_paste_chars,
       typing: state.typing,
-      incidents: state.incidents
+      # A split that is still going on belongs on the timeline too.
+      incidents: state.incidents ++ List.wrap(Layout.open_incident(state.layout))
     }
+    |> Map.merge(Layout.summary(state.layout))
   end
 
   defp empty_reading do
@@ -722,6 +769,7 @@ defmodule Athena.Engagement.ProctoringMonitor do
       typing: initial_typing(),
       incidents: []
     }
+    |> Map.merge(Layout.summary(Layout.new()))
   end
 
   # Merges overlapping intervals into distinct absences, then returns
@@ -853,6 +901,7 @@ defmodule Athena.Engagement.ProctoringMonitor do
           state
           |> Map.merge(Map.take(saved, @checkpointable_keys))
           |> Map.put(:tab_hidden, false)
+          |> restore_layout(saved)
         else
           state
         end
@@ -862,10 +911,24 @@ defmodule Athena.Engagement.ProctoringMonitor do
     end
   end
 
+  # The layout state is checkpointed beside the required keys but is
+  # optional on restore, so a checkpoint written before it existed (or one
+  # whose layout fails validation) still restores everything else.
+  defp restore_layout(state, %{layout: layout}) do
+    if Layout.valid?(layout) do
+      # Downtime must not be charged as time in any layout state.
+      %{state | layout: %{layout | last_at_ms: nil, unfocused_run_s: 0.0}}
+    else
+      state
+    end
+  end
+
+  defp restore_layout(state, _saved), do: state
+
   defp persist_checkpoint(state) do
     ProctoringCheckpoint.save(state.submission_id, %{
       version: 1,
-      state: Map.take(state, @checkpointable_keys)
+      state: state |> Map.take(@checkpointable_keys) |> Map.put(:layout, state.layout)
     })
   end
 

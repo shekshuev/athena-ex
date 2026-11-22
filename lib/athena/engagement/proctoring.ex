@@ -131,6 +131,10 @@ defmodule Athena.Engagement.Proctoring do
     end
   end
 
+  # Slack between the focus time the layout samples show and the absences the
+  # browser reported: sampling granularity, an absence still being reported.
+  @unfocused_tolerance_seconds 20
+
   @doc """
   Full evaluation of an exam attempt at its current reading (from
   `ProctoringMonitor.snapshot/1` or `finalize/1`). Read-only - never
@@ -174,7 +178,9 @@ defmodule Athena.Engagement.Proctoring do
           connected_silence_signals(Map.get(reading, :max_connected_silence_seconds, 0), t),
           "server"
         ) ++
-        tag(split_screen_signals(counts), "client") ++
+        tag(split_signals(reading, counts, t), "client") ++
+        tag(unreported_focus_signals(reading, t), "server") ++
+        tag(answer_contradiction_signals(reading, t), "server") ++
         tag(typing_signals(Map.get(reading, :typing, %{}), t), "client") ++
         tag(relative, "client")
 
@@ -199,6 +205,14 @@ defmodule Athena.Engagement.Proctoring do
       "elapsed_minutes" => reading.elapsed_minutes,
       "heartbeat_silence_seconds" => silence_seconds,
       "connected_silence_seconds" => Map.get(reading, :max_connected_silence_seconds, 0),
+      "split_seconds" => Map.get(reading, :split_seconds, 0),
+      "viewport_split_seconds" => Map.get(reading, :viewport_split_seconds, 0),
+      "unfocused_seconds" => Map.get(reading, :unfocused_seconds, 0),
+      "unreported_unfocused_seconds" => unreported_unfocused_seconds(reading),
+      "split_peeks" => Map.get(reading, :split_peeks, 0),
+      "answer_contradictions" => Map.get(reading, :answer_contradictions, 0),
+      "extended_display" => Map.get(reading, :extended_display, false),
+      "layout_samples" => Map.get(reading, :layout_samples, 0),
       "away_incidents" => Map.get(reading, :away_incidents, 0),
       "away_total_seconds" => Map.get(reading, :away_total_seconds, 0),
       "mouse_away_seconds" => Map.get(reading, :mouse_away_seconds, 0),
@@ -327,6 +341,122 @@ defmodule Athena.Engagement.Proctoring do
       1 -> [%{"key" => "split_screen", "points" => 1, "value" => 1, "basis" => "count"}]
       n -> [%{"key" => "split_screen", "points" => 2, "value" => n, "basis" => "count"}]
     end
+  end
+
+  # Split screen, judged by how long it lasted (server-measured time of the
+  # layout samples, see `Athena.Engagement.Layout`) instead of how many
+  # times the browser announced it. A narrowed page area (split view) counts
+  # half - a docked DevTools or side panel looks the same. Time alone tops
+  # out at the yellow bar: a small window all exam is not proof, so red
+  # also needs a share of the attempt and the pointer repeatedly leaving
+  # sideways (towards the neighbouring window). The old count-based signal
+  # stays as a floor, so a browser that sends no samples is judged as
+  # before and the same split is never scored twice.
+  defp split_signals(reading, counts, t) do
+    window = Map.get(reading, :split_seconds, 0)
+    viewport = Map.get(reading, :viewport_split_seconds, 0)
+    peeks = Map.get(reading, :split_peeks, 0)
+    weighted = window + viewport * 0.5
+    elapsed_s = max(Map.get(reading, :elapsed_minutes, 0) * 60.0, 1.0)
+    share = weighted / elapsed_s
+
+    long? = weighted >= t.split_yellow_seconds
+    sizeable? = weighted >= 60 and share >= t.split_yellow_share
+
+    points =
+      cond do
+        weighted >= t.split_red_seconds and share >= t.split_red_share and peeks >= 3 ->
+          t.red_points
+
+        long? or sizeable? ->
+          t.yellow_points
+
+        weighted >= t.split_min_seconds and peeks >= 3 ->
+          t.yellow_points
+
+        weighted >= t.split_min_seconds ->
+          1
+
+        true ->
+          0
+      end
+
+    counted = split_screen_signals(counts)
+    counted_points = counted |> Enum.map(& &1["points"]) |> Enum.sum()
+
+    if points > 0 and points >= counted_points do
+      [
+        %{
+          "key" => "split_screen",
+          "points" => points,
+          "value" => round(weighted),
+          "window_seconds" => window,
+          "viewport_seconds" => viewport,
+          "peeks" => peeks,
+          "basis" => "duration"
+        }
+      ]
+    else
+      counted
+    end
+  end
+
+  # Time the browser's own samples put outside the exam (hidden, or visible
+  # without focus) that none of its absence events accounted for. An honest
+  # browser reports every such stretch as a blur/hide event; a gap means the
+  # listeners were suppressed or the samples are false - the two streams
+  # contradict each other, which the server sees without trusting either.
+  defp unreported_focus_signals(reading, t) do
+    seconds = unreported_unfocused_seconds(reading)
+
+    cond do
+      seconds >= t.unreported_focus_red_seconds ->
+        [unreported_signal(t.red_points, seconds)]
+
+      seconds >= t.unreported_focus_yellow_seconds ->
+        [unreported_signal(t.yellow_points, seconds)]
+
+      true ->
+        []
+    end
+  end
+
+  # Answers the server itself recorded while the browser's own samples said
+  # the page was neither visible nor focused - before, at and after that
+  # moment. A page in that state cannot be answered through its interface;
+  # either the samples are false or the answer was sent around the UI.
+  defp answer_contradiction_signals(reading, t) do
+    n = Map.get(reading, :answer_contradictions, 0)
+
+    cond do
+      n >= t.answer_contradiction_red -> [contradiction_signal(t.red_points, n)]
+      n >= t.answer_contradiction_yellow -> [contradiction_signal(t.yellow_points, n)]
+      true -> []
+    end
+  end
+
+  defp contradiction_signal(points, n),
+    do: %{
+      "key" => "answer_while_unfocused",
+      "points" => points,
+      "value" => n,
+      "basis" => "count"
+    }
+
+  defp unreported_signal(points, seconds),
+    do: %{
+      "key" => "unreported_focus_loss",
+      "points" => points,
+      "value" => seconds,
+      "basis" => "duration"
+    }
+
+  defp unreported_unfocused_seconds(reading) do
+    max(
+      Map.get(reading, :unfocused_seconds, 0) - Map.get(reading, :away_total_seconds, 0) -
+        @unfocused_tolerance_seconds,
+      0
+    )
   end
 
   defp typing_signals(typing, t) do
@@ -541,7 +671,22 @@ defmodule Athena.Engagement.Proctoring do
       # connected-silence) at or above the red bar - client-only evidence is
       # capped to :yellow. Off by default (no behavior change until enabled).
       require_server_corroboration_for_red:
-        Keyword.get(config, :exam_require_server_corroboration_for_red, false)
+        Keyword.get(config, :exam_require_server_corroboration_for_red, false),
+      # Split screen by duration (seconds of window-sharing, with a narrowed
+      # page counting half) and its share of the attempt.
+      split_min_seconds: Keyword.get(config, :exam_split_min_seconds, 30),
+      split_yellow_seconds: Keyword.get(config, :exam_split_yellow_seconds, 300),
+      split_yellow_share: Keyword.get(config, :exam_split_yellow_share, 0.10),
+      split_red_seconds: Keyword.get(config, :exam_split_red_seconds, 600),
+      split_red_share: Keyword.get(config, :exam_split_red_share, 0.50),
+      # Seconds out of focus per the layout samples that no reported absence
+      # explains (beyond a fixed tolerance).
+      unreported_focus_yellow_seconds:
+        Keyword.get(config, :exam_unreported_focus_yellow_seconds, 45),
+      unreported_focus_red_seconds: Keyword.get(config, :exam_unreported_focus_red_seconds, 180),
+      # Answers recorded while the layout samples say the page was unfocused.
+      answer_contradiction_yellow: Keyword.get(config, :exam_answer_contradiction_yellow, 2),
+      answer_contradiction_red: Keyword.get(config, :exam_answer_contradiction_red, 5)
     }
   end
 
@@ -588,6 +733,13 @@ defmodule Athena.Engagement.Proctoring do
     away_incidents: {"away_incidents", 0},
     away_total_seconds: {"away_total_seconds", 0},
     mouse_away_seconds: {"mouse_away_seconds", 0},
+    split_seconds: {"split_seconds", 0},
+    viewport_split_seconds: {"viewport_split_seconds", 0},
+    unfocused_seconds: {"unfocused_seconds", 0},
+    unreported_unfocused_seconds: {"unreported_unfocused_seconds", 0},
+    split_peeks: {"split_peeks", 0},
+    answer_contradictions: {"answer_contradictions", 0},
+    extended_display: {"extended_display", false},
     max_paste_chars: {"max_paste_chars", 0},
     typing: {"typing", %{}},
     incidents: {"incidents", []},

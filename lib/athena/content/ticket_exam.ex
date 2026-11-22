@@ -13,13 +13,14 @@ defmodule Athena.Content.TicketExam do
   embedded_schema do
     field :time_limit, :integer
     field :require_fullscreen, :boolean, default: false
+    field :render_prompt_as_image, :boolean, default: false
 
     embeds_many :slots, TicketSlot, on_replace: :delete
   end
 
   def changeset(schema, attrs) do
     schema
-    |> cast(attrs, [:time_limit, :require_fullscreen])
+    |> cast(attrs, [:time_limit, :require_fullscreen, :render_prompt_as_image])
     |> cast_embed(:slots, with: &TicketSlot.changeset/2)
     |> validate_number(:time_limit, greater_than: 0)
   end

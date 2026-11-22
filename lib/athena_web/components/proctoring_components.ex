@@ -515,6 +515,27 @@ defmodule AthenaWeb.ProctoringComponents do
                   )}
                 </span>
               </div>
+              <div
+                :if={(@detail[:split_seconds] || 0) + (@detail[:viewport_split_seconds] || 0) > 0}
+                class="flex items-center justify-between py-1.5"
+              >
+                <span class="text-base-content/70">
+                  {gettext("Screen shared with another window")}
+                </span>
+                <span class="font-mono">
+                  {gettext("%{win}s window · %{vp}s narrowed page",
+                    win: @detail[:split_seconds] || 0,
+                    vp: @detail[:viewport_split_seconds] || 0
+                  )}
+                </span>
+              </div>
+              <div
+                :if={@detail[:extended_display] == true}
+                class="flex items-center justify-between py-1.5"
+              >
+                <span class="text-base-content/70">{gettext("Second display")}</span>
+                <span class="font-mono">{gettext("connected")}</span>
+              </div>
               <div class="flex items-center justify-between py-1.5">
                 <span class="text-base-content/70">
                   {gettext("Longest gap with no signal from the browser")}
@@ -683,6 +704,13 @@ defmodule AthenaWeb.ProctoringComponents do
   defp signal_label("silence_connected"), do: gettext("Browser connected but monitoring silent")
   defp signal_label("silence"), do: gettext("No signal from the browser")
   defp signal_label("split_screen"), do: gettext("Window sharing the screen with another window")
+
+  defp signal_label("answer_while_unfocused"),
+    do: gettext("Answers recorded while the page was reported out of focus")
+
+  defp signal_label("unreported_focus_loss"),
+    do: gettext("Time out of focus that the browser did not report")
+
   defp signal_label("machine_typing"), do: gettext("Machine-like typing rhythm")
   defp signal_label("clean_typing"), do: gettext("Long answer typed without any correction")
 
@@ -705,6 +733,24 @@ defmodule AthenaWeb.ProctoringComponents do
         n: signal["incidents"] || 0,
         sec: Engagement.proctoring_thresholds().away_incident_min_seconds
       )
+
+  defp signal_note(%{"key" => "split_screen", "basis" => "duration"} = signal),
+    do:
+      gettext(
+        "%{win}s with the window sharing the screen, %{vp}s with a narrowed page, pointer left sideways %{n} times",
+        win: signal["window_seconds"] || 0,
+        vp: signal["viewport_seconds"] || 0,
+        n: signal["peeks"] || 0
+      )
+
+  defp signal_note(%{"key" => "answer_while_unfocused"} = signal),
+    do:
+      gettext("%{n} answers recorded while the browser reported the page out of focus",
+        n: signal["value"]
+      )
+
+  defp signal_note(%{"key" => "unreported_focus_loss"} = signal),
+    do: gettext("%{n}s out of focus that no reported absence accounts for", n: signal["value"])
 
   defp signal_note(%{"key" => key} = signal) when key in ["silence", "silence_connected"],
     do: gettext("longest gap: %{n}s", n: signal["value"])
@@ -764,6 +810,18 @@ defmodule AthenaWeb.ProctoringComponents do
 
   defp timeline_label(%{type: :silence_connected, duration_ms: ms}),
     do: gettext("Browser connected but monitoring silent for %{sec}s", sec: seconds(ms))
+
+  defp timeline_label(%{type: :split_interval, source: "viewport", duration_ms: ms}),
+    do: gettext("Page area narrowed (split view or side panel) for %{sec}s", sec: seconds(ms))
+
+  defp timeline_label(%{type: :split_interval, duration_ms: ms}),
+    do: gettext("Window shared the screen with another window for %{sec}s", sec: seconds(ms))
+
+  defp timeline_label(%{type: :answer_while_unfocused}),
+    do: gettext("An answer was recorded while the page was reported out of focus")
+
+  defp timeline_label(%{type: :extended_display}),
+    do: gettext("A second display is connected")
 
   defp timeline_label(%{type: :concurrent_session}),
     do: gettext("Multiple exam sessions observed by the server")
@@ -833,7 +891,10 @@ defmodule AthenaWeb.ProctoringComponents do
   defp timeline_icon(type) when type in [:paste_detected, :bulk_insert],
     do: "hero-clipboard-document"
 
-  defp timeline_icon(:window_geometry_changed), do: "hero-squares-2x2"
+  defp timeline_icon(type) when type in [:window_geometry_changed, :split_interval],
+    do: "hero-squares-2x2"
+
+  defp timeline_icon(:extended_display), do: "hero-computer-desktop"
   defp timeline_icon(:multi_tab_detected), do: "hero-document-duplicate"
   defp timeline_icon(_type), do: "hero-exclamation-triangle"
 

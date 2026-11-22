@@ -241,7 +241,10 @@ defmodule Athena.Engagement.ProctoringTimeline do
       "silence_connected" => :silence_connected,
       "concurrent_session" => :concurrent_session,
       "inert_channel" => :inert_channel,
-      "clock_skew" => :clock_skew
+      "clock_skew" => :clock_skew,
+      "split_interval" => :split_interval,
+      "extended_display" => :extended_display,
+      "answer_while_unfocused" => :answer_while_unfocused
     }
 
     for %{"type" => name, "at" => at} = incident <-
@@ -257,7 +260,8 @@ defmodule Athena.Engagement.ProctoringTimeline do
         duration_ms: if(is_number(incident["seconds"]), do: incident["seconds"] * 1000),
         chars: nil,
         split: nil,
-        source: nil,
+        # For a `split_interval`: what narrowed the view ("window"/"viewport").
+        source: incident["cause"],
         kinds: [type],
         block_id: nil
       }

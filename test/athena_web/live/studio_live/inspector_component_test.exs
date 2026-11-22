@@ -5,6 +5,25 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponentTest do
   import Athena.Factory
   alias AthenaWeb.StudioLive.Builder.InspectorComponent
 
+  for kind <- [:quiz_exam, :ticket_exam] do
+    @kind kind
+    test "#{kind} offers the image setting for its child questions" do
+      block = build(:block, type: @kind, content: %{"render_prompt_as_image" => true})
+
+      document =
+        InspectorComponent
+        |> render_component(id: "inspector", active_section: nil, active_block: block)
+        |> LazyHTML.from_fragment()
+
+      assert Enum.count(
+               LazyHTML.query(
+                 document,
+                 "#exam-prompt-image-#{block.id}[type='checkbox'][checked]"
+               )
+             ) == 1
+    end
+  end
+
   describe "Empty State" do
     test "prompts user to select an item when nothing is active" do
       html =

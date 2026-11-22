@@ -11327,3 +11327,45 @@ msgstr "Вы можете редактировать этот шаблон бл�
 
 msgid "Documents, code, archives (including 7z), images, audio, video (Max 2GB each)"
 msgstr "Документы, код, архивы (включая 7z), изображения, аудио, видео (максимум 2 ГБ на файл)"
+
+msgid "This exam has to stay in fullscreen. Go back to fullscreen and your answers can be saved again."
+msgstr "Экзамен должен проходить в полноэкранном режиме. Вернитесь в полноэкранный режим, и ответы снова будут сохраняться."
+
+msgid "Time out of focus that the browser did not report"
+msgstr "Время вне фокуса, о котором браузер не сообщил"
+
+msgid "%{win}s with the window sharing the screen, %{vp}s with a narrowed page, pointer left sideways %{n} times"
+msgstr "окно делило экран %{win} с, область страницы была сужена %{vp} с, указатель уходил вбок %{n} раз"
+
+msgid "%{n}s out of focus that no reported absence accounts for"
+msgstr "%{n} с вне фокуса, которые не объясняются сообщёнными отлучками"
+
+msgid "Page area narrowed (split view or side panel) for %{sec}s"
+msgstr "Область страницы была сужена (разделение вкладок или боковая панель) на %{sec} с"
+
+msgid "Window shared the screen with another window for %{sec}s"
+msgstr "Окно делило экран с другим окном %{sec} с"
+
+msgid "A second display is connected"
+msgstr "Подключён второй экран"
+
+msgid "Screen shared with another window"
+msgstr "Экран разделён с другим окном"
+
+msgid "%{win}s window · %{vp}s narrowed page"
+msgstr "окно: %{win} с · суженная страница: %{vp} с"
+
+msgid "Second display"
+msgstr "Второй экран"
+
+msgid "connected"
+msgstr "подключён"
+
+msgid "Answers recorded while the page was reported out of focus"
+msgstr "Ответы, записанные, когда страница по данным браузера была вне фокуса"
+
+msgid "%{n} answers recorded while the browser reported the page out of focus"
+msgstr "%{n} ответов записано, когда браузер сообщал, что страница вне фокуса"
+
+msgid "An answer was recorded while the page was reported out of focus"
+msgstr "Ответ записан, когда страница по данным браузера была вне фокуса"

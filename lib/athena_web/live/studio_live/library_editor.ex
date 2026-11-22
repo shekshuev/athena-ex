@@ -1171,6 +1171,18 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                         </div>
                       <% end %>
 
+                      <.input
+                        :if={@block.type in [:quiz_exam, :ticket_exam, :code, :file_assignment]}
+                        id="library-exam-prompt-image"
+                        type="checkbox"
+                        name="library_block[content][render_prompt_as_image]"
+                        value={@block.content["render_prompt_as_image"]}
+                        label={
+                          gettext("Render prompt as image (blocks copy/select, drops formatting)")
+                        }
+                        class="checkbox checkbox-sm checkbox-primary"
+                      />
+
                       <%= if @block.type == :quiz_exam do %>
                         <.input
                           type="number"

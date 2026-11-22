@@ -34,6 +34,7 @@ defmodule AthenaWeb.BlockComponents do
   attr :user_id, :string, default: nil
   attr :characters, :list, default: []
   attr :proctoring, :boolean, default: false
+  attr :render_prompt_as_image, :boolean, default: false
 
   # A `:survey` block renders its own questions, which only the player and the
   # builder preview can supply - the component just needs the survey's title
@@ -65,6 +66,7 @@ defmodule AthenaWeb.BlockComponents do
             hide_submit={@hide_submit}
             submission_locked={@submission_locked}
             editor_revision={@editor_revision}
+            render_prompt_as_image={@render_prompt_as_image}
           />
         <% :quiz_question -> %>
           <.render_quiz_question
@@ -77,6 +79,7 @@ defmodule AthenaWeb.BlockComponents do
             draft={@draft}
             user_id={@user_id}
             proctoring={@proctoring}
+            render_prompt_as_image={@render_prompt_as_image}
           />
         <% type when type in [:quiz_exam, :ticket_exam] -> %>
           <.render_any_exam
@@ -95,6 +98,7 @@ defmodule AthenaWeb.BlockComponents do
             submission={@submission}
             pending_file_urls={@pending_file_urls}
             draft={@draft}
+            render_prompt_as_image={@render_prompt_as_image}
           />
         <% :survey -> %>
           <.render_survey
@@ -349,6 +353,8 @@ defmodule AthenaWeb.BlockComponents do
       |> assign(:readonly, readonly)
       |> assign(:execution_results, execution_results)
       |> assign(:is_processing, is_processing)
+      |> assign(:image_mode, prompt_image?(assigns))
+      |> assign(:prompt_plain_text, extract_plain_text(assigns.block.content["body"]))
 
     ~H"""
     <div class="relative w-full">
@@ -357,8 +363,9 @@ defmodule AthenaWeb.BlockComponents do
         class="editor-wrapper group/tiptap relative outline-none mb-6"
         tabindex="-1"
       >
-        <.tiptap_toolbar mode={@mode} block_id={@block.id} />
+        <.tiptap_toolbar :if={!@image_mode} mode={@mode} block_id={@block.id} />
         <div
+          :if={!@image_mode}
           id={"tiptap-code-#{@mode}-#{@block.id}-#{if @mode != :edit, do: :erlang.phash2(@block.content["body"]), else: "static"}"}
           phx-hook="TiptapEditor"
           data-on-change="update_content"
@@ -370,6 +377,16 @@ defmodule AthenaWeb.BlockComponents do
           data-characters={Jason.encode!(@characters)}
           class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed"
         >
+        </div>
+        <div
+          :if={@image_mode}
+          id={"prompt-canvas-#{@block.id}"}
+          phx-hook="PromptCanvas"
+          phx-update="ignore"
+          data-text={@prompt_plain_text}
+          class="select-none"
+        >
+          <canvas></canvas>
         </div>
       </div>
 
@@ -576,10 +593,16 @@ defmodule AthenaWeb.BlockComponents do
   defp do_extract_code(val) when is_binary(val) and val != "", do: val
   defp do_extract_code(_), do: nil
 
+  defp prompt_image?(assigns) do
+    assigns.mode == :play &&
+      (assigns.render_prompt_as_image || assigns.block.content["render_prompt_as_image"] == true)
+  end
+
   defp render_quiz_question(assigns) do
     q_type = assigns.block.content["question_type"] || "open"
     opts = assigns.block.content["options"] || []
-    image_mode = assigns.mode == :play && assigns.block.content["render_prompt_as_image"] == true
+
+    image_mode = prompt_image?(assigns)
 
     assigns =
       assigns
@@ -600,12 +623,9 @@ defmodule AthenaWeb.BlockComponents do
     <div class="relative">
       <div
         id={"editor-wrapper-#{@mode}-#{@block.id}"}
-        class={[
-          "editor-wrapper group/tiptap relative outline-none",
-          @guarded && "no-copy-guard"
-        ]}
+        class="editor-wrapper group/tiptap relative outline-none"
         tabindex="-1"
-        phx-hook={if(@guarded, do: "NoCopyGuard")}
+        phx-hook={if(@guarded, do: "ClipboardTracker")}
       >
         <.tiptap_toolbar :if={!@image_mode} mode={@mode} block_id={@block.id} />
         <div
@@ -1305,6 +1325,8 @@ defmodule AthenaWeb.BlockComponents do
       |> assign(:has_submitted, !is_nil(assigns.submission))
       |> assign(:pending_urls, pending_urls)
       |> assign(:remaining, remaining)
+      |> assign(:image_mode, prompt_image?(assigns))
+      |> assign(:prompt_plain_text, extract_plain_text(assigns.block.content["body"]))
 
     ~H"""
     <div class="space-y-6">
@@ -1312,8 +1334,9 @@ defmodule AthenaWeb.BlockComponents do
         id={"editor-wrapper-#{@mode}-#{@block.id}"}
         class="editor-wrapper group/tiptap relative outline-none"
       >
-        <.tiptap_toolbar mode={@mode} block_id={@block.id} />
+        <.tiptap_toolbar :if={!@image_mode} mode={@mode} block_id={@block.id} />
         <div
+          :if={!@image_mode}
           id={"tiptap-body-#{@mode}-#{@block.id}-#{if @mode != :edit, do: :erlang.phash2(@body_content), else: "static"}"}
           phx-hook="TiptapEditor"
           data-on-change="update_content"
@@ -1325,6 +1348,16 @@ defmodule AthenaWeb.BlockComponents do
           data-characters={Jason.encode!(@characters)}
           class="prose prose-base md:prose-lg max-w-none text-base-content/80 leading-relaxed"
         >
+        </div>
+        <div
+          :if={@image_mode}
+          id={"prompt-canvas-#{@block.id}"}
+          phx-hook="PromptCanvas"
+          phx-update="ignore"
+          data-text={@prompt_plain_text}
+          class="select-none"
+        >
+          <canvas></canvas>
         </div>
       </div>
 

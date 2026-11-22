@@ -100,10 +100,12 @@ defmodule Athena.Engagement do
     to: ProctoringMonitor,
     as: :report_events
 
-  @doc "Liveness ping for one exam attempt - see `ProctoringMonitor.heartbeat/3`."
-  defdelegate report_proctoring_heartbeat(submission_id, cohort_id, block_id),
-    to: ProctoringMonitor,
-    as: :heartbeat
+  @doc """
+  Liveness ping for one exam attempt - see `ProctoringMonitor.heartbeat/4`.
+  `layout_samples` are the window-geometry samples that rode on the ping.
+  """
+  def report_proctoring_heartbeat(submission_id, cohort_id, block_id, layout_samples \\ []),
+    do: ProctoringMonitor.heartbeat(submission_id, cohort_id, block_id, layout_samples)
 
   @doc "Reports whether an exam tab is connected - see `ProctoringMonitor.connection/4`."
   defdelegate report_proctoring_connection(submission_id, cohort_id, block_id, connected?),

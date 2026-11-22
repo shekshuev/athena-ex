@@ -271,11 +271,7 @@ defmodule AthenaWeb.LearnLive.Exam do
         active_upload_block_id: nil,
         upload_type: nil,
         max_files_for_upload: 1,
-        current_file_count_for_upload: 0,
-        # Server-side liveness clock for integrity telemetry (see
-        # `check_telemetry_live/1`). Seeded fresh on every (re)mount, so a
-        # LiveView reconnect always begins with a full grace window.
-        last_telemetry_at: DateTime.utc_now()
+        current_file_count_for_upload: 0
       )
 
     maybe_start_timer(socket)
@@ -544,8 +540,7 @@ defmodule AthenaWeb.LearnLive.Exam do
   end
 
   def handle_event("finish_exam", _, socket) do
-    with {:ok, socket} <- check_time_limit(socket),
-         {:ok, socket} <- check_telemetry_live(socket) do
+    with {:ok, socket} <- check_time_limit(socket) do
       {:noreply, submit_and_exit(socket, socket.assigns.submission, :finished)}
     else
       {:halt, socket} -> {:noreply, socket}
@@ -554,8 +549,7 @@ defmodule AthenaWeb.LearnLive.Exam do
 
   @impl true
   def handle_event("run_code", %{"block_id" => block_id}, socket) do
-    with {:ok, socket} <- check_time_limit(socket),
-         {:ok, socket} <- check_telemetry_live(socket) do
+    with {:ok, socket} <- check_time_limit(socket) do
       execute_run_code(socket, block_id)
     else
       {:halt, socket} -> {:noreply, socket}
@@ -585,24 +579,23 @@ defmodule AthenaWeb.LearnLive.Exam do
       normalized
     )
 
-    socket =
-      if normalized == [],
-        do: socket,
-        else: assign(socket, :last_telemetry_at, DateTime.utc_now())
-
     {:noreply, socket}
   end
 
-  def handle_event("engagement_heartbeat", _params, socket) do
+  def handle_event("engagement_heartbeat", params, socket) do
+    # Raw window-geometry samples ride on the ping; they are bounded here and
+    # judged by the server (`Athena.Engagement.Layout`), never by the client.
+    samples = Athena.Engagement.Layout.sanitize_samples(params["layout"])
+
     Engagement.report_proctoring_heartbeat(
       socket.assigns.submission.id,
       socket.assigns.cohort_id,
-      socket.assigns.block.id
+      socket.assigns.block.id,
+      samples
     )
 
-    # This proves delivery of a ping, not integrity of browser listeners.
-    # A modified client can keep sending heartbeats while suppressing events.
-    {:noreply, assign(socket, :last_telemetry_at, DateTime.utc_now())}
+    # Monitoring informs the instructor and never changes the student's flow.
+    {:noreply, socket}
   end
 
   defp execute_run_code(socket, block_id) do
@@ -847,14 +840,6 @@ defmodule AthenaWeb.LearnLive.Exam do
       phx-hook="EngagementTracker"
       data-session-id={@engagement_session_id}
       data-heartbeat={to_string(!@test_run)}
-      data-fullscreen={to_string(!@test_run && require_fullscreen?(@block))}
-      data-fs-title={gettext("Fullscreen required")}
-      data-fs-text={
-        gettext(
-          "This assessment runs in fullscreen mode only. The questions are hidden until you enter fullscreen, and leaving it is recorded."
-        )
-      }
-      data-fs-button={gettext("Enter fullscreen")}
       class="flex flex-col min-h-screen"
     >
       <div
@@ -964,6 +949,7 @@ defmodule AthenaWeb.LearnLive.Exam do
                       <.content_block
                         block={@current_question}
                         mode={:play}
+                        render_prompt_as_image={@block.content["render_prompt_as_image"] == true}
                         submission={Map.get(@child_submissions, @current_question.id)}
                         pending_file_urls={@pending_file_urls}
                         user_id={@current_user.id}
@@ -980,6 +966,7 @@ defmodule AthenaWeb.LearnLive.Exam do
                       <.content_block
                         block={@current_question}
                         mode={:play}
+                        render_prompt_as_image={@block.content["render_prompt_as_image"] == true}
                         submission={Map.get(@child_submissions, @current_question.id)}
                         pending_file_urls={@pending_file_urls}
                         hide_submit={true}
@@ -995,6 +982,7 @@ defmodule AthenaWeb.LearnLive.Exam do
                       <.content_block
                         block={@current_question}
                         mode={:play}
+                        render_prompt_as_image={@block.content["render_prompt_as_image"] == true}
                         submission={Map.get(@child_submissions, @current_question.id)}
                         pending_file_urls={@pending_file_urls}
                       />
@@ -1003,6 +991,7 @@ defmodule AthenaWeb.LearnLive.Exam do
                     <.content_block
                       block={@current_question}
                       mode={:play}
+                      render_prompt_as_image={@block.content["render_prompt_as_image"] == true}
                       submission={Map.get(@child_submissions, @current_question.id)}
                       pending_file_urls={@pending_file_urls}
                     />
@@ -1089,49 +1078,6 @@ defmodule AthenaWeb.LearnLive.Exam do
     end
   end
 
-  # How long the integrity telemetry may stay silent before commits are
-  # refused. Well above the client's ~10s heartbeat interval so a single
-  # dropped tick or a brief LiveView reconnect never trips it; low enough
-  # that an attempt can't make real progress while "dark". Tune per policy.
-  # Pause commits when telemetry is stale. This catches total silence;
-  # heartbeats themselves are client-controlled and cannot prove honesty.
-  defp check_telemetry_live(socket) do
-    cond do
-      # Builder test runs carry no heartbeat (data-heartbeat="false") -
-      # nothing to enforce there, same carve-out as the tracker itself.
-      socket.assigns[:test_run] ->
-        {:ok, socket}
-
-      telemetry_live?(socket) ->
-        {:ok, socket}
-
-      true ->
-        {:halt,
-         put_flash(
-           socket,
-           :error,
-           gettext(
-             "Exam monitoring isn't reporting right now. Keep this tab focused and check your connection - it resumes by itself within a few seconds. Your progress is safe."
-           )
-         )}
-    end
-  end
-
-  defp telemetry_live?(socket) do
-    case socket.assigns[:last_telemetry_at] do
-      %DateTime{} = at ->
-        DateTime.diff(DateTime.utc_now(), at, :second) <=
-          Keyword.get(
-            Application.get_env(:athena, Athena.Engagement, []),
-            :exam_telemetry_grace_seconds,
-            45
-          )
-
-      _ ->
-        false
-    end
-  end
-
   # On socket teardown (tab closed, navigation, lost network) tell the
   # proctoring monitor the exam tab is no longer connected, so any silence
   # from here on reads as a network drop rather than suppressed telemetry.
@@ -1155,8 +1101,7 @@ defmodule AthenaWeb.LearnLive.Exam do
   end
 
   defp process_exam_answer(params, socket) do
-    with {:ok, socket} <- check_time_limit(socket),
-         {:ok, socket} <- check_telemetry_live(socket) do
+    with {:ok, socket} <- check_time_limit(socket) do
       q = socket.assigns.current_question
       answer = resolve_exam_answer(socket, q, Map.get(params, "answer"))
       answer_content = normalize_answer(q, answer)
@@ -1364,8 +1309,6 @@ defmodule AthenaWeb.LearnLive.Exam do
     end
   end
 
-  defp require_fullscreen?(block), do: (block.content || %{})["require_fullscreen"] == true
-
   defp get_time_limit_sec(block) do
     content = block.content || %{}
 
@@ -1399,8 +1342,7 @@ defmodule AthenaWeb.LearnLive.Exam do
   defp hydrate_questions(_), do: []
 
   defp save_exam_file_assignment(socket, block_id, file_urls) do
-    with {:ok, socket} <- check_time_limit(socket),
-         {:ok, socket} <- check_telemetry_live(socket) do
+    with {:ok, socket} <- check_time_limit(socket) do
       persist_exam_file_assignment(socket, block_id, file_urls)
     else
       {:halt, socket} -> socket
