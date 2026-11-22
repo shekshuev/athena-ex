@@ -61,8 +61,10 @@ defmodule AthenaWeb.LearnLive.Exam do
 
   @doc false
   defp resolve_exam_mount(socket, course_id, block_id, user_id, team_id, cohort_id, return_to) do
-    with false <- Athena.Content.InteractionPolicy.block_readonly?(block_id),
+    with {:ok, block_id} <- Ecto.UUID.cast(block_id),
+         false <- Athena.Content.InteractionPolicy.block_readonly?(block_id),
          {:ok, block} <- Content.get_block(block_id),
+         true <- block.type == :quiz_exam,
          time_limit_sec <- get_time_limit_sec(block) do
       # Default to the section the exam block itself lives in - not a
       # section-less `/play` (which `Player` resolves to the *first* section

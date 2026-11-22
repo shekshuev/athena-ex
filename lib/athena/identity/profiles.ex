@@ -25,10 +25,8 @@ defmodule Athena.Identity.Profiles do
   """
   @spec create_profile(String.t(), map()) :: {:ok, Profile.t()} | {:error, Ecto.Changeset.t()}
   def create_profile(owner_id, attrs) do
-    attrs = Map.put(attrs, "owner_id", owner_id)
-
     Ecto.Multi.new()
-    |> Ecto.Multi.insert(:profile, Profile.changeset(%Profile{}, attrs))
+    |> Ecto.Multi.insert(:profile, Profile.changeset(%Profile{owner_id: owner_id}, attrs))
     |> Repo.transaction()
     |> case do
       {:ok, %{profile: profile}} -> {:ok, profile}

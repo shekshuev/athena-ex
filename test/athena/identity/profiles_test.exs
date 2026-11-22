@@ -19,6 +19,20 @@ defmodule Athena.Identity.ProfilesTest do
   end
 
   describe "create_profile/2" do
+    test "assigns the explicit owner instead of either form of client ownership key" do
+      owner = insert(:account)
+      target = insert(:account)
+
+      assert {:ok, profile} =
+               Profiles.create_profile(owner.id, %{
+                 first_name: "Ada",
+                 last_name: "Lovelace",
+                 owner_id: target.id
+               })
+
+      assert profile.owner_id == owner.id
+    end
+
     test "should create profile" do
       account = insert(:account)
       attrs = %{"first_name" => "Ivan", "last_name" => "Ivanov"}
@@ -56,6 +70,27 @@ defmodule Athena.Identity.ProfilesTest do
 
       assert {:ok, updated} = Profiles.update_profile(student, profile, attrs)
       assert updated.first_name == "NewName"
+    end
+
+    test "neither self-service nor admin editing can reassign a profile", %{
+      student: student,
+      other_student: target,
+      admin: admin
+    } do
+      profile = insert(:profile, owner: student)
+
+      for actor <- [student, admin] do
+        assert {:ok, updated} =
+                 Profiles.update_profile(actor, profile, %{
+                   first_name: "Updated",
+                   owner_id: target.id
+                 })
+
+        assert updated.owner_id == student.id
+        assert Repo.get!(Profile, profile.id).owner_id == student.id
+      end
+
+      refute Repo.get_by(Profile, owner_id: target.id)
     end
 
     test "should update profile if user is admin with users.update permission", %{

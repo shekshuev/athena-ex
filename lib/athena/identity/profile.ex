@@ -52,8 +52,7 @@ defmodule Athena.Identity.Profile do
       :patronymic,
       :avatar_url,
       :birth_date,
-      :metadata,
-      :owner_id
+      :metadata
     ])
     |> validate_required([:first_name, :last_name, :owner_id])
     |> validate_length(:first_name, max: 100)

@@ -816,37 +816,16 @@ defmodule AthenaWeb.LearnLive.Player do
   @impl true
   def handle_event("complete_gate", %{"block-id" => block_id}, socket) do
     user = socket.assigns.current_user
-    team_id = socket.assigns.team_id
 
-    {:ok, _} = Learning.mark_completed(user.id, block_id, team_id)
-
-    new_completed_ids = [block_id | socket.assigns.completed_ids]
-    linear_lessons = socket.assigns.linear_lessons
-
-    opts = [
-      ignore_schedule?: !!socket.assigns[:test_run],
-      ignore_visibility?: !!socket.assigns[:test_run]
-    ]
-
-    accessible_ids =
-      Learning.accessible_section_ids(
-        user,
-        socket.assigns.course.id,
-        linear_lessons,
-        socket.assigns.overrides,
-        team_id,
-        opts
-      )
-
-    current_index = Enum.find_index(linear_lessons, fn s -> s.id == socket.assigns.section.id end)
-    next_section = Enum.at(linear_lessons, current_index + 1)
-    next_accessible? = next_section != nil and next_section.id in accessible_ids
-
-    {:noreply,
-     socket
-     |> assign(:completed_ids, new_completed_ids)
-     |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
-     |> assign(:visible_blocks, Learning.visible_blocks(socket.assigns.blocks, new_completed_ids))}
+    case Learning.complete_button_gate(
+           user,
+           socket.assigns.course.id,
+           socket.assigns.section.id,
+           block_id
+         ) do
+      {:ok, _} -> refresh_after_button_gate(socket, block_id)
+      {:error, _} -> {:noreply, socket}
+    end
   end
 
   def handle_event("open_course_map", _, socket),
@@ -1606,6 +1585,39 @@ defmodule AthenaWeb.LearnLive.Player do
       {:error, _} ->
         {:noreply, put_flash(socket, :error, gettext("Failed to submit code."))}
     end
+  end
+
+  @doc false
+  defp refresh_after_button_gate(socket, block_id) do
+    user = socket.assigns.current_user
+    team_id = socket.assigns.team_id
+    new_completed_ids = [block_id | socket.assigns.completed_ids]
+    linear_lessons = socket.assigns.linear_lessons
+
+    opts = [
+      ignore_schedule?: !!socket.assigns[:test_run],
+      ignore_visibility?: !!socket.assigns[:test_run]
+    ]
+
+    accessible_ids =
+      Learning.accessible_section_ids(
+        user,
+        socket.assigns.course.id,
+        linear_lessons,
+        socket.assigns.overrides,
+        team_id,
+        opts
+      )
+
+    current_index = Enum.find_index(linear_lessons, fn s -> s.id == socket.assigns.section.id end)
+    next_section = Enum.at(linear_lessons, current_index + 1)
+    next_accessible? = next_section != nil and next_section.id in accessible_ids
+
+    {:noreply,
+     socket
+     |> assign(:completed_ids, new_completed_ids)
+     |> assign(:next_section_id, if(next_accessible?, do: next_section.id, else: nil))
+     |> assign(:visible_blocks, Learning.visible_blocks(socket.assigns.blocks, new_completed_ids))}
   end
 
   @doc false

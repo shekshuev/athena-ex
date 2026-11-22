@@ -12,7 +12,10 @@ defmodule Athena.Learning do
   - `TestRuns`: Instructor "test run" preview sessions in the course builder.
   """
 
+  alias Athena.Identity
+
   alias Athena.Learning.{
+    BlockAccess,
     Instructors,
     Cohort,
     Cohorts,
@@ -224,6 +227,11 @@ defmodule Athena.Learning do
   reopening an attempt in progress (every exam page load) changes nothing
   and broadcasts nothing.
 
+  Rechecks enrollment, course/block consistency, visibility, schedule and
+  progression on every call. Team, time limit and config are resolved from
+  persisted data; the last three arguments are retained for compatibility
+  with existing callers and cannot override those server-owned values.
+
   `{:taken_by_teammate, sub}` passes straight through unbroadcast - a
   competition team shares one attempt, and being told it is someone
   else's turn changed nothing in the database.
@@ -233,18 +241,30 @@ defmodule Athena.Learning do
         account_id,
         exam_block_id,
         block_type,
-        cohort_id,
-        time_limit_sec,
-        exam_config
+        _cohort_id,
+        _time_limit_sec,
+        _exam_config
       ) do
+    with {:ok, account_id} <- Ecto.UUID.cast(account_id),
+         {:ok, %{status: :active} = user} <- Identity.get_account(account_id),
+         {:ok, block, team_id} <-
+           BlockAccess.fetch_interactive_block(user, course_id, exam_block_id),
+         true <- block.type in [:quiz_exam, :ticket_exam] and block.type == block_type do
+      fetch_exam_attempt(course_id, user.id, block, team_id)
+    else
+      _ -> {:error, :forbidden}
+    end
+  end
+
+  defp fetch_exam_attempt(course_id, account_id, block, team_id) do
     case Submissions.fetch_or_create_exam_attempt(
            course_id,
            account_id,
-           exam_block_id,
-           block_type,
-           cohort_id,
-           time_limit_sec,
-           exam_config
+           block.id,
+           block.type,
+           team_id,
+           exam_time_limit_sec(block),
+           block.content
          ) do
       {:existing, submission} ->
         {:ok, submission}
@@ -256,6 +276,24 @@ defmodule Athena.Learning do
         other
     end
   end
+
+  defp exam_time_limit_sec(block) do
+    case (block.content || %{})["time_limit"] do
+      minutes when is_integer(minutes) ->
+        minutes * 60
+
+      minutes when is_binary(minutes) ->
+        case Integer.parse(minutes) do
+          {value, _} -> value * 60
+          :error -> 3600
+        end
+
+      _ ->
+        3600
+    end
+  end
+
+  defdelegate complete_button_gate(user, course_id, section_id, block_id), to: Progress
 
   defdelegate mark_completed(account_id, block_id, cohort_id \\ nil), to: Progress
   defdelegate completed_block_ids(account_id, section_id, cohort_id \\ nil), to: Progress

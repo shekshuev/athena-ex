@@ -5,8 +5,29 @@ defmodule Athena.Learning.Progress do
   import Ecto.Query
   alias Athena.{Repo, Content}
   alias Athena.Audit
-  alias Athena.Learning.{BlockProgress, CohortMembership, CourseProgressCache, Submission}
+
+  alias Athena.Learning.{
+    BlockAccess,
+    BlockProgress,
+    CohortMembership,
+    CourseProgressCache,
+    Submission
+  }
+
   alias Athena.Content.{Block, Section}
+
+  @doc "Completes only a currently accessible button gate in the mounted lesson."
+  def complete_button_gate(user, course_id, section_id, block_id) do
+    with {:ok, block, team_id} <-
+           BlockAccess.fetch_interactive_block(user, course_id, block_id),
+         true <- block.section_id == section_id,
+         %{type: :button} <- block.completion_rule,
+         false <- block.type in [:quiz_exam, :ticket_exam, :survey] do
+      mark_completed(user.id, block.id, team_id)
+    else
+      _ -> {:error, :forbidden}
+    end
+  end
 
   @doc """
   Marks an interactive block as completed for a user or a team.
@@ -14,6 +35,15 @@ defmodule Athena.Learning.Progress do
   @spec mark_completed(String.t(), String.t(), String.t() | nil) ::
           {:ok, BlockProgress.t()} | {:error, any()}
   def mark_completed(account_id, block_id, cohort_id \\ nil) do
+    with {:ok, block_id} <- Ecto.UUID.cast(block_id),
+         {:ok, _block} <- Content.get_block_header(block_id) do
+      persist_completion(account_id, block_id, cohort_id)
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp persist_completion(account_id, block_id, cohort_id) do
     conflict_target =
       if cohort_id do
         {:unsafe_fragment, "(cohort_id, block_id) WHERE cohort_id IS NOT NULL"}

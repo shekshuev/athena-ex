@@ -36,7 +36,7 @@ Current declarations are in [Athena](../lib/athena.ex), [AthenaWeb](../lib/athen
 - Domain code must remain independent of `AthenaWeb`. Existing application startup exceptions are infrastructure wiring, not a pattern for domain dependencies.
 - Add exports or dependencies only for deliberate public contracts. Do not silence warnings with ignore attributes, dynamic calls or broader exports to bypass a boundary. Existing exceptions do not authorize new ones.
 - Preserve facade side effects: authorization, audit, PubSub notifications, cache invalidation and job scheduling. Calling an internal mutator directly can silently skip them.
-- Prefer IDs and public APIs across contexts. Gamification specifically uses soft UUID links to other contexts, with real foreign keys only inside its own context. Other contexts have existing cross-context associations; do not rewrite them in unrelated work.
+- Use soft IDs and public APIs across contexts. Do not add database foreign keys or cascading deletes between bounded contexts; real foreign keys belong inside the owning context. Validate cross-context references through the owning context's public API. Existing cross-context associations are legacy, not a precedent for new hard links; do not rewrite them in unrelated work.
 - For a new context or a changed dependency direction, explain ownership and the contract. Agree architectural changes with the user when intent is unclear.
 
 Boundary runs outside the test environment: `mix.exs` omits its compiler for `:test`. **Passing `mix precommit` alone does not validate boundaries.** Run `MIX_ENV=dev mix compile --warnings-as-errors` for module or dependency changes; ensure affected modules are recompiled (use `--force` when validating declaration changes).
