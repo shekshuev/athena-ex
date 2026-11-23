@@ -14,6 +14,7 @@ defmodule Athena.Content.CodeChallenge do
   @derive {Jason.Encoder,
            only: [
              :language,
+             :database_engine,
              :time_limit,
              :memory_limit,
              :initial_code,
@@ -29,6 +30,7 @@ defmodule Athena.Content.CodeChallenge do
 
   @type t :: %__MODULE__{
           language: String.t(),
+          database_engine: String.t(),
           time_limit: float(),
           memory_limit: integer(),
           initial_code: String.t(),
@@ -45,6 +47,7 @@ defmodule Athena.Content.CodeChallenge do
   @primary_key false
   embedded_schema do
     field :language, :string, default: Execution.default_language()
+    field :database_engine, :string, default: "postgresql"
     field :time_limit, :float, default: 1.0
     field :memory_limit, :integer, default: 65_536
 
@@ -81,6 +84,7 @@ defmodule Athena.Content.CodeChallenge do
     schema
     |> cast(attrs, [
       :language,
+      :database_engine,
       :time_limit,
       :memory_limit,
       :initial_code,
@@ -93,9 +97,10 @@ defmodule Athena.Content.CodeChallenge do
       :result_order
     ])
     |> cast_embed(:test_cases, with: &TestCase.changeset/2)
-    |> validate_required([:language, :time_limit, :memory_limit])
+    |> validate_required([:language, :database_engine, :time_limit, :memory_limit])
     |> validate_number(:time_limit, greater_than: 0.0, less_than_or_equal_to: 15.0)
     |> validate_number(:memory_limit, greater_than: 256, less_than_or_equal_to: 524_288)
+    |> validate_inclusion(:database_engine, Execution.database_engines())
     |> validate_inclusion(:result_order, @result_orders)
     |> maybe_validate_sql_body()
   end

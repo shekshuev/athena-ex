@@ -14,6 +14,8 @@ defmodule Athena.Execution.SqlRunner do
   # whichever query runs first).
   @seed 0.42
 
+  @behaviour Athena.Execution.Database.Adapter
+
   @doc """
   Runs a callback function within an ephemeral sandbox database under an unprivileged user role.
   Creates the database directly owned by the restricted role, then executes both setup_sql
@@ -23,10 +25,12 @@ defmodule Athena.Execution.SqlRunner do
   @spec execute_in_sandbox(integer(), String.t() | nil, (pid() -> result)) ::
           {:ok, result} | {:error, {:setup_error, String.t()} | {:system_error, any()}}
         when result: any()
+  @impl true
   def execute_in_sandbox(box_id, setup_sql, callback) do
-    db_name = "athena_sandbox_#{box_id}"
-    role_name = "athena_user_#{box_id}"
-    role_pass = "pass_#{box_id}"
+    token = :crypto.strong_rand_bytes(12) |> Base.encode16(case: :lower)
+    db_name = "athena_sandbox_#{box_id}_#{token}"
+    role_name = "athena_user_#{token}"
+    role_pass = :crypto.strong_rand_bytes(24) |> Base.encode16(case: :lower)
 
     case connect_admin() do
       {:ok, admin_conn} ->
@@ -84,6 +88,7 @@ defmodule Athena.Execution.SqlRunner do
              | {:result_limit_exceeded, String.t()}
              | {:sql_error, String.t()}
              | {:system_error, any()}}
+  @impl true
   def query(conn, sql, time_limit_sec) do
     statement_timeout_ms = trunc((time_limit_sec || 2.0) * 1000)
     reseed(conn)

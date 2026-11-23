@@ -1,6 +1,16 @@
 version: "3.8"
 
 services:
+  athena_runner_mysql:
+    extends:
+      file: docker-compose.sql-services.yml
+      service: athena_runner_mysql
+
+  athena_runner_clickhouse:
+    extends:
+      file: docker-compose.sql-services.yml
+      service: athena_runner_clickhouse
+
   postgres:
     image: postgres:15-alpine
     container_name: athena-postgres
@@ -26,8 +36,8 @@ services:
       POSTGRES_DB: athena_runner
     ports:
       - "5433:5432"
-    volumes:
-      - postgres_runner_data:/var/lib/postgresql/data
+    tmpfs:
+      - /var/lib/postgresql/data:size=512m
     networks:
       - athena-network
 
@@ -53,5 +63,4 @@ networks:
 
 volumes:
   postgres_data:
-  postgres_runner_data:
   minio_data:

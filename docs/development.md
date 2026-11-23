@@ -110,7 +110,7 @@ alias Athena.Identity.{Roles, Accounts, Role}
 
 ### Local Code Execution
 
-Python and C++ execution requires Linux with [isolate](https://github.com/ioi/isolate), the language toolchain, and the sandbox facilities described under [Execution containers](#execution-containers). SQL uses a dedicated PostgreSQL instance and does not require isolate.
+Python and C++ execution requires Linux with [isolate](https://github.com/ioi/isolate), the language toolchain, and the sandbox facilities described under [Execution containers](#execution-containers). SQL uses dedicated PostgreSQL, MySQL/MariaDB and ClickHouse instances and does not require isolate.
 
 Running `iex -S mix phx.server` from source starts the web application and registers local execution workers for all three language families. Python/C++ execution still requires the Linux prerequisites; those workers cannot execute isolate workloads natively on macOS or Windows.
 
@@ -126,6 +126,8 @@ The dev runner cookie is `dev_cookie_12345`; a matching cookie alone is insuffic
 
 #### SQL Sandbox (Development)
 
+SQL challenges select a `database_engine` (`postgresql`, `mysql`, or `clickhouse`); existing content defaults to PostgreSQL. Each attempt gets a temporary database and restricted user. Setup, student code and verification all run with those restricted credentials. Setup runs once per attempt, so reference and student queries see the same seeded data, including generated values. SQL submissions contain one statement; setup scripts may contain multiple statements.
+
 SQL challenges create ephemeral databases on a dedicated Postgres instance. Local infra includes `postgres-runner` on port **5433** (`athena_runner` database).
 
 By default, dev connects to the main Postgres on port 5432. For SQL tasks, point the runner at the dedicated instance:
@@ -134,13 +136,17 @@ By default, dev connects to the main Postgres on port 5432. For SQL tasks, point
 export RUNNER_DATABASE_URL=ecto://postgres:postgres@localhost:5433/athena_runner
 ```
 
-In production, configure `POSTGRES_RUNNER_PASSWORD` and port 5433 via `docker-compose.prod.yml` (`athena_runner_pg` service).
+Local infra also starts MariaDB on `127.0.0.1:3307` and ClickHouse on `127.0.0.1:8124`. Both use `runner_secret` for local development. Override connections with `MYSQL_RUNNER_URL` and `CLICKHOUSE_RUNNER_URL`; percent-encode credentials in URLs. MyXQL can also connect to a MySQL server through `MYSQL_RUNNER_URL`. ClickHouse requires the supplied `docker/clickhouse/execution.xml` configuration: table engine grants are enforced, and attempts may use only Memory or MergeTree engines. External file/network sources are not granted. Per-user query settings and an independent cancellation deadline enforce execution limits. Result rows and JSON bytes are bounded while fetching; a decoded chunk or individual value can still exceed the client budget before validation.
+
+Execution services use bounded tmpfs and lose all data on restart. Do not store course/application data there. The infra file now uses tmpfs for `postgres-runner` too; any existing `postgres_runner_data` volume is left untouched by this configuration change.
+
+In production, configure `POSTGRES_RUNNER_PASSWORD`, `MYSQL_RUNNER_PASSWORD` and `CLICKHOUSE_RUNNER_PASSWORD` in `.env`. `docker-compose.prod.yml` starts all execution databases. The release/image retains the existing `runner_db` / `runner-db` name and handles all three engines. Copy `docker-compose.sql-services.yml` and `docker/clickhouse/execution.xml` alongside the production Compose file before deploying. Changing execution-service credentials requires recreating the corresponding ephemeral service.
 
 ## Testing & Code Quality
 
 We use ExUnit for testing, Credo for linting, and Dialyzer for static type checking.
 
-Start PostgreSQL and S3-compatible storage before running tests. The test alias creates and migrates the test database; the test helper checks the storage bucket. Local tests use MinIO, while CI provisions Garage. See [`config/test.exs`](../config/test.exs) for database, bucket, and `DEV_EXTERNAL_HOST` settings. SQL tests may also require a runner database. Tests tagged `:isolate` require the Linux sandbox and toolchains.
+Start PostgreSQL and S3-compatible storage before running tests. The test alias creates and migrates the test database; the test helper checks the storage bucket. Local tests use MinIO, while CI provisions Garage. See [`config/test.exs`](../config/test.exs) for database, bucket, and `DEV_EXTERNAL_HOST` settings. SQL tests require all three execution databases; CI starts MariaDB and ClickHouse with the same Compose configuration. Tests tagged `:isolate` require the Linux sandbox and toolchains.
 
 ```bash
 # Run the test suite
@@ -200,7 +206,7 @@ Every image is published as two tags, `latest-u22` and `latest-u24` (also versio
 | Image                                         | Mix release       | What it runs                                                             |
 | --------------------------------------------- | ----------------- | ------------------------------------------------------------------------ |
 | `ghcr.io/shekshuev/athena-ex-web`             | `web`             | LiveView UI, HTTP endpoints, Oban, background tasks. Unprivileged.       |
-| `ghcr.io/shekshuev/athena-ex-runner-db`       | `runner_db`       | SQL challenges (ephemeral Postgres roles/DBs, no isolate). Unprivileged. |
+| `ghcr.io/shekshuev/athena-ex-runner-db`       | `runner_db`       | SQL challenges (PostgreSQL, MySQL/MariaDB, ClickHouse; no isolate). Unprivileged. |
 | `ghcr.io/shekshuev/athena-ex-runner-compiled` | `runner_compiled` | C++ challenges via isolate + g++. Requires `privileged: true`.           |
 | `ghcr.io/shekshuev/athena-ex-runner-script`   | `runner_script`   | Python challenges via isolate + python3. Requires `privileged: true`.    |
 
@@ -210,7 +216,7 @@ suite. It cannot be reached in production; there's no release that produces it.
 
 ### Execution Containers
 
-SQL challenges use ephemeral restricted PostgreSQL roles and databases through `Athena.Execution.SqlRunner`; `runner-db` needs no isolate privileges. Production Compose supplies a dedicated PostgreSQL instance on port 5433, configured with `POSTGRES_RUNNER_PASSWORD`.
+SQL challenges use `Athena.Execution.DatabaseRunner` with Postgrex, MyXQL and Ch adapters. Each adapter creates restricted temporary users/databases; `runner-db` needs no isolate privileges. Production Compose supplies dedicated PostgreSQL, MariaDB and ClickHouse instances with separate credentials and tmpfs storage.
 
 Python and C++ use isolate with Linux namespaces, resource limits, and cgroups v2 (`--cg`). The [release entrypoint](../rel/overlays/bin/entrypoint) prepares cgroup directories for `runner_compiled` and `runner_script`. Containers need the privileges and writable cgroup access required by that setup.
 

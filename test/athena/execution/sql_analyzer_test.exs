@@ -3,6 +3,22 @@ defmodule Athena.Execution.SqlAnalyzerTest do
 
   alias Athena.Execution.SqlAnalyzer
 
+  test "MySQL and ClickHouse ordering ignores dialect quotes, escapes and comments" do
+    for engine <- ["mysql", "clickhouse"] do
+      refute SqlAnalyzer.top_level_order_by?(
+               "SELECT `order by`, 'x\\' ORDER BY hidden' FROM t # ORDER BY hidden",
+               engine
+             )
+
+      refute SqlAnalyzer.top_level_order_by?(
+               "SELECT * FROM (SELECT id FROM t ORDER BY id) sub",
+               engine
+             )
+
+      assert SqlAnalyzer.top_level_order_by?("SELECT `order by` FROM t ORDER BY id", engine)
+    end
+  end
+
   describe "top_level_order_by?/1" do
     test "detects a plain ORDER BY regardless of case and whitespace" do
       assert SqlAnalyzer.top_level_order_by?("select * from t order by id")

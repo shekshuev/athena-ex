@@ -18,6 +18,16 @@ config :athena, Athena.Execution.SqlRunner,
     System.get_env("RUNNER_DATABASE_URL") ||
       "ecto://postgres:postgres@#{external_host}:5432/postgres"
 
+# Execution services from docker-compose.infra.yml; independent of Athena.Repo.
+config :athena, Athena.Execution.Database.MySQL,
+  url:
+    System.get_env("MYSQL_RUNNER_URL") || "mysql://root:runner_secret@#{external_host}:3307/mysql"
+
+config :athena, Athena.Execution.Database.ClickHouse,
+  url:
+    System.get_env("CLICKHOUSE_RUNNER_URL") ||
+      "http://runner_admin:runner_secret@#{external_host}:8124/default"
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #

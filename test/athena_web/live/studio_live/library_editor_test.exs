@@ -885,6 +885,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
           type: :code,
           content: %{
             "language" => "sql",
+            "database_engine" => "mysql",
             "time_limit" => 2.0,
             "evaluation_mode" => "state_verification",
             "setup_sql" => "CREATE TABLE users (id INT);",
@@ -894,6 +895,11 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
         )
 
       {:ok, lv, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      assert has_element?(
+               lv,
+               "select[name='library_block[content][database_engine]'] option[value='mysql'][selected]"
+             )
 
       render_hook(lv, "update_block_meta", %{
         "block" => %{
@@ -905,6 +911,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
       })
 
       {:ok, updated} = Content.get_library_block(block.id)
+      assert updated.content["database_engine"] == "mysql"
       assert updated.content["evaluation_mode"] == "state_verification"
       assert updated.content["setup_sql"] == "CREATE TABLE users (id INT, active BOOL);"
       assert updated.content["check_sql"] == "SELECT 'OK';"

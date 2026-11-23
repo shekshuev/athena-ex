@@ -30,6 +30,20 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      mysql:
+        image: mysql:8.4
+        ports:
+          - 3308:3306
+        env:
+          MYSQL_ROOT_PASSWORD: runner_secret
+          MYSQL_ROOT_HOST: "%"
+        options: >-
+          --tmpfs /var/lib/mysql:rw,size=536870912
+          --health-cmd "mysqladmin ping --silent"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 30
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -69,6 +83,9 @@ jobs:
 
       - name: Install dependencies
         run: mix deps.get
+
+      - name: Start SQL execution databases
+        run: docker compose -f docker-compose.infra.yml up -d --wait athena_runner_mysql athena_runner_clickhouse
 
       - name: Start Garage (S3-compatible storage)
         run: |
@@ -156,3 +173,8 @@ jobs:
 
       - name: Run Tests
         run: mix test --exclude isolate
+
+      - name: Verify MySQL compatibility
+        env:
+          MYSQL_RUNNER_URL: mysql://root:runner_secret@localhost:3308/mysql
+        run: mix test test/athena/execution/database_runner_test.exs

@@ -6,6 +6,20 @@ version: "3.8"
 # u24). This matters because isolate runs --privileged and shares the host
 # kernel, so its behavior isn't guaranteed portable across kernel versions.
 services:
+  athena_runner_mysql:
+    extends:
+      file: docker-compose.sql-services.yml
+      service: athena_runner_mysql
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MYSQL_RUNNER_PASSWORD:?Set MYSQL_RUNNER_PASSWORD in .env}
+
+  athena_runner_clickhouse:
+    extends:
+      file: docker-compose.sql-services.yml
+      service: athena_runner_clickhouse
+    environment:
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_RUNNER_PASSWORD:?Set CLICKHOUSE_RUNNER_PASSWORD in .env}
+
   athena_web:
     image: ghcr.io/shekshuev/athena-ex-web:latest-${IMAGE_OS:-u24}
     container_name: athena_web
@@ -21,7 +35,7 @@ services:
       - postgres
       - minio
 
-  # SQL challenges never touch isolate – pure Postgres role/DB sandboxing,
+  # SQL challenges use per-engine role/database sandboxing,
   # so this image has no isolate and no compilers at all.
   athena_runner_db:
     image: ghcr.io/shekshuev/athena-ex-runner-db:latest-${IMAGE_OS:-u24}
@@ -36,6 +50,8 @@ services:
       - RELEASE_COOKIE=${RELEASE_COOKIE}
     depends_on:
       - athena_runner_pg
+      - athena_runner_mysql
+      - athena_runner_clickhouse
 
   athena_runner_compiled:
     image: ghcr.io/shekshuev/athena-ex-runner-compiled:latest-${IMAGE_OS:-u24}

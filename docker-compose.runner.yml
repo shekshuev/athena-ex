@@ -4,6 +4,20 @@ version: "3.8"
 # language family beyond what docker-compose.prod.yml already runs. Requires
 # the external `athena-network` created by docker-compose.prod.yml.
 services:
+  athena_runner_mysql:
+    extends:
+      file: docker-compose.sql-services.yml
+      service: athena_runner_mysql
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MYSQL_RUNNER_PASSWORD:?Set MYSQL_RUNNER_PASSWORD in .env}
+
+  athena_runner_clickhouse:
+    extends:
+      file: docker-compose.sql-services.yml
+      service: athena_runner_clickhouse
+    environment:
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_RUNNER_PASSWORD:?Set CLICKHOUSE_RUNNER_PASSWORD in .env}
+
   athena_runner_db:
     build:
       context: .
@@ -14,12 +28,13 @@ services:
       - .env
     environment:
       - RELEASE_DISTRIBUTION=name
-      - RELEASE_NODE=runner_db_extra@athena_runner_db_extra
+      - RELEASE_NODE=runner_db_extra@127.0.0.1
       - RELEASE_COOKIE=${RELEASE_COOKIE}
-    networks:
-      - athena-network
+    network_mode: "host"
     depends_on:
       - athena_runner_pg
+      - athena_runner_mysql
+      - athena_runner_clickhouse
 
   athena_runner_compiled:
     build:
