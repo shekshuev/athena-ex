@@ -2,7 +2,7 @@
 # Pulls the athena-ex web + runner images from GHCR, packs them into
 # tarballs, ships them to a server with no outbound internet access over
 # SSH (password auth), loads them there, and restarts only the app
-# containers (athena_web, athena_runner_db/compiled/script, athena_runner_pg).
+# containers (athena_web, athena_runner_db/compiled/script/jvm/dotnet, athena_runner_pg).
 # postgres/minio/minio-init are never touched – they hold production data
 # and don't need to change on an app redeploy.
 #
@@ -68,10 +68,10 @@ fi
 
 GHCR_OWNER="shekshuev"
 REMOTE_DIR="athena"
-VARIANTS=(web runner-db runner-compiled runner-script)
+VARIANTS=(web runner-db runner-compiled runner-script runner-jvm runner-dotnet)
 # Only these get stopped/recreated. postgres, minio, minio-init are
 # deliberately excluded – they're not part of this list.
-APP_SERVICES=(athena_web athena_runner_db athena_runner_compiled athena_runner_script athena_runner_pg)
+APP_SERVICES=(athena_web athena_runner_db athena_runner_compiled athena_runner_script athena_runner_jvm athena_runner_dotnet athena_runner_pg)
 
 TAG="${VERSION}-${IMAGE_OS}"
 LATEST_TAG="latest-${IMAGE_OS}"

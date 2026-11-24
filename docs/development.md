@@ -110,9 +110,9 @@ alias Athena.Identity.{Roles, Accounts, Role}
 
 ### Local Code Execution
 
-Python and C++ execution requires Linux with [isolate](https://github.com/ioi/isolate), the language toolchain, and the sandbox facilities described under [Execution containers](#execution-containers). SQL uses dedicated PostgreSQL, MySQL/MariaDB and ClickHouse instances and does not require isolate.
+Code execution (except SQL) requires Linux with [isolate](https://github.com/ioi/isolate), the language toolchain, and the sandbox facilities described under [Execution containers](#execution-containers). SQL uses dedicated PostgreSQL, MySQL/MariaDB and ClickHouse instances and does not require isolate.
 
-Running `iex -S mix phx.server` from source starts the web application and registers local execution workers for all three language families. Python/C++ execution still requires the Linux prerequisites; those workers cannot execute isolate workloads natively on macOS or Windows.
+Running `iex -S mix phx.server` from source starts the web application and registers local execution workers for all five language families. Code execution still requires the Linux prerequisites; those workers cannot execute isolate workloads natively on macOS or Windows.
 
 [`docker-compose.dev-runner.yml`](../docker-compose.dev-runner.yml) provides Linux runner containers. For example, this builds and starts the Python runner:
 
@@ -184,9 +184,9 @@ The GitHub Actions pipeline (`.github/workflows/ci.yml`) handles:
 
 Triggered on PRs and pushes to `main` and `develop`.
 
-Docker images are built and pushed to GHCR on version tags (`v*`) via the [release workflow](../.github/workflows/release.yml). Each image variant is built and validated separately on `ubuntu-22.04` and `ubuntu-24.04`. Python/C++ variants receive a privileged isolate smoke test on the runner's real kernel before publication. A failed smoke test blocks that matrix entry's push; other entries continue independently.
+Docker images are built and pushed to GHCR on version tags (`v*`) via the [release workflow](../.github/workflows/release.yml). Each image variant is built and validated separately on `ubuntu-22.04` and `ubuntu-24.04`. All four code-runner variants receive privileged isolate and actual compiler/runtime smoke tests on the runner's real kernel before publication. A failed smoke test blocks that matrix entry's push; other entries continue independently.
 
-See [Images](#images) for the four releases and tag conventions. Docker is the supported deployment target; the workflow does not publish a standalone bare-metal release artifact.
+See [Images](#images) for the six releases and tag conventions. Docker is the supported deployment target; the workflow does not publish a standalone bare-metal release artifact.
 
 ## Deployment
 
@@ -207,8 +207,10 @@ Every image is published as two tags, `latest-u22` and `latest-u24` (also versio
 | --------------------------------------------- | ----------------- | ------------------------------------------------------------------------ |
 | `ghcr.io/shekshuev/athena-ex-web`             | `web`             | LiveView UI, HTTP endpoints, Oban, background tasks. Unprivileged.       |
 | `ghcr.io/shekshuev/athena-ex-runner-db`       | `runner_db`       | SQL challenges (PostgreSQL, MySQL/MariaDB, ClickHouse; no isolate). Unprivileged. |
-| `ghcr.io/shekshuev/athena-ex-runner-compiled` | `runner_compiled` | C++ challenges via isolate + g++. Requires `privileged: true`.           |
-| `ghcr.io/shekshuev/athena-ex-runner-script`   | `runner_script`   | Python challenges via isolate + python3. Requires `privileged: true`.    |
+| `ghcr.io/shekshuev/athena-ex-runner-compiled` | `runner_compiled` | C, C++, Go, Swift, Rust and Zig via isolate. Privileged.           |
+| `ghcr.io/shekshuev/athena-ex-runner-script`   | `runner_script`   | Python, JavaScript (Node.js 26 LTS) and TypeScript via isolate. Privileged.    |
+| `ghcr.io/shekshuev/athena-ex-runner-jvm` | `runner_jvm` | Java 21 and Kotlin via isolate. Privileged. |
+| `ghcr.io/shekshuev/athena-ex-runner-dotnet` | `runner_dotnet` | C# on .NET 10 LTS via isolate. Privileged. |
 
 Combined ("all-in-one") mode only exists when running from source without a
 built release – i.e. local development (`iex -S mix phx.server`) and the test
@@ -218,9 +220,56 @@ suite. It cannot be reached in production; there's no release that produces it.
 
 SQL challenges use `Athena.Execution.DatabaseRunner` with Postgrex, MyXQL and Ch adapters. Each adapter creates restricted temporary users/databases; `runner-db` needs no isolate privileges. Production Compose supplies dedicated PostgreSQL, MariaDB and ClickHouse instances with separate credentials and tmpfs storage.
 
-Python and C++ use isolate with Linux namespaces, resource limits, and cgroups v2 (`--cg`). The [release entrypoint](../rel/overlays/bin/entrypoint) prepares cgroup directories for `runner_compiled` and `runner_script`. Containers need the privileges and writable cgroup access required by that setup.
+All non-SQL languages use isolate with Linux namespaces, resource limits, and cgroups v2 (`--cg`). The [release entrypoint](../rel/overlays/bin/entrypoint) prepares cgroup directories for `runner_compiled`, `runner_script`, `runner_jvm` and `runner_dotnet`. Containers need the privileges and writable cgroup access required by that setup.
 
-The dev runner Compose file explicitly sets `privileged: true`, host PID and cgroup namespaces, and a writable `/sys/fs/cgroup` mount. **Production Compose currently sets `privileged: true` but omits those explicit namespace and mount settings.** The files therefore differ; validate cgroup initialization and sandbox execution on the target host before relying on the production topology. The release smoke test validates the workflow's container configuration, not every Compose topology.
+The production, development and extra-runner Compose files set `privileged: true`, host PID and cgroup namespaces, and a writable `/sys/fs/cgroup` mount for all four code-runner services. Validate cgroup initialization on the target Linux host; CI tests both supported Ubuntu kernels.
+
+Toolchains are installed beneath `/usr/local` and use the sandbox's `/usr` mount; no `/opt` mounts are required. Release builds currently target Linux amd64. The pinned versions in [`install-toolchains.py`](../docker/execution/install-toolchains.py) are:
+
+| Toolchain | Pin | Official source |
+| --- | --- | --- |
+| Node.js | 26.13.1 LTS | [Node releases](https://nodejs.org/dist/index.json) |
+| TypeScript / Node types | 7.0.2 / 26.6.6 | [TypeScript npm metadata](https://registry.npmjs.org/typescript/7.0.2), [Node types metadata](https://registry.npmjs.org/@types/node/26.6.6) |
+| Go | 1.27.4 | [Go downloads](https://go.dev/dl/?mode=json) |
+| Swift | 6.4.3, Debian 12 | [Swift archive](https://download.swift.org/swift-6.4.3-release/debian12/swift-6.4.3-RELEASE/swift-6.4.3-RELEASE-debian12.tar.gz) |
+| Rust | 1.100.0 | [Rust stable manifest](https://static.rust-lang.org/dist/channel-rust-stable.toml) |
+| Zig | 0.17.1 | [Zig download metadata](https://ziglang.org/download/index.json) |
+| Java | Temurin 21.0.13.1+2 | [Temurin release](https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.13.1%2B2) |
+| Kotlin | 2.4.21 | [Kotlin releases](https://kotlinlang.org/docs/releases.html) |
+| .NET SDK / C# | 10.0.404 / 14.0 | [.NET 10 release metadata](https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json) |
+
+C/C++ use Debian Bookworm's GCC packages; Python uses its Python 3 package. These distro package revisions follow the base image's repositories. The isolate source remains pinned to `v2.7`.
+
+The execution contract uses one source file per submission. Helpers are executable `/usr/local/bin/athena-{language}-compile` programs, invoked without arguments in `/box`:
+
+| Language | Source | Compiler / helper | Artifact / execution |
+| --- | --- | --- | --- |
+| C / C++ | `main.c` / `main.cpp` | `/usr/bin/gcc` / `/usr/bin/g++` | `./out` |
+| Go | `main.go` | `athena-go-compile` | `./out` |
+| Swift | `main.swift` | `athena-swift-compile` | `./out` |
+| Rust | `main.rs` | `/usr/local/bin/rustc` | `./out` |
+| Zig | `main.zig` | `athena-zig-compile` | `./out` |
+| JavaScript | `main.js` | None | `/usr/local/bin/node main.js` |
+| TypeScript | `main.ts` | `athena-typescript-compile` | `/usr/local/bin/node main.js` |
+| Java | `Main.java` | `/usr/local/bin/javac --release 21` | `Main.class`; `/usr/local/bin/java Main` |
+| Kotlin | `Main.kt` | `/usr/local/bin/kotlinc -jvm-target 21 -include-runtime` | `main.jar`; `/usr/local/bin/java -jar main.jar` |
+| C# | `Main.cs` | `athena-csharp-compile` | `/usr/local/bin/dotnet out/Main.dll` |
+
+TypeScript receives full strict type checking and emits no JavaScript on errors; Node's built-in type stripping is not used. C# invokes the pinned Roslyn compiler directly with .NET 10 reference assemblies, C# 14 and generated implicit usings. It writes a framework-dependent `Main.dll` and its runtime configuration without MSBuild, NuGet or file-lock syscalls blocked by isolate. The CLR single-mapping allocator is selected with `DOTNET_EnableWriteXorExecute=0`: its default double-mapping allocator creates memfd files exceeding the 1 MiB runtime file-size cap. The isolate syscall filter, cgroup memory cap and output/file-size cap remain enabled. Go uses the SDK's official `GOCACHEPROG` interface with the private `athena-go-cache` helper, avoiding disk-cache trim locks without patching the SDK. Swift and Zig use writable submission-local caches. Zig compiles with one job under `strace`, which replaces advisory `flock` calls with successful no-ops before they reach the kernel; the isolate syscall filter remains enabled and submitted executables run without a tracer. Hosts must permit tracing child processes. The compiler CPU, memory and process budgets include the tracer. Swift embeds an rpath to `/usr/local/swift/usr/lib/swift/linux` so native programs can resolve the installed runtime without inherited environment variables. Java and Kotlin discover the JDK through absolute `/usr/local/bin` links.
+
+Build just a toolchain with `docker build --target toolchains -f Dockerfile.runner-script .`, or include isolate, helpers and runtime dependencies with `--target sandbox`. For example:
+
+```bash
+docker build --target sandbox -f Dockerfile.runner-script -t athena-script-smoke .
+docker run --rm --privileged --pid host --cgroupns host \
+  -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+  --entrypoint /bin/sh athena-script-smoke \
+  /usr/local/lib/athena/smoke-languages.sh runner-script
+```
+
+Repeat with `compiled`, `jvm` and `dotnet`. The release workflow runs these same real language checks before pushing images. The added toolchains compile with a 1 GiB cgroup cap and separate CPU/wall deadlines. C/C++ retain a 256 MiB compilation budget (10 CPU seconds, 12 wall seconds); runtime smoke checks use 64 MiB, with managed heaps capped at half that budget. The TypeScript check also rejects a deliberate type error. These checks require a disposable Linux host with writable cgroups.
+
+`scripts/deploy.sh` transfers all six images and recreates the web and five runner services. Copy the updated production Compose file and `docker/clickhouse/execution.xml` to the server before using it. Application PostgreSQL and storage services are not recreated by this script.
 
 ### Production Setup
 
@@ -237,7 +286,7 @@ docker exec athena_web /app/bin/web eval 'Athena.Release.create_admin("admin", "
 
 | File                            | Use case                                                                                                                                    |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docker-compose.prod.yml`       | Production: web + all 3 runner images + Postgres + dedicated SQL-runner Postgres + MinIO                                                    |
+| `docker-compose.prod.yml`       | Production: web + all 5 runner images + Postgres + dedicated SQL-runner Postgres + MinIO                                                    |
 | `docker-compose.dev-runner.yml` | Linux runner containers for development; host-node connection requires additional setup (see [Local Code Execution](#local-code-execution)) |
 | `docker-compose.runner.yml`     | Additional scalable runner instances (requires external `athena-network`)                                                                   |
 | `docker-compose.infra.yml`      | Local dev infrastructure only                                                                                                               |

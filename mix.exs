@@ -31,7 +31,9 @@ defmodule Athena.MixProject do
       web: [applications: [athena: :permanent]],
       runner_db: [applications: [athena: :permanent]],
       runner_compiled: [applications: [athena: :permanent]],
-      runner_script: [applications: [athena: :permanent]]
+      runner_script: [applications: [athena: :permanent]],
+      runner_jvm: [applications: [athena: :permanent]],
+      runner_dotnet: [applications: [athena: :permanent]]
     ]
   end
 

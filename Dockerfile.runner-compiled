@@ -5,6 +5,21 @@ ARG DEBIAN_VERSION=bookworm-20260610-slim
 ARG BUILDER_IMAGE="docker.io/hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 ARG RUNNER_IMAGE="docker.io/debian:${DEBIAN_VERSION}"
 
+FROM debian:bookworm-slim AS toolchains
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl python3 xz-utils unzip libatomic1 && rm -rf /var/lib/apt/lists/*
+COPY docker/execution/install-toolchains.py /tmp/install-toolchains.py
+ARG TARGETARCH=amd64
+RUN test "$TARGETARCH" = amd64
+RUN python3 /tmp/install-toolchains.py compiled
+
+FROM toolchains AS go_cache_builder
+COPY docker/execution/go-cache/ /tmp/go-cache/
+RUN export GO111MODULE=off CGO_ENABLED=0 GOMAXPROCS=2 GOCACHE=/tmp/athena-go-cache-build \
+  && cd /tmp/go-cache \
+  && /usr/local/go/bin/go test \
+  && /usr/local/go/bin/go build -trimpath -o /usr/local/bin/athena-go-cache main.go \
+  && rm -rf /tmp/go-cache /tmp/athena-go-cache-build
+
 FROM ${BUILDER_IMAGE} AS builder
 ARG COMMIT_SHA
 ARG APP_VERSION
@@ -44,18 +59,12 @@ COPY config/runtime.exs config/
 COPY rel rel
 RUN mix release runner_compiled
 
-FROM ${RUNNER_IMAGE} AS final
+FROM ${RUNNER_IMAGE} AS sandbox
 
-# The compiled-family runner executes C++ submissions inside isolate. It
-# needs a compiler for student code (g++) plus the toolchain to build
-# isolate itself (gcc/libc6-dev/make/libcap-dev/pkg-config/libseccomp-dev/
-# libsystemd-dev) – no python3, that's the script family's job. libc6-dev is
-# spelled out explicitly: it's only a Recommends of the `gcc` package, so
-# --no-install-recommends won't pull it in on its own and gcc can't compile
-# anything (missing stdint.h etc.) without it.
+# Language toolchains and isolate are available inside the /usr sandbox mount.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libstdc++6 openssl libncurses6 locales ca-certificates \
-    g++ \
+    g++ libxml2 libcurl4 libedit2 libsqlite3-0 libz3-4 libicu72 libatomic1 \
     git make gcc libc6-dev libcap-dev pkg-config libseccomp-dev libsystemd-dev \
   && rm -rf /var/lib/apt/lists/*
 
@@ -83,6 +92,14 @@ RUN useradd -r -s /bin/false isolate \
 RUN mkdir -p /run/isolate/locks /var/local/lib/isolate \
   && chmod 777 /var/local/lib/isolate
 
+COPY --from=toolchains /usr/local/ /usr/local/
+COPY --from=go_cache_builder /usr/local/bin/athena-go-cache /usr/local/bin/athena-go-cache
+COPY --chmod=755 docker/execution/athena-*-compile /usr/local/bin/
+COPY --chmod=755 docker/execution/smoke-languages.sh /usr/local/lib/athena/smoke-languages.sh
+RUN apt-get update && apt-get install -y --no-install-recommends strace \
+  && rm -rf /var/lib/apt/lists/*
+
+FROM sandbox AS final
 WORKDIR "/app"
 ENV MIX_ENV="prod"
 ENV RELEASE_NAME="runner_compiled"

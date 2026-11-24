@@ -5,6 +5,13 @@ ARG DEBIAN_VERSION=bookworm-20260610-slim
 ARG BUILDER_IMAGE="docker.io/hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
 ARG RUNNER_IMAGE="docker.io/debian:${DEBIAN_VERSION}"
 
+FROM debian:bookworm-slim AS toolchains
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl python3 xz-utils unzip libatomic1 && rm -rf /var/lib/apt/lists/*
+COPY docker/execution/install-toolchains.py /tmp/install-toolchains.py
+ARG TARGETARCH=amd64
+RUN test "$TARGETARCH" = amd64
+RUN python3 /tmp/install-toolchains.py script
+
 FROM ${BUILDER_IMAGE} AS builder
 ARG COMMIT_SHA
 ARG APP_VERSION
@@ -44,18 +51,12 @@ COPY config/runtime.exs config/
 COPY rel rel
 RUN mix release runner_script
 
-FROM ${RUNNER_IMAGE} AS final
+FROM ${RUNNER_IMAGE} AS sandbox
 
-# The script-family runner executes Python submissions inside isolate. It
-# needs the python3 interpreter plus the toolchain to build isolate itself
-# (gcc/libc6-dev/make/libcap-dev/pkg-config/libseccomp-dev/libsystemd-dev) –
-# no g++, that's the compiled family's job. libc6-dev is spelled out
-# explicitly: it's only a Recommends of the `gcc` package, so
-# --no-install-recommends won't pull it in on its own and gcc can't compile
-# anything (missing stdint.h etc.) without it.
+# Language toolchains and isolate are available inside the /usr sandbox mount.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libstdc++6 openssl libncurses6 locales ca-certificates \
-    python3 \
+    python3 libatomic1 \
     git make gcc libc6-dev libcap-dev pkg-config libseccomp-dev libsystemd-dev \
   && rm -rf /var/lib/apt/lists/*
 
@@ -83,6 +84,11 @@ RUN useradd -r -s /bin/false isolate \
 RUN mkdir -p /run/isolate/locks /var/local/lib/isolate \
   && chmod 777 /var/local/lib/isolate
 
+COPY --from=toolchains /usr/local/ /usr/local/
+COPY --chmod=755 docker/execution/athena-*-compile /usr/local/bin/
+COPY --chmod=755 docker/execution/smoke-languages.sh /usr/local/lib/athena/smoke-languages.sh
+
+FROM sandbox AS final
 WORKDIR "/app"
 ENV MIX_ENV="prod"
 ENV RELEASE_NAME="runner_script"

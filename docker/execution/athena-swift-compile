@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+mkdir -p "$PWD/.cache/swift"
+exec /usr/local/swift/usr/bin/swiftc -swift-version 6 -O -module-cache-path "$PWD/.cache/swift" -Xlinker -rpath -Xlinker /usr/local/swift/usr/lib/swift/linux main.swift -o out

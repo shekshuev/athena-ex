@@ -92,7 +92,7 @@ defmodule Athena.Application do
   end
 
   # A combined ("all") node serves every language, since there's only one of it.
-  defp runner_families(nil), do: [:db, :compiled, :script]
+  defp runner_families(nil), do: [:db, :compiled, :script, :jvm, :dotnet]
   defp runner_families(family), do: [family]
 
   defp register_runner_in_pg(families) do

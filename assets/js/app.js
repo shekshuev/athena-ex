@@ -1,17 +1,4 @@
-import { cpp } from "@codemirror/lang-cpp";
-import { css } from "@codemirror/lang-css";
-import { go } from "@codemirror/lang-go";
-import { html } from "@codemirror/lang-html";
-import { java } from "@codemirror/lang-java";
-import { javascript } from "@codemirror/lang-javascript";
-import { json } from "@codemirror/lang-json";
-import { markdown } from "@codemirror/lang-markdown";
-import { php } from "@codemirror/lang-php";
-import { python } from "@codemirror/lang-python";
-import { rust } from "@codemirror/lang-rust";
-import { sql } from "@codemirror/lang-sql";
-import { xml } from "@codemirror/lang-xml";
-import { yaml } from "@codemirror/lang-yaml";
+import { codeEditorLanguage, updateCodeEditorLanguage } from "./code_editor_languages";
 import { Compartment, EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { Editor, Extension } from "@tiptap/core";
@@ -34,8 +21,7 @@ import TextStyle from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 import { EditorView, basicSetup } from "codemirror";
-import powershell from "highlight.js/lib/languages/powershell";
-import { common, createLowlight } from "lowlight";
+import { lowlight } from "./code_block_highlighting";
 import * as mammoth from "mammoth";
 import { Socket } from "phoenix";
 import "cally"; // <calendar-date> web component used by the date picker in core_components
@@ -60,12 +46,6 @@ import {
 import { attachInputTelemetry } from "./input_telemetry";
 import { MessengerHooks } from "./messenger_hooks";
 import { GlobalSearch } from "./search_hook";
-
-const lowlight = createLowlight(common);
-// `plaintext` and `bash` ship with lowlight's `common` bundle; PowerShell
-// does not, so it is registered by hand - see `@highlight_only_languages`
-// in Athena.Execution.LanguageConfig for the picker side.
-lowlight.register("powershell", powershell);
 
 // The upstream NodeView (`tiptap-extension-resize-image`) always renders the
 // image through its own interactive NodeView, which only copies plain
@@ -322,51 +302,8 @@ Hooks.CodeEditor = {
     )?.[1];
     let firstInteractionSent = false;
 
-    let langExtension = python();
-    switch (language) {
-      case "python":
-        langExtension = python();
-        break;
-      case "cpp":
-        langExtension = cpp();
-        break;
-      case "sql":
-        langExtension = sql();
-        break;
-      case "javascript":
-        langExtension = javascript();
-        break;
-      case "html":
-        langExtension = html();
-        break;
-      case "css":
-        langExtension = css();
-        break;
-      case "json":
-        langExtension = json();
-        break;
-      case "markdown":
-        langExtension = markdown();
-        break;
-      case "yaml":
-        langExtension = yaml();
-        break;
-      case "rust":
-        langExtension = rust();
-        break;
-      case "go":
-        langExtension = go();
-        break;
-      case "java":
-        langExtension = java();
-        break;
-      case "php":
-        langExtension = php();
-        break;
-      case "xml":
-        langExtension = xml();
-        break;
-    }
+    this.languageMode = language;
+    this.languageCompartment = new Compartment();
 
     const themeCompartment = new Compartment();
 
@@ -375,7 +312,7 @@ Hooks.CodeEditor = {
 
     let extensions = [
       basicSetup,
-      langExtension,
+      this.languageCompartment.of(codeEditorLanguage(language)),
       themeCompartment.of(isDark() ? oneDark : []),
       EditorView.theme({
         "&": { height: "300px", fontSize: "14px" },
@@ -448,6 +385,12 @@ Hooks.CodeEditor = {
         });
       }
     }
+  },
+
+  updated() {
+    // LiveView merges data-* attributes on ignored elements and calls updated
+    // when their dataset changes, even though CodeMirror's children stay intact.
+    updateCodeEditorLanguage(this);
   },
 
   destroyed() {
