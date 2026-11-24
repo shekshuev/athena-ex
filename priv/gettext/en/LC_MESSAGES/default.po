@@ -4071,11 +4071,6 @@ msgstr ""
 msgid "Please write some code first!"
 msgstr ""
 
-#: lib/athena_web/components/block_components.ex:2409
-#, elixir-autogen, elixir-format
-msgid "PostgreSQL Error"
-msgstr ""
-
 #: lib/athena_web/components/block_components.ex:2468
 #, elixir-autogen, elixir-format
 msgid "Query Output"
@@ -11292,3 +11287,14 @@ msgstr "Window occupied part of the screen for %{sec}s; another window is not co
 #, elixir-autogen
 msgid "connected"
 msgstr "connected"
+
+#: lib/athena_web/live/studio_live/inspector_component.ex:680
+#: lib/athena_web/live/studio_live/library_editor.ex:1374
+#, elixir-autogen, elixir-format
+msgid "Database Engine"
+msgstr ""
+
+#: lib/athena_web/components/block_components.ex:2476
+#, elixir-autogen, elixir-format
+msgid "SQL Error"
+msgstr ""

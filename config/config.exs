@@ -131,6 +131,16 @@ config :athena, Athena.Execution.SqlRunner,
   max_cell_bytes: 16 * 1024,
   stream_max_rows: 100
 
+# Explicit grants for newly created ClickHouse sandbox users. External-source,
+# Distributed, Replicated and Shared engines are intentionally absent.
+config :athena, Athena.Execution.Database.ClickHouse, allowed_table_engines: ~w(
+    Memory
+    MergeTree ReplacingMergeTree SummingMergeTree AggregatingMergeTree
+    CollapsingMergeTree VersionedCollapsingMergeTree CoalescingMergeTree GraphiteMergeTree
+    Log TinyLog StripeLog
+    Null Set Join
+  )
+
 config :athena, Athena.Engagement,
   default_expected_seconds: nil,
   default_fast_ratio_threshold: 0.4,

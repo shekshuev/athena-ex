@@ -556,7 +556,7 @@ defmodule Athena.Execution.SqlRunnerTest do
 
     {:ok, conn} = Postgrex.start_link(opts)
 
-    query = "SELECT 1 FROM pg_database WHERE datname = $1;"
+    query = "SELECT 1 FROM pg_database WHERE starts_with(datname, $1);"
     assert {:ok, %Postgrex.Result{rows: []}} = Postgrex.query(conn, query, [db_name])
 
     GenServer.stop(conn)

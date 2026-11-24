@@ -8,11 +8,11 @@ defmodule Athena.Execution.Verifier do
   alias Athena.Content.{CodeChallenge, TestCase}
 
   alias Athena.Execution.{
+    DatabaseRunner,
     IsolateRunner,
     LanguageConfig,
     Result,
     SqlAnalyzer,
-    SqlRunner,
     SqlValue,
     TestResult
   }
@@ -33,7 +33,7 @@ defmodule Athena.Execution.Verifier do
     time_limit = challenge.time_limit || 2.0
 
     execution_res =
-      SqlRunner.execute_in_sandbox(box_id, setup_sql, fn conn ->
+      DatabaseRunner.execute_in_sandbox(challenge.database_engine, box_id, setup_sql, fn conn ->
         case to_string(eval_mode) do
           "query_result" ->
             ordered? = ordered_comparison?(challenge)
@@ -61,16 +61,18 @@ defmodule Athena.Execution.Verifier do
     case get_challenge_field(challenge, :result_order) do
       "strict" -> true
       "ignore" -> false
-      _auto -> SqlAnalyzer.top_level_order_by?(challenge.solution_code)
+      _auto -> SqlAnalyzer.top_level_order_by?(challenge.solution_code, challenge.database_engine)
     end
   end
 
   defp evaluate_sql_query_result(conn, student_sql, solution_sql, time_limit, ordered?) do
-    {_t_ref, ref_res} = :timer.tc(fn -> SqlRunner.query(conn, solution_sql, time_limit) end)
+    {_t_ref, ref_res} = :timer.tc(fn -> DatabaseRunner.query(conn, solution_sql, time_limit) end)
 
     case ref_res do
       {:ok, _} ->
-        {t_stu, student_res} = :timer.tc(fn -> SqlRunner.query(conn, student_sql, time_limit) end)
+        {t_stu, student_res} =
+          :timer.tc(fn -> DatabaseRunner.query(conn, student_sql, time_limit) end)
+
         time_sec = Float.round(t_stu / 1_000_000, 3)
 
         compare_query_results(ref_res, student_res, time_sec, ordered?)
@@ -166,11 +168,13 @@ defmodule Athena.Execution.Verifier do
   end
 
   defp evaluate_sql_state(conn, student_sql, check_sql, time_limit) do
-    {t_stu, student_res} = :timer.tc(fn -> SqlRunner.query(conn, student_sql, time_limit) end)
+    {t_stu, student_res} =
+      :timer.tc(fn -> DatabaseRunner.query(conn, student_sql, time_limit) end)
+
     time_sec = Float.round(t_stu / 1_000_000, 3)
 
     with {:ok, _} <- student_res,
-         {:ok, check_res} <- SqlRunner.query(conn, check_sql, time_limit) do
+         {:ok, check_res} <- DatabaseRunner.query(conn, check_sql, time_limit) do
       case check_res.rows do
         [["OK"]] ->
           payload = %{
@@ -252,10 +256,10 @@ defmodule Athena.Execution.Verifier do
 
   defp sanitize_cell(val), do: SqlValue.to_cell(val)
 
-  defp normalize_sql_result(%Postgrex.Result{columns: cols, rows: rows}, true),
+  defp normalize_sql_result(%{columns: cols, rows: rows}, true),
     do: {cols || [], rows || []}
 
-  defp normalize_sql_result(%Postgrex.Result{columns: cols, rows: rows}, false),
+  defp normalize_sql_result(%{columns: cols, rows: rows}, false),
     do: {cols || [], Enum.sort(rows || [])}
 
   defp format_sql_execution_result({:ok, {:ok, status, payload}}) when is_map(payload) do

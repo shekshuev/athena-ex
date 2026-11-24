@@ -1702,7 +1702,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert [job] = Oban.Testing.all_enqueued(worker: Athena.Execution.TestWorker, repo: Repo)
       assert :ok = Oban.Testing.perform_job(Athena.Execution.TestWorker, job.args, repo: Repo)
 
-      assert render(player) =~ "ACCEPTED"
+      assert has_element?(player, ".badge-success", "Accepted")
     end
 
     test "a Test Run never writes engagement_events rows for its ephemeral account", %{
@@ -1813,7 +1813,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert [job] = Oban.Testing.all_enqueued(worker: Athena.Execution.TestWorker, repo: Repo)
       assert :ok = Oban.Testing.perform_job(Athena.Execution.TestWorker, job.args, repo: Repo)
 
-      assert render(player) =~ "ACCEPTED"
+      assert has_element?(player, ".badge-success", "Accepted")
     end
   end
 
@@ -2467,6 +2467,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
          %{conn: conn, course: course, section: section, admin: admin} do
       content = %{
         "language" => "sql",
+        "database_engine" => "clickhouse",
         "time_limit" => 2.5,
         "solution_code" => "SELECT * FROM users ORDER BY id;",
         "setup_sql" => "CREATE TABLE users (id INT, name TEXT);",
@@ -2531,6 +2532,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       lib = Repo.get_by!(LibraryBlock, title: "SQL Code Template")
 
       assert lib.content["language"] == "sql"
+      assert lib.content["database_engine"] == "clickhouse"
       assert lib.content["setup_sql"] == "CREATE TABLE users (id INT, name TEXT);"
       assert lib.content["check_sql"] == "SELECT 'OK';"
       assert lib.content["solution_code"] == "SELECT * FROM users ORDER BY id;"

@@ -1367,6 +1367,15 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
                         <%= if @block.content["language"] == "sql" do %>
                           <.input
+                            id={"database-engine-#{@block.id}"}
+                            type="select"
+                            name="library_block[content][database_engine]"
+                            value={@block.content["database_engine"] || "postgresql"}
+                            label={gettext("Database Engine")}
+                            options={Execution.database_options()}
+                          />
+
+                          <.input
                             type="select"
                             name="library_block[content][evaluation_mode]"
                             value={@block.content["evaluation_mode"] || "query_result"}

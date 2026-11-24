@@ -229,6 +229,16 @@ if config_env() == :prod do
         "ecto://postgres:#{System.get_env("POSTGRES_RUNNER_PASSWORD", "runner_secret")}@127.0.0.1:5433/postgres"
 
     config :athena, Athena.Execution.SqlRunner, url: runner_db_url
+
+    config :athena, Athena.Execution.Database.MySQL,
+      url:
+        System.get_env("MYSQL_RUNNER_URL") ||
+          "mysql://root:#{URI.encode(System.get_env("MYSQL_RUNNER_PASSWORD", "runner_secret"), &URI.char_unreserved?/1)}@127.0.0.1:3307/mysql"
+
+    config :athena, Athena.Execution.Database.ClickHouse,
+      url:
+        System.get_env("CLICKHOUSE_RUNNER_URL") ||
+          "http://runner_admin:#{URI.encode(System.get_env("CLICKHOUSE_RUNNER_PASSWORD", "runner_secret"), &URI.char_unreserved?/1)}@127.0.0.1:8124/default"
   end
 
   # ## SSL Support

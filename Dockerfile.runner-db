@@ -54,7 +54,7 @@ RUN mix release runner_db
 FROM ${RUNNER_IMAGE} AS final
 
 # The db-family runner executes SQL challenges by creating restricted,
-# ephemeral Postgres roles/databases (see Athena.Execution.SqlRunner) – no
+# ephemeral PostgreSQL, MySQL/MariaDB and ClickHouse users/databases – no
 # isolate and no compilers are needed here at all.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \

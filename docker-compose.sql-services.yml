@@ -1,0 +1,49 @@
+# Shared ephemeral execution servers. Application data never belongs here.
+services:
+  athena_runner_mysql:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MYSQL_RUNNER_PASSWORD:-runner_secret}
+      MARIADB_ROOT_HOST: "%"
+    command:
+      - --local-infile=0
+      - --max-allowed-packet=1M
+      - --max-connections=32
+      - --innodb-buffer-pool-size=64M
+      - --tmp-table-size=16M
+      - --max-heap-table-size=16M
+      - --skip-log-bin
+    ports:
+      - "127.0.0.1:${MYSQL_RUNNER_PORT:-3307}:3306"
+    tmpfs:
+      - /var/lib/mysql:size=512m
+      - /tmp:size=128m
+    mem_limit: 768m
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  athena_runner_clickhouse:
+    image: clickhouse/clickhouse-server:25.8
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_USER: runner_admin
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_RUNNER_PASSWORD:-runner_secret}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "127.0.0.1:${CLICKHOUSE_RUNNER_PORT:-8124}:8123"
+    volumes:
+      - ./docker/clickhouse/execution.xml:/etc/clickhouse-server/config.d/execution.xml:ro
+    tmpfs:
+      - /var/lib/clickhouse:size=768m
+      - /var/log/clickhouse-server:size=64m
+      - /tmp:size=128m
+    mem_limit: 1536m
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user \"$$CLICKHOUSE_USER\" --password \"$$CLICKHOUSE_PASSWORD\" --query 'SELECT 1' > /dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 30

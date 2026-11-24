@@ -22,6 +22,21 @@ defmodule Athena.Execution.SqlAnalyzer do
     |> has_order_by?()
   end
 
+  def top_level_order_by?(sql, "postgresql"), do: top_level_order_by?(sql)
+  def top_level_order_by?(nil, _engine), do: false
+
+  def top_level_order_by?(sql, engine) when engine in ["mysql", "clickhouse"] do
+    alias Athena.Execution.Database.Statements
+
+    case Statements.single(sql, engine) do
+      {:ok, statement} ->
+        statement |> Statements.unquoted_text() |> top_level_words() |> has_order_by?()
+
+      _ ->
+        false
+    end
+  end
+
   defp has_order_by?(["order", "by" | _]), do: true
   defp has_order_by?([_ | rest]), do: has_order_by?(rest)
   defp has_order_by?([]), do: false

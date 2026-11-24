@@ -62,7 +62,7 @@ defmodule Athena.Execution.LanguageConfig do
     [
       {"Python", "python3"},
       {"C++", "cpp"},
-      {"SQL (PostgreSQL 16)", "sql"}
+      {"SQL", "sql"}
     ]
   end
 

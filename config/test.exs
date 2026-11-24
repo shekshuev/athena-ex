@@ -24,6 +24,16 @@ config :athena, Athena.Repo,
 config :athena, Athena.Execution.SqlRunner,
   url: System.get_env("RUNNER_DATABASE_URL") || "ecto://postgres:postgres@localhost:5432/postgres"
 
+# Execution services from docker-compose.infra.yml; independent of Athena.Repo.
+config :athena, Athena.Execution.Database.MySQL,
+  url:
+    System.get_env("MYSQL_RUNNER_URL") || "mysql://root:runner_secret@#{external_host}:3307/mysql"
+
+config :athena, Athena.Execution.Database.ClickHouse,
+  url:
+    System.get_env("CLICKHOUSE_RUNNER_URL") ||
+      "http://runner_admin:runner_secret@#{external_host}:8124/default"
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :athena, AthenaWeb.Endpoint,
