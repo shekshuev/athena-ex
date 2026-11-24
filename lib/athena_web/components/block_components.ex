@@ -2468,12 +2468,12 @@ defmodule AthenaWeb.BlockComponents do
         <% payload = decode_sql_payload(res) %>
 
         <%= if payload["status"] in ["sql_error", "timeout", "system_error"] or (payload["stderr"] && payload["stderr"] != "") do %>
-          <div class="p-4 bg-error/10 border border-error/30 rounded-sm text-error">
+          <div role="alert" class="p-4 bg-error/10 border border-error/30 rounded-sm text-error">
             <div class="font-bold flex items-center gap-2 mb-3 text-xs uppercase tracking-wider">
               <.icon name="hero-exclamation-triangle" class="size-4" />
               {if payload["status"] == "timeout",
                 do: gettext("Time Limit Exceeded"),
-                else: gettext("PostgreSQL Error")}
+                else: gettext("SQL Error")}
             </div>
             <pre class="font-mono text-xs whitespace-pre-wrap leading-relaxed bg-base-200 p-3 rounded-sm border border-base-300 text-base-content overflow-x-auto">{payload["stderr"] || payload["message"]}</pre>
           </div>
@@ -2498,10 +2498,9 @@ defmodule AthenaWeb.BlockComponents do
                   class="size-5"
                 />
                 <span>
-                  {payload["message"] ||
-                    if payload["status"] == "accepted",
-                      do: gettext("State Verification Passed"),
-                      else: gettext("State Verification Failed")}
+                  {if payload["status"] == "accepted",
+                    do: gettext("State Verification Passed"),
+                    else: payload["message"] || gettext("State Verification Failed")}
                 </span>
               </div>
               <span :if={payload["time"]} class="text-xs font-mono text-base-content/50">
@@ -2517,7 +2516,11 @@ defmodule AthenaWeb.BlockComponents do
                     payload["status"] == "accepted" && "badge-success",
                     payload["status"] != "accepted" && "badge-error"
                   ]}>
-                    {String.upcase(payload["status"])}
+                    {case payload["status"] do
+                      "accepted" -> gettext("Accepted")
+                      "wrong_answer" -> gettext("Wrong answer")
+                      status -> String.upcase(status)
+                    end}
                   </span>
                   <span class="text-xs font-medium text-base-content/60">
                     {if payload["status"] == "accepted",

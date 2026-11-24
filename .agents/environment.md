@@ -19,3 +19,7 @@ Inspect `config/runtime.exs` and `Athena.Application` for release-role wiring. P
 For MinIO behind TLS termination, configure `MINIO_SCHEME` for the internal endpoint and `MINIO_PUBLIC_SCHEME` / `MINIO_PUBLIC_PORT` for the browser endpoint. `MINIO_PORT_EXTERNAL` is the Docker port mapping. See [storage deployment](../docs/deployment/storage-https.md).
 
 `mix athena.storage.setup` creates private buckets and removes bucket policies; there is no public prefix. For existing production storage, audit saved links first and use the backed-up, explicit hardening operation described in [private storage deployment](../docs/deployment/private-storage.md). Run administrative policy changes with storage-admin credentials separately from the running application's scoped service identity. Do not execute them through database migrations.
+
+ClickHouse sandbox table-engine permissions are configured with `allowed_table_engines` under `Athena.Execution.Database.ClickHouse` in `config/config.exs`. Keep the engine policy in configuration, grant only explicit engine names, and preserve the independent bans on external sources and administrative operations. Restart the runner after configuration-file changes; new sandbox users receive the configured grants.
+
+Production deployment uses self-contained service definitions in `docker-compose.prod.yml`. `docker-compose.sql-services.yml` is shared by development and extra-runner configurations only. Copy `docker/clickhouse/execution.xml` with its relative path when transferring production configuration.

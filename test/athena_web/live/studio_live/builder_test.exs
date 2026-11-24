@@ -1702,7 +1702,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert [job] = Oban.Testing.all_enqueued(worker: Athena.Execution.TestWorker, repo: Repo)
       assert :ok = Oban.Testing.perform_job(Athena.Execution.TestWorker, job.args, repo: Repo)
 
-      assert render(player) =~ "ACCEPTED"
+      assert has_element?(player, ".badge-success", "Accepted")
     end
 
     test "a Test Run never writes engagement_events rows for its ephemeral account", %{
@@ -1813,7 +1813,7 @@ defmodule AthenaWeb.StudioLive.BuilderTest do
       assert [job] = Oban.Testing.all_enqueued(worker: Athena.Execution.TestWorker, repo: Repo)
       assert :ok = Oban.Testing.perform_job(Athena.Execution.TestWorker, job.args, repo: Repo)
 
-      assert render(player) =~ "ACCEPTED"
+      assert has_element?(player, ".badge-success", "Accepted")
     end
   end
 

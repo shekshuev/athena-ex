@@ -257,6 +257,183 @@ defmodule Athena.Execution.DatabaseRunnerTest do
     assert inventory(MySQL) == before
   end
 
+  test "ClickHouse executes a SummingMergeTree setup and verifies its seeded data" do
+    challenge = %CodeChallenge{
+      language: "sql",
+      database_engine: "clickhouse",
+      time_limit: 2.0,
+      setup_sql: """
+      CREATE TABLE summing_mt (
+        id UInt32,
+        val UInt32,
+        example UInt32, -- a non-key column; trailing commas are valid ClickHouse SQL
+      ) ENGINE = SummingMergeTree(val) ORDER BY (id);
+      INSERT INTO summing_mt SELECT 1, (number + 1) * 10, (number + 1) * 100 FROM numbers(3);
+      INSERT INTO summing_mt SELECT 1, 10, 100;
+      """,
+      solution_code: "SELECT sum(val) AS total FROM summing_mt"
+    }
+
+    result = Verifier.verify(challenge.solution_code, challenge, 1)
+    assert result.status == :accepted
+    assert [test_result] = result.test_results
+    assert Jason.decode!(test_result.stdout)["rows"] == [[70]]
+  end
+
+  test "ClickHouse permits local MergeTree variants under restricted credentials" do
+    assert {:ok, :checked} =
+             ClickHouse.execute_in_sandbox(1, nil, fn conn ->
+               for {name, engine} <- [
+                     {"replacing", "ReplacingMergeTree(version)"},
+                     {"aggregating", "AggregatingMergeTree"},
+                     {"coalescing", "CoalescingMergeTree"},
+                     {"collapsing", "CollapsingMergeTree(sign)"},
+                     {"versioned", "VersionedCollapsingMergeTree(sign, version)"}
+                   ] do
+                 assert {:ok, _} =
+                          ClickHouse.query(
+                            conn,
+                            "CREATE TABLE #{name} (id UInt32, val UInt32, version UInt32, sign Int8) ENGINE=#{engine} ORDER BY id",
+                            2
+                          )
+
+                 assert {:ok, _} =
+                          ClickHouse.query(conn, "INSERT INTO #{name} VALUES (1, 10, 1, 1)", 2)
+
+                 assert {:ok, %{rows: [[10]]}} =
+                          ClickHouse.query(conn, "SELECT val FROM #{name}", 2)
+               end
+
+               :checked
+             end)
+  end
+
+  test "ClickHouse supports Log engines and local Null, Set and Join tables" do
+    assert {:ok, :checked} =
+             ClickHouse.execute_in_sandbox(1, nil, fn conn ->
+               for engine <- ["Log", "TinyLog", "StripeLog"] do
+                 assert {:ok, _} =
+                          ClickHouse.query(
+                            conn,
+                            "CREATE TABLE t_#{engine} (id UInt32) ENGINE=#{engine}",
+                            2
+                          )
+
+                 assert {:ok, _} = ClickHouse.query(conn, "INSERT INTO t_#{engine} VALUES (7)", 2)
+
+                 assert {:ok, %{rows: [[7]]}} =
+                          ClickHouse.query(conn, "SELECT id FROM t_#{engine}", 2)
+               end
+
+               assert {:ok, _} =
+                        ClickHouse.query(
+                          conn,
+                          "CREATE TABLE null_values (id UInt32) ENGINE=Null",
+                          2
+                        )
+
+               assert {:ok, _} = ClickHouse.query(conn, "INSERT INTO null_values VALUES (7)", 2)
+
+               assert {:ok, %{rows: [[0]]}} =
+                        ClickHouse.query(conn, "SELECT count() FROM null_values", 2)
+
+               assert {:ok, _} =
+                        ClickHouse.query(
+                          conn,
+                          "CREATE TABLE set_values (id UInt32) ENGINE=Set",
+                          2
+                        )
+
+               assert {:ok, _} = ClickHouse.query(conn, "INSERT INTO set_values VALUES (7)", 2)
+
+               assert {:ok, %{rows: [[1]]}} =
+                        ClickHouse.query(conn, "SELECT toUInt32(7) IN set_values AS found", 2)
+
+               assert {:ok, _} =
+                        ClickHouse.query(
+                          conn,
+                          "CREATE TABLE join_values (id UInt32, val String) ENGINE=Join(ANY, LEFT, id)",
+                          2
+                        )
+
+               assert {:ok, _} =
+                        ClickHouse.query(conn, "INSERT INTO join_values VALUES (7, 'seven')", 2)
+
+               assert {:ok, %{rows: [["seven"]]}} =
+                        ClickHouse.query(
+                          conn,
+                          "SELECT joinGet('join_values', 'val', toUInt32(7)) AS val",
+                          2
+                        )
+
+               :checked
+             end)
+  end
+
+  test "ClickHouse permits GraphiteMergeTree but still requires server rollup configuration" do
+    assert {:ok, {:error, {:sql_error, message}}} =
+             ClickHouse.execute_in_sandbox(1, nil, fn conn ->
+               ClickHouse.query(
+                 conn,
+                 "CREATE TABLE graphite (Path String, Time DateTime, Value Float64, Version UInt64) ENGINE=GraphiteMergeTree('athena_missing_rollup') ORDER BY (Path, Time)",
+                 2
+               )
+             end)
+
+    assert message =~ "athena_missing_rollup"
+    refute message =~ "ACCESS_DENIED"
+  end
+
+  test "ClickHouse reads engine grants from runtime configuration for each sandbox" do
+    configure_engines(["Log"])
+
+    assert {:ok, :restricted} =
+             ClickHouse.execute_in_sandbox(1, nil, fn conn ->
+               assert {:ok, _} =
+                        ClickHouse.query(conn, "CREATE TABLE permitted (id UInt32) ENGINE=Log", 2)
+
+               assert {:error, {:sql_error, message}} =
+                        ClickHouse.query(
+                          conn,
+                          "CREATE TABLE forbidden (id UInt32) ENGINE=MergeTree ORDER BY id",
+                          2
+                        )
+
+               assert message =~ "ACCESS_DENIED"
+               :restricted
+             end)
+  end
+
+  test "ClickHouse rejects malformed engine configuration instead of interpolating grants" do
+    previous = Application.fetch_env!(:athena, ClickHouse)
+    on_exit(fn -> Application.put_env(:athena, ClickHouse, previous) end)
+
+    for invalid <- [["*"], ["Memory; SELECT 1"], [nil], "Log"] do
+      Application.put_env(
+        :athena,
+        ClickHouse,
+        Keyword.put(previous, :allowed_table_engines, invalid)
+      )
+
+      assert_raise ArgumentError, ~r/allowed_table_engines/, fn ->
+        ClickHouse.execute_in_sandbox(1, nil, fn _ ->
+          flunk("Invalid grants must not execute student code")
+        end)
+      end
+    end
+  end
+
+  defp configure_engines(engines) do
+    previous = Application.fetch_env!(:athena, ClickHouse)
+    on_exit(fn -> Application.put_env(:athena, ClickHouse, previous) end)
+
+    Application.put_env(
+      :athena,
+      ClickHouse,
+      Keyword.put(previous, :allowed_table_engines, engines)
+    )
+  end
+
   test "ClickHouse denies files, external sources, dangerous engines and weakened limits" do
     assert {:ok, :denied} =
              ClickHouse.execute_in_sandbox(1, nil, fn conn ->
@@ -266,6 +443,8 @@ defmodule Athena.Execution.DatabaseRunnerTest do
                      "SELECT * FROM remote('127.0.0.1', 'system', 'one')",
                      "CREATE TABLE escape (x String) ENGINE=File(LineAsString)",
                      "CREATE TABLE escape (x String) ENGINE=URL('http://127.0.0.1:9000', 'LineAsString')",
+                     "CREATE TABLE escape (x UInt32) ENGINE=Distributed('forbidden', 'db', 'table')",
+                     "CREATE TABLE escape (x UInt32) ENGINE=ReplicatedMergeTree('/forbidden', 'replica') ORDER BY x",
                      "SELECT 1 SETTINGS max_memory_usage=0",
                      "SELECT 1 SETTINGS max_result_rows=0",
                      "SELECT 1 SETTINGS max_execution_time=0"

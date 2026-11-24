@@ -23,6 +23,7 @@ defmodule Athena.Execution.Database.ClickHouse do
   end
 
   def provision(admin, %{database: database, username: user, password: password}) do
+    engines = allowed_table_engines()
     limits = Limits.config()
 
     settings = [
@@ -42,13 +43,12 @@ defmodule Athena.Execution.Database.ClickHouse do
       "async_insert = 0 CONST"
     ]
 
-    commands = [
-      "CREATE DATABASE `#{database}`",
-      "CREATE USER `#{user}` IDENTIFIED WITH sha256_password BY '#{password}' SETTINGS #{Enum.join(settings, ", ")}",
-      "GRANT SELECT, INSERT, CREATE TABLE, DROP TABLE, ALTER TABLE, TRUNCATE ON `#{database}`.* TO `#{user}`",
-      "GRANT TABLE ENGINE ON Memory TO `#{user}`",
-      "GRANT TABLE ENGINE ON MergeTree TO `#{user}`"
-    ]
+    commands =
+      [
+        "CREATE DATABASE `#{database}`",
+        "CREATE USER `#{user}` IDENTIFIED WITH sha256_password BY '#{password}' SETTINGS #{Enum.join(settings, ", ")}",
+        "GRANT SELECT, INSERT, CREATE TABLE, DROP TABLE, ALTER TABLE, TRUNCATE ON `#{database}`.* TO `#{user}`"
+      ] ++ Enum.map(engines, &"GRANT TABLE ENGINE ON #{&1} TO `#{user}`")
 
     Enum.reduce_while(commands, :ok, fn sql, :ok ->
       case Ch.query(admin, sql) do
@@ -112,6 +112,23 @@ defmodule Athena.Execution.Database.ClickHouse do
   defp query_error(%Ch.Error{message: message}), do: {:error, {:sql_error, message}}
   defp query_error(%DBConnection.ConnectionError{}), do: {:error, :timeout}
   defp query_error(error), do: {:error, {:system_error, error}}
+
+  defp allowed_table_engines do
+    engines =
+      Application.fetch_env!(:athena, __MODULE__) |> Keyword.fetch!(:allowed_table_engines)
+
+    if is_list(engines) and Enum.all?(engines, &engine_name?/1) do
+      Enum.uniq(engines)
+    else
+      raise ArgumentError,
+            "allowed_table_engines must be a list of explicit ClickHouse engine names"
+    end
+  end
+
+  defp engine_name?(name) when is_binary(name),
+    do: Regex.match?(~r/\A[A-Za-z][A-Za-z0-9]*\z/, name)
+
+  defp engine_name?(_name), do: false
 
   defp options do
     config = Application.fetch_env!(:athena, __MODULE__)

@@ -876,6 +876,32 @@ defmodule AthenaWeb.StudioLive.LibraryEditorTest do
   end
 
   describe "SQL Template Operations" do
+    test "Russian locale translates the database engine selector", %{conn: conn, admin: admin} do
+      block =
+        insert(:library_block,
+          type: :code,
+          content: %{"language" => "sql", "database_engine" => "clickhouse"},
+          owner_id: admin.id
+        )
+
+      conn = init_test_session(conn, %{"locale" => "ru"})
+      {:ok, view, _html} = live(conn, ~p"/studio/library/#{block.id}/editor")
+
+      label =
+        view
+        |> element("label[for='database-engine-#{block.id}']")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+
+      assert label =~ "СУБД"
+
+      assert has_element?(
+               view,
+               "#database-engine-#{block.id} option[value='clickhouse'][selected]"
+             )
+    end
+
     test "updates SQL block configuration and preserves evaluation mode via deep_merge", %{
       conn: conn,
       admin: admin

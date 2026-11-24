@@ -455,7 +455,12 @@ defmodule AthenaWeb.BlockComponentsTest do
         <.content_block block={@block} mode={:play} draft={@draft} />
         """)
 
-      assert html =~ "ACCEPTED"
+      assert html
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.query(".badge-success")
+             |> LazyHTML.text()
+             |> String.trim() == "Accepted"
+
       assert html =~ "0.05s"
     end
   end

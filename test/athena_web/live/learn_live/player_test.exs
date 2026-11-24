@@ -1632,8 +1632,7 @@ defmodule AthenaWeb.LearnLive.PlayerTest do
       assert [job] = all_enqueued(worker: Athena.Execution.TestWorker)
       assert :ok = perform_job(Athena.Execution.TestWorker, job.args)
 
-      html = render(lv)
-      assert html =~ "ACCEPTED" or html =~ "accepted"
+      assert has_element?(lv, ".badge-success", "Accepted")
 
       draft =
         Athena.Repo.get_by!(Athena.Learning.Submission, block_id: block.id, account_id: user.id)
