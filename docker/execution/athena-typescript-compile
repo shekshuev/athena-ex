@@ -1,4 +1,0 @@
-#!/bin/sh
-set -eu
-export NODE_OPTIONS=--max-old-space-size=512
-exec /usr/local/bin/tsc --strict --noEmitOnError --target ES2022 --module node16 --moduleResolution node16 --typeRoots /usr/local/lib/node_modules/@types --types node main.ts

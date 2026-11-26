@@ -240,24 +240,34 @@ Toolchains are installed beneath `/usr/local` and use the sandbox's `/usr` mount
 
 C/C++ use Debian Bookworm's GCC packages; Python uses its Python 3 package. These distro package revisions follow the base image's repositories. The isolate source remains pinned to `v2.7`.
 
-The execution contract uses one source file per submission. Helpers are executable `/usr/local/bin/athena-{language}-compile` programs, invoked without arguments in `/box`:
+The execution contract uses one source file per submission in `/box`. Elixir prepares compiler arguments, environment variables and generated files, then invokes the globally available compiler or interpreter through PATH (`/usr/local/bin:/usr/bin:/bin`). Runner images install no Athena compiler launchers. The toolchain stage installs global `go`, `swiftc` and `zig` symlinks alongside the existing global tools:
 
-| Language | Source | Compiler / helper | Artifact / execution |
+| Language | Source | Compiler | Artifact / execution |
 | --- | --- | --- | --- |
-| C / C++ | `main.c` / `main.cpp` | `/usr/bin/gcc` / `/usr/bin/g++` | `./out` |
-| Go | `main.go` | `athena-go-compile` | `./out` |
-| Swift | `main.swift` | `athena-swift-compile` | `./out` |
-| Rust | `main.rs` | `/usr/local/bin/rustc` | `./out` |
-| Zig | `main.zig` | `athena-zig-compile` | `./out` |
-| JavaScript | `main.js` | None | `/usr/local/bin/node main.js` |
-| TypeScript | `main.ts` | `athena-typescript-compile` | `/usr/local/bin/node main.js` |
-| Java | `Main.java` | `/usr/local/bin/javac --release 21` | `Main.class`; `/usr/local/bin/java Main` |
-| Kotlin | `Main.kt` | `/usr/local/bin/kotlinc -jvm-target 21 -include-runtime` | `main.jar`; `/usr/local/bin/java -jar main.jar` |
-| C# | `Main.cs` | `athena-csharp-compile` | `/usr/local/bin/dotnet out/Main.dll` |
+| C / C++ | `main.c` / `main.cpp` | `gcc` / `g++` | `./out` |
+| Go | `main.go` | `go` | `./out` |
+| Swift | `main.swift` | `swiftc` | `./out` |
+| Rust | `main.rs` | `rustc` | `./out` |
+| Zig | `main.zig` | `zig build-exe` | `./out` |
+| JavaScript | `main.js` | None | `node main.js` |
+| TypeScript | `main.ts` | `tsc` | `node main.js` |
+| Java | `Main.java` | `javac --release 21` | `Main.class`; `java Main` |
+| Kotlin | `Main.kt` | `kotlinc -jvm-target 21 -include-runtime` | `main.jar`; `java -jar main.jar` |
+| C# | `Main.cs` | `dotnet <sdk>/Roslyn/bincore/csc.dll` | `dotnet out/Main.dll` |
 
-TypeScript receives full strict type checking and emits no JavaScript on errors; Node's built-in type stripping is not used. C# invokes the pinned Roslyn compiler directly with .NET 10 reference assemblies, C# 14 and generated implicit usings. It writes a framework-dependent `Main.dll` and its runtime configuration without MSBuild, NuGet or file-lock syscalls blocked by isolate. The CLR single-mapping allocator is selected with `DOTNET_EnableWriteXorExecute=0`: its default double-mapping allocator creates memfd files exceeding the 1 MiB runtime file-size cap. The isolate syscall filter, cgroup memory cap and output/file-size cap remain enabled. Go uses the SDK's official `GOCACHEPROG` interface with the private `athena-go-cache` helper, avoiding disk-cache trim locks without patching the SDK. Swift and Zig use writable submission-local caches. Zig compiles with one job under `strace`, which replaces advisory `flock` calls with successful no-ops before they reach the kernel; the isolate syscall filter remains enabled and submitted executables run without a tracer. Hosts must permit tracing child processes. The compiler CPU, memory and process budgets include the tracer. Swift embeds an rpath to `/usr/local/swift/usr/lib/swift/linux` so native programs can resolve the installed runtime without inherited environment variables. Java and Kotlin discover the JDK through absolute `/usr/local/bin` links.
+TypeScript receives full strict type checking and emits no JavaScript on errors; Node's built-in type stripping is not used. C# invokes the pinned Roslyn compiler directly with .NET 10 reference assemblies, C# 14 and generated implicit usings. It writes a framework-dependent `Main.dll` and its runtime configuration without MSBuild, NuGet or file-lock syscalls blocked by isolate. The CLR single-mapping allocator is selected with `DOTNET_EnableWriteXorExecute=0`: its default double-mapping allocator creates memfd files exceeding the 1 MiB runtime file-size cap. The isolate syscall filter, cgroup memory cap and output/file-size cap remain enabled. Go can use the SDK's official `GOCACHEPROG` interface with the private `athena-go-cache` cache adapter, avoiding disk-cache trim locks without patching the SDK. Swift and Zig use writable submission-local caches. Zig compiles with one job under `strace`, which replaces advisory `flock` calls with successful no-ops before they reach the kernel; the isolate syscall filter remains enabled and submitted executables run without a tracer. Hosts must permit tracing child processes. The compiler CPU, memory and process budgets include the tracer. Swift embeds an rpath to `/usr/local/swift/usr/lib/swift/linux` so native programs can resolve the installed runtime without inherited environment variables. Java and Kotlin resolve their global JDK executables; Kotlin also receives `JAVA_HOME` so vendor scripts do not depend on alternatives links hidden by isolate.
 
-Build just a toolchain with `docker build --target toolchains -f Dockerfile.runner-script .`, or include isolate, helpers and runtime dependencies with `--target sandbox`. For example:
+The Elixir runner resolves tools on its global sandbox PATH, follows executable symlinks before entering isolate, and prepares compiler inputs directly:
+
+- Go: set `GOMAXPROCS=2`, private absolute `GOCACHE` and `GOPATH` paths, `GOENV=off`, `GOPROXY=off`, `GOSUMDB=off`, `GOTOOLCHAIN=local` and `CGO_ENABLED=0`; optionally set `GOCACHEPROG` to the installed cache adapter. Invoke `go build -trimpath -o out main.go`.
+- Swift: create the private module cache, pass `-swift-version 6 -O -module-cache-path <cache>` and the runtime rpath described above, and emit `out`.
+- TypeScript: locate the `@types` directory alongside the resolved global TypeScript package for `--typeRoots`; set the compiler heap to 512 MiB and pass `--strict --noEmitOnError --target ES2022 --module node16 --moduleResolution node16 --types node`.
+- C#: resolve the global `dotnet` executable and its symlink target to discover `DOTNET_ROOT` (installed at `/usr/local/share/dotnet`). Select the latest installed .NET 10 SDK and reference pack; generate `references.rsp` from its .NET 10 reference pack, `ImplicitUsings.g.cs` and `out/Main.runtimeconfig.json` before compilation. Invoke global `dotnet` with the Roslyn DLL, reference response file and both sources, using the flags in the smoke script. Set `DOTNET_PROCESSOR_COUNT=2` and `DOTNET_EnableDiagnostics=0` for compilation; preserve the runtime settings and limits above.
+- Zig: set private `ZIG_GLOBAL_CACHE_DIR` and `ZIG_LOCAL_CACHE_DIR` paths and invoke `zig build-exe -j1 main.zig -lc -O ReleaseSafe -femit-bin=out`. Where isolate requires cache-lock emulation, prefix only this compilation with the system command `strace -f -qq -o /dev/null -e trace=flock -e inject=flock:retval=0 --`.
+
+The smoke script performs equivalent preparation explicitly to validate the installed toolchains. Production preparation belongs in Elixir; compiler commands receive arguments directly, without a shell launcher. Existing isolation policy and resource budgets still apply.
+
+Build just a toolchain with `docker build --target toolchains -f Dockerfile.runner-script .`, or include isolate and runtime dependencies with `--target sandbox`. For example:
 
 ```bash
 docker build --target sandbox -f Dockerfile.runner-script -t athena-script-smoke .

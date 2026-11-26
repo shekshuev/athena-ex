@@ -38,7 +38,8 @@ defmodule Athena.Execution.LanguageExpansionTest do
 
       if config.compile_cmd do
         assert [command | _] = config.compile_cmd
-        assert String.starts_with?(command, "/")
+        assert Path.basename(command) == command
+        refute String.starts_with?(command, "athena-")
         assert Enum.all?(config.compile_cmd, &is_binary/1)
       end
 
@@ -54,7 +55,7 @@ defmodule Athena.Execution.LanguageExpansionTest do
 
   test "C++ retains its compilation command and original compilation budget" do
     config = LanguageConfig.get("cpp")
-    assert config.compile_cmd == ["/usr/bin/g++", "-O3", "main.cpp", "-o", "out"]
+    assert config.compile_cmd == ["g++", "-O3", "main.cpp", "-o", "out"]
     assert config.compile_time == 10.0
     assert config.compile_wall_time == 12.0
     assert config.compile_memory == 262_144

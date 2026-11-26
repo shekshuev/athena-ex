@@ -1,4 +1,0 @@
-#!/bin/sh
-set -eu
-export GOMAXPROCS=2 GOCACHE="$PWD/.cache/go" GOCACHEPROG=/usr/local/bin/athena-go-cache GOPATH="$PWD/.cache/gopath" GOENV=off GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local CGO_ENABLED=0
-exec /usr/local/go/bin/go build -trimpath -o out main.go

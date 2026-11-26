@@ -85,7 +85,6 @@ RUN mkdir -p /run/isolate/locks /var/local/lib/isolate \
   && chmod 777 /var/local/lib/isolate
 
 COPY --from=toolchains /usr/local/ /usr/local/
-COPY --chmod=755 docker/execution/athena-*-compile /usr/local/bin/
 COPY --chmod=755 docker/execution/smoke-languages.sh /usr/local/lib/athena/smoke-languages.sh
 
 FROM sandbox AS final

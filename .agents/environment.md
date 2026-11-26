@@ -31,3 +31,7 @@ Keep compilation offline and bounded separately from execution. Runtime memory
 limits apply to the entire cgroup; runtimes that reserve large virtual address
 ranges must not receive a small address-space limit. Never migrate existing
 task language selections when adding a language.
+
+Invoke globally installed compilers and interpreters directly through the runner's
+global PATH. Keep compiler arguments, environment and sandbox file preparation
+in Execution modules; do not add per-language launcher shell scripts.

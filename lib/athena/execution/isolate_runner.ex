@@ -6,7 +6,7 @@ defmodule Athena.Execution.IsolateRunner do
   """
   require Logger
 
-  alias Athena.Execution.LanguageConfig
+  alias Athena.Execution.{LanguageConfig, Toolchain}
 
   @isolate_bin "/usr/bin/isolate"
 
@@ -38,6 +38,7 @@ defmodule Athena.Execution.IsolateRunner do
 
     try do
       with {:ok, ctx} <- init_sandbox(ctx),
+           {:ok, ctx} <- prepare_toolchain(ctx),
            :ok <- write_source(code, ctx),
            :ok <- write_stdin(input, ctx),
            :ok <- compile(ctx),
@@ -67,6 +68,7 @@ defmodule Athena.Execution.IsolateRunner do
     System.cmd(@isolate_bin, ["--cleanup", "--cg", "-b", "#{ctx.box_id}"], stderr_to_stdout: true)
 
     with {:ok, ctx} <- init_sandbox(ctx),
+         {:ok, ctx} <- prepare_toolchain(ctx),
          :ok <- write_source(code, ctx),
          :ok <- compile(ctx) do
       {:ok, ctx}
@@ -146,7 +148,7 @@ defmodule Athena.Execution.IsolateRunner do
         "--cg-mem=#{ctx.lang_config.compile_memory}",
         "-p128",
         "-E",
-        "PATH=/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "PATH=#{Toolchain.path()}",
         "-E",
         "HOME=/box",
         "-E",
@@ -158,7 +160,9 @@ defmodule Athena.Execution.IsolateRunner do
         "-o",
         "compile_err.txt",
         "--stderr-to-stdout"
-      ] ++ compilation_memory_args(ctx.lang_config) ++ ["--" | ctx.lang_config.compile_cmd]
+      ] ++
+        compilation_memory_args(ctx.lang_config) ++
+        compiler_env(ctx.lang_config) ++ ["--" | ctx.lang_config.compile_cmd]
 
     {_output, exit_code} = System.cmd(@isolate_bin, args, stderr_to_stdout: true)
     File.rm(meta_path)
@@ -178,6 +182,23 @@ defmodule Athena.Execution.IsolateRunner do
 
       {:error, {:compilation_error, err_output}}
     end
+  end
+
+  defp prepare_toolchain(ctx) do
+    case Toolchain.prepare(ctx.lang_config, ctx.box_dir) do
+      {:ok, config} ->
+        {:ok, %{ctx | lang_config: config}}
+
+      {:error, {:toolchain_unavailable, message}} = error ->
+        Logger.error("[IsolateRunner] #{message}")
+        error
+    end
+  end
+
+  defp compiler_env(config) do
+    config.compile_env
+    |> Enum.sort()
+    |> Enum.flat_map(fn {key, value} -> ["-E", "#{key}=#{value}"] end)
   end
 
   defp compilation_memory_args(%{compile_memory_mode: :address_space, compile_memory: limit}),
@@ -258,7 +279,7 @@ defmodule Athena.Execution.IsolateRunner do
       "1024",
       "-p64",
       "-E",
-      "PATH=/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "PATH=#{Toolchain.path()}",
       "-E",
       "HOME=/box",
       "-E",

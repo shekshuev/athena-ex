@@ -16,8 +16,8 @@ FROM toolchains AS go_cache_builder
 COPY docker/execution/go-cache/ /tmp/go-cache/
 RUN export GO111MODULE=off CGO_ENABLED=0 GOMAXPROCS=2 GOCACHE=/tmp/athena-go-cache-build \
   && cd /tmp/go-cache \
-  && /usr/local/go/bin/go test \
-  && /usr/local/go/bin/go build -trimpath -o /usr/local/bin/athena-go-cache main.go \
+  && go test \
+  && go build -trimpath -o /usr/local/bin/athena-go-cache main.go \
   && rm -rf /tmp/go-cache /tmp/athena-go-cache-build
 
 FROM ${BUILDER_IMAGE} AS builder
@@ -94,7 +94,6 @@ RUN mkdir -p /run/isolate/locks /var/local/lib/isolate \
 
 COPY --from=toolchains /usr/local/ /usr/local/
 COPY --from=go_cache_builder /usr/local/bin/athena-go-cache /usr/local/bin/athena-go-cache
-COPY --chmod=755 docker/execution/athena-*-compile /usr/local/bin/
 COPY --chmod=755 docker/execution/smoke-languages.sh /usr/local/lib/athena/smoke-languages.sh
 RUN apt-get update && apt-get install -y --no-install-recommends strace \
   && rm -rf /var/lib/apt/lists/*

@@ -180,6 +180,9 @@ if family == 'compiled':
     archive('https://go.dev/dl/go1.27.4.linux-amd64.tar.gz', ROOT/'go')
     archive('https://download.swift.org/swift-6.4.3-release/debian12/swift-6.4.3-RELEASE/swift-6.4.3-RELEASE-debian12.tar.gz', ROOT/'swift')
     archive('https://ziglang.org/download/0.17.1/zig-x86_64-linux-0.17.1.tar.xz', ROOT/'zig', '3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a')
+    link('/usr/local/go/bin/go', 'go')
+    link('/usr/local/swift/usr/bin/swiftc', 'swiftc')
+    link('/usr/local/zig/zig', 'zig')
     version = '1.100.0'
     for component in ['rustc', 'rust-std']:
         url = f'https://static.rust-lang.org/dist/{component}-{version}-x86_64-unknown-linux-gnu.tar.xz'
