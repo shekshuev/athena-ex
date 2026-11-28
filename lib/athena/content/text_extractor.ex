@@ -25,7 +25,8 @@ defmodule Athena.Content.TextExtractor do
   @spec extract(Block.t()) :: String.t()
   def extract(%Block{type: :text, content: content}), do: document(content)
 
-  def extract(%Block{type: :code, content: content}) when is_map(content) do
+  def extract(%Block{type: type, content: content})
+      when type in [:code, :multicode] and is_map(content) do
     join_parts([document(fetch(content, :body)), plain_text(fetch(content, :initial_code))])
   end
 

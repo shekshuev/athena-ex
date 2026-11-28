@@ -9,8 +9,9 @@ import Config
 
 # ## Using releases
 #
-# There are four named releases (see `releases/0` in mix.exs): `web`,
-# `runner_db`, `runner_compiled`, `runner_script`. Each produces its own
+# There are six named releases (see `releases/0` in mix.exs): `web`,
+# `runner_db`, `runner_compiled`, `runner_script`, `runner_jvm`, and
+# `runner_dotnet`. Each produces its own
 # `bin/<name>` script, and Elixir sets RELEASE_NAME to that name at boot –
 # that's what this file uses below to derive the node's role, instead of an
 # operator-facing env var. `rel/overlays/bin/server` sets PHX_SERVER=true and
@@ -35,11 +36,17 @@ import Config
     "runner_script" ->
       {"runner", :script}
 
+    "runner_jvm" ->
+      {"runner", :jvm}
+
+    "runner_dotnet" ->
+      {"runner", :dotnet}
+
     nil ->
       {"all", nil}
 
     other ->
-      raise "unknown RELEASE_NAME=#{other}, expected one of: web, runner_db, runner_compiled, runner_script"
+      raise "unknown RELEASE_NAME=#{other}, expected one of: web, runner_db, runner_compiled, runner_script, runner_jvm, runner_dotnet"
   end
 
 config :athena, :server_role, server_role

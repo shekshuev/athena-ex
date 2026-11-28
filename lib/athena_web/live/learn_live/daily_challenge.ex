@@ -73,11 +73,32 @@ defmodule AthenaWeb.LearnLive.DailyChallenge do
   end
 
   @impl true
+  def handle_event("select_code_language", params, socket) do
+    block = socket.assigns.block
+
+    if block && block.type == :multicode && params["block_id"] == block.id &&
+         params["language"] in Enum.map(Content.multicode_options(block.content), &elem(&1, 1)) do
+      handle_event("save_draft", Map.put(params, "_select_language", true), socket)
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_event("save_draft", %{"block_id" => block_id} = params, socket) do
     block = socket.assigns.block
 
     if block && block.id == block_id do
-      content = build_draft_content(block, params)
+      content =
+        if block.type == :multicode do
+          Content.multicode_answer(
+            block,
+            params,
+            socket.assigns.draft,
+            params["_select_language"] == true
+          )
+        else
+          build_draft_content(block, params)
+        end
 
       case Learning.save_draft(socket.assigns.current_user, block_id, content, nil) do
         {:ok, _submission} -> {:noreply, assign(socket, :draft, content)}
@@ -96,7 +117,12 @@ defmodule AthenaWeb.LearnLive.DailyChallenge do
 
   def handle_event("run_code", %{"block_id" => block_id}, socket) do
     block = socket.assigns.block
-    code = extract_code_from_draft(socket.assigns.draft || %{})
+    projected = Content.multicode_project(block, socket.assigns.draft)
+
+    code =
+      extract_code_from_draft(
+        socket.assigns.draft || %{"code" => projected.content["initial_code"] || ""}
+      )
 
     cond do
       is_nil(block) or block.id != block_id ->
@@ -105,11 +131,13 @@ defmodule AthenaWeb.LearnLive.DailyChallenge do
       String.trim(code) == "" ->
         {:noreply, put_flash(socket, :error, gettext("Please write some code first!"))}
 
-      not Execution.runner_available?(block.content["language"]) ->
+      not Execution.runner_available?(projected.content["language"]) ->
         {:noreply, put_flash(socket, :error, gettext("Runner node is not connected!"))}
 
       true ->
-        case Learning.test_code(socket.assigns.current_user, block, code) do
+        case Learning.test_code(socket.assigns.current_user, block, code,
+               language: projected.content["language"]
+             ) do
           {:ok, _draft} ->
             {:noreply, socket}
 
@@ -123,13 +151,34 @@ defmodule AthenaWeb.LearnLive.DailyChallenge do
     block = socket.assigns.block
     code = get_in(params, ["answer", "code"]) || ""
 
-    if block && Execution.runner_available?(block.content["language"]) do
+    language =
+      if block && block.type == :multicode,
+        do: get_in(params, ["answer", "language"]),
+        else: block && block.content["language"]
+
+    if block && Content.code_submission_language_available?(block.id, language) &&
+         Execution.runner_available?(language) do
       sub_attrs = %{
         "block_id" => block.id,
         "cohort_id" => nil,
         "status" => :pending,
-        "content" => %{"type" => :code, "code" => code}
+        "content" => %{
+          "type" => block.type,
+          "code" => code,
+          "language" => language
+        }
       }
+
+      sub_attrs =
+        if block.type == :multicode do
+          answer =
+            Content.multicode_answer(block, params, socket.assigns.draft)
+            |> Map.merge(sub_attrs["content"])
+
+          Map.put(sub_attrs, "content", answer)
+        else
+          sub_attrs
+        end
 
       case Learning.create_submission(socket.assigns.current_user, sub_attrs) do
         {:ok, submission} -> {:noreply, assign(socket, :submission, submission)}
@@ -305,7 +354,7 @@ defmodule AthenaWeb.LearnLive.DailyChallenge do
                     </button>
                   </div>
                 </form>
-              <% :code -> %>
+              <% type when type in [:code, :multicode] -> %>
                 <form
                   phx-submit="submit_code"
                   phx-change="save_draft"

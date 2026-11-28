@@ -92,6 +92,10 @@ services:
     image: ghcr.io/shekshuev/athena-ex-runner-compiled:latest-${IMAGE_OS:-u24}
     container_name: athena_runner_compiled
     privileged: true
+    pid: "host"
+    cgroup: "host"
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
     restart: always
     network_mode: "host"
     env_file:
@@ -105,6 +109,10 @@ services:
     image: ghcr.io/shekshuev/athena-ex-runner-script:latest-${IMAGE_OS:-u24}
     container_name: athena_runner_script
     privileged: true
+    pid: "host"
+    cgroup: "host"
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
     restart: always
     network_mode: "host"
     env_file:
@@ -112,6 +120,40 @@ services:
     environment:
       - RELEASE_DISTRIBUTION=name
       - RELEASE_NODE=runner_script@127.0.0.1
+      - RELEASE_COOKIE=${RELEASE_COOKIE}
+
+  athena_runner_dotnet:
+    image: ghcr.io/shekshuev/athena-ex-runner-dotnet:latest-${IMAGE_OS:-u24}
+    container_name: athena_runner_dotnet
+    privileged: true
+    pid: "host"
+    cgroup: "host"
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    restart: always
+    network_mode: "host"
+    env_file:
+      - .env
+    environment:
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=runner_dotnet@127.0.0.1
+      - RELEASE_COOKIE=${RELEASE_COOKIE}
+
+  athena_runner_jvm:
+    image: ghcr.io/shekshuev/athena-ex-runner-jvm:latest-${IMAGE_OS:-u24}
+    container_name: athena_runner_jvm
+    privileged: true
+    pid: "host"
+    cgroup: "host"
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    restart: always
+    network_mode: "host"
+    env_file:
+      - .env
+    environment:
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=runner_jvm@127.0.0.1
       - RELEASE_COOKIE=${RELEASE_COOKIE}
 
   athena_runner_pg:

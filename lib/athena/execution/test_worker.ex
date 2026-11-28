@@ -23,14 +23,17 @@ defmodule Athena.Execution.TestWorker do
     {:ok, processing_sub} = Learning.system_update_submission(submission, %{status: :processing})
 
     challenge =
-      Ecto.Changeset.apply_changes(
-        Content.CodeChallenge.changeset(%Content.CodeChallenge{}, block.content)
-      )
+      Content.code_challenge(block.type, block.content, submission.content["language"])
 
     code = processing_sub.content["code"] || ""
     box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
 
-    result = execute_code(code, challenge, box_id)
+    result =
+      case challenge do
+        {:ok, challenge} -> execute_code(code, challenge, box_id)
+        {:error, _} -> build_error_result("Programming language is unavailable.")
+      end
+
     clean_results = clean_test_results(result.test_results)
 
     update_and_broadcast(processing_sub, clean_results)

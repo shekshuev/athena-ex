@@ -216,7 +216,7 @@ defmodule Athena.Engagement.Accumulator do
     }
   end
 
-  defp type_metrics(:code, acc, _observed) do
+  defp type_metrics(type, acc, _observed) when type in [:code, :multicode] do
     %{
       paste_ratio: avg(acc.paste_sum, acc.paste_n),
       run_attempt_count: acc.run_attempt,

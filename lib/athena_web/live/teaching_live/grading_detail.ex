@@ -244,6 +244,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
   def handle_event("run_code", %{"block_id" => block_id}, socket) do
     block = find_grading_block(socket.assigns, block_id)
     sub = find_grading_submission(socket.assigns, block_id)
+    block = Content.multicode_project(block, sub)
 
     with {:valid?, true} <- {:valid?, not is_nil(block) and not is_nil(sub)},
          {:code?, code} when code != "" <- {:code?, extract_submitted_code(sub)},
@@ -781,7 +782,7 @@ defmodule AthenaWeb.TeachingLive.GradingDetail do
 
   # Helper to identify if a block requires manual review
   defp manual_review_required?(%{type: type, content: content}) do
-    type in [:code, :file_assignment, "code", "file_assignment"] or
+    type in [:code, :multicode, :file_assignment, "code", "multicode", "file_assignment"] or
       (type in [:quiz_question, "quiz_question"] and is_map(content) and
          content["question_type"] == "open")
   end

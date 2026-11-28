@@ -24,7 +24,7 @@ defmodule Athena.Gamification.DailyChallenges do
   alias Athena.Learning.BlockProgress
   alias Athena.Gamification.{DailyChallenge, XpLedger}
 
-  @eligible_block_types ~w(code quiz_question)a
+  @eligible_block_types ~w(code multicode quiz_question)a
 
   @doc """
   Returns today's challenge for the account, generating one the first time

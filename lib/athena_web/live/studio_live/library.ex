@@ -656,7 +656,9 @@ defmodule AthenaWeb.StudioLive.Library do
   defp type_badge(assigns) do
     ~H"""
     <.badge tone="neutral" class="uppercase tracking-widest text-[10px]">
-      {Atom.to_string(@type) |> String.replace("_", " ")}
+      {if @type == :multicode,
+        do: gettext("Multicode"),
+        else: Atom.to_string(@type) |> String.replace("_", " ")}
     </.badge>
     """
   end
@@ -801,6 +803,7 @@ defmodule AthenaWeb.StudioLive.Library do
                     {gettext("All Types"), "all"},
                     {gettext("Text Block"), "text"},
                     {gettext("Code Sandbox"), "code"},
+                    {gettext("Multicode"), "multicode"},
                     {gettext("Quiz Question"), "quiz_question"},
                     {gettext("Assessment Session"), "quiz_exam"},
                     {gettext("Image"), "image"},

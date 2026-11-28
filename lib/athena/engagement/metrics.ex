@@ -1363,9 +1363,12 @@ defmodule Athena.Engagement.Metrics do
     do: Map.fetch!(index.resolved_rule_by_block_id, block.id)[:expected_seconds] != nil
 
   defp can_fire?(:shallow_scroll, block, _index), do: block.type == :text
-  defp can_fire?(:heavy_paste, block, _index), do: block.type in [:quiz_question, :code]
+
+  defp can_fire?(:heavy_paste, block, _index),
+    do: block.type in [:quiz_question, :code, :multicode]
+
   defp can_fire?(:video_skipped, block, _index), do: block.type == :video
-  defp can_fire?(:no_debug_cycle, block, _index), do: block.type == :code
+  defp can_fire?(:no_debug_cycle, block, _index), do: block.type in [:code, :multicode]
   defp can_fire?(_reason, _block, _index), do: true
 
   # Windows are whole days (see the moduledoc), so the window's first day -

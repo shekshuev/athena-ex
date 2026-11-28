@@ -128,6 +128,26 @@ defmodule Athena.Content.Blocks do
     end
   end
 
+  @doc "Checks a multicode submission language without loading unrelated block content."
+  def code_submission_language_available?(id, language) do
+    with {:ok, id} <- Ecto.UUID.cast(id) do
+      language = if is_binary(language), do: language, else: ""
+
+      case Repo.one(
+             from b in Block,
+               where: b.id == ^id and b.type == :multicode,
+               select: %{
+                 variant: fragment("?->'languages'->?", b.content, type(^language, :string))
+               }
+           ) do
+        nil -> true
+        %{variant: variant} -> Athena.Content.Multicode.ready?(language, variant)
+      end
+    else
+      :error -> true
+    end
+  end
+
   @doc """
   Like `get_block/1`, but without the heavy `content` and `search_text`
   columns - for callers that only need the block's type,

@@ -43,4 +43,4 @@ Boundary runs outside the test environment: `mix.exs` omits its compiler for `:t
 
 ## Runtime roles
 
-This is one Mix application with `web`, `runner_db`, `runner_compiled` and `runner_script` releases. `config/runtime.exs` derives roles from the release name; `Athena.Application` selects children for `default`, `runner` or `all`. Separate execution nodes do not turn domain contexts into independent microservices. Preserve runner isolation and family dispatch.
+This is one Mix application with `web`, `runner_db`, `runner_compiled`, `runner_script`, `runner_jvm` and `runner_dotnet` releases. `config/runtime.exs` derives roles from the release name; `Athena.Application` selects children for `default`, `runner` or `all`. Separate execution nodes do not turn domain contexts into independent microservices. Preserve runner isolation and family dispatch.

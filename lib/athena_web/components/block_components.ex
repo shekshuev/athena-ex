@@ -11,6 +11,53 @@ defmodule AthenaWeb.BlockComponents do
 
   alias Athena.Execution
 
+  attr :language, :string, required: true
+  attr :memory_limit, :integer, default: 65_536
+
+  def language_runtime_info(assigns) do
+    assigns =
+      assign(assigns, :runtime, Execution.runtime_info(assigns.language, assigns.memory_limit))
+
+    ~H"""
+    <section
+      :if={@runtime}
+      class="rounded-lg border border-base-300 bg-base-200/40 p-3 space-y-3 text-xs"
+    >
+      <div class="flex items-start gap-2">
+        <.icon name="hero-command-line" class="size-4 shrink-0 text-primary mt-0.5" />
+        <div class="min-w-0">
+          <p class="font-semibold break-words">{@runtime.version}</p>
+          <p class="text-base-content/55 mt-1">{gettext("Configured runner image")}</p>
+        </div>
+      </div>
+      <dl class="space-y-3">
+        <div>
+          <dt class="text-base-content/60 mb-1">{gettext("Source file")}</dt>
+          <dd class="font-mono">{@runtime.source}</dd>
+        </div>
+        <div :if={@runtime.compile}>
+          <dt class="text-base-content/60 mb-1">{gettext("Compilation")}</dt>
+          <dd class="font-mono whitespace-pre-wrap break-all rounded bg-base-300/40 p-2 leading-relaxed">
+            {@runtime.compile}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-base-content/60 mb-1">{gettext("Run command")}</dt>
+          <dd class="font-mono whitespace-pre-wrap break-all rounded bg-base-300/40 p-2 leading-relaxed">
+            {@runtime.run}
+          </dd>
+        </div>
+      </dl>
+      <p :if={@runtime.compile} class="text-base-content/55 border-t border-base-300 pt-2">
+        {gettext("Compilation budget: %{seconds} s CPU · %{memory} MiB",
+          seconds: @runtime.compile_time,
+          memory: @runtime.compile_memory
+        )}
+      </p>
+    </section>
+    """
+  end
+
   @doc """
     Main entry point for rendering any block.
     Routes to specific renderers based on block type.
@@ -54,7 +101,7 @@ defmodule AthenaWeb.BlockComponents do
           <.render_video block={@block} mode={@mode} />
         <% :attachment -> %>
           <.render_attachment block={@block} mode={@mode} active={@active} characters={@characters} />
-        <% :code -> %>
+        <% type when type in [:code, :multicode] -> %>
           <.render_code
             block={@block}
             mode={@mode}
@@ -323,7 +370,135 @@ defmodule AthenaWeb.BlockComponents do
     """
   end
 
+  attr :block, :map, required: true
+  attr :language, :string, default: nil
+  attr :author, :boolean, default: false
+  attr :target, :any, default: nil
+  attr :disabled, :boolean, default: false
+  attr :suffix, :string, default: "editor"
+
+  def multicode_tabs(assigns) do
+    assigns =
+      assigns
+      |> assign(:options, Athena.Content.multicode_options(assigns.block.content, assigns.author))
+      |> assign(
+        :available,
+        Enum.reject(Execution.options(), fn {_, lang} ->
+          lang == "sql" or Map.has_key?(assigns.block.content["languages"] || %{}, lang)
+        end)
+      )
+
+    ~H"""
+    <div class="space-y-3 mb-3">
+      <div
+        id={"multicode-tabs-#{@suffix}-#{@block.id}"}
+        role="tablist"
+        aria-label={gettext("Programming Language")}
+        class="tabs tabs-border flex-wrap"
+        phx-hook={if !@author, do: ".MulticodeTabs"}
+        data-block-id={@block.id}
+      >
+        <button
+          :for={{label, language} <- @options}
+          type="button"
+          role="tab"
+          id={"multicode-tab-#{@suffix}-#{@block.id}-#{language}"}
+          class={["tab", @language == language && "tab-active"]}
+          aria-selected={to_string(@language == language)}
+          data-language={language}
+          phx-click={if @author, do: "select_multicode_language"}
+          phx-target={@target}
+          phx-value-id={@block.id}
+          phx-value-language={language}
+          disabled={@disabled && !@author}
+        >
+          {label}
+        </button>
+      </div>
+      <details :if={@author && @available != []} class="dropdown">
+        <summary class="btn btn-sm btn-ghost">{gettext("Add language")}</summary>
+        <ul class="dropdown-content menu bg-base-100 rounded-box z-30 w-56 p-2 shadow-lg border border-base-300">
+          <li :for={{label, language} <- @available}>
+            <button
+              type="button"
+              phx-click="select_multicode_language"
+              phx-value-id={@block.id}
+              phx-value-language={language}
+              phx-target={@target}
+            >
+              {label}
+            </button>
+          </li>
+        </ul>
+      </details>
+    </div>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".MulticodeTabs">
+      export default {
+        mounted() {
+          this.onTabClick = (event) => {
+            const tab = event.target.closest("[data-language]")
+            if (!tab || tab.disabled || tab.getAttribute("aria-selected") === "true") return
+            const input = document.querySelector('[data-code-block-id="' + this.el.dataset.blockId + '"]')
+            this.pushEvent("select_code_language", {
+              block_id: this.el.dataset.blockId,
+              language: tab.dataset.language,
+              code: input ? input.value : ""
+            })
+          }
+          this.el.addEventListener("click", this.onTabClick)
+        },
+        destroyed() { this.el.removeEventListener("click", this.onTabClick) }
+      }
+    </script>
+    """
+  end
+
   defp render_code(assigns) do
+    multicode = if assigns.block.type == :multicode, do: assigns.block
+
+    answer =
+      assigns.draft || Map.get(assigns[:answers] || %{}, assigns.block.id) || assigns[:submission]
+
+    assigns = assign(assigns, :multicode, multicode)
+
+    assigns =
+      if multicode,
+        do:
+          assign(
+            assigns,
+            :block,
+            Athena.Content.multicode_project(multicode, answer, assigns.mode == :edit)
+          ),
+        else: assigns
+
+    assigns =
+      if multicode && assigns.mode != :edit do
+        selected = assigns.block.content["language"]
+
+        content =
+          case answer do
+            %{content: content} -> content
+            content when is_map(content) -> content
+            _ -> %{}
+          end
+
+        content =
+          if content["language"] == selected,
+            do: content,
+            else: %{"code" => assigns.block.content["initial_code"]}
+
+        submission =
+          if assigns[:submission] && assigns.submission.content["language"] == selected,
+            do: assigns.submission
+
+        assigns
+        |> assign(:draft, content)
+        |> assign(:answers, %{})
+        |> assign(:submission, submission)
+      else
+        assigns
+      end
+
     code =
       compute_code_for_mode(
         assigns.mode,
@@ -349,6 +524,10 @@ defmodule AthenaWeb.BlockComponents do
     assigns =
       assigns
       |> assign(:code, code)
+      |> assign(
+        :code_input_id,
+        "code-input-#{assigns.block.id}#{if multicode, do: "-" <> lang, else: ""}"
+      )
       |> assign(:cm_lang, Execution.cm_lang(lang))
       |> assign(:readonly, readonly)
       |> assign(:execution_results, execution_results)
@@ -390,6 +569,24 @@ defmodule AthenaWeb.BlockComponents do
         </div>
       </div>
 
+      <.multicode_tabs
+        :if={@multicode}
+        block={@multicode}
+        language={@block.content["language"]}
+        author={@mode == :edit}
+        target={assigns[:target]}
+        disabled={@readonly || @submission_locked}
+      />
+
+      <p
+        :if={
+          @multicode && @mode != :edit && Athena.Content.multicode_options(@multicode.content) == []
+        }
+        class="text-sm text-base-content/60 py-4"
+      >
+        {gettext("No languages are ready yet.")}
+      </p>
+
       <label class="label flex justify-between">
         <span class="label-text font-bold text-xs uppercase text-base-content/70">
           {@block.content["language"] || Execution.default_language()}
@@ -399,7 +596,12 @@ defmodule AthenaWeb.BlockComponents do
         </span>
       </label>
 
-      <div class="overflow-hidden rounded-sm border border-base-300 bg-base-200 dark:bg-[#282c34]">
+      <div
+        :if={
+          !@multicode || @mode == :edit || Athena.Content.multicode_options(@multicode.content) != []
+        }
+        class="overflow-hidden rounded-sm border border-base-300 bg-base-200 dark:bg-[#282c34]"
+      >
         <div class="relative w-full">
           <form
             :if={@mode == :edit}
@@ -409,8 +611,14 @@ defmodule AthenaWeb.BlockComponents do
           >
             <input type="hidden" name="block[id]" value={@block.id} />
             <input
+              :if={@multicode}
               type="hidden"
-              id={"code-input-#{@block.id}"}
+              name="block[content][active_language]"
+              value={@block.content["language"]}
+            />
+            <input
+              type="hidden"
+              id={@code_input_id}
               name="block[content][initial_code]"
               value={@code}
             />
@@ -418,10 +626,18 @@ defmodule AthenaWeb.BlockComponents do
 
           <%= if @mode == :play do %>
             <input
+              :if={@multicode}
               type="hidden"
-              id={"code-input-#{@block.id}"}
+              name="answer[language]"
+              value={@block.content["language"]}
+            />
+            <input
+              type="hidden"
+              id={@code_input_id}
               name="answer[code]"
+              data-code-block-id={@block.id}
               value={@code}
+              phx-value-language={@block.content["language"]}
               phx-change="save_draft"
               phx-value-block_id={@block.id}
               phx-debounce="500"
@@ -434,7 +650,7 @@ defmodule AthenaWeb.BlockComponents do
             data-language={@cm_lang}
             data-readonly={to_string(@readonly)}
             data-code={@code}
-            data-input-id={"code-input-#{@block.id}"}
+            data-input-id={@code_input_id}
             phx-update="ignore"
             class="w-full text-sm font-mono outline-none"
           >
@@ -452,7 +668,7 @@ defmodule AthenaWeb.BlockComponents do
         </div>
       <% end %>
 
-      <%= if @mode in [:play, :review] do %>
+      <%= if @mode in [:play, :review] && (!@multicode || Athena.Content.multicode_options(@multicode.content) != []) do %>
         <div class="mt-6 space-y-4">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
@@ -521,6 +737,12 @@ defmodule AthenaWeb.BlockComponents do
   only checking for a draft (which silently treated "the student hasn't
   edited the pre-filled/previously-submitted code yet" as "no code at all").
   """
+  def compute_code_for_mode(mode, %{type: :multicode} = block, draft, answers, submission) do
+    answer = draft || Map.get(answers || %{}, block.id) || submission
+    projected = Athena.Content.multicode_project(block, answer, mode == :edit)
+    compute_code_for_mode(mode, projected, draft, answers, submission)
+  end
+
   def compute_code_for_mode(:edit, block, _draft, _answers, _submission),
     do: block.content["initial_code"] || ""
 
@@ -546,10 +768,10 @@ defmodule AthenaWeb.BlockComponents do
   #     student is typing into it), so hashing it directly is fine and is
   #     what lets a reviewer step between different submissions' code in the
   #     same LiveView.
-  defp code_editor_cache_key(:edit, _block, _code), do: "static"
+  defp code_editor_cache_key(:edit, block, _code), do: block.content["language"] || "static"
 
   defp code_editor_cache_key(:play, block, _code),
-    do: :erlang.phash2(block.content["initial_code"])
+    do: :erlang.phash2({block.content["language"], block.content["initial_code"]})
 
   defp code_editor_cache_key(_mode, _block, code), do: :erlang.phash2(code)
 
@@ -1470,6 +1692,9 @@ defmodule AthenaWeb.BlockComponents do
   attr :target, :any, default: nil
 
   def block_editor(assigns) do
+    assigns = assign(assigns, :multicode, if(assigns.block.type == :multicode, do: assigns.block))
+    assigns = assign(assigns, :block, Athena.Content.multicode_project(assigns.block, nil, true))
+
     ~H"""
     <div>
       <%= if @block.type == :quiz_question do %>
@@ -1796,7 +2021,7 @@ defmodule AthenaWeb.BlockComponents do
           <form
             phx-change="update_block_meta"
             phx-target={assigns[:target]}
-            id={"code-config-form-#{@block.id}"}
+            id={"code-config-form-#{@block.id}#{if @multicode, do: "-" <> @block.content["language"], else: ""}"}
           >
             <input type="hidden" name="block[id]" value={@block.id} />
 
@@ -1885,6 +2110,12 @@ defmodule AthenaWeb.BlockComponents do
               </div>
             <% else %>
               <div class="mb-6 relative">
+                <input
+                  :if={@multicode}
+                  type="hidden"
+                  name="block[content][active_language]"
+                  value={@block.content["language"]}
+                />
                 <label class="label">
                   <span class="label-text font-bold text-xs uppercase text-base-content/70">
                     {gettext("Reference Solution (Hidden from students)")}
@@ -1900,7 +2131,7 @@ defmodule AthenaWeb.BlockComponents do
 
                 <div class="overflow-hidden rounded-sm border border-base-300 bg-base-200 dark:bg-[#282c34]">
                   <div
-                    id={"solution-editor-#{@block.id}"}
+                    id={"solution-editor-#{@block.id}#{if @multicode, do: "-" <> @block.content["language"], else: ""}"}
                     phx-hook="CodeEditor"
                     data-language={Execution.cm_lang(@block.content["language"])}
                     data-readonly="false"

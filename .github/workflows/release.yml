@@ -17,7 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-22.04, ubuntu-24.04]
-        variant: [web, runner-db, runner-compiled, runner-script]
+        variant: [web, runner-db, runner-compiled, runner-script, runner-jvm, runner-dotnet]
 
     steps:
       - name: Checkout repository
@@ -34,6 +34,8 @@ jobs:
             runner-db) file=Dockerfile.runner-db; suffix=-runner-db; isolate=false ;;
             runner-compiled) file=Dockerfile.runner-compiled; suffix=-runner-compiled; isolate=true ;;
             runner-script) file=Dockerfile.runner-script; suffix=-runner-script; isolate=true ;;
+            runner-jvm) file=Dockerfile.runner-jvm; suffix=-runner-jvm; isolate=true ;;
+            runner-dotnet) file=Dockerfile.runner-dotnet; suffix=-runner-dotnet; isolate=true ;;
           esac
           case "${{ matrix.os }}" in
             ubuntu-22.04) os_tag=u22 ;;
@@ -99,6 +101,15 @@ jobs:
               isolate --run --cg -b 0 -- /bin/echo isolate-ok
               isolate --cleanup --cg -b 0
             '
+
+      - name: Compile and execute language smoke checks inside isolate
+        if: steps.variant.outputs.isolate == 'true'
+        run: |
+          image_tag="$(echo '${{ steps.meta.outputs.tags }}' | head -n1)"
+          docker run --rm --privileged --pid host --cgroupns host \
+            -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+            --entrypoint /bin/sh "$image_tag" \
+            /usr/local/lib/athena/smoke-languages.sh '${{ matrix.variant }}'
 
       # Each leg publishes its own os-suffixed tags, only after its own
       # smoke test (for isolate variants) has passed on that leg's real

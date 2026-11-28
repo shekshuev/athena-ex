@@ -23,3 +23,15 @@ For MinIO behind TLS termination, configure `MINIO_SCHEME` for the internal endp
 ClickHouse sandbox table-engine permissions are configured with `allowed_table_engines` under `Athena.Execution.Database.ClickHouse` in `config/config.exs`. Keep the engine policy in configuration, grant only explicit engine names, and preserve the independent bans on external sources and administrative operations. Restart the runner after configuration-file changes; new sandbox users receive the configured grants.
 
 Production deployment uses self-contained service definitions in `docker-compose.prod.yml`. `docker-compose.sql-services.yml` is shared by development and extra-runner configurations only. Copy `docker/clickhouse/execution.xml` with its relative path when transferring production configuration.
+
+Execution language families are `compiled` (C, C++, Go, Swift, Rust, Zig),
+`script` (Python, JavaScript, TypeScript), `jvm` (Java and Kotlin targeting
+Java 21), `dotnet` (C#), and `db`. Toolchains belong to their runner images.
+Keep compilation offline and bounded separately from execution. Runtime memory
+limits apply to the entire cgroup; runtimes that reserve large virtual address
+ranges must not receive a small address-space limit. Never migrate existing
+task language selections when adding a language.
+
+Invoke globally installed compilers and interpreters directly through the runner's
+global PATH. Keep compiler arguments, environment and sandbox file preparation
+in Execution modules; do not add per-language launcher shell scripts.

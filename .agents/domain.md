@@ -22,3 +22,18 @@ Use [architecture.md](architecture.md) for ownership and [security.md](security.
 ## Media upload settings
 
 Keep general file extensions and per-file limits centralized in `Athena.Media.Config`: attachments, assignments and personal files share formats and a 2 GiB limit; videos use the same size limit with video extensions. Keep image/avatar and parser-based import limits specific to their purpose. Normalize missing browser MIME types in Media metadata validation before requiring the field.
+
+
+## Multicode blocks
+
+Content owns the shared prompt and a language-keyed map of ordinary code challenge
+variants. SQL is excluded. A student language is available only when its reference
+solution is nonblank and at least one test case passes the existing CodeChallenge
+validation. Authoring may retain unfinished variants and empty test rows; these
+must not become runnable student languages.
+
+Keep the submitted language explicit and validate it against persisted content or
+the exam question snapshot before execution. Reuse CodeChallenge, the existing
+execution workers and Verifier; do not add a separate grading engine. Student
+drafts preserve each language independently, and a delayed autosave must not
+change the selected language. Never backfill or rewrite existing code blocks.

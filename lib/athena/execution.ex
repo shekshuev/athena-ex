@@ -13,6 +13,8 @@ defmodule Athena.Execution do
   defdelegate database_options(), to: Athena.Execution.DatabaseRunner, as: :options
   defdelegate database_engines(), to: Athena.Execution.DatabaseRunner, as: :engines
 
+  defdelegate runtime_info(language, memory_limit), to: LanguageConfig
+
   defdelegate options, to: LanguageConfig
   defdelegate default_language, to: LanguageConfig
   defdelegate cm_lang(lang), to: LanguageConfig

@@ -182,7 +182,7 @@ defmodule Athena.Content.Library do
   @spec list_readable_question_block_ids(map()) :: [String.t()]
   def list_readable_question_block_ids(user) do
     LibraryBlock
-    |> where([lb], lb.type in [:quiz_question, :code, :file_assignment])
+    |> where([lb], lb.type in [:quiz_question, :code, :multicode, :file_assignment])
     |> scope_library_reads(user)
     |> select([lb], lb.id)
     |> Repo.all()
@@ -407,7 +407,7 @@ defmodule Athena.Content.Library do
       LibraryBlock
       |> join(:inner, [lb], clb in CourseLibraryBlock, on: clb.library_block_id == lb.id)
       |> where([lb, clb], clb.course_id == ^course_id)
-      |> where([lb], lb.type in [:quiz_question, :code, :file_assignment])
+      |> where([lb], lb.type in [:quiz_question, :code, :multicode, :file_assignment])
       |> where([lb], fragment("? && ?", lb.tags, ^tags))
 
     query =
@@ -602,7 +602,7 @@ defmodule Athena.Content.Library do
     LibraryBlock
     |> join(:inner, [lb], clb in CourseLibraryBlock, on: clb.library_block_id == lb.id)
     |> where([lb, clb], clb.course_id == ^course_id)
-    |> where([lb], lb.type in [:quiz_question, :code, :file_assignment])
+    |> where([lb], lb.type in [:quiz_question, :code, :multicode, :file_assignment])
     |> where([lb], fragment("? && ?", lb.tags, ^tags))
     |> select([lb], struct(lb, ^(LibraryBlock.__schema__(:fields) -- [:content])))
     |> Repo.all()

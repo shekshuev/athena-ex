@@ -1,6 +1,6 @@
 # Local Linux/Docker runner nodes for developing on macOS/Windows, where
 # isolate can't run natively. Pair with `iex -S mix phx.server` on the host
-# using the same RELEASE_COOKIE. Run all three, or just the family you need:
+# using the same RELEASE_COOKIE. Run all five, or just the family you need:
 #   docker compose -f docker-compose.dev-runner.yml up athena_runner_script
 services:
   athena_runner_db:
@@ -47,4 +47,38 @@ services:
     environment:
       - RELEASE_DISTRIBUTION=name
       - RELEASE_NODE=runner_script@127.0.0.1
+      - RELEASE_COOKIE=dev_cookie_12345
+
+  athena_runner_dotnet:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner-dotnet
+    container_name: athena_runner_dotnet_dev
+    restart: "no"
+    privileged: true
+    network_mode: "host"
+    pid: "host"
+    cgroup: "host"
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    environment:
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=runner_dotnet@127.0.0.1
+      - RELEASE_COOKIE=dev_cookie_12345
+
+  athena_runner_jvm:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner-jvm
+    container_name: athena_runner_jvm_dev
+    restart: "no"
+    privileged: true
+    network_mode: "host"
+    pid: "host"
+    cgroup: "host"
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    environment:
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=runner_jvm@127.0.0.1
       - RELEASE_COOKIE=dev_cookie_12345

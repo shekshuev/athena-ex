@@ -121,6 +121,9 @@ defmodule Athena.Content.Block do
   defp build_embed_changeset(:ticket_exam, content_map),
     do: TicketExam.changeset(%TicketExam{}, content_map)
 
+  defp build_embed_changeset(:multicode, content_map),
+    do: Athena.Content.Multicode.changeset(%Athena.Content.Multicode{}, content_map)
+
   defp build_embed_changeset(:code, content_map),
     do: CodeChallenge.changeset(struct(CodeChallenge), content_map)
 

@@ -9,6 +9,32 @@ defmodule Athena.Content do
   alias Athena.Content.{Courses, Sections, Blocks, Library, Policy, Characters, Permalinks}
   alias Athena.Content.{Course, Section, Block}
 
+  defdelegate code_submission_language_available?(id, language), to: Blocks
+
+  defdelegate multicode_options(content, author? \\ false),
+    to: Athena.Content.Multicode,
+    as: :options
+
+  defdelegate multicode_editor_content(content), to: Athena.Content.Multicode, as: :editor_content
+
+  defdelegate multicode_project(block, answer \\ nil, author? \\ false),
+    to: Athena.Content.Multicode,
+    as: :project
+
+  defdelegate multicode_answer(block, params, existing, select? \\ false),
+    to: Athena.Content.Multicode,
+    as: :answer
+
+  def code_challenge(type, content, language \\ nil)
+
+  def code_challenge(type, content, language) when type in [:multicode, "multicode"],
+    do: Athena.Content.Multicode.challenge(content, language)
+
+  def code_challenge(_type, content, _language) do
+    cs = Athena.Content.CodeChallenge.changeset(%Athena.Content.CodeChallenge{}, content)
+    {:ok, Ecto.Changeset.apply_changes(cs)}
+  end
+
   defdelegate media_download_access(user, key), to: Athena.Content.MediaAccess, as: :allowed?
   defdelegate audit_storage_links(), to: Athena.Content.MediaAccess
 

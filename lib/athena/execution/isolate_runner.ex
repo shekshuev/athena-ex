@@ -6,6 +6,8 @@ defmodule Athena.Execution.IsolateRunner do
   """
   require Logger
 
+  alias Athena.Execution.{LanguageConfig, Toolchain}
+
   @isolate_bin "/usr/bin/isolate"
 
   defmodule Context do
@@ -36,6 +38,7 @@ defmodule Athena.Execution.IsolateRunner do
 
     try do
       with {:ok, ctx} <- init_sandbox(ctx),
+           {:ok, ctx} <- prepare_toolchain(ctx),
            :ok <- write_source(code, ctx),
            :ok <- write_stdin(input, ctx),
            :ok <- compile(ctx),
@@ -65,6 +68,7 @@ defmodule Athena.Execution.IsolateRunner do
     System.cmd(@isolate_bin, ["--cleanup", "--cg", "-b", "#{ctx.box_id}"], stderr_to_stdout: true)
 
     with {:ok, ctx} <- init_sandbox(ctx),
+         {:ok, ctx} <- prepare_toolchain(ctx),
          :ok <- write_source(code, ctx),
          :ok <- compile(ctx) do
       {:ok, ctx}
@@ -136,20 +140,29 @@ defmodule Athena.Execution.IsolateRunner do
         "-M",
         meta_path,
         "-f",
-        "10240",
+        "#{ctx.lang_config.compile_file_size}",
         "-t",
-        "10.0",
+        "#{ctx.lang_config.compile_time}",
         "-w",
-        "12.0",
-        "-m",
-        "262144",
+        "#{ctx.lang_config.compile_wall_time}",
+        "--cg-mem=#{ctx.lang_config.compile_memory}",
         "-p128",
         "-E",
-        "PATH=/usr/sbin:/usr/bin:/sbin:/bin",
-        "-r",
+        "PATH=#{Toolchain.path()}",
+        "-E",
+        "HOME=/box",
+        "-E",
+        "LANG=en_US.UTF-8",
+        "-E",
+        "LC_ALL=en_US.UTF-8",
+        "-E",
+        "TMPDIR=/tmp",
+        "-o",
         "compile_err.txt",
-        "--"
-      ] ++ String.split(ctx.lang_config.compile_cmd)
+        "--stderr-to-stdout"
+      ] ++
+        compilation_memory_args(ctx.lang_config) ++
+        compiler_env(ctx.lang_config) ++ ["--" | ctx.lang_config.compile_cmd]
 
     {_output, exit_code} = System.cmd(@isolate_bin, args, stderr_to_stdout: true)
     File.rm(meta_path)
@@ -161,13 +174,52 @@ defmodule Athena.Execution.IsolateRunner do
 
       :ok
     else
-      err_output = read_box_file(ctx, "compile_err.txt")
+      err_output = read_compile_errors(ctx)
 
       Logger.warning(
         "[IsolateRunner] Box #{ctx.box_id} [#{ctx.lang_config.name}] compilation failed:\n#{err_output}"
       )
 
       {:error, {:compilation_error, err_output}}
+    end
+  end
+
+  defp prepare_toolchain(ctx) do
+    case Toolchain.prepare(ctx.lang_config, ctx.box_dir) do
+      {:ok, config} ->
+        {:ok, %{ctx | lang_config: config}}
+
+      {:error, {:toolchain_unavailable, message}} = error ->
+        Logger.error("[IsolateRunner] #{message}")
+        error
+    end
+  end
+
+  defp compiler_env(config) do
+    config.compile_env
+    |> Enum.sort()
+    |> Enum.flat_map(fn {key, value} -> ["-E", "#{key}=#{value}"] end)
+  end
+
+  defp compilation_memory_args(%{compile_memory_mode: :address_space, compile_memory: limit}),
+    do: ["-m", "#{limit}"]
+
+  defp compilation_memory_args(_config), do: []
+
+  defp read_compile_errors(ctx) do
+    case File.open(Path.join(ctx.box_dir, "compile_err.txt"), [:read, :binary]) do
+      {:ok, file} ->
+        try do
+          case IO.binread(file, 1_048_576) do
+            data when is_binary(data) -> data
+            _ -> ""
+          end
+        after
+          File.close(file)
+        end
+
+      {:error, _} ->
+        ""
     end
   end
 
@@ -202,41 +254,86 @@ defmodule Athena.Execution.IsolateRunner do
   @spec execute(Context.t()) :: {:ok, map()} | {:error, :system_failure}
   defp execute(ctx) do
     meta_path = "/tmp/athena_meta_#{ctx.box_id}.txt"
-
-    args =
-      [
-        "--run",
-        "--cg",
-        "-b",
-        "#{ctx.box_id}",
-        "-M",
-        meta_path,
-        "-t",
-        "#{ctx.time_limit}",
-        "-w",
-        "#{ctx.time_limit + 1.0}",
-        "-x",
-        "#{ctx.time_limit + 1.0}",
-        "-f",
-        "1024",
-        "-m",
-        "#{ctx.memory_limit}",
-        "-p64",
-        "-E",
-        "PATH=/usr/sbin:/usr/bin:/sbin:/bin",
-        "-E",
-        "PYTHONIOENCODING=utf-8",
-        "-i",
-        "stdin.txt",
-        "-o",
-        "stdout.txt",
-        "-r",
-        "stderr.txt",
-        "--"
-      ] ++ String.split(ctx.lang_config.run_cmd)
+    args = execution_args(ctx, meta_path)
 
     {_output, exit_code} = System.cmd(@isolate_bin, args, stderr_to_stdout: true)
+    execution_result(ctx, meta_path, exit_code)
+  end
 
+  @doc false
+  def execution_args(ctx, meta_path) do
+    [
+      "--run",
+      "--cg",
+      "-b",
+      "#{ctx.box_id}",
+      "-M",
+      meta_path,
+      "-t",
+      "#{ctx.time_limit}",
+      "-w",
+      "#{ctx.time_limit + 1.0}",
+      "-x",
+      "#{ctx.time_limit + 1.0}",
+      "-f",
+      "1024",
+      "-p64",
+      "-E",
+      "PATH=#{Toolchain.path()}",
+      "-E",
+      "HOME=/box",
+      "-E",
+      "LANG=en_US.UTF-8",
+      "-E",
+      "LC_ALL=en_US.UTF-8",
+      "-E",
+      "TMPDIR=/tmp",
+      "-E",
+      "PYTHONIOENCODING=utf-8",
+      "-i",
+      "stdin.txt",
+      "-o",
+      "stdout.txt",
+      "-r",
+      "stderr.txt"
+    ] ++
+      memory_args(ctx) ++
+      runtime_env(ctx) ++
+      ["--" | LanguageConfig.run_command(ctx.lang_config, ctx.memory_limit)]
+  end
+
+  defp memory_args(%{lang_config: %{runtime_memory: :address_space}, memory_limit: limit}),
+    do: ["-m", "#{limit}", "--cg-mem=#{limit}"]
+
+  defp memory_args(%{memory_limit: limit}), do: ["--cg-mem=#{limit}"]
+
+  # CLR double mapping uses memfd files larger than the sandbox file-size cap.
+  # Use its single-mapping allocator while retaining isolate output/memory limits.
+  defp runtime_env(%{lang_config: %{family: :dotnet}, memory_limit: limit}) do
+    heap_bytes = div(limit * 1024, 2) |> Integer.to_string(16)
+
+    [
+      "-E",
+      "DOTNET_GCHeapHardLimit=#{heap_bytes}",
+      "-E",
+      "DOTNET_PROCESSOR_COUNT=1",
+      "-E",
+      "DOTNET_EnableDiagnostics=0",
+      "-E",
+      "DOTNET_EnableWriteXorExecute=0",
+      "-E",
+      "DOTNET_CLI_TELEMETRY_OPTOUT=1"
+    ]
+  end
+
+  defp runtime_env(%{lang_config: %{source_file: source}, memory_limit: limit})
+       when source in ["main.js", "main.ts"] do
+    ["-E", "NODE_OPTIONS=--max-old-space-size=#{max(div(limit, 2048), 1)}"]
+  end
+
+  defp runtime_env(_ctx), do: []
+
+  defp execution_result(ctx, meta_path, exit_code) do
     if exit_code >= 2 do
       File.rm(meta_path)
 

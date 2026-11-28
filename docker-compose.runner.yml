@@ -76,6 +76,46 @@ services:
     networks:
       - athena-network
 
+  athena_runner_dotnet:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner-dotnet
+    container_name: athena_runner_dotnet_extra
+    restart: always
+    privileged: true
+    pid: "host"
+    cgroup: "host"
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    env_file:
+      - .env
+    environment:
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=runner_dotnet_extra@athena_runner_dotnet_extra
+      - RELEASE_COOKIE=${RELEASE_COOKIE}
+    networks:
+      - athena-network
+
+  athena_runner_jvm:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner-jvm
+    container_name: athena_runner_jvm_extra
+    restart: always
+    privileged: true
+    pid: "host"
+    cgroup: "host"
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    env_file:
+      - .env
+    environment:
+      - RELEASE_DISTRIBUTION=name
+      - RELEASE_NODE=runner_jvm_extra@athena_runner_jvm_extra
+      - RELEASE_COOKIE=${RELEASE_COOKIE}
+    networks:
+      - athena-network
+
   athena_runner_pg:
     image: postgres:16-alpine
     container_name: athena_runner_pg_dev

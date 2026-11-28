@@ -105,6 +105,7 @@ defmodule AthenaWeb.TeachingLive.GradebookTable do
 
   @doc "Human label for a gradable block type."
   @spec type_label(atom()) :: String.t()
+  def type_label(:multicode), do: gettext("Multicode")
   def type_label(:code), do: gettext("Code task")
   def type_label(:quiz_question), do: gettext("Question")
   def type_label(:quiz_exam), do: gettext("Exam")
@@ -118,6 +119,7 @@ defmodule AthenaWeb.TeachingLive.GradebookTable do
 
   @doc "Hero icon for a gradable block type."
   @spec type_icon(atom()) :: String.t()
+  def type_icon(:multicode), do: "hero-code-bracket-square"
   def type_icon(:code), do: "hero-code-bracket"
   def type_icon(:quiz_question), do: "hero-question-mark-circle"
   def type_icon(:quiz_exam), do: "hero-clipboard-document-check"

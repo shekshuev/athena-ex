@@ -13,7 +13,7 @@ defmodule Athena.Content.BlockTypes do
   in a subset is written down next to it.
   """
 
-  @all ~w(text code quiz_question quiz_exam ticket_exam video image attachment file_assignment survey)a
+  @all ~w(text code multicode quiz_question quiz_exam ticket_exam video image attachment file_assignment survey)a
 
   # Types that cannot be stored as a reusable `Athena.Content.LibraryBlock`.
   # A survey is authored once as a whole in its own builder and referenced by
@@ -28,7 +28,7 @@ defmodule Athena.Content.BlockTypes do
 
   # Pure content (text/image/video/attachment) never has a `Submission`, so a
   # "View Submissions" link to the grading screen makes no sense for it.
-  @gradable ~w(code quiz_question quiz_exam ticket_exam file_assignment)a
+  @gradable ~w(code multicode quiz_question quiz_exam ticket_exam file_assignment)a
 
   @library @all -- @non_library
   @xp_awardable @all -- @non_xp_awardable

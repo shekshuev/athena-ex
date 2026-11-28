@@ -751,6 +751,43 @@ defmodule AthenaWeb.StudioLive.Builder do
     end
   end
 
+  def handle_event("add_multicode_block", params, socket) do
+    if can_edit?(socket) do
+      create_and_assign_block(socket, %{
+        "type" => "multicode",
+        "content" => %{
+          "active_language" => "python3",
+          "languages" => %{"python3" => %{}},
+          "body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]}
+        },
+        "section_id" => socket.assigns.active_section_id,
+        "after_id" => clean_after_id(params["after_id"])
+      })
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("select_multicode_language", %{"id" => id, "language" => language}, socket) do
+    with true <- can_edit?(socket),
+         %{type: :multicode} = block <- Enum.find(socket.assigns.blocks, &(&1.id == id)),
+         true <- language in Enum.map(Execution.options(), &elem(&1, 1)) and language != "sql",
+         content =
+           block.content
+           |> Map.put("active_language", language)
+           |> Map.update("languages", %{language => %{}}, &Map.put_new(&1, language, %{})),
+         {:ok, updated} <-
+           Content.update_block(socket.assigns.current_user, block, %{"content" => content}) do
+      {:noreply,
+       assign(socket,
+         blocks: replace_block(socket.assigns.blocks, updated),
+         active_block_changeset: nil
+       )}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
   def handle_event("add_code_block", params, socket) do
     if can_edit?(socket) do
       attrs = %{
@@ -1213,7 +1250,7 @@ defmodule AthenaWeb.StudioLive.Builder do
         case block.type do
           :attachment -> Map.put(content_map, "description", text_content)
           :quiz_question -> Map.put(content_map, "body", text_content)
-          :code -> Map.put(content_map, "body", text_content)
+          type when type in [:code, :multicode] -> Map.put(content_map, "body", text_content)
           :file_assignment -> Map.put(content_map, "body", text_content)
           _ -> text_content
         end
@@ -1752,6 +1789,7 @@ defmodule AthenaWeb.StudioLive.Builder do
   def handle_event("run_instructor_test", %{"id" => block_id}, socket) do
     with true <- can_edit?(socket),
          block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == block_id)) do
+      block = Content.multicode_project(block, nil, true)
       code = block.content["solution_code"] || ""
       test_cases = block.content["test_cases"] || []
 
@@ -2345,6 +2383,9 @@ defmodule AthenaWeb.StudioLive.Builder do
     struct |> Map.from_struct() |> normalize_content()
   end
 
+  defp normalize_content(%{"languages" => _} = content),
+    do: Content.multicode_editor_content(content)
+
   defp normalize_content(map) when is_map(map) do
     Map.new(map, fn {k, v} -> {to_string(k), normalize_content(v)} end)
   end
@@ -2467,7 +2508,9 @@ defmodule AthenaWeb.StudioLive.Builder do
   defp type_badge(assigns) do
     ~H"""
     <.badge tone="neutral" class="uppercase tracking-widest text-[10px]">
-      {Atom.to_string(@type) |> String.replace("_", " ")}
+      {if @type == :multicode,
+        do: gettext("Multicode"),
+        else: Atom.to_string(@type) |> String.replace("_", " ")}
     </.badge>
     """
   end

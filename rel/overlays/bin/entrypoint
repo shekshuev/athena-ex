@@ -3,7 +3,7 @@ set -e
 
 : "${RELEASE_NAME:?RELEASE_NAME must be set}"
 
-if [ "$(id -u)" = '0' ] && { [ "$RELEASE_NAME" = "runner_compiled" ] || [ "$RELEASE_NAME" = "runner_script" ]; }; then
+if [ "$(id -u)" = '0' ] && { [ "$RELEASE_NAME" = "runner_compiled" ] || [ "$RELEASE_NAME" = "runner_script" ] || [ "$RELEASE_NAME" = "runner_jvm" ] || [ "$RELEASE_NAME" = "runner_dotnet" ]; }; then
     echo "Initializing cgroups v2 for isolate (release: $RELEASE_NAME)..."
     
     mkdir -p /run/isolate/locks /var/local/lib/isolate

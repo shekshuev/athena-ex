@@ -250,6 +250,9 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   @doc false
   @spec block_inspector(map()) :: Phoenix.LiveView.Rendered.t()
   defp block_inspector(assigns) do
+    assigns = assign(assigns, :multicode, if(assigns.block.type == :multicode, do: assigns.block))
+    assigns = assign(assigns, :block, Athena.Content.multicode_project(assigns.block, nil, true))
+
     block_changeset =
       if assigns[:block_changeset] && assigns[:block_changeset].data.id == assigns.block.id do
         assigns.block_changeset
@@ -283,6 +286,8 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
           </div>
           <div class="text-sm font-medium capitalize">
             <%= cond do %>
+              <% @multicode -> %>
+                {gettext("Multicode")}
               <% @block.type == :quiz_exam -> %>
                 {gettext("Assessment Session")} {gettext("Block")}
               <% @block.type == :ticket_exam -> %>
@@ -663,12 +668,30 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                 {gettext("Execution Settings")}
               </div>
 
+              <input
+                :if={@multicode}
+                type="hidden"
+                name="block[content][active_language]"
+                value={@block.content["language"]}
+              />
+              <AthenaWeb.BlockComponents.multicode_tabs
+                :if={@multicode}
+                block={@multicode}
+                language={@block.content["language"]}
+                author={true}
+                suffix="inspector"
+              />
               <.input
+                :if={!@multicode}
                 type="select"
                 name="block[content][language]"
                 value={@block.content["language"] || Execution.default_language()}
                 label={gettext("Programming Language")}
                 options={Execution.options()}
+              />
+              <AthenaWeb.BlockComponents.language_runtime_info
+                language={@block.content["language"] || Execution.default_language()}
+                memory_limit={@block.content["memory_limit"] || 65_536}
               />
 
               <%= if @block.content["language"] == "sql" do %>
@@ -1042,7 +1065,7 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
   end
 
   defp completion_options_for(type)
-       when type in [:code, :quiz_question, :quiz_exam, :ticket_exam] do
+       when type in [:code, :multicode, :quiz_question, :quiz_exam, :ticket_exam] do
     [
       {gettext("None (Scroll past)"), "none"},
       {gettext("Require Submission"), "submit"},
