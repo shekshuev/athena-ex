@@ -87,8 +87,23 @@ defmodule Athena.Content.TextExtractorTest do
              }) == "Материалы\nУчебник.pdf\ndata.csv"
     end
 
+    test "multicode indexes only the shared prompt" do
+      assert extract(:multicode, %{
+               "body" => doc([paragraph("Shared programming prompt")]),
+               "languages" => %{
+                 "python3" => %{
+                   "solution_code" => "SECRET_REFERENCE",
+                   "initial_code" => "LANGUAGE_TEMPLATE",
+                   "test_cases" => [%{"expected_output" => "SECRET_CASE"}]
+                 }
+               }
+             }) == "Shared programming prompt"
+    end
+
     test "all other current block types are excluded regardless of their payload" do
-      excluded = BlockTypes.all() -- [:text, :code, :quiz_question, :file_assignment, :attachment]
+      excluded =
+        BlockTypes.all() --
+          [:text, :code, :multicode, :quiz_question, :file_assignment, :attachment]
 
       for type <- excluded do
         assert extract(type, %{

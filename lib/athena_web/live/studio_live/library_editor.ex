@@ -708,9 +708,28 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     {:noreply, assign(socket, test_run_session: nil, test_run_active_exam: nil)}
   end
 
+  def handle_event("select_multicode_language", %{"language" => language}, socket) do
+    block = socket.assigns.block
+
+    with true <- can_edit?(socket) and block.type == :multicode,
+         true <- language in Enum.map(Execution.options(), &elem(&1, 1)) and language != "sql",
+         content =
+           block.content
+           |> Map.put("active_language", language)
+           |> Map.update("languages", %{language => %{}}, &Map.put_new(&1, language, %{})),
+         {:ok, updated} <-
+           Content.update_library_block(socket.assigns.current_user, block, %{
+             "content" => content
+           }) do
+      {:noreply, assign(socket, :block, updated)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
   def handle_event("run_instructor_test", _, socket) do
     if can_edit?(socket) do
-      block = socket.assigns.block
+      block = Content.multicode_project(socket.assigns.block, nil, true)
       content_map = normalize_content(block.content || %{})
 
       if content_map["language"] == "sql" do
@@ -818,7 +837,7 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
     block.content |> normalize_content() |> Map.put("body", parsed)
   end
 
-  defp build_updated_content(%{type: :code} = block, parsed) do
+  defp build_updated_content(%{type: type} = block, parsed) when type in [:code, :multicode] do
     block.content |> normalize_content() |> Map.put("body", parsed)
   end
 
@@ -957,6 +976,9 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
   @impl true
   def render(assigns) do
+    assigns = assign(assigns, :multicode, if(assigns.block.type == :multicode, do: assigns.block))
+    assigns = assign(assigns, :block, Content.multicode_project(assigns.block, nil, true))
+
     assigns =
       assign(assigns,
         block_mode: if(assigns.role in [:owner, :writer], do: :edit, else: :preview),
@@ -1000,7 +1022,9 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                 {@block.title}
               </h1>
               <div class="text-xs font-bold text-base-content/50 uppercase tracking-widest mt-1">
-                {gettext("Block Type:")} {Atom.to_string(@block.type) |> String.replace("_", " ")}
+                {gettext("Block Type:")} {if @multicode,
+                  do: gettext("Multicode"),
+                  else: Atom.to_string(@block.type) |> String.replace("_", " ")}
               </div>
             </div>
 
@@ -1046,12 +1070,16 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                 </div>
                 <div class="relative w-full">
                   <.content_block
-                    block={@block}
+                    block={@multicode || @block}
                     mode={@block_mode}
                     active={true}
                     characters={@characters}
                   />
-                  <.block_editor :if={@role in [:owner, :writer]} block={@block} target={nil} />
+                  <.block_editor
+                    :if={@role in [:owner, :writer]}
+                    block={@multicode || @block}
+                    target={nil}
+                  />
                 </div>
               </div>
             </div>
@@ -1069,7 +1097,11 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                     <%= if @block.type == :quiz_exam do %>
                       {gettext("Assessment Session")}
                     <% else %>
-                      {Atom.to_string(@block.type) |> String.replace("_", " ")} {gettext("Template")}
+                      {if @multicode,
+                        do: gettext("Multicode"),
+                        else: Atom.to_string(@block.type) |> String.replace("_", " ")} {gettext(
+                        "Template"
+                      )}
                     <% end %>
                   </div>
                 </div>
@@ -1357,7 +1389,15 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                       <% end %>
 
                       <%= if @block.type == :code do %>
+                        <AthenaWeb.BlockComponents.multicode_tabs
+                          :if={@multicode}
+                          block={@multicode}
+                          language={@block.content["language"]}
+                          author={true}
+                          suffix="library"
+                        />
                         <.input
+                          :if={!@multicode}
                           type="select"
                           name="library_block[content][language]"
                           value={@block.content["language"] || Execution.default_language()}
@@ -1615,6 +1655,9 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
 
   defp normalize_content(%{__struct__: _} = struct),
     do: struct |> Map.from_struct() |> normalize_content()
+
+  defp normalize_content(%{"languages" => _} = content),
+    do: Content.multicode_editor_content(content)
 
   defp normalize_content(map) when is_map(map),
     do: Map.new(map, fn {k, v} -> {to_string(k), normalize_content(v)} end)

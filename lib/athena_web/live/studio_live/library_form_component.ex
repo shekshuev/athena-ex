@@ -17,6 +17,7 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
     type_options = [
       {gettext("Text Block"), :text},
       {gettext("Code Sandbox"), :code},
+      {gettext("Multicode"), :multicode},
       {gettext("Quiz Question"), :quiz_question},
       {gettext("Assessment Session"), :quiz_exam},
       {gettext("Ticket Assessment"), :ticket_exam},
@@ -116,6 +117,13 @@ defmodule AthenaWeb.StudioLive.LibraryFormComponent do
 
   defp put_default_content(%{"type" => "text"} = params) do
     Map.put_new(params, "content", %{"type" => "doc", "content" => [%{"type" => "paragraph"}]})
+  end
+
+  defp put_default_content(%{"type" => "multicode"} = params) do
+    Map.put(params, "content", %{
+      "active_language" => "python3",
+      "languages" => %{"python3" => %{}}
+    })
   end
 
   defp put_default_content(%{"type" => "code"} = params) do

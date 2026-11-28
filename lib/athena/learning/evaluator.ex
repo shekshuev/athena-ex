@@ -84,7 +84,7 @@ defmodule Athena.Learning.Evaluator do
       child_sub.status in [:needs_review, :graded, :rejected] ->
         {child_sub.score || 0, child_sub.status}
 
-      block_type == "code" ->
+      block_type in ["code", "multicode"] ->
         {:ok, _} = Submissions.enqueue_code_execution(child_sub)
         {nil, :processing}
 
@@ -111,11 +111,13 @@ defmodule Athena.Learning.Evaluator do
 
   @doc false
   defp handle_missing_child_submission(parent_sub, q, block_type, q_content) do
-    is_manual = block_type in ["code", "file_assignment"] or q_content["question_type"] == "open"
+    is_manual =
+      block_type in ["code", "multicode", "file_assignment"] or
+        q_content["question_type"] == "open"
 
     blank_content =
       case block_type do
-        "code" -> %{"type" => "code", "code" => ""}
+        type when type in ["code", "multicode"] -> %{"type" => type, "code" => ""}
         "file_assignment" -> %{"type" => "file_assignment", "file_urls" => []}
         _ -> %{"type" => "quiz_question", "text_answer" => ""}
       end

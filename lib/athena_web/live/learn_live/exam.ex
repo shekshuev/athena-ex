@@ -297,6 +297,17 @@ defmodule AthenaWeb.LearnLive.Exam do
     process_exam_answer(params, socket)
   end
 
+  def handle_event("select_code_language", params, socket) do
+    q = socket.assigns.current_question
+
+    if q && q.type == :multicode && params["block_id"] == q.id &&
+         params["language"] in Enum.map(Content.multicode_options(q.content), &elem(&1, 1)) do
+      process_exam_answer(Map.put(params, "_select_language", true), socket)
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_event("save_draft", params, socket) do
     process_exam_answer(params, socket)
   end
@@ -629,7 +640,14 @@ defmodule AthenaWeb.LearnLive.Exam do
     if child_sub do
       child_sub
     else
-      answer_content = %{"type" => :code, "code" => ""}
+      q = socket.assigns.current_question
+      projected = Content.multicode_project(q)
+
+      answer_content = %{
+        "type" => q.type,
+        "code" => projected.content["initial_code"] || "",
+        "language" => projected.content["language"]
+      }
 
       case Learning.save_question_submission(
              socket.assigns.submission,
@@ -963,7 +981,7 @@ defmodule AthenaWeb.LearnLive.Exam do
                         proctoring={true}
                       />
                     </form>
-                  <% :code -> %>
+                  <% type when type in [:code, :multicode] -> %>
                     <form
                       phx-change="save_answer"
                       phx-submit="submit_code"
@@ -1112,7 +1130,14 @@ defmodule AthenaWeb.LearnLive.Exam do
       {:ok, socket} ->
         q = socket.assigns.current_question
         answer = resolve_exam_answer(socket, q, Map.get(params, "answer"))
-        answer_content = normalize_answer(q, answer)
+
+        answer_content =
+          if q.type == :multicode do
+            existing = Map.get(socket.assigns.child_submissions, q.id)
+            Content.multicode_answer(q, params, existing, params["_select_language"] == true)
+          else
+            normalize_answer(q, answer)
+          end
 
         case Learning.save_question_submission(
                socket.assigns.submission,
@@ -1133,6 +1158,9 @@ defmodule AthenaWeb.LearnLive.Exam do
 
           {:error, :time_limit_exceeded} ->
             {:noreply, submit_and_exit(socket, socket.assigns.submission, :time_limit_exceeded)}
+
+          {:error, _} ->
+            {:noreply, socket}
         end
 
       {:halt, socket} ->

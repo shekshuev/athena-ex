@@ -312,6 +312,15 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
       </.button>
 
       <.button
+        phx-click="add_multicode_block"
+        phx-value-after_id={@after_id}
+        class="btn btn-outline rounded-sm bg-base-100 border-base-200 hover:border-primary flex-col h-auto py-4 gap-2 font-bold"
+      >
+        <.icon name="hero-code-bracket-square" class="size-6 opacity-70" />
+        <span>{gettext("Multicode")}</span>
+      </.button>
+
+      <.button
         phx-click="add_file_assignment_block"
         phx-value-after_id={@after_id}
         class="btn btn-outline rounded-sm bg-base-100 border-base-200 hover:border-primary hover:text-primary hover:bg-base-100 flex-col h-auto py-4 gap-2 font-bold"
@@ -430,6 +439,16 @@ defmodule AthenaWeb.StudioLive.Builder.CanvasComponent do
         class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary"
       >
         <.icon name="hero-code-bracket" class="size-5" />
+      </.button>
+
+      <.button
+        id={"inline-add-multicode-#{@after_id}"}
+        phx-click="add_multicode_block"
+        phx-value-after_id={@after_id}
+        title={gettext("Multicode")}
+        class="btn btn-sm btn-ghost btn-square rounded-sm hover:text-primary"
+      >
+        <.icon name="hero-code-bracket-square" class="size-5" />
       </.button>
 
       <.button

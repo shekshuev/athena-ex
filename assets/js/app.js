@@ -297,7 +297,7 @@ Hooks.CodeEditor = {
     // id>`) matters for paste-ratio/TTFA - the Builder's setup/solution SQL
     // editors use a different input-id pattern and are intentionally not
     // matched here.
-    const answerBlockId = (this.el.dataset.inputId || "").match(
+    const answerBlockId = this.el.dataset.answerBlockId || (this.el.dataset.inputId || "").match(
       /^code-input-(.+)$/,
     )?.[1];
     let firstInteractionSent = false;

@@ -357,9 +357,23 @@ defmodule Athena.Learning.Submissions do
   @spec create_submission(map(), map()) :: {:ok, Submission.t()} | {:error, any()}
   def create_submission(user, attrs) do
     changeset = Submission.changeset(%Submission{}, Map.put(attrs, "account_id", user.id))
+
+    changeset =
+      if not changeset.valid? or
+           Content.code_submission_language_available?(
+             attrs["block_id"],
+             (attrs["content"] || %{})["language"]
+           ),
+         do: changeset,
+         else:
+           Ecto.Changeset.add_error(changeset, :content, "programming language is unavailable")
+
     lock = submission_lock(changeset)
 
     cond do
+      not changeset.valid? ->
+        {:error, changeset}
+
       InteractionPolicy.block_readonly?(Map.get(attrs, "block_id")) ->
         {:error, :readonly}
 
@@ -443,7 +457,7 @@ defmodule Athena.Learning.Submissions do
     |> Ecto.Multi.run(:enqueue_job, fn repo, %{submission: submission} ->
       block = repo.get(Block, submission.block_id)
 
-      if block && block.type == :code do
+      if block && block.type in [:code, :multicode] do
         %{submission_id: submission.id}
         |> Athena.Execution.Worker.new()
         |> Oban.insert()
@@ -502,14 +516,14 @@ defmodule Athena.Learning.Submissions do
   end
 
   defp enqueue_writable_code(submission) do
-    is_code_content = submission.content["type"] in [:code, "code"]
+    is_code_content = submission.content["type"] in [:code, "code", :multicode, "multicode"]
 
     if is_code_content do
       do_enqueue(submission)
     else
       block = Repo.get(Block, submission.block_id)
 
-      if block && block.type == :code do
+      if block && block.type in [:code, :multicode] do
         do_enqueue(submission)
       else
         {:error, :not_a_code_block}
@@ -533,7 +547,22 @@ defmodule Athena.Learning.Submissions do
   Does NOT count as a formal submission attempt.
   """
   def test_code(user, block, code, opts \\ []) do
-    content = %{"type" => :code, "code" => code, "is_test_run" => true}
+    content = %{
+      "type" => block.type,
+      "code" => code,
+      "is_test_run" => true,
+      "language" => Keyword.get(opts, :language, block.content["language"])
+    }
+
+    content =
+      if block.type == :multicode do
+        existing = get_draft(user.id, block.id, Keyword.get(opts, :cohort_id))
+
+        Content.multicode_answer(block, %{"answer" => content}, existing)
+        |> Map.put("is_test_run", true)
+      else
+        content
+      end
 
     case save_draft(user, block.id, content, Keyword.get(opts, :cohort_id), opts) do
       {:ok, draft} ->
@@ -652,8 +681,9 @@ defmodule Athena.Learning.Submissions do
     select_merge(query, [s], %{
       content:
         fragment(
-          "CASE WHEN ? THEN jsonb_build_object('type', ?->'type', 'code', ?->'code', 'text_answer', ?->'text_answer') ELSE ? END",
+          "CASE WHEN ? THEN jsonb_build_object('type', ?->'type', 'code', ?->'code', 'text_answer', ?->'text_answer', 'language', ?->'language') ELSE ? END",
           s.block_id in ^ids,
+          s.content,
           s.content,
           s.content,
           s.content,
@@ -1052,12 +1082,17 @@ defmodule Athena.Learning.Submissions do
   @spec save_draft(map(), String.t(), map(), String.t() | nil) ::
           {:ok, Submission.t()} | {:error, Ecto.Changeset.t() | :readonly}
   def save_draft(user, block_id, content, cohort_id \\ nil, opts \\ []) do
-    if InteractionPolicy.block_readonly?(block_id) do
-      {:error, :readonly}
-    else
-      with_draft_lock(user.id, cohort_id, block_id, fn ->
-        save_current_draft(user, block_id, content, cohort_id, Keyword.get(opts, :revision))
-      end)
+    cond do
+      InteractionPolicy.block_readonly?(block_id) ->
+        {:error, :readonly}
+
+      not Content.code_submission_language_available?(block_id, content["language"]) ->
+        {:error, :unavailable_language}
+
+      true ->
+        with_draft_lock(user.id, cohort_id, block_id, fn ->
+          save_current_draft(user, block_id, content, cohort_id, Keyword.get(opts, :revision))
+        end)
     end
   end
 
@@ -1176,6 +1211,13 @@ defmodule Athena.Learning.Submissions do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  defp multicode_content_valid?(%{type: type, content: challenge}, content)
+       when type in [:multicode, "multicode"] do
+    match?({:ok, _}, Content.code_challenge(:multicode, challenge, content["language"]))
+  end
+
+  defp multicode_content_valid?(_, _), do: true
 
   defp do_save_draft(user, block_id, content, cohort_id) do
     attrs = %{
@@ -1365,16 +1407,26 @@ defmodule Athena.Learning.Submissions do
         cohort_id,
         answer_content
       ) do
-    if InteractionPolicy.block_readonly?(parent_submission.block_id) do
-      {:error, :readonly}
-    else
-      save_writable_question(
-        parent_submission,
-        account_id,
-        question_block_id,
-        cohort_id,
-        answer_content
-      )
+    question =
+      Enum.find(parent_submission.content["questions"] || [], &(&1["id"] == question_block_id))
+
+    question = if question, do: %{type: question["type"], content: question["content"]}
+
+    cond do
+      InteractionPolicy.block_readonly?(parent_submission.block_id) ->
+        {:error, :readonly}
+
+      not multicode_content_valid?(question, answer_content) ->
+        {:error, :unavailable_language}
+
+      true ->
+        save_writable_question(
+          parent_submission,
+          account_id,
+          question_block_id,
+          cohort_id,
+          answer_content
+        )
     end
   end
 

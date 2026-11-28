@@ -140,7 +140,9 @@ defmodule Athena.Learning.Progress do
       practice_passed?(block.type, submission)
   end
 
-  defp practice_passed?(:code, submission), do: submission.status == :accepted
+  defp practice_passed?(type, submission) when type in [:code, :multicode],
+    do: submission.status == :accepted
+
   defp practice_passed?(:quiz_question, submission), do: submission.score == 100
   defp practice_passed?(_type, _submission), do: false
 

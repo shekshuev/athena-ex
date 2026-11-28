@@ -25,7 +25,8 @@ defmodule Athena.Execution.Worker do
   alias Athena.Audit
   alias Athena.Learning
   alias Athena.Learning.Submission
-  alias Athena.Content.{Block, CodeChallenge}
+  alias Athena.Content.Block
+  alias Athena.Content
   alias Athena.Execution
   alias Athena.Execution.{Result, TestResult, Verifier}
 
@@ -48,24 +49,29 @@ defmodule Athena.Execution.Worker do
     code = submission.content["code"] || ""
     box_id = System.unique_integer([:positive, :monotonic]) |> rem(10_000)
 
-    result = execute_code(code, challenge, box_id)
+    result =
+      case challenge do
+        {:ok, challenge} -> execute_code(code, challenge, box_id)
+        {:error, _} -> build_error_result("Programming language is unavailable.")
+      end
+
     update_submission_with_result(submission, result)
   end
 
   defp build_challenge(submission, block) do
-    challenge_attrs =
+    {type, challenge_attrs} =
       if block do
-        block.content
+        {block.type, block.content}
       else
         parent = Repo.get!(Submission, submission.parent_submission_id)
 
         question =
           Enum.find(parent.content["questions"] || [], &(&1["id"] == submission.block_id))
 
-        question["content"] || %{}
+        {question["type"], question["content"] || %{}}
       end
 
-    Ecto.Changeset.apply_changes(CodeChallenge.changeset(%CodeChallenge{}, challenge_attrs))
+    Content.code_challenge(type, challenge_attrs, submission.content["language"])
   end
 
   defp execute_code(code, challenge, box_id) do

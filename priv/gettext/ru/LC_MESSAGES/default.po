@@ -11627,3 +11627,12 @@ msgstr "Команда запуска"
 
 msgid "Compilation budget: %{seconds} s CPU · %{memory} MiB"
 msgstr "Лимит компиляции: %{seconds} с CPU · %{memory} МиБ"
+
+msgid "Multicode"
+msgstr "Код на разных языках"
+
+msgid "Add language"
+msgstr "Добавить язык"
+
+msgid "No languages are ready yet."
+msgstr "Пока нет готовых языков."

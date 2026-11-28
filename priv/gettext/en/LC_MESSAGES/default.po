@@ -11298,3 +11298,12 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "SQL Error"
 msgstr ""
+
+msgid "Multicode"
+msgstr "Multicode"
+
+msgid "Add language"
+msgstr "Add language"
+
+msgid "No languages are ready yet."
+msgstr "No languages are ready yet."

@@ -735,7 +735,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
   defp readonly_code_ids(blocks, readonly_ids) do
     blocks
-    |> Enum.filter(&(&1.type == :code and MapSet.member?(readonly_ids, &1.id)))
+    |> Enum.filter(&(&1.type in [:code, :multicode] and MapSet.member?(readonly_ids, &1.id)))
     |> Enum.map(& &1.id)
   end
 
@@ -997,15 +997,34 @@ defmodule AthenaWeb.LearnLive.Player do
     end
   end
 
+  def handle_event("select_code_language", %{"block_id" => id} = params, socket) do
+    with %{type: :multicode} = block <- Enum.find(socket.assigns.blocks, &(&1.id == id)),
+         true <-
+           params["language"] in Enum.map(Content.multicode_options(block.content), &elem(&1, 1)) do
+      handle_event("save_draft", Map.put(params, "_select_language", true), socket)
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
   def handle_event("submit_code", params, socket) do
     block_id = params["block_id"]
     code = get_in(params, ["answer", "code"]) || ""
 
     with block when not is_nil(block) <- Enum.find(socket.assigns.blocks, &(&1.id == block_id)),
-         true <- Execution.runner_available?(block.content["language"]) do
-      process_code_submission(socket, block, code)
+         {:ok, challenge} <-
+           Content.code_challenge(
+             block.type,
+             block.content,
+             get_in(params, ["answer", "language"])
+           ),
+         true <- Execution.runner_available?(challenge.language) do
+      process_code_submission(socket, block, code, challenge.language)
     else
       nil ->
+        {:noreply, socket}
+
+      {:error, _} ->
         {:noreply, socket}
 
       false ->
@@ -1045,7 +1064,13 @@ defmodule AthenaWeb.LearnLive.Player do
     user = socket.assigns.current_user
     team_id = socket.assigns.team_id
     block = Enum.find(socket.assigns.blocks, &(&1.id == block_id))
-    existing_draft = Map.get(socket.assigns.drafts || %{}, block_id) || %{}
+
+    existing_draft =
+      Map.get(socket.assigns.drafts || %{}, block_id) ||
+        if block && block.type == :multicode do
+          submission = Map.get(socket.assigns.submissions || %{}, block_id)
+          if submission, do: submission.content
+        end || %{}
 
     content = build_draft_content(block, params, existing_draft)
 
@@ -1496,7 +1521,10 @@ defmodule AthenaWeb.LearnLive.Player do
 
   defp do_run_code(socket, nil, _draft, _submission), do: {:noreply, socket}
 
-  defp do_run_code(socket, %{type: :code} = block, draft, submission) do
+  defp do_run_code(socket, %{type: type} = original_block, draft, submission)
+       when type in [:code, :multicode] do
+    block = Content.multicode_project(original_block, draft || submission)
+
     # Same fallback chain the editor is actually rendered with
     # (`compute_code_for_mode/5`, mode `:play`): draft, then last submission,
     # then the block's initial/template code. Reading only `draft` here used
@@ -1515,9 +1543,14 @@ defmodule AthenaWeb.LearnLive.Player do
       true ->
         opts = Keyword.put(draft_opts(socket, block.id), :cohort_id, socket.assigns.team_id)
 
-        case Learning.test_code(socket.assigns.current_user, block, code, opts) do
-          {:ok, _draft} ->
-            new_drafts = Map.put(socket.assigns.drafts || %{}, block.id, %{"code" => code})
+        case Learning.test_code(
+               socket.assigns.current_user,
+               original_block,
+               code,
+               Keyword.put(opts, :language, block.content["language"])
+             ) do
+          {:ok, saved_draft} ->
+            new_drafts = Map.put(socket.assigns.drafts || %{}, block.id, saved_draft.content)
             {:noreply, assign(socket, :drafts, new_drafts)}
 
           {:error, _} ->
@@ -1570,12 +1603,26 @@ defmodule AthenaWeb.LearnLive.Player do
   end
 
   @doc false
-  defp process_code_submission(socket, block, code) do
+  defp process_code_submission(socket, block, code, language) do
+    answer = %{"type" => block.type, "code" => code, "language" => language}
+
+    answer =
+      if block.type == :multicode do
+        existing =
+          Map.get(socket.assigns.drafts || %{}, block.id) ||
+            Map.get(socket.assigns.submissions || %{}, block.id)
+
+        Content.multicode_answer(block, %{"answer" => answer}, existing)
+        |> Map.merge(answer)
+      else
+        answer
+      end
+
     sub_attrs = %{
       "block_id" => block.id,
       "cohort_id" => socket.assigns.team_id,
       "status" => :pending,
-      "content" => %{"type" => :code, "code" => code}
+      "content" => answer
     }
 
     case Learning.create_submission(socket.assigns.current_user, sub_attrs) do
@@ -1925,7 +1972,7 @@ defmodule AthenaWeb.LearnLive.Player do
         # to the code sandbox's own run/attempt cycle - a manually graded
         # type (quiz_exam, ticket_exam, file_assignment, ...) gets its own,
         # simpler "you were graded" flash below instead.
-        block.type == :code ->
+        block.type in [:code, :multicode] ->
           socket = EngagementSignals.emit_code_run_result(socket, block.id, submission.status)
 
           {flash_type, flash_msg} = build_code_flash(submission)
@@ -2312,6 +2359,14 @@ defmodule AthenaWeb.LearnLive.Player do
           existing_draft
         )
 
+      :multicode ->
+        Content.multicode_answer(
+          block,
+          params,
+          existing_draft,
+          params["_select_language"] == true
+        )
+
       :code ->
         code = get_in(params, ["answer", "code"]) || ""
         %{"type" => :code, "code" => code}
@@ -2525,7 +2580,7 @@ defmodule AthenaWeb.LearnLive.Player do
               </div>
 
               <div id={"answer-session-#{block.id}-#{revision}"}>
-                <%= if not readonly and block.type in [:code, :quiz_question, :file_assignment] do %>
+                <%= if not readonly and block.type in [:code, :multicode, :quiz_question, :file_assignment] do %>
                   <div
                     id={"answer-source-#{block.id}"}
                     class="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-base-200 pb-3 text-sm"
@@ -2637,7 +2692,7 @@ defmodule AthenaWeb.LearnLive.Player do
                           exam_holder={Map.get(@exam_holders || %{}, block.id)}
                         />
                       </div>
-                    <% :code -> %>
+                    <% type when type in [:code, :multicode] -> %>
                       <div class="space-y-4">
                         <form
                           phx-submit="submit_code"
@@ -2730,7 +2785,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
               <div
                 :if={
-                  not readonly and block.type in [:code, :quiz_question, :file_assignment] and
+                  not readonly and block.type in [:code, :multicode, :quiz_question, :file_assignment] and
                     draft != nil and submission != nil
                 }
                 class="mt-6 flex justify-end"
@@ -2749,7 +2804,7 @@ defmodule AthenaWeb.LearnLive.Player do
 
               <details
                 :if={
-                  not readonly and block.type in [:code, :quiz_question, :file_assignment] and
+                  not readonly and block.type in [:code, :multicode, :quiz_question, :file_assignment] and
                     (draft != nil or cleared?) and submission != nil
                 }
                 id={"submitted-solution-#{block.id}"}
