@@ -1364,6 +1364,10 @@ defmodule AthenaWeb.StudioLive.LibraryEditor do
                           label={gettext("Language")}
                           options={Execution.options()}
                         />
+                        <AthenaWeb.BlockComponents.language_runtime_info
+                          language={@block.content["language"] || Execution.default_language()}
+                          memory_limit={@block.content["memory_limit"] || 65_536}
+                        />
 
                         <%= if @block.content["language"] == "sql" do %>
                           <.input

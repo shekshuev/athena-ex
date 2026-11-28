@@ -11,6 +11,53 @@ defmodule AthenaWeb.BlockComponents do
 
   alias Athena.Execution
 
+  attr :language, :string, required: true
+  attr :memory_limit, :integer, default: 65_536
+
+  def language_runtime_info(assigns) do
+    assigns =
+      assign(assigns, :runtime, Execution.runtime_info(assigns.language, assigns.memory_limit))
+
+    ~H"""
+    <section
+      :if={@runtime}
+      class="rounded-lg border border-base-300 bg-base-200/40 p-3 space-y-3 text-xs"
+    >
+      <div class="flex items-start gap-2">
+        <.icon name="hero-command-line" class="size-4 shrink-0 text-primary mt-0.5" />
+        <div class="min-w-0">
+          <p class="font-semibold break-words">{@runtime.version}</p>
+          <p class="text-base-content/55 mt-1">{gettext("Configured runner image")}</p>
+        </div>
+      </div>
+      <dl class="space-y-3">
+        <div>
+          <dt class="text-base-content/60 mb-1">{gettext("Source file")}</dt>
+          <dd class="font-mono">{@runtime.source}</dd>
+        </div>
+        <div :if={@runtime.compile}>
+          <dt class="text-base-content/60 mb-1">{gettext("Compilation")}</dt>
+          <dd class="font-mono whitespace-pre-wrap break-all rounded bg-base-300/40 p-2 leading-relaxed">
+            {@runtime.compile}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-base-content/60 mb-1">{gettext("Run command")}</dt>
+          <dd class="font-mono whitespace-pre-wrap break-all rounded bg-base-300/40 p-2 leading-relaxed">
+            {@runtime.run}
+          </dd>
+        </div>
+      </dl>
+      <p :if={@runtime.compile} class="text-base-content/55 border-t border-base-300 pt-2">
+        {gettext("Compilation budget: %{seconds} s CPU · %{memory} MiB",
+          seconds: @runtime.compile_time,
+          memory: @runtime.compile_memory
+        )}
+      </p>
+    </section>
+    """
+  end
+
   @doc """
     Main entry point for rendering any block.
     Routes to specific renderers based on block type.

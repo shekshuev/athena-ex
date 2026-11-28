@@ -11612,3 +11612,18 @@ msgstr "СУБД"
 #, elixir-autogen, elixir-format
 msgid "SQL Error"
 msgstr "Ошибка SQL"
+
+msgid "Configured runner image"
+msgstr "Конфигурация образа раннера"
+
+msgid "Source file"
+msgstr "Исходный файл"
+
+msgid "Compilation"
+msgstr "Компиляция"
+
+msgid "Run command"
+msgstr "Команда запуска"
+
+msgid "Compilation budget: %{seconds} s CPU · %{memory} MiB"
+msgstr "Лимит компиляции: %{seconds} с CPU · %{memory} МиБ"

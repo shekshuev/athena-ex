@@ -670,6 +670,10 @@ defmodule AthenaWeb.StudioLive.Builder.InspectorComponent do
                 label={gettext("Programming Language")}
                 options={Execution.options()}
               />
+              <AthenaWeb.BlockComponents.language_runtime_info
+                language={@block.content["language"] || Execution.default_language()}
+                memory_limit={@block.content["memory_limit"] || 65_536}
+              />
 
               <%= if @block.content["language"] == "sql" do %>
                 <.input

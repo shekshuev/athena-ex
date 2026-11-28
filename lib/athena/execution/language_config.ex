@@ -209,6 +209,53 @@ defmodule Athena.Execution.LanguageConfig do
     Enum.map(config.run_cmd, &String.replace(&1, "{heap_kib}", to_string(heap_kib)))
   end
 
+  @runtime_versions %{
+    "python3" => "CPython 3.11.x (Debian)",
+    "c" => "GCC 12.x (Debian)",
+    "cpp" => "GCC 12.x (Debian)",
+    "javascript" => "Node.js 26.13.1 LTS",
+    "typescript" => "TypeScript 7.0.2 · Node.js 26.13.1 LTS",
+    "go" => "Go 1.27.4",
+    "swift" => "Swift 6.4.3 · Swift 6 mode",
+    "rust" => "Rust 1.100.0 · edition 2024",
+    "zig" => "Zig 0.17.1",
+    "java" => "Temurin 21.0.13.1+2 · Java 21",
+    "kotlin" => "Kotlin 2.4.21 · JVM 21",
+    "csharp" => "C# 14 · .NET SDK 10.0.404"
+  }
+
+  @doc "Describes the configured runner image and commands, without probing the web host."
+  def runtime_info(language, memory_limit \\ 65_536) do
+    case get(language) do
+      %__MODULE__{family: family} = config when family != :db ->
+        %{
+          version: Map.fetch!(@runtime_versions, language),
+          source: config.source_file,
+          compile: display_command(config.compile_cmd),
+          run: config |> run_command(memory_limit) |> display_command(),
+          compile_time: config.compile_time,
+          compile_memory: div(config.compile_memory, 1024)
+        }
+
+      _ ->
+        nil
+    end
+  end
+
+  defp display_command(nil), do: nil
+
+  defp display_command(args) do
+    args
+    |> Enum.map(
+      &(&1
+        |> String.replace("{node_types}", "<Node types>")
+        |> String.replace("{swift_runtime}", "<Swift runtime>")
+        |> String.replace("{gcc}", "gcc")
+        |> String.replace("{csc}", "<SDK>/Roslyn/bincore/csc.dll"))
+    )
+    |> Enum.join(" ")
+  end
+
   # {backend language identifier, CodeMirror mode, display label}
   @cm_languages [
     {"python3", "python", "Python"},
